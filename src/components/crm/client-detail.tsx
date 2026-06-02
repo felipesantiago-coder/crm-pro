@@ -192,7 +192,7 @@ function DetailContent({
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-xl bg-white/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 ring-2 ring-white/20">
+              <div className="h-12 w-12 rounded-xl bg-white/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 ring-2 ring-white/20 dark:bg-white/15 dark:ring-white/10">
                 <User className="h-6 w-6 text-white" />
               </div>
               <div className="min-w-0">
@@ -210,18 +210,18 @@ function DetailContent({
 
         {/* Action buttons */}
         <div className="flex items-center gap-2 mt-4 flex-wrap">
-          <Button size="sm" onClick={onEdit} className="bg-white text-emerald-700 hover:bg-emerald-50 border-0 shadow-sm h-9 text-xs font-semibold">
+          <Button size="sm" onClick={onEdit} className="bg-white text-emerald-700 hover:bg-emerald-50 border-0 shadow-sm h-9 text-xs font-semibold dark:bg-white/15 dark:text-white dark:hover:bg-white/25 dark:backdrop-blur-sm dark:border dark:border-white/20 dark:shadow-none">
             <Pencil className="h-3.5 w-3.5 mr-1.5" />
             Editar
           </Button>
-          <Button size="sm" onClick={onDelete} variant="destructive" className="bg-white text-rose-600 hover:bg-rose-50 border-0 shadow-sm h-9 text-xs font-semibold">
+          <Button size="sm" onClick={onDelete} variant="destructive" className="bg-white text-rose-600 hover:bg-rose-50 border-0 shadow-sm h-9 text-xs font-semibold dark:bg-rose-500/25 dark:text-rose-100 dark:hover:bg-rose-500/40 dark:backdrop-blur-sm dark:border dark:border-rose-400/30 dark:shadow-none">
             <Trash2 className="h-3.5 w-3.5 mr-1.5" />
             Excluir
           </Button>
           <div className="flex items-center gap-2 ml-auto">
             {whatsappUrl && (
               <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-flex">
-                <Button size="sm" className="bg-[#25D366] hover:bg-[#1ebe5a] text-white border-0 shadow-sm h-9 text-xs font-semibold">
+                <Button size="sm" className="bg-[#25D366] hover:bg-[#1ebe5a] text-white border-0 shadow-sm h-9 text-xs font-semibold dark:shadow-none">
                   <MessageCircle className="h-3.5 w-3.5 mr-1.5" />
                   WhatsApp
                 </Button>
@@ -229,7 +229,7 @@ function DetailContent({
             )}
             {phoneUrl && (
               <a href={phoneUrl} className="inline-flex">
-                <Button size="sm" className="bg-white text-teal-700 hover:bg-teal-50 border-0 shadow-sm h-9 text-xs font-semibold">
+                <Button size="sm" className="bg-white text-teal-700 hover:bg-teal-50 border-0 shadow-sm h-9 text-xs font-semibold dark:bg-white/15 dark:text-white dark:hover:bg-white/25 dark:backdrop-blur-sm dark:border dark:border-white/20 dark:shadow-none">
                   <PhoneCall className="h-3.5 w-3.5 mr-1.5" />
                   Ligar
                 </Button>
