@@ -3,22 +3,22 @@ generator client {
 }
 
 // === PRODUÇÃO (Vercel + Supabase PostgreSQL) ===
-// Ativo por padrão para compatibilidade com Supabase.
+// Este é o datasource ativo para deploy no Vercel.
 // Para desenvolvimento local com SQLite, comente este bloco
 // e descomente o bloco de desenvolvimento abaixo.
-//
-// datasource db {
-//   provider = "postgresql"
-//   url      = env("DATABASE_URL")
-// }
-
-// === DESENVOLVIMENTO LOCAL (SQLite) ===
-// Para usar SQLite localmente, comente o bloco acima
-// e descomente este bloco, e use DATABASE_URL=file:./db/custom.db
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// === DESENVOLVIMENTO LOCAL (SQLite) ===
+// Para usar SQLite localmente, comente o bloco de produção acima
+// e descomente este bloco, e use DATABASE_URL=file:./db/custom.db
+//
+// datasource db {
+//   provider = "sqlite"
+//   url      = env("DATABASE_URL")
+// }
 
 model Client {
   id                String    @id @default(cuid())
