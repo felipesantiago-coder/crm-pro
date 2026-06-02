@@ -12,31 +12,44 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Senha', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
+        try {
+          console.log('[AUTH] Tentativa de login - email:', credentials?.email);
+
+          if (!credentials?.email || !credentials?.password) {
+            console.log('[AUTH] ERRO: email ou senha não fornecidos');
+            return null;
+          }
+
+          const user = await db.user.findUnique({
+            where: { email: credentials.email },
+          });
+
+          if (!user) {
+            console.log('[AUTH] ERRO: usuário não encontrado no banco de dados');
+            return null;
+          }
+
+          console.log('[AUTH] Usuário encontrado:', user.email, 'role:', user.role, 'hash present:', !!user.passwordHash);
+
+          const isValid = await verifyPassword(credentials.password, user.passwordHash);
+
+          if (!isValid) {
+            console.log('[AUTH] ERRO: senha inválida');
+            return null;
+          }
+
+          console.log('[AUTH] Login realizado com sucesso:', user.email);
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            mustChangePassword: user.mustChangePassword,
+          };
+        } catch (error) {
+          console.error('[AUTH] ERRO INTERNO no authorize:', error);
           return null;
         }
-
-        const user = await db.user.findUnique({
-          where: { email: credentials.email },
-        });
-
-        if (!user) {
-          return null;
-        }
-
-        const isValid = await verifyPassword(credentials.password, user.passwordHash);
-
-        if (!isValid) {
-          return null;
-        }
-
-        return {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          mustChangePassword: user.mustChangePassword,
-        };
       },
     }),
   ],
