@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// === PRODUÇÃO (Vercel + Supabase PostgreSQL) ===
+// Ativo por padrão para compatibilidade com Supabase.
+// Para desenvolvimento local com SQLite, comente este bloco
+// e descomente o bloco de desenvolvimento abaixo.
+//
+// datasource db {
+//   provider = "postgresql"
+//   url      = env("DATABASE_URL")
+// }
+
+// === DESENVOLVIMENTO LOCAL (SQLite) ===
+// Para usar SQLite localmente, comente o bloco acima
+// e descomente este bloco, e use DATABASE_URL=file:./db/custom.db
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id                String    @id @default(cuid())
+  name              String
+  phone             String?
+  email             String?
+  region            String?
+  enterprise        String?
+  enterpriseId      String?
+  notes             String?
+  updatePeriod      Int       @default(30)
+  lastInteractionAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tags        ClientTag[]
+  reminders   Reminder[]
+  linkedEnterprise Enterprise? @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
+
+  @@map("clients")
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#6366f1")
+  createdAt DateTime @default(now())
+
+  clients ClientTag[]
+
+  @@map("tags")
+}
+
+model ClientTag {
+  id        String   @id @default(cuid())
+  clientId  String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, tagId])
+  @@map("client_tags")
+}
+
+model Reminder {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  dueDate     DateTime
+  notified    Boolean  @default(false)
+  clientId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("reminders")
+}
+
+model Enterprise {
+  id        String   @id @default(cuid())
+  name      String
+  region    String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clients Client[]
+
+  @@map("enterprises")
+}
+
+model User {
+  id                String   @id @default(cuid())
+  name              String
+  email             String   @unique
+  passwordHash      String
+  role              String   @default("USER")
+  mustChangePassword Boolean @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("users")
+}
+
+model UserSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("user_settings")
+}
