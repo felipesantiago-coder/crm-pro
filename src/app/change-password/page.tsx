@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { Loader2, Lock, Eye, EyeOff, Check, X } from 'lucide-react';
 
 export default function ChangePasswordPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -20,6 +20,31 @@ export default function ChangePasswordPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  // Redirecionar para login se não autenticado
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+
+  // Tela de carregamento
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-500 to-teal-600 p-4">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-white/20 flex items-center justify-center animate-pulse">
+            <Lock className="h-6 w-6 text-white" />
+          </div>
+          <p className="text-sm text-white/80">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null;
+  }
 
   const minLengthMet = newPassword.length >= 6;
   const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;

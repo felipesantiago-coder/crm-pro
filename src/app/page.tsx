@@ -17,14 +17,39 @@ import { Toaster } from '@/components/ui/sonner';
 
 function CRMApp() {
   const { currentView } = useCRMStore();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
 
   useEffect(() => {
+    // Redirecionar para login se não autenticado
+    if (status === 'unauthenticated') {
+      router.push('/login');
+      return;
+    }
+    // Redirecionar para troca de senha se necessário
     if (session?.user && (session.user as { mustChangePassword?: boolean }).mustChangePassword) {
       router.push('/change-password');
     }
-  }, [session, router]);
+  }, [session, status, router]);
+
+  // Tela de carregamento enquanto verifica autenticação
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center animate-pulse">
+            <span className="text-white font-bold text-xl">C</span>
+          </div>
+          <p className="text-sm text-muted-foreground">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Não renderizar CRM se não autenticado
+  if (!session) {
+    return null;
+  }
 
   function renderView() {
     switch (currentView) {

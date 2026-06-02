@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { signIn, getSession } from 'next-auth/react';
+import { useState, useEffect } from 'react';
+import { signIn, getSession, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { data: session, status } = useSession();
+
+  // Redirecionar para a página principal se já autenticado
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      if ((session.user as { mustChangePassword?: boolean }).mustChangePassword) {
+        router.push('/change-password');
+      } else {
+        router.push('/');
+      }
+    }
+  }, [status, session, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
