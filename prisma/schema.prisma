@@ -33,10 +33,10 @@ model Client {
 model Interaction {
   id          String   @id @default(cuid()) @map("id")
   description String   @map("description")
-  "clientId"  String   @map("clientId")
-  "createdAt" DateTime @default(now()) @map("createdAt")
+  clientId  String   @map("clientId")
+  createdAt DateTime @default(now()) @map("createdAt")
 
-  client Client @relation(fields: ["clientId"], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@map("interactions")
 }
