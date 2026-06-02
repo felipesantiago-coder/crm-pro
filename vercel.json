@@ -3,27 +3,5 @@
   "buildCommand": "npx prisma generate && next build",
   "installCommand": "npm install",
   "outputDirectory": ".next",
-  "regions": ["gru1"],
-  "env": {
-    "DATABASE_URL": {
-      "description": "String de conexão PostgreSQL do Supabase (com connection pooling). Formato: postgresql://postgres.projeto:[SENHA]@aws-0-sa-east-1.pooler.supabase.com:6543/postgres",
-      "required": true
-    },
-    "NEXT_PUBLIC_SUPABASE_URL": {
-      "description": "URL do projeto Supabase. Formato: https://seu-projeto.supabase.co",
-      "required": true
-    },
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": {
-      "description": "Chave anônima (anon/public key) do Supabase",
-      "required": true
-    },
-    "NEXTAUTH_SECRET": {
-      "description": "Segredo para assinar tokens JWT do NextAuth. Gere um com: openssl rand -base64 32",
-      "required": true
-    },
-    "NEXTAUTH_URL": {
-      "description": "URL do app em produção. Formato: https://crm-pro-gilt.vercel.app",
-      "required": true
-    }
-  }
+  "regions": ["gru1"]
 }
