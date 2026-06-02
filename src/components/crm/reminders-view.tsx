@@ -85,14 +85,14 @@ export function RemindersView() {
     try {
       const [remindersRes, clientsRes] = await Promise.all([
         fetch('/api/reminders'),
-        fetch('/api/clients?limit=1000'),
+        fetch('/api/clients/client-names'),
       ]);
       const remindersData = await remindersRes.json();
       const clientsData = await clientsRes.json();
 
       setReminders(remindersData || []);
       setClients(
-        (clientsData.clients || []).map((c: ClientOption) => ({
+        (clientsData || []).map((c: ClientOption) => ({
           id: c.id,
           name: c.name,
         }))
@@ -226,7 +226,7 @@ export function RemindersView() {
             )}
           </p>
         </div>
-        <Button size="sm" onClick={openCreateForm}>
+        <Button size="sm" onClick={openCreateForm} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
           <Plus className="h-4 w-4 mr-2" />
           Novo Lembrete
         </Button>
@@ -278,7 +278,7 @@ export function RemindersView() {
                 ? 'Todos os lembretes foram concluídos!'
                 : 'Nenhum lembrete concluído ainda.'}
           </p>
-          <Button className="mt-4" onClick={openCreateForm}>
+          <Button className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white" onClick={openCreateForm}>
             <Plus className="h-4 w-4 mr-2" />
             Novo Lembrete
           </Button>
@@ -467,7 +467,7 @@ export function RemindersView() {
             <Button variant="outline" onClick={() => setFormOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleCreate} disabled={saving}>
+            <Button onClick={handleCreate} disabled={saving} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Criar Lembrete
             </Button>

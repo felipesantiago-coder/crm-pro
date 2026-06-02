@@ -1,19 +1,47 @@
 'use client';
 
+import React, { lazy, Suspense } from 'react';
 import { ThemeProvider } from 'next-themes';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { CRMLayout } from '@/components/crm/crm-layout';
-import { DashboardView } from '@/components/crm/dashboard-view';
-import { ClientsView } from '@/components/crm/clients-view';
-import { TagsView } from '@/components/crm/tags-view';
-import { RemindersView } from '@/components/crm/reminders-view';
-import { SettingsView } from '@/components/crm/settings-view';
-import { AdminPanel } from '@/components/crm/admin-panel';
 import { SupabaseRealtimeProvider } from '@/components/crm/supabase-realtime-provider';
 import { useCRMStore } from '@/store/crm-store';
 import { Toaster } from '@/components/ui/sonner';
+
+// Code splitting: carrega apenas a view ativa
+const DashboardView = lazy(() =>
+  import('@/components/crm/dashboard-view').then((m) => ({ default: m.DashboardView }))
+);
+const ClientsView = lazy(() =>
+  import('@/components/crm/clients-view').then((m) => ({ default: m.ClientsView }))
+);
+const TagsView = lazy(() =>
+  import('@/components/crm/tags-view').then((m) => ({ default: m.TagsView }))
+);
+const RemindersView = lazy(() =>
+  import('@/components/crm/reminders-view').then((m) => ({ default: m.RemindersView }))
+);
+const SettingsView = lazy(() =>
+  import('@/components/crm/settings-view').then((m) => ({ default: m.SettingsView }))
+);
+const AdminPanel = lazy(() =>
+  import('@/components/crm/admin-panel').then((m) => ({ default: m.AdminPanel }))
+);
+
+function ViewLoader() {
+  return (
+    <div className="space-y-6">
+      <div className="h-8 w-48 animate-pulse bg-muted rounded-lg" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function CRMApp() {
   const { currentView } = useCRMStore();
@@ -21,18 +49,15 @@ function CRMApp() {
   const router = useRouter();
 
   useEffect(() => {
-    // Redirecionar para login se não autenticado
     if (status === 'unauthenticated') {
       router.push('/login');
       return;
     }
-    // Redirecionar para troca de senha se necessário
     if (session?.user && (session.user as { mustChangePassword?: boolean }).mustChangePassword) {
       router.push('/change-password');
     }
   }, [session, status, router]);
 
-  // Tela de carregamento enquanto verifica autenticação
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -46,7 +71,6 @@ function CRMApp() {
     );
   }
 
-  // Não renderizar CRM se não autenticado
   if (!session) {
     return null;
   }
@@ -78,7 +102,11 @@ function CRMApp() {
       disableTransitionOnChange={false}
     >
       <SupabaseRealtimeProvider>
-        <CRMLayout>{renderView()}</CRMLayout>
+        <CRMLayout>
+          <Suspense fallback={<ViewLoader />}>
+            {renderView()}
+          </Suspense>
+        </CRMLayout>
       </SupabaseRealtimeProvider>
       <Toaster position="top-right" richColors />
     </ThemeProvider>

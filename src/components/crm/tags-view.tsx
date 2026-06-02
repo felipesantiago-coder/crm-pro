@@ -148,7 +148,7 @@ export function TagsView() {
             Gerencie as tags para categorizar seus clientes
           </p>
         </div>
-        <Button size="sm" onClick={openCreateForm}>
+        <Button size="sm" onClick={openCreateForm} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
           <Plus className="h-4 w-4 mr-2" />
           Nova Tag
         </Button>
@@ -169,7 +169,7 @@ export function TagsView() {
           <p className="text-sm text-muted-foreground mt-1 max-w-sm">
             Crie tags para organizar e categorizar seus clientes.
           </p>
-          <Button className="mt-4" onClick={openCreateForm}>
+          <Button className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white" onClick={openCreateForm}>
             <Plus className="h-4 w-4 mr-2" />
             Nova Tag
           </Button>
@@ -295,7 +295,7 @@ export function TagsView() {
             <Button variant="outline" onClick={() => setFormOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Salvar
             </Button>

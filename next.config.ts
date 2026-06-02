@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
 
-  reactStrictMode: false,
+  reactStrictMode: true,
 
   // Headers de segurança para produção
   async headers() {

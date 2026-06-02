@@ -150,24 +150,21 @@
   }
 }
 
-/* Smooth transition utilities */
+/* Targeted transitions for interactive elements only */
 @layer base {
-  *,
-  *::before,
-  *::after {
+  button,
+  a,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  select,
+  summary,
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="range"] {
     transition-property: color, background-color, border-color, box-shadow, opacity;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 150ms;
-  }
-
-  /* Override for elements that should NOT transition */
-  input,
-  textarea,
-  video,
-  canvas,
-  img,
-  svg,
-  [data-no-transition] {
-    transition: none !important;
   }
 }

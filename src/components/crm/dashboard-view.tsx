@@ -65,7 +65,7 @@ export function DashboardView() {
     async function loadDashboard() {
       try {
         const [clientsRes, remindersRes, needsUpdateRes] = await Promise.all([
-          fetch('/api/clients?limit=5'),
+          fetch('/api/clients?page=1&limit=5'),
           fetch('/api/reminders'),
           fetch('/api/clients?needsUpdate=true&limit=10'),
         ]);
@@ -74,8 +74,11 @@ export function DashboardView() {
         const remindersData = await remindersRes.json();
         const needsUpdateData = await needsUpdateRes.json();
 
+        const total = clientsData.total || 0;
+        setTotalClients(total);
+
         setRecentClients(
-          (clientsData.clients || []).map((c: ClientSummary) => ({
+          (clientsData.clients || []).slice(0, 5).map((c: ClientSummary) => ({
             id: c.id,
             name: c.name,
             email: c.email,
@@ -99,18 +102,12 @@ export function DashboardView() {
           .slice(0, 5);
         setUpcomingReminders(upcoming);
 
-        // Get total clients count
-        const allClientsRes = await fetch('/api/clients?limit=1');
-        const allClientsData = await allClientsRes.json();
-        const total = allClientsData.total || 0;
-        setTotalClients(total);
-
         // Calculate clients this month
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const monthClients = (clientsData.clients || []).filter(
           (c: ClientSummary) => new Date(c.createdAt) >= startOfMonth
         ).length;
-        setClientsThisMonth(Math.min(monthClients, total));
+        setClientsThisMonth(monthClients);
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {

@@ -90,21 +90,13 @@ export function ClientsView() {
   useEffect(() => {
     async function fetchFilters() {
       try {
-        const [clientsRes, tagsRes] = await Promise.all([
-          fetch('/api/clients?limit=1000'),
+        const [regionsRes, tagsRes] = await Promise.all([
+          fetch('/api/clients/regions'),
           fetch('/api/tags'),
         ]);
-        const clientsData = await clientsRes.json();
+        const regionsData = await regionsRes.json();
         const tagsData = await tagsRes.json();
-
-        const uniqueRegions = [
-          ...new Set(
-            (clientsData.clients || [])
-              .map((c: Client) => c.region)
-              .filter(Boolean)
-          ),
-        ].sort() as string[];
-        setRegions(uniqueRegions);
+        setRegions(regionsData || []);
         setTags(tagsData);
       } catch {
         console.error('Error fetching filters');
@@ -161,7 +153,7 @@ export function ClientsView() {
             )}
             {showImportExport ? 'Fechar' : 'Importar/Exportar'}
           </Button>
-          <Button size="sm" onClick={handleNewClient}>
+          <Button size="sm" onClick={handleNewClient} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
             <Plus className="h-4 w-4 mr-2" />
             Novo Cliente
           </Button>
@@ -249,7 +241,7 @@ export function ClientsView() {
               : 'Comece cadastrando seu primeiro cliente.'}
           </p>
           {!searchQuery && !filterRegion && !filterTagId && (
-            <Button className="mt-4" onClick={handleNewClient}>
+            <Button className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white" onClick={handleNewClient}>
               <Plus className="h-4 w-4 mr-2" />
               Novo Cliente
             </Button>

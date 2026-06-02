@@ -395,9 +395,9 @@ export function ClientForm({ open, onOpenChange, client, onSuccess }: ClientForm
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
               {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Salvar
+              {isEditing ? 'Atualizar' : 'Salvar'}
             </Button>
           </DialogFooter>
         </form>
