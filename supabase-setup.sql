@@ -8,18 +8,23 @@
 --   4. Clique em "New Query"
 --   5. Cole todo este script e clique em "Run"
 --
--- IMPORTANTE: Se já executou um script anterior, primeiro
--- execute este comando para limpar as tabelas existentes:
---   DROP TABLE IF EXISTS client_tags CASCADE;
---   DROP TABLE IF EXISTS reminders CASCADE;
---   DROP TABLE IF EXISTS clients CASCADE;
---   DROP TABLE IF EXISTS tags CASCADE;
---   DROP TABLE IF EXISTS enterprises CASCADE;
---   DROP TABLE IF EXISTS users CASCADE;
---   DROP TABLE IF EXISTS user_settings CASCADE;
---   DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
--- Depois cole e execute este script.
+-- ATENÇÃO: Este script irá APAGAR e recriar todas as tabelas.
+-- Se já tiver dados importantes, faça backup antes.
 -- =============================================================
+
+
+-- =============================================================
+-- 0. LIMPAR TABELAS EXISTENTES (ordem correta para FKs)
+-- =============================================================
+
+DROP TABLE IF EXISTS client_tags CASCADE;
+DROP TABLE IF EXISTS reminders CASCADE;
+DROP TABLE IF EXISTS clients CASCADE;
+DROP TABLE IF EXISTS tags CASCADE;
+DROP TABLE IF EXISTS enterprises CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS user_settings CASCADE;
+DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
 
 
 -- =============================================================
@@ -27,7 +32,7 @@
 -- =============================================================
 
 -- Tabela de Clientes
-CREATE TABLE IF NOT EXISTS clients (
+CREATE TABLE clients (
   id                  TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
   name                TEXT NOT NULL,
   phone               TEXT,
@@ -43,7 +48,7 @@ CREATE TABLE IF NOT EXISTS clients (
 );
 
 -- Tabela de Tags
-CREATE TABLE IF NOT EXISTS tags (
+CREATE TABLE tags (
   id         TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
   name       TEXT NOT NULL UNIQUE,
   color      TEXT NOT NULL DEFAULT '#6366f1',
@@ -51,7 +56,7 @@ CREATE TABLE IF NOT EXISTS tags (
 );
 
 -- Tabela de Relação Cliente-Tag
-CREATE TABLE IF NOT EXISTS client_tags (
+CREATE TABLE client_tags (
   id         TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
   "clientId" TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   "tagId"    TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
@@ -60,7 +65,7 @@ CREATE TABLE IF NOT EXISTS client_tags (
 );
 
 -- Tabela de Lembretes
-CREATE TABLE IF NOT EXISTS reminders (
+CREATE TABLE reminders (
   id          TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
   title       TEXT NOT NULL,
   description TEXT,
@@ -72,7 +77,7 @@ CREATE TABLE IF NOT EXISTS reminders (
 );
 
 -- Tabela de Empreendimentos
-CREATE TABLE IF NOT EXISTS enterprises (
+CREATE TABLE enterprises (
   id         TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
   name       TEXT NOT NULL,
   region     TEXT,
@@ -82,19 +87,12 @@ CREATE TABLE IF NOT EXISTS enterprises (
 );
 
 -- Chave estrangeira de Clientes para Empreendimentos
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'fk_clients_enterprise'
-  ) THEN
-    ALTER TABLE clients
-      ADD CONSTRAINT fk_clients_enterprise
-      FOREIGN KEY ("enterpriseId") REFERENCES enterprises(id) ON DELETE SET NULL;
-  END IF;
-END $$;
+ALTER TABLE clients
+  ADD CONSTRAINT fk_clients_enterprise
+  FOREIGN KEY ("enterpriseId") REFERENCES enterprises(id) ON DELETE SET NULL;
 
 -- Tabela de Usuários
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
   id                  TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
   name                TEXT NOT NULL,
   email               TEXT NOT NULL UNIQUE,
@@ -106,7 +104,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- Tabela de Configurações do Usuário
-CREATE TABLE IF NOT EXISTS user_settings (
+CREATE TABLE user_settings (
   id         TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
   key        TEXT NOT NULL UNIQUE,
   value      TEXT NOT NULL,
@@ -118,27 +116,27 @@ CREATE TABLE IF NOT EXISTS user_settings (
 -- 2. CRIAR ÍNDICES PARA PERFORMANCE
 -- =============================================================
 
-CREATE INDEX IF NOT EXISTS idx_clients_name ON clients (name);
-CREATE INDEX IF NOT EXISTS idx_clients_region ON clients (region);
-CREATE INDEX IF NOT EXISTS idx_clients_enterprise ON clients (enterprise);
-CREATE INDEX IF NOT EXISTS idx_clients_enterprise_id ON clients ("enterpriseId");
-CREATE INDEX IF NOT EXISTS idx_clients_created_at ON clients ("createdAt" DESC);
-CREATE INDEX IF NOT EXISTS idx_clients_update_period ON clients ("updatePeriod");
-CREATE INDEX IF NOT EXISTS idx_clients_last_interaction ON clients ("lastInteractionAt");
+CREATE INDEX idx_clients_name ON clients (name);
+CREATE INDEX idx_clients_region ON clients (region);
+CREATE INDEX idx_clients_enterprise ON clients (enterprise);
+CREATE INDEX idx_clients_enterprise_id ON clients ("enterpriseId");
+CREATE INDEX idx_clients_created_at ON clients ("createdAt" DESC);
+CREATE INDEX idx_clients_update_period ON clients ("updatePeriod");
+CREATE INDEX idx_clients_last_interaction ON clients ("lastInteractionAt");
 
-CREATE INDEX IF NOT EXISTS idx_tags_name ON tags (name);
+CREATE INDEX idx_tags_name ON tags (name);
 
-CREATE INDEX IF NOT EXISTS idx_client_tags_client_id ON client_tags ("clientId");
-CREATE INDEX IF NOT EXISTS idx_client_tags_tag_id ON client_tags ("tagId");
+CREATE INDEX idx_client_tags_client_id ON client_tags ("clientId");
+CREATE INDEX idx_client_tags_tag_id ON client_tags ("tagId");
 
-CREATE INDEX IF NOT EXISTS idx_reminders_client_id ON reminders ("clientId");
-CREATE INDEX IF NOT EXISTS idx_reminders_due_date ON reminders ("dueDate");
-CREATE INDEX IF NOT EXISTS idx_reminders_notified ON reminders (notified);
+CREATE INDEX idx_reminders_client_id ON reminders ("clientId");
+CREATE INDEX idx_reminders_due_date ON reminders ("dueDate");
+CREATE INDEX idx_reminders_notified ON reminders (notified);
 
-CREATE INDEX IF NOT EXISTS idx_enterprises_name ON enterprises (name);
-CREATE INDEX IF NOT EXISTS idx_enterprises_region ON enterprises (region);
+CREATE INDEX idx_enterprises_name ON enterprises (name);
+CREATE INDEX idx_enterprises_region ON enterprises (region);
 
-CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+CREATE INDEX idx_users_email ON users (email);
 
 
 -- =============================================================
@@ -166,27 +164,22 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_clients_updated_at ON clients;
 CREATE TRIGGER trg_clients_updated_at
   BEFORE UPDATE ON clients
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS trg_reminders_updated_at ON reminders;
 CREATE TRIGGER trg_reminders_updated_at
   BEFORE UPDATE ON reminders
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS trg_enterprises_updated_at ON enterprises;
 CREATE TRIGGER trg_enterprises_updated_at
   BEFORE UPDATE ON enterprises
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
 CREATE TRIGGER trg_users_updated_at
   BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS trg_user_settings_updated_at ON user_settings;
 CREATE TRIGGER trg_user_settings_updated_at
   BEFORE UPDATE ON user_settings
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -206,8 +199,7 @@ VALUES (
   '$2b$12$CvOHZh0/QwurtsEB.x6bdep4chbE0naUnZEOIMNqsiWQqm4v4Nbd6',
   'ADMIN',
   true
-)
-ON CONFLICT (email) DO NOTHING;
+);
 
 
 -- =============================================================
@@ -215,12 +207,20 @@ ON CONFLICT (email) DO NOTHING;
 -- =============================================================
 
 INSERT INTO user_settings (key, value)
-VALUES ('crmName', 'CRM Pro')
-ON CONFLICT (key) DO NOTHING;
+VALUES ('crmName', 'CRM Pro');
 
 INSERT INTO user_settings (key, value)
-VALUES ('defaultRegion', '')
-ON CONFLICT (key) DO NOTHING;
+VALUES ('defaultRegion', '');
+
+
+-- =============================================================
+-- 7. VERIFICAR INSERÇÃO DO ADMIN
+-- =============================================================
+
+-- Este SELECT deve retornar o usuário admin com o hash da senha
+SELECT id, name, email, role, "mustChangePassword",
+       LEFT("passwordHash", 20) AS "hashPreview"
+FROM users WHERE email = 'felipesantiagoquadra@gmail.com';
 
 
 -- =============================================================
