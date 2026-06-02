@@ -12,7 +12,6 @@ export async function GET(
       include: {
         tags: { include: { tag: true } },
         reminders: { orderBy: { dueDate: 'asc' } },
-        interactions: { orderBy: { createdAt: 'desc' } },
         linkedEnterprise: { select: { id: true, name: true, region: true, imageUrl: true } },
       },
     });
@@ -21,7 +20,18 @@ export async function GET(
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
 
-    return NextResponse.json(client);
+    // Buscar interações separadamente com fallback se tabela não existir
+    let interactions = [];
+    try {
+      interactions = await db.interaction.findMany({
+        where: { clientId: id },
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch {
+      // Tabela interactions ainda não existe no banco — retorna array vazio
+    }
+
+    return NextResponse.json({ ...client, interactions });
   } catch (error) {
     console.error('Error fetching client:', error);
     return NextResponse.json({ error: 'Failed to fetch client' }, { status: 500 });
