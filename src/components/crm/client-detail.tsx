@@ -192,14 +192,14 @@ function DetailContent({
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
+              <div className="h-12 w-12 rounded-xl bg-white/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 ring-2 ring-white/20">
                 <User className="h-6 w-6 text-white" />
               </div>
               <div className="min-w-0">
-                <h2 className="text-lg font-bold text-white truncate">{client.name}</h2>
+                <h2 className="text-lg font-bold text-white truncate drop-shadow-sm">{client.name}</h2>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <CalendarDays className="h-3 w-3 text-white/70" />
-                  <p className="text-xs text-white/80">
+                  <CalendarDays className="h-3 w-3 text-white/90" />
+                  <p className="text-xs text-white/90">
                     Cliente desde {format(new Date(client.createdAt), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                   </p>
                 </div>
@@ -210,18 +210,18 @@ function DetailContent({
 
         {/* Action buttons */}
         <div className="flex items-center gap-2 mt-4 flex-wrap">
-          <Button size="sm" onClick={onEdit} className="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white border-0 h-9 text-xs">
+          <Button size="sm" onClick={onEdit} className="bg-white text-emerald-700 hover:bg-emerald-50 border-0 shadow-sm h-9 text-xs font-semibold">
             <Pencil className="h-3.5 w-3.5 mr-1.5" />
             Editar
           </Button>
-          <Button size="sm" onClick={onDelete} variant="destructive" className="bg-white/20 backdrop-blur-sm hover:bg-rose-500/80 text-white border-0 h-9 text-xs">
+          <Button size="sm" onClick={onDelete} variant="destructive" className="bg-white text-rose-600 hover:bg-rose-50 border-0 shadow-sm h-9 text-xs font-semibold">
             <Trash2 className="h-3.5 w-3.5 mr-1.5" />
             Excluir
           </Button>
           <div className="flex items-center gap-2 ml-auto">
             {whatsappUrl && (
               <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-flex">
-                <Button size="sm" className="bg-green-500 hover:bg-green-600 text-white border-0 h-9 text-xs">
+                <Button size="sm" className="bg-[#25D366] hover:bg-[#1ebe5a] text-white border-0 shadow-sm h-9 text-xs font-semibold">
                   <MessageCircle className="h-3.5 w-3.5 mr-1.5" />
                   WhatsApp
                 </Button>
@@ -229,7 +229,7 @@ function DetailContent({
             )}
             {phoneUrl && (
               <a href={phoneUrl} className="inline-flex">
-                <Button size="sm" className="bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white border-white/20 h-9 text-xs">
+                <Button size="sm" className="bg-white text-teal-700 hover:bg-teal-50 border-0 shadow-sm h-9 text-xs font-semibold">
                   <PhoneCall className="h-3.5 w-3.5 mr-1.5" />
                   Ligar
                 </Button>
