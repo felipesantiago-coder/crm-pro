@@ -2,12 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -26,7 +20,6 @@ import {
   Building2,
   Pencil,
   Trash2,
-  Plus,
   Bell,
   Check,
   AlertTriangle,
@@ -34,6 +27,10 @@ import {
   RefreshCw,
   MessageCircle,
   PhoneCall,
+  X,
+  CalendarDays,
+  User,
+  StickyNote,
 } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
 import {
@@ -114,33 +111,82 @@ function DetailContent({
   const isOverdue = needsUpdate(client.lastInteractionAt, client.createdAt, period);
   const daysLeft = daysUntilUpdate(client.lastInteractionAt, client.createdAt, period);
 
+  const whatsappUrl = client.phone ? getWhatsAppUrl(client.phone) : null;
+  const phoneUrl = client.phone ? getPhoneCallUrl(client.phone) : null;
+
   return (
-    <div className="space-y-6">
-      {/* Client Info */}
-      <div className="space-y-4">
-        <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-bold">{client.name}</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Cadastrado em{' '}
-              {format(new Date(client.createdAt), "dd 'de' MMMM 'de' yyyy", {
-                locale: ptBR,
-              })}
-            </p>
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto pb-4 space-y-5">
+
+        {/* Header with gradient */}
+        <div className="bg-gradient-to-br from-emerald-500 to-teal-600 -m-4 -mt-0 p-5 rounded-b-2xl">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
+                  <User className="h-6 w-6 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-lg font-bold text-white truncate">{client.name}</h2>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <CalendarDays className="h-3 w-3 text-white/70" />
+                    <p className="text-xs text-white/80">
+                      {format(new Date(client.createdAt), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex gap-1 flex-shrink-0">
-            <Button variant="outline" size="icon" onClick={onEdit}>
-              <Pencil className="h-4 w-4" />
+
+          {/* Action buttons row */}
+          <div className="flex items-center gap-2 mt-4">
+            <Button
+              size="sm"
+              onClick={onEdit}
+              className="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white border-0 h-9 text-xs"
+            >
+              <Pencil className="h-3.5 w-3.5 mr-1.5" />
+              Editar
             </Button>
-            <Button variant="outline" size="icon" onClick={onDelete}>
-              <Trash2 className="h-4 w-4 text-destructive" />
+            <Button
+              size="sm"
+              onClick={onDelete}
+              variant="destructive"
+              className="bg-white/20 backdrop-blur-sm hover:bg-rose-500/80 text-white border-0 h-9 text-xs"
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              Excluir
             </Button>
+            {whatsappUrl && (
+              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="ml-auto">
+                <Button
+                  size="sm"
+                  className="bg-green-500 hover:bg-green-600 text-white border-0 h-9 text-xs"
+                >
+                  <MessageCircle className="h-3.5 w-3.5 mr-1.5" />
+                  WhatsApp
+                </Button>
+              </a>
+            )}
+            {phoneUrl && (
+              <a href={phoneUrl}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white border-white/20 h-9 text-xs"
+                >
+                  <PhoneCall className="h-3.5 w-3.5 mr-1.5" />
+                  Ligar
+                </Button>
+              </a>
+            )}
           </div>
         </div>
 
         {/* Update Status Card */}
         <div
-          className={`p-4 rounded-xl border ${
+          className={`p-4 rounded-xl border transition-colors ${
             isOverdue
               ? 'border-rose-200 bg-rose-50 dark:border-rose-800/50 dark:bg-rose-950/20'
               : daysLeft <= 5
@@ -148,10 +194,10 @@ function DetailContent({
                 : 'border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-950/20'
           }`}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3">
               <div
-                className={`h-10 w-10 rounded-lg flex items-center justify-center ${
+                className={`h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
                   isOverdue
                     ? 'bg-rose-100 dark:bg-rose-900/30'
                     : daysLeft <= 5
@@ -161,11 +207,7 @@ function DetailContent({
               >
                 <Clock
                   className={`h-5 w-5 ${
-                    isOverdue
-                      ? 'text-rose-500'
-                      : daysLeft <= 5
-                        ? 'text-amber-500'
-                        : 'text-emerald-500'
+                    isOverdue ? 'text-rose-500' : daysLeft <= 5 ? 'text-amber-500' : 'text-emerald-500'
                   }`}
                 />
               </div>
@@ -181,11 +223,8 @@ function DetailContent({
                   Período: {period} dias
                   {client.lastInteractionAt && (
                     <span>
-                      {' '}
-                      &bull; Última interação:{' '}
-                      {format(new Date(client.lastInteractionAt), "dd 'de' MMM", {
-                        locale: ptBR,
-                      })}
+                      {' '}&bull; Última:{' '}
+                      {format(new Date(client.lastInteractionAt), "dd 'de' MMM", { locale: ptBR })}
                     </span>
                   )}
                 </p>
@@ -200,125 +239,90 @@ function DetailContent({
                   : 'bg-emerald-600 hover:bg-emerald-700 text-white'
               }
             >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Registrar Interação
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              Registrar
             </Button>
           </div>
         </div>
 
-        <Separator />
-
-        {/* Contact Actions + Info */}
-        {client.phone && (() => {
-          const whatsappUrl = getWhatsAppUrl(client.phone);
-          const phoneUrl = getPhoneCallUrl(client.phone);
-          return (whatsappUrl || phoneUrl) ? (
-            <div className="flex gap-2">
-              {whatsappUrl && (
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1"
-                >
-                  <Button
-                    className="w-full h-11 gap-2 bg-green-500 hover:bg-green-600 text-white border-green-500"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    WhatsApp
-                  </Button>
-                </a>
-              )}
-              {phoneUrl && (
-                <a
-                  href={phoneUrl}
-                  className="flex-1"
-                >
-                  <Button
-                    variant="outline"
-                    className="w-full h-11 gap-2 border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
-                  >
-                    <PhoneCall className="h-4 w-4" />
-                    Ligar
-                  </Button>
-                </a>
-              )}
-            </div>
-          ) : null;
-        })()}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {client.phone && (
-            <div className="flex items-center gap-3 text-sm">
-              <div className="h-9 w-9 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center">
-                <Phone className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+        {/* Contact Info Cards */}
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Informações de Contato
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {client.phone && (
+              <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+                <div className="h-10 w-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center flex-shrink-0">
+                  <Phone className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Telefone</p>
+                  <p className="text-sm font-medium truncate">{client.phone}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Telefone</p>
-                <p className="font-medium">{client.phone}</p>
+            )}
+            {client.email && (
+              <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+                <div className="h-10 w-10 rounded-lg bg-teal-50 dark:bg-teal-950/30 flex items-center justify-center flex-shrink-0">
+                  <Mail className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Email</p>
+                  <p className="text-sm font-medium truncate">{client.email}</p>
+                </div>
               </div>
-            </div>
-          )}
-          {client.email && (
-            <div className="flex items-center gap-3 text-sm">
-              <div className="h-9 w-9 rounded-lg bg-teal-50 dark:bg-teal-950/30 flex items-center justify-center">
-                <Mail className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+            )}
+            {client.region && (
+              <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+                <div className="h-10 w-10 rounded-lg bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center flex-shrink-0">
+                  <MapPin className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Região</p>
+                  <p className="text-sm font-medium truncate">{client.region}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Email</p>
-                <p className="font-medium">{client.email}</p>
-              </div>
-            </div>
-          )}
-          {client.region && (
-            <div className="flex items-center gap-3 text-sm">
-              <div className="h-9 w-9 rounded-lg bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center">
-                <MapPin className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Região</p>
-                <p className="font-medium">{client.region}</p>
-              </div>
-            </div>
-          )}
-          {(client.enterprise || client.linkedEnterprise) && (
-            <div className="flex items-center gap-3 text-sm">
-              <div className="h-9 w-9 rounded-lg overflow-hidden flex-shrink-0 bg-cyan-50 dark:bg-cyan-950/30">
-                {client.linkedEnterprise?.imageUrl ? (
-                  <img
-                    src={client.linkedEnterprise.imageUrl}
-                    alt={client.linkedEnterprise.name}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="h-full w-full flex items-center justify-center">
-                    <Building2 className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Empreendimento</p>
-                <p className="font-medium">
-                  {client.linkedEnterprise?.name || client.enterprise}
-                </p>
-                {client.linkedEnterprise?.region && (
-                  <p className="text-xs text-muted-foreground">
-                    {client.linkedEnterprise.region}
+            )}
+            {(client.enterprise || client.linkedEnterprise) && (
+              <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+                <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0 bg-cyan-50 dark:bg-cyan-950/30">
+                  {client.linkedEnterprise?.imageUrl ? (
+                    <img
+                      src={client.linkedEnterprise.imageUrl}
+                      alt={client.linkedEnterprise.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center">
+                      <Building2 className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Empreendimento</p>
+                  <p className="text-sm font-medium truncate">
+                    {client.linkedEnterprise?.name || client.enterprise}
                   </p>
-                )}
+                  {client.linkedEnterprise?.region && (
+                    <p className="text-xs text-muted-foreground">{client.linkedEnterprise.region}</p>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
+        {/* Tags */}
         {client.tags.length > 0 && (
-          <div>
-            <p className="text-xs text-muted-foreground mb-2">Tags</p>
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tags</h3>
             <div className="flex flex-wrap gap-1.5">
               {client.tags.map((ct) => (
                 <Badge
                   key={ct.tag.id}
                   variant="secondary"
+                  className="text-xs px-2.5 py-1"
                   style={{
                     backgroundColor: ct.tag.color + '20',
                     color: ct.tag.color,
@@ -332,97 +336,91 @@ function DetailContent({
           </div>
         )}
 
+        {/* Notes */}
         {client.notes && (
-          <div>
-            <p className="text-xs text-muted-foreground mb-2">Observações</p>
-            <p className="text-sm bg-muted rounded-lg p-3 whitespace-pre-wrap">
-              {client.notes}
-            </p>
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <StickyNote className="h-3 w-3" />
+              Observações
+            </h3>
+            <div className="bg-muted/60 rounded-xl p-4 border">
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">{client.notes}</p>
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Reminders Section */}
-      <div>
-        <Separator className="mb-4" />
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-sm flex items-center gap-2">
-            <Bell className="h-4 w-4 text-emerald-500" />
-            Lembretes
-          </h3>
-        </div>
+        {/* Reminders */}
+        <div className="space-y-3">
+          <Separator />
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Bell className="h-3.5 w-3.5 text-emerald-500" />
+              Lembretes ({client.reminders.length})
+            </h3>
+          </div>
 
-        {client.reminders.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6 bg-muted/50 rounded-lg">
-            Nenhum lembrete cadastrado
-          </p>
-        ) : (
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {client.reminders.map((reminder) => {
-              const isRemOverdue =
-                new Date(reminder.dueDate) < new Date() && !reminder.notified;
-              return (
-                <div
-                  key={reminder.id}
-                  className={`p-3 rounded-lg border ${
-                    isRemOverdue
-                      ? 'border-rose-200 bg-rose-50/50 dark:border-rose-800/50 dark:bg-rose-950/20'
-                      : reminder.notified
-                        ? 'border-muted bg-muted/30'
-                        : 'border-border'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        {isRemOverdue ? (
-                          <AlertTriangle className="h-3.5 w-3.5 text-rose-500 flex-shrink-0" />
-                        ) : reminder.notified ? (
-                          <Check className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
-                        ) : (
-                          <Bell className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+          {client.reminders.length === 0 ? (
+            <div className="text-center py-8 bg-muted/40 rounded-xl border border-dashed">
+              <Bell className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">Nenhum lembrete cadastrado</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {client.reminders.map((reminder) => {
+                const isRemOverdue = new Date(reminder.dueDate) < new Date() && !reminder.notified;
+                return (
+                  <div
+                    key={reminder.id}
+                    className={`p-3.5 rounded-xl border transition-colors ${
+                      isRemOverdue
+                        ? 'border-rose-200 bg-rose-50/50 dark:border-rose-800/50 dark:bg-rose-950/20'
+                        : reminder.notified
+                          ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800/50 dark:bg-emerald-950/20'
+                          : 'border-border bg-card'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          {isRemOverdue ? (
+                            <AlertTriangle className="h-3.5 w-3.5 text-rose-500 flex-shrink-0" />
+                          ) : reminder.notified ? (
+                            <Check className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                          ) : (
+                            <Bell className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                          )}
+                          <p className="text-sm font-medium truncate">{reminder.title}</p>
+                        </div>
+                        {reminder.description && (
+                          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
+                            {reminder.description}
+                          </p>
                         )}
-                        <p className="text-sm font-medium truncate">{reminder.title}</p>
                       </div>
-                      {reminder.description && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                          {reminder.description}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                      <span
-                        className={`text-xs font-medium ${
-                          isRemOverdue
-                            ? 'text-rose-500'
-                            : 'text-muted-foreground'
-                        }`}
-                      >
-                        {format(new Date(reminder.dueDate), 'dd/MM/yy')}
-                      </span>
-                      <Badge
-                        variant="secondary"
-                        className={`text-[10px] ${
-                          isRemOverdue
-                            ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
-                            : reminder.notified
-                              ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
-                              : ''
-                        }`}
-                      >
-                        {isRemOverdue
-                          ? 'Atrasado'
-                          : reminder.notified
-                            ? 'Concluído'
-                            : 'Pendente'}
-                      </Badge>
+                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                        <span className={`text-xs font-medium ${isRemOverdue ? 'text-rose-500' : 'text-muted-foreground'}`}>
+                          {format(new Date(reminder.dueDate), 'dd/MM/yy')}
+                        </span>
+                        <Badge
+                          variant="secondary"
+                          className={`text-[10px] px-1.5 py-0 ${
+                            isRemOverdue
+                              ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+                              : reminder.notified
+                                ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                : ''
+                          }`}
+                        >
+                          {isRemOverdue ? 'Atrasado' : reminder.notified ? 'Concluído' : 'Pendente'}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -466,9 +464,7 @@ export function ClientDetail({
   async function handleRecordInteraction() {
     if (!clientId) return;
     try {
-      const res = await fetch(`/api/clients/${clientId}`, {
-        method: 'PATCH',
-      });
+      const res = await fetch(`/api/clients/${clientId}`, { method: 'PATCH' });
       if (res.ok) {
         toast.success('Interação registrada com sucesso!');
         fetchClient();
@@ -491,14 +487,17 @@ export function ClientDetail({
       } else {
         throw new Error('Erro ao excluir cliente');
       }
-    } catch (err) {
+    } catch {
       toast.error('Erro ao excluir cliente');
     }
   }
 
   const content = loading ? (
-    <div className="flex items-center justify-center py-12">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+    <div className="flex items-center justify-center py-20">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        <p className="text-sm text-muted-foreground">Carregando...</p>
+      </div>
     </div>
   ) : client ? (
     <DetailContent
@@ -514,27 +513,37 @@ export function ClientDetail({
 
   return (
     <>
-      {/* Desktop: Dialog */}
-      <div className="hidden md:block">
-        <Dialog open={open} onOpenChange={onOpenChange}>
-          <DialogContent className="sm:max-w-[550px] max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Detalhes do Cliente</DialogTitle>
-            </DialogHeader>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        {/* Desktop: Side sheet from the right */}
+        <SheetContent
+          side="right"
+          className="hidden md:flex flex-col w-full sm:max-w-[560px] lg:max-w-[620px] p-0 overflow-hidden"
+        >
+          <SheetHeader className="p-4 pb-0 flex-row items-center justify-between">
+            <SheetTitle className="text-lg font-bold tracking-tight">Detalhes do Cliente</SheetTitle>
+          </SheetHeader>
+          <div className="px-4 mt-2 flex-1 overflow-hidden">
             {content}
-          </DialogContent>
-        </Dialog>
-      </div>
+          </div>
+        </SheetContent>
 
-      {/* Mobile: Sheet */}
-      <div className="md:hidden">
-        <Sheet open={open} onOpenChange={onOpenChange}>
-          <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto">
-            <SheetTitle>Detalhes do Cliente</SheetTitle>
+        {/* Mobile: Full-width bottom sheet */}
+        <SheetContent
+          side="bottom"
+          className="md:hidden flex flex-col rounded-t-2xl max-h-[95dvh] p-0 overflow-hidden"
+        >
+          {/* Drag handle */}
+          <div className="flex justify-center pt-3 pb-1">
+            <div className="h-1.5 w-10 rounded-full bg-muted-foreground/20" />
+          </div>
+          <SheetHeader className="px-4 pb-0 flex-row items-center justify-between">
+            <SheetTitle className="text-lg font-bold tracking-tight">Detalhes do Cliente</SheetTitle>
+          </SheetHeader>
+          <div className="px-4 mt-2 flex-1 overflow-hidden">
             {content}
-          </SheetContent>
-        </Sheet>
-      </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
@@ -547,7 +556,10 @@ export function ClientDetail({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
