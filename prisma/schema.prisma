@@ -3,36 +3,24 @@ generator client {
 }
 
 // === PRODUÇÃO (Vercel + Supabase PostgreSQL) ===
-// Este é o datasource ativo para deploy no Vercel.
-// Para desenvolvimento local com SQLite, comente este bloco
-// e descomente o bloco de desenvolvimento abaixo.
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// === DESENVOLVIMENTO LOCAL (SQLite) ===
-// Para usar SQLite localmente, comente o bloco de produção acima
-// e descomente este bloco, e use DATABASE_URL=file:./db/custom.db
-//
-// datasource db {
-//   provider = "sqlite"
-//   url      = env("DATABASE_URL")
-// }
-
 model Client {
-  id                String    @id @default(cuid())
-  name              String
-  phone             String?
-  email             String?
-  region            String?
-  enterprise        String?
-  enterpriseId      String?
-  notes             String?
-  updatePeriod      Int       @default(30)
-  lastInteractionAt DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                String    @id @default(cuid()) @map("id")
+  name              String    @map("name")
+  phone             String?   @map("phone")
+  email             String?   @map("email")
+  region            String?   @map("region")
+  enterprise        String?   @map("enterprise")
+  enterpriseId      String?   @map("enterpriseId")
+  notes             String?   @map("notes")
+  updatePeriod      Int       @default(30) @map("updatePeriod")
+  lastInteractionAt DateTime? @map("lastInteractionAt")
+  createdAt         DateTime  @default(now()) @map("createdAt")
+  updatedAt         DateTime  @updatedAt @map("updatedAt")
 
   tags        ClientTag[]
   reminders   Reminder[]
@@ -42,10 +30,10 @@ model Client {
 }
 
 model Tag {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  color     String   @default("#6366f1")
-  createdAt DateTime @default(now())
+  id        String   @id @default(cuid()) @map("id")
+  name      String   @unique @map("name")
+  color     String   @default("#6366f1") @map("color")
+  createdAt DateTime @default(now()) @map("createdAt")
 
   clients ClientTag[]
 
@@ -53,10 +41,10 @@ model Tag {
 }
 
 model ClientTag {
-  id        String   @id @default(cuid())
-  clientId  String
-  tagId     String
-  createdAt DateTime @default(now())
+  id        String   @id @default(cuid()) @map("id")
+  clientId  String   @map("clientId")
+  tagId     String   @map("tagId")
+  createdAt DateTime @default(now()) @map("createdAt")
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
@@ -66,14 +54,14 @@ model ClientTag {
 }
 
 model Reminder {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  dueDate     DateTime
-  notified    Boolean  @default(false)
-  clientId    String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id          String   @id @default(cuid()) @map("id")
+  title       String   @map("title")
+  description String?  @map("description")
+  dueDate     DateTime  @map("dueDate")
+  notified    Boolean  @default(false) @map("notified")
+  clientId    String   @map("clientId")
+  createdAt   DateTime  @default(now()) @map("createdAt")
+  updatedAt   DateTime  @updatedAt @map("updatedAt")
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
@@ -81,12 +69,12 @@ model Reminder {
 }
 
 model Enterprise {
-  id        String   @id @default(cuid())
-  name      String
-  region    String?
-  imageUrl  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String   @id @default(cuid()) @map("id")
+  name      String   @map("name")
+  region    String?  @map("region")
+  imageUrl  String?  @map("imageUrl")
+  createdAt DateTime  @default(now()) @map("createdAt")
+  updatedAt DateTime  @updatedAt @map("updatedAt")
 
   clients Client[]
 
@@ -94,23 +82,23 @@ model Enterprise {
 }
 
 model User {
-  id                String   @id @default(cuid())
-  name              String
-  email             String   @unique
-  passwordHash      String
-  role              String   @default("USER")
-  mustChangePassword Boolean @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                String   @id @default(cuid()) @map("id")
+  name              String   @map("name")
+  email             String   @unique @map("email")
+  passwordHash      String   @map("passwordHash")
+  role              String   @default("USER") @map("role")
+  mustChangePassword Boolean @default(false) @map("mustChangePassword")
+  createdAt         DateTime  @default(now()) @map("createdAt")
+  updatedAt         DateTime  @updatedAt @map("updatedAt")
 
   @@map("users")
 }
 
 model UserSettings {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  value     String
-  updatedAt DateTime @updatedAt
+  id        String   @id @default(cuid()) @map("id")
+  key       String   @unique @map("key")
+  value     String   @map("value")
+  updatedAt DateTime  @updatedAt @map("updatedAt")
 
   @@map("user_settings")
 }

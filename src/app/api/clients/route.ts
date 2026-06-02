@@ -71,7 +71,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ clients, total, page, limit });
   } catch (error) {
     console.error('Error fetching clients:', error);
-    return NextResponse.json({ error: 'Failed to fetch clients' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Failed to fetch clients',
+      details: String(error),
+    }, { status: 500 });
   }
 }
 
