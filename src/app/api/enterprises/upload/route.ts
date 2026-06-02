@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { isAdmin } from '@/lib/auth';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
 import { db } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
@@ -41,21 +39,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Empreendimento não encontrado' }, { status: 404 });
     }
 
-    // Create uploads directory if it doesn't exist
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'enterprises');
-    await mkdir(uploadDir, { recursive: true });
-
-    // Generate unique filename
-    const fileExtension = 'webp';
-    const fileName = `${enterpriseId}-${Date.now()}.${fileExtension}`;
-    const filePath = path.join(uploadDir, fileName);
-
-    // Write file
+    // Convert file to base64 data URL (compatible with Vercel read-only filesystem)
     const bytes = await file.arrayBuffer();
-    await writeFile(filePath, Buffer.from(bytes));
+    const buffer = Buffer.from(bytes);
+    const base64 = buffer.toString('base64');
+    const imageUrl = `data:image/webp;base64,${base64}`;
 
-    // Update enterprise imageUrl
-    const imageUrl = `/uploads/enterprises/${fileName}`;
+    // Update enterprise imageUrl in database
     await db.enterprise.update({
       where: { id: enterpriseId },
       data: { imageUrl },
