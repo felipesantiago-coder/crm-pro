@@ -12,6 +12,7 @@ export async function GET(
       include: {
         tags: { include: { tag: true } },
         reminders: { orderBy: { dueDate: 'asc' } },
+        interactions: { orderBy: { createdAt: 'desc' } },
         linkedEnterprise: { select: { id: true, name: true, region: true, imageUrl: true } },
       },
     });

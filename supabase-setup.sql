@@ -17,6 +17,7 @@
 -- 0. LIMPAR TABELAS EXISTENTES (ordem correta para FKs)
 -- =============================================================
 
+DROP TABLE IF EXISTS interactions CASCADE;
 DROP TABLE IF EXISTS client_tags CASCADE;
 DROP TABLE IF EXISTS reminders CASCADE;
 DROP TABLE IF EXISTS clients CASCADE;
@@ -86,6 +87,14 @@ CREATE TABLE enterprises (
   "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
 );
 
+-- Tabela de Interações (registro de acompanhamento por cliente)
+CREATE TABLE interactions (
+  id          TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+  description TEXT NOT NULL,
+  "clientId"  TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  "createdAt" TIMESTAMP NOT NULL DEFAULT now()
+);
+
 -- Chave estrangeira de Clientes para Empreendimentos
 ALTER TABLE clients
   ADD CONSTRAINT fk_clients_enterprise
@@ -124,6 +133,9 @@ CREATE INDEX idx_clients_created_at ON clients ("createdAt" DESC);
 CREATE INDEX idx_clients_update_period ON clients ("updatePeriod");
 CREATE INDEX idx_clients_last_interaction ON clients ("lastInteractionAt");
 
+CREATE INDEX idx_interactions_client_id ON interactions ("clientId");
+CREATE INDEX idx_interactions_created_at ON interactions ("createdAt" DESC);
+
 CREATE INDEX idx_tags_name ON tags (name);
 
 CREATE INDEX idx_client_tags_client_id ON client_tags ("clientId");
@@ -148,6 +160,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE tags;
 ALTER PUBLICATION supabase_realtime ADD TABLE client_tags;
 ALTER PUBLICATION supabase_realtime ADD TABLE reminders;
 ALTER PUBLICATION supabase_realtime ADD TABLE enterprises;
+ALTER PUBLICATION supabase_realtime ADD TABLE interactions;
 ALTER PUBLICATION supabase_realtime ADD TABLE users;
 ALTER PUBLICATION supabase_realtime ADD TABLE user_settings;
 

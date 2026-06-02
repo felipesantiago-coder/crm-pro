@@ -22,11 +22,23 @@ model Client {
   createdAt         DateTime  @default(now()) @map("createdAt")
   updatedAt         DateTime  @updatedAt @map("updatedAt")
 
-  tags        ClientTag[]
-  reminders   Reminder[]
+  tags         ClientTag[]
+  reminders    Reminder[]
+  interactions Interaction[]
   linkedEnterprise Enterprise? @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
 
   @@map("clients")
+}
+
+model Interaction {
+  id          String   @id @default(cuid()) @map("id")
+  description String   @map("description")
+  "clientId"  String   @map("clientId")
+  "createdAt" DateTime @default(now()) @map("createdAt")
+
+  client Client @relation(fields: ["clientId"], references: [id], onDelete: Cascade)
+
+  @@map("interactions")
 }
 
 model Tag {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -11,8 +11,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { format, differenceInDays } from 'date-fns';
+import { format, differenceInDays, isToday, isYesterday, isThisYear } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   Phone,
@@ -25,12 +26,16 @@ import {
   Check,
   AlertTriangle,
   Clock,
-  RefreshCw,
+  Send,
   MessageCircle,
   PhoneCall,
   CalendarDays,
   User,
   StickyNote,
+  MessageSquare,
+  History,
+  Loader2,
+  X,
 } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
 import {
@@ -43,6 +48,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+
+interface Interaction {
+  id: string;
+  description: string;
+  createdAt: string;
+}
 
 interface ClientDetail {
   id: string;
@@ -64,6 +75,7 @@ interface ClientDetail {
   createdAt: string;
   updatedAt: string;
   tags: Array<{ tagId: string; tag: { id: string; name: string; color: string } }>;
+  interactions: Interaction[];
   reminders: Array<{
     id: string;
     title: string;
@@ -96,23 +108,82 @@ function daysUntilUpdate(lastInteractionAt: string | null, createdAt: string, up
   return differenceInDays(dueDate, new Date());
 }
 
+function formatInteractionDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  const time = format(date, 'HH:mm');
+
+  if (isToday(date)) {
+    return `Hoje, ${time}`;
+  }
+  if (isYesterday(date)) {
+    return `Ontem, ${time}`;
+  }
+  if (isThisYear(date)) {
+    return format(date, "dd 'de' MMMM, HH:mm", { locale: ptBR });
+  }
+  return format(date, "dd 'de' MMMM 'de' yyyy, HH:mm", { locale: ptBR });
+}
+
+function formatTimelineDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  if (isToday(date)) return 'Hoje';
+  if (isYesterday(date)) return 'Ontem';
+  if (isThisYear(date)) return format(date, "dd 'de' MMMM", { locale: ptBR });
+  return format(date, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+}
+
 function DetailContent({
   client,
   onEdit,
   onDelete,
-  onRecordInteraction,
+  onSubmitInteraction,
+  onDeleteInteraction,
+  submitting,
 }: {
   client: ClientDetail;
   onEdit: () => void;
   onDelete: () => void;
-  onRecordInteraction: () => void;
+  onSubmitInteraction: (description: string) => void;
+  onDeleteInteraction: (interactionId: string) => void;
+  submitting: boolean;
 }) {
+  const [interactionText, setInteractionText] = useState('');
   const period = client.updatePeriod || 30;
   const isOverdue = needsUpdate(client.lastInteractionAt, client.createdAt, period);
   const daysLeft = daysUntilUpdate(client.lastInteractionAt, client.createdAt, period);
 
   const whatsappUrl = client.phone ? getWhatsAppUrl(client.phone) : null;
   const phoneUrl = client.phone ? getPhoneCallUrl(client.phone) : null;
+
+  const handleSubmit = () => {
+    const trimmed = interactionText.trim();
+    if (!trimmed) {
+      toast.error('Escreva uma descrição da interação antes de registrar');
+      return;
+    }
+    onSubmitInteraction(trimmed);
+    setInteractionText('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  // Group interactions by date
+  const groupedInteractions: { date: string; items: Interaction[] }[] = [];
+  let currentGroup: { date: string; items: Interaction[] } | null = null;
+
+  client.interactions.forEach((interaction) => {
+    const dateKey = formatTimelineDate(interaction.createdAt);
+    if (!currentGroup || currentGroup.date !== dateKey) {
+      currentGroup = { date: dateKey, items: [] };
+      groupedInteractions.push(currentGroup);
+    }
+    currentGroup.items.push(interaction);
+  });
 
   return (
     <div className="space-y-5">
@@ -129,7 +200,7 @@ function DetailContent({
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <CalendarDays className="h-3 w-3 text-white/70" />
                   <p className="text-xs text-white/80">
-                    {format(new Date(client.createdAt), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                    Cliente desde {format(new Date(client.createdAt), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                   </p>
                 </div>
               </div>
@@ -149,7 +220,7 @@ function DetailContent({
           </Button>
           <div className="flex items-center gap-2 ml-auto">
             {whatsappUrl && (
-              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-flex">
                 <Button size="sm" className="bg-green-500 hover:bg-green-600 text-white border-0 h-9 text-xs">
                   <MessageCircle className="h-3.5 w-3.5 mr-1.5" />
                   WhatsApp
@@ -157,7 +228,7 @@ function DetailContent({
               </a>
             )}
             {phoneUrl && (
-              <a href={phoneUrl}>
+              <a href={phoneUrl} className="inline-flex">
                 <Button size="sm" className="bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white border-white/20 h-9 text-xs">
                   <PhoneCall className="h-3.5 w-3.5 mr-1.5" />
                   Ligar
@@ -186,7 +257,7 @@ function DetailContent({
             <div>
               <p className="text-sm font-semibold">
                 {isOverdue
-                  ? 'Atualização Vencida!'
+                  ? 'Acompanhamento Vencido!'
                   : daysLeft <= 5
                     ? `Atualização em ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}`
                     : `Próxima atualização em ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}`}
@@ -199,17 +270,122 @@ function DetailContent({
               </p>
             </div>
           </div>
-          <Button size="sm" onClick={onRecordInteraction} className={
-            isOverdue ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-          }>
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-            Registrar
-          </Button>
         </div>
+      </div>
+
+      {/* Record Interaction Section */}
+      <div className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />
+          Registrar Interação
+        </h3>
+        <div className="rounded-xl border bg-card p-4 space-y-3">
+          <Textarea
+            placeholder="Descreva o acompanhamento realizado com o cliente (ex: Ligação feita, cliente demonstrou interesse no empreendimento X, agendou visita para o dia Y...)"
+            value={interactionText}
+            onChange={(e) => setInteractionText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="min-h-[100px] resize-y text-sm leading-relaxed"
+          />
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Ctrl+Enter para enviar rapidamente
+            </p>
+            <Button
+              size="sm"
+              onClick={handleSubmit}
+              disabled={submitting || !interactionText.trim()}
+              className={
+                isOverdue
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              }
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  Registrando...
+                </>
+              ) : (
+                <>
+                  <Send className="h-3.5 w-3.5 mr-1.5" />
+                  Registrar Interação
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Interaction Timeline */}
+      <div className="space-y-3">
+        <Separator />
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <History className="h-3.5 w-3.5 text-emerald-500" />
+          Histórico de Interações ({client.interactions.length})
+        </h3>
+
+        {groupedInteractions.length === 0 ? (
+          <div className="text-center py-10 bg-muted/40 rounded-xl border border-dashed">
+            <History className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">Nenhuma interação registrada</p>
+            <p className="text-xs text-muted-foreground/70 mt-1">
+              Use o campo acima para registrar o primeiro acompanhamento
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {groupedInteractions.map((group) => (
+              <div key={group.date}>
+                {/* Date header */}
+                <div className="flex items-center gap-3 mb-2.5">
+                  <div className="h-6 w-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+                    <CalendarDays className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <p className="text-xs font-semibold text-muted-foreground">{group.date}</p>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+
+                {/* Timeline items */}
+                <div className="relative ml-3 border-l-2 border-emerald-200 dark:border-emerald-800/50 pl-5 space-y-3">
+                  {group.items.map((interaction, idx) => {
+                    const interactionDate = new Date(interaction.createdAt);
+                    return (
+                      <div key={interaction.id} className="relative group">
+                        {/* Timeline dot */}
+                        <div className="absolute -left-[22px] top-3 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background ring-2 ring-emerald-200 dark:ring-emerald-800/50" />
+
+                        <div className="bg-card rounded-xl border p-3.5 hover:shadow-sm transition-shadow">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <MessageSquare className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                              <span className="text-xs font-medium text-muted-foreground">
+                                {format(interactionDate, 'HH:mm')}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => onDeleteInteraction(interaction.id)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-destructive/10 hover:text-destructive"
+                              title="Excluir interação"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{interaction.description}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Contact Info */}
       <div className="space-y-3">
+        <Separator />
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Informações de Contato</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {client.phone && (
@@ -271,6 +447,7 @@ function DetailContent({
       {/* Tags */}
       {client.tags.length > 0 && (
         <div className="space-y-2">
+          <Separator />
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tags</h3>
           <div className="flex flex-wrap gap-1.5">
             {client.tags.map((ct) => (
@@ -286,9 +463,10 @@ function DetailContent({
       {/* Notes */}
       {client.notes && (
         <div className="space-y-2">
+          <Separator />
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
             <StickyNote className="h-3 w-3" />
-            Observações
+            Observações Gerais
           </h3>
           <div className="bg-muted/60 rounded-xl p-4 border">
             <p className="text-sm whitespace-pre-wrap leading-relaxed">{client.notes}</p>
@@ -373,6 +551,8 @@ export function ClientDetail({
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (clientId && open) {
@@ -398,17 +578,46 @@ export function ClientDetail({
     }
   }
 
-  async function handleRecordInteraction() {
+  async function handleSubmitInteraction(description: string) {
     if (!clientId) return;
+    setSubmitting(true);
     try {
-      const res = await fetch(`/api/clients/${clientId}`, { method: 'PATCH' });
+      const res = await fetch(`/api/clients/${clientId}/interactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description }),
+      });
       if (res.ok) {
         toast.success('Interação registrada com sucesso!');
         fetchClient();
         onRefresh();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Erro ao registrar interação');
       }
     } catch {
       toast.error('Erro ao registrar interação');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteInteraction(interactionId: string) {
+    if (!clientId) return;
+    try {
+      const res = await fetch(`/api/clients/${clientId}/interactions`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interactionId }),
+      });
+      if (res.ok) {
+        toast.success('Interação excluída');
+        fetchClient();
+      } else {
+        toast.error('Erro ao excluir interação');
+      }
+    } catch {
+      toast.error('Erro ao excluir interação');
     }
   }
 
@@ -441,7 +650,9 @@ export function ClientDetail({
       client={client}
       onEdit={() => { onOpenChange(false); onEdit(client.id); }}
       onDelete={() => setDeleteOpen(true)}
-      onRecordInteraction={handleRecordInteraction}
+      onSubmitInteraction={handleSubmitInteraction}
+      onDeleteInteraction={handleDeleteInteraction}
+      submitting={submitting}
     />
   ) : null;
 
@@ -450,13 +661,13 @@ export function ClientDetail({
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
-          className="w-full sm:max-w-[560px] lg:max-w-[620px] overflow-y-auto p-6"
+          className="w-full sm:max-w-[560px] lg:max-w-[620px] p-0 flex flex-col"
         >
-          <SheetHeader>
+          <SheetHeader className="px-6 pt-5 pb-3 flex-shrink-0">
             <SheetTitle>Detalhes do Cliente</SheetTitle>
             <SheetDescription>Visualize e gerencie as informações do cliente</SheetDescription>
           </SheetHeader>
-          <div className="mt-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pb-8">
             {content}
           </div>
         </SheetContent>
@@ -468,7 +679,7 @@ export function ClientDetail({
             <AlertDialogTitle>Excluir Cliente</AlertDialogTitle>
             <AlertDialogDescription>
               Tem certeza que deseja excluir <strong>{client?.name}</strong>? Esta ação
-              não pode ser desfeita. Todos os lembretes associados também serão excluídos.
+              não pode ser desfeita. Todos os lembretes e interações associados também serão excluídos.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
