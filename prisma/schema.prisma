@@ -19,13 +19,16 @@ model Client {
   notes             String?   @map("notes")
   updatePeriod      Int       @default(30) @map("updatePeriod")
   lastInteractionAt DateTime? @map("lastInteractionAt")
+  createdBy         String    @map("createdBy")
   createdAt         DateTime  @default(now()) @map("createdAt")
   updatedAt         DateTime  @updatedAt @map("updatedAt")
 
   tags         ClientTag[]
   reminders    Reminder[]
   interactions Interaction[]
+  partners     ClientPartner[]
   linkedEnterprise Enterprise? @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
+  creator      User          @relation("CreatedClients", fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@map("clients")
 }
@@ -103,7 +106,26 @@ model User {
   createdAt         DateTime  @default(now()) @map("createdAt")
   updatedAt         DateTime  @updatedAt @map("updatedAt")
 
+  createdClients  Client[]          @relation("CreatedClients")
+  partnerOf       ClientPartner[]
+  addedPartners   ClientPartner[]  @relation("AddedPartners")
+
   @@map("users")
+}
+
+model ClientPartner {
+  id        String   @id @default(cuid()) @map("id")
+  clientId  String   @map("clientId")
+  userId    String   @map("userId")
+  addedBy   String   @map("addedBy")
+  createdAt DateTime @default(now()) @map("createdAt")
+
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  addedByUser User   @relation("AddedPartners", fields: [addedBy], references: [id])
+
+  @@unique([clientId, userId])
+  @@map("client_partners")
 }
 
 model UserSettings {

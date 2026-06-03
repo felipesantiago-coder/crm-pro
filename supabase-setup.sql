@@ -17,6 +17,7 @@
 -- 0. LIMPAR TABELAS EXISTENTES (ordem correta para FKs)
 -- =============================================================
 
+DROP TABLE IF EXISTS client_partners CASCADE;
 DROP TABLE IF EXISTS interactions CASCADE;
 DROP TABLE IF EXISTS client_tags CASCADE;
 DROP TABLE IF EXISTS reminders CASCADE;
@@ -44,6 +45,7 @@ CREATE TABLE clients (
   notes               TEXT,
   "updatePeriod"      INTEGER NOT NULL DEFAULT 30,
   "lastInteractionAt" TIMESTAMP,
+  "createdBy"         TEXT NOT NULL,
   "createdAt"         TIMESTAMP NOT NULL DEFAULT now(),
   "updatedAt"         TIMESTAMP NOT NULL DEFAULT now()
 );
@@ -100,6 +102,21 @@ ALTER TABLE clients
   ADD CONSTRAINT fk_clients_enterprise
   FOREIGN KEY ("enterpriseId") REFERENCES enterprises(id) ON DELETE SET NULL;
 
+-- Chave estrangeira de Clientes para Usuários (criador)
+ALTER TABLE clients
+  ADD CONSTRAINT fk_clients_creator
+  FOREIGN KEY ("createdBy") REFERENCES users(id) ON DELETE CASCADE;
+
+-- Tabela de Parceiros de Clientes
+CREATE TABLE client_partners (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+  "clientId" TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  "userId"   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "addedBy"  TEXT NOT NULL REFERENCES users(id),
+  "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+  UNIQUE("clientId", "userId")
+);
+
 -- Tabela de Usuários
 CREATE TABLE users (
   id                  TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -150,6 +167,11 @@ CREATE INDEX idx_enterprises_region ON enterprises (region);
 
 CREATE INDEX idx_users_email ON users (email);
 
+CREATE INDEX idx_client_partners_client_id ON client_partners ("clientId");
+CREATE INDEX idx_client_partners_user_id ON client_partners ("userId");
+CREATE INDEX idx_client_partners_added_by ON client_partners ("addedBy");
+CREATE INDEX idx_clients_created_by ON clients ("createdBy");
+
 
 -- =============================================================
 -- 3. HABILITAR REALTIME PARA TODAS AS TABELAS
@@ -163,6 +185,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE enterprises;
 ALTER PUBLICATION supabase_realtime ADD TABLE interactions;
 ALTER PUBLICATION supabase_realtime ADD TABLE users;
 ALTER PUBLICATION supabase_realtime ADD TABLE user_settings;
+ALTER PUBLICATION supabase_realtime ADD TABLE client_partners;
 
 
 -- =============================================================

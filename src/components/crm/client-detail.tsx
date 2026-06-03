@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { format, differenceInDays, isToday, isYesterday, isThisYear } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -36,6 +37,11 @@ import {
   History,
   Loader2,
   X,
+  Users,
+  UserPlus,
+  Search,
+  Crown,
+  ShieldCheck,
 } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
 import {
@@ -48,11 +54,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { useSession } from 'next-auth/react';
 
 interface Interaction {
   id: string;
   description: string;
   createdAt: string;
+}
+
+interface Partner {
+  id: string;
+  clientId: string;
+  userId: string;
+  addedBy: string;
+  createdAt: string;
+  user: { id: string; name: string; email: string };
+  addedByUser: { id: string; name: string; email: string };
 }
 
 interface ClientDetail {
@@ -72,10 +96,13 @@ interface ClientDetail {
   notes: string | null;
   updatePeriod: number;
   lastInteractionAt: string | null;
+  createdBy: string;
   createdAt: string;
   updatedAt: string;
+  creator?: { id: string; name: string; email: string } | null;
   tags: Array<{ tagId: string; tag: { id: string; name: string; color: string } }>;
   interactions: Interaction[];
+  partners: Partner[];
   reminders: Array<{
     id: string;
     title: string;
@@ -92,6 +119,12 @@ interface ClientDetailProps {
   onOpenChange: (open: boolean) => void;
   onEdit: (clientId: string) => void;
   onRefresh: () => void;
+}
+
+interface UserOption {
+  id: string;
+  name: string;
+  email: string;
 }
 
 function needsUpdate(lastInteractionAt: string | null, createdAt: string, updatePeriod: number): boolean {
@@ -139,6 +172,7 @@ function DetailContent({
   onSubmitInteraction,
   onDeleteInteraction,
   submitting,
+  onRefresh,
 }: {
   client: ClientDetail;
   onEdit: () => void;
@@ -146,14 +180,25 @@ function DetailContent({
   onSubmitInteraction: (description: string) => void;
   onDeleteInteraction: (interactionId: string) => void;
   submitting: boolean;
+  onRefresh: () => void;
 }) {
+  const { data: session } = useSession();
   const [interactionText, setInteractionText] = useState('');
+  const [partners, setPartners] = useState<Partner[]>(client.partners || []);
+  const [partnerDialogOpen, setPartnerDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<UserOption[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [addingPartner, setAddingPartner] = useState<string | null>(null);
+  const [removingPartner, setRemovingPartner] = useState<string | null>(null);
   const period = client.updatePeriod || 30;
   const isOverdue = needsUpdate(client.lastInteractionAt, client.createdAt, period);
   const daysLeft = daysUntilUpdate(client.lastInteractionAt, client.createdAt, period);
 
   const whatsappUrl = client.phone ? getWhatsAppUrl(client.phone) : null;
   const phoneUrl = client.phone ? getPhoneCallUrl(client.phone) : null;
+  const currentUserId = (session?.user as { id?: string })?.id;
+  const isCreator = currentUserId === client.createdBy;
 
   const handleSubmit = () => {
     const trimmed = interactionText.trim();
@@ -184,6 +229,90 @@ function DetailContent({
     }
     currentGroup.items.push(interaction);
   });
+
+  // --- Partner Management ---
+
+  async function fetchPartners() {
+    try {
+      const res = await fetch(`/api/clients/${client.id}/partners`);
+      if (res.ok) {
+        const data = await res.json();
+        setPartners(data);
+      }
+    } catch {
+      // Silently fail — partners might not exist in DB yet
+    }
+  }
+
+  async function searchUsers(query: string) {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+      if (res.ok) {
+        const data = await res.json();
+        // Filter out users who are already partners or the creator
+        const partnerIds = partners.map((p) => p.userId);
+        const filtered = data.filter(
+          (u: UserOption) => u.id !== client.createdBy && !partnerIds.includes(u.id)
+        );
+        setSearchResults(filtered);
+      }
+    } catch {
+      toast.error('Erro ao buscar usuários');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function addPartner(userId: string) {
+    setAddingPartner(userId);
+    try {
+      const res = await fetch(`/api/clients/${client.id}/partners`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      if (res.ok) {
+        toast.success('Parceiro adicionado com sucesso!');
+        fetchPartners();
+        onRefresh();
+        setSearchResults((prev) => prev.filter((u) => u.id !== userId));
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Erro ao adicionar parceiro');
+      }
+    } catch {
+      toast.error('Erro ao adicionar parceiro');
+    } finally {
+      setAddingPartner(null);
+    }
+  }
+
+  async function removePartner(userId: string) {
+    setRemovingPartner(userId);
+    try {
+      const res = await fetch(`/api/clients/${client.id}/partners`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      if (res.ok) {
+        toast.success('Parceiro removido');
+        fetchPartners();
+        onRefresh();
+      } else {
+        toast.error('Erro ao remover parceiro');
+      }
+    } catch {
+      toast.error('Erro ao remover parceiro');
+    } finally {
+      setRemovingPartner(null);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -273,8 +402,95 @@ function DetailContent({
         </div>
       </div>
 
+      {/* Partners Section */}
+      <div className="space-y-3">
+        <Separator />
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5 text-emerald-500" />
+            Equipe ({1 + partners.length})
+          </h3>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setPartnerDialogOpen(true);
+              setSearchQuery('');
+              setSearchResults([]);
+            }}
+            className="h-7 text-xs gap-1"
+          >
+            <UserPlus className="h-3 w-3" />
+            Adicionar Parceiro
+          </Button>
+        </div>
+
+        <div className="space-y-2">
+          {/* Creator */}
+          <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+            <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+              <Crown className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium truncate">
+                  {client.creator?.name || 'Desconhecido'}
+                </p>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                  Criador
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground truncate">{client.creator?.email || ''}</p>
+            </div>
+          </div>
+
+          {/* Partners */}
+          {partners.length === 0 ? (
+            <div className="text-center py-6 bg-muted/40 rounded-xl border border-dashed">
+              <Users className="h-7 w-7 text-muted-foreground/30 mx-auto mb-1.5" />
+              <p className="text-xs text-muted-foreground">Nenhum parceiro vinculado</p>
+              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                Adicione parceiros para compartilhar o acompanhamento deste cliente
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {partners.map((partner) => (
+                <div key={partner.id} className="flex items-center gap-3 p-3 rounded-xl border bg-card group">
+                  <div className="h-9 w-9 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center flex-shrink-0">
+                    <ShieldCheck className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium truncate">{partner.user.name}</p>
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400">
+                        Parceiro
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">{partner.user.email}</p>
+                  </div>
+                  <button
+                    onClick={() => removePartner(partner.userId)}
+                    disabled={removingPartner === partner.userId}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-destructive/10 hover:text-destructive"
+                    title="Remover parceiro"
+                  >
+                    {removingPartner === partner.userId ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <X className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Record Interaction Section */}
       <div className="space-y-3">
+        <Separator />
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
           <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />
           Registrar Interação
@@ -537,6 +753,81 @@ function DetailContent({
           </div>
         )}
       </div>
+
+      {/* Add Partner Dialog */}
+      <Dialog open={partnerDialogOpen} onOpenChange={setPartnerDialogOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-emerald-500" />
+              Adicionar Parceiro
+            </DialogTitle>
+            <DialogDescription>
+              Busque um usuário cadastrado para adicionar como parceiro de acompanhamento deste cliente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nome ou email..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  searchUsers(e.target.value);
+                }}
+                className="pl-9"
+              />
+            </div>
+
+            {searching && (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-emerald-500" />
+              </div>
+            )}
+
+            {!searching && searchQuery && searchResults.length === 0 && (
+              <div className="text-center py-6">
+                <p className="text-sm text-muted-foreground">Nenhum usuário encontrado</p>
+              </div>
+            )}
+
+            {!searching && searchResults.length > 0 && (
+              <div className="space-y-2 max-h-[240px] overflow-y-auto">
+                {searchResults.map((user) => (
+                  <div key={user.id} className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-muted/50 transition-colors">
+                    <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+                      <User className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{user.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => addPartner(user.id)}
+                      disabled={addingPartner === user.id}
+                      className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      {addingPartner === user.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        'Adicionar'
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!searching && !searchQuery && (
+              <div className="text-center py-6">
+                <p className="text-sm text-muted-foreground">Digite para buscar usuários cadastrados</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -653,6 +944,7 @@ export function ClientDetail({
       onSubmitInteraction={handleSubmitInteraction}
       onDeleteInteraction={handleDeleteInteraction}
       submitting={submitting}
+      onRefresh={onRefresh}
     />
   ) : null;
 

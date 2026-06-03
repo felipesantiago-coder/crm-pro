@@ -13,6 +13,14 @@ export async function GET(
         tags: { include: { tag: true } },
         reminders: { orderBy: { dueDate: 'asc' } },
         linkedEnterprise: { select: { id: true, name: true, region: true, imageUrl: true } },
+        creator: { select: { id: true, name: true, email: true } },
+        partners: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+            addedByUser: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
 
