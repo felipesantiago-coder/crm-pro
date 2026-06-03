@@ -599,6 +599,7 @@ export function EnterpriseManagement() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Stats */}
