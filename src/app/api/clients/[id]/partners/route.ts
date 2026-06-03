@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
+import { notifyTeamPartnerAdded } from '@/lib/notifications';
 
 // GET /api/clients/[id]/partners — Listar parceiros de um cliente
 export async function GET(
@@ -88,7 +89,7 @@ export async function POST(
     // Buscar o usuário que está adicionando (addedBy)
     const addingUser = await db.user.findUnique({
       where: { email: session.user.email },
-      select: { id: true },
+      select: { id: true, name: true },
     });
     if (!addingUser) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
@@ -105,6 +106,13 @@ export async function POST(
         addedByUser: { select: { id: true, name: true, email: true } },
       },
     });
+
+    // Notificar equipe sobre o novo parceiro (fire-and-forget)
+    notifyTeamPartnerAdded({
+      clientId: id,
+      newPartnerName: targetUser.name,
+      addedByName: addingUser.name || 'Usuário',
+    }).catch(() => {});
 
     return NextResponse.json(partner, { status: 201 });
   } catch (error) {

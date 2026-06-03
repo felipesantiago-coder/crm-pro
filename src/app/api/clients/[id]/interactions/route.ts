@@ -1,5 +1,8 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth-options';
+import { notifyTeamInteractionAdded } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -22,12 +25,23 @@ export async function POST(
       return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
     }
 
+    // Buscar email do autor para excluir da notificação
+    const session = await getServerSession(authOptions);
+    const authorEmail = session?.user?.email;
+
     const interaction = await db.interaction.create({
       data: {
         description: description.trim(),
         clientId: id,
       },
     });
+
+    // Notificar parceiros sobre a nova interação (fire-and-forget)
+    notifyTeamInteractionAdded({
+      clientId: id,
+      interactionDescription: description.trim(),
+      creatorEmail: authorEmail,
+    }).catch(() => {});
 
     await db.client.update({
       where: { id },

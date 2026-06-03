@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
+import { notifyTeamScheduleCreated } from '@/lib/notifications';
 
 // GET /api/clients/[id]/schedules — List all schedules for a client
 export async function GET(
@@ -88,6 +89,15 @@ export async function POST(
         },
       },
     });
+
+    // Notificar equipe do cliente sobre o agendamento (fire-and-forget)
+    notifyTeamScheduleCreated({
+      clientId: id,
+      scheduledDate: new Date(scheduledDate),
+      scheduledTime,
+      description: description?.trim() || null,
+      creatorName: session.user.name || 'Usuário',
+    }).catch(() => {});
 
     return NextResponse.json(schedule, { status: 201 });
   } catch (error) {

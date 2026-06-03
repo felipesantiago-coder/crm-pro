@@ -102,6 +102,7 @@ model User {
   id                String   @id @default(cuid()) @map("id")
   name              String   @map("name")
   email             String   @unique @map("email")
+  phone             String?  @map("phone")
   passwordHash      String   @map("passwordHash")
   role              String   @default("USER") @map("role")
   mustChangePassword Boolean @default(false) @map("mustChangePassword")
