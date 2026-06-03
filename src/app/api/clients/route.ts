@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || '';
     const region = searchParams.get('region') || '';
     const tagId = searchParams.get('tagId') || '';
+    const stage = searchParams.get('stage') || '';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
     const needsUpdate = searchParams.get('needsUpdate') === 'true';
@@ -50,6 +51,12 @@ export async function GET(request: NextRequest) {
       baseWhere.tags = { some: { tagId } };
     }
 
+    if (stage) {
+      baseWhere.stage = stage;
+    }
+
+    const excludeClosed = searchParams.get('excludeClosed') === 'true';
+
     // Montar filtro de acesso por usuário
     let accessFilter: Record<string, unknown> = {};
     if (!isAdminUser) {
@@ -67,7 +74,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Se há filtros de busca/região/tag, combinar com o filtro de acesso
-    if (baseWhere.OR || baseWhere.region || baseWhere.tags) {
+    if (baseWhere.OR || baseWhere.region || baseWhere.tags || baseWhere.stage) {
       if (!isAdminUser) {
         // Precisa combinar AND com OR
         const searchFilter = { ...baseWhere };
@@ -75,7 +82,13 @@ export async function GET(request: NextRequest) {
         delete where.OR;
         delete where.region;
         delete where.tags;
+        delete where.stage;
       }
+    }
+
+    // Excluir negócios finalizados da listagem principal
+    if (excludeClosed && !stage) {
+      where.stage = { notIn: ['FECHADO_GANHO', 'FECHADO_PERDIDO'] };
     }
 
     if (needsUpdate) {

@@ -4,7 +4,7 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Phone, Mail, MapPin, Building2, Clock, AlertTriangle, MessageCircle, PhoneCall } from 'lucide-react';
+import { Phone, Mail, MapPin, Building2, Clock, AlertTriangle, MessageCircle, PhoneCall, Target, Eye, CalendarDays, CalendarCheck, FileText, Handshake, Trophy, Ban } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
 
 interface ClientTag {
@@ -47,11 +47,34 @@ interface ClientCardProps {
     } | null;
     updatePeriod?: number;
     lastInteractionAt?: string | null;
+    stage?: string;
     createdAt: string;
     tags: ClientTag[];
   };
   onClick: (id: string) => void;
 }
+
+const STAGE_BADGES: Record<string, { icon: typeof Target; color: string }> = {
+  'LEAD': { icon: Target, color: 'bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300' },
+  'PROSPECT': { icon: Eye, color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+  'VISITA_AGENDADA': { icon: CalendarDays, color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  'VISITA_REALIZADA': { icon: CalendarCheck, color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
+  'CARTA_PROPOSTA': { icon: FileText, color: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300' },
+  'CONTRATO_GERADO': { icon: Handshake, color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' },
+  'FECHADO_GANHO': { icon: Trophy, color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' },
+  'FECHADO_PERDIDO': { icon: Ban, color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' },
+};
+
+const STAGE_LABELS: Record<string, string> = {
+  'LEAD': 'Lead',
+  'PROSPECT': 'Prospect',
+  'VISITA_AGENDADA': 'Visita Agendada',
+  'VISITA_REALIZADA': 'Visita Realizada',
+  'CARTA_PROPOSTA': 'Carta Proposta',
+  'CONTRATO_GERADO': 'Contrato Gerado',
+  'FECHADO_GANHO': 'Fechado e Ganho',
+  'FECHADO_PERDIDO': 'Fechado e Perdido',
+};
 
 export function ClientCard({ client, onClick }: ClientCardProps) {
   const period = client.updatePeriod || 30;
@@ -149,6 +172,21 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
             )}
           </span>
         </div>
+
+        {client.stage && STAGE_BADGES[client.stage] && (
+          <div className="flex items-center gap-1.5 mt-3">
+            {(() => {
+              const stageBadge = STAGE_BADGES[client.stage!];
+              const StageIcon = stageBadge.icon;
+              return (
+                <Badge className={`text-[10px] px-2 py-0.5 gap-1 ${stageBadge.color}`}>
+                  <StageIcon className="h-3 w-3" />
+                  {STAGE_LABELS[client.stage!] || client.stage}
+                </Badge>
+              );
+            })()}
+          </div>
+        )}
 
         {client.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-3">

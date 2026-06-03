@@ -26,6 +26,7 @@ interface Client {
   enterprise: string | null;
   updatePeriod: number;
   lastInteractionAt: string | null;
+  stage?: string;
   createdAt: string;
   tags: Array<{ tagId: string; tag: { id: string; name: string; color: string } }>;
 }
@@ -48,6 +49,8 @@ export function ClientsView() {
     setSelectedClientId,
   } = useCRMStore();
 
+  const [filterStage, setFilterStage] = useState('');
+
   const [clients, setClients] = useState<Client[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -69,6 +72,9 @@ export function ClientsView() {
       if (searchQuery) params.set('search', searchQuery);
       if (filterRegion) params.set('region', filterRegion);
       if (filterTagId) params.set('tagId', filterTagId);
+      if (filterStage) params.set('stage', filterStage);
+      // Excluir negócios finalizados da lista principal (têm view dedicada)
+      params.set('excludeClosed', 'true');
       params.set('page', page.toString());
       params.set('limit', limit.toString());
 
@@ -81,7 +87,7 @@ export function ClientsView() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, filterRegion, filterTagId, page]);
+  }, [searchQuery, filterRegion, filterTagId, filterStage, page]);
 
   useEffect(() => {
     fetchClients();
@@ -215,6 +221,26 @@ export function ClientsView() {
                 {tag.name}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={filterStage || 'all'}
+          onValueChange={(v) => {
+            setFilterStage(v === 'all' ? '' : v);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-full sm:w-[200px]">
+            <SelectValue placeholder="Etapa" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as Etapas</SelectItem>
+            <SelectItem value="LEAD">Lead</SelectItem>
+            <SelectItem value="PROSPECT">Prospect</SelectItem>
+            <SelectItem value="VISITA_AGENDADA">Visita Agendada</SelectItem>
+            <SelectItem value="VISITA_REALIZADA">Visita Realizada</SelectItem>
+            <SelectItem value="CARTA_PROPOSTA">Carta Proposta</SelectItem>
+            <SelectItem value="CONTRATO_GERADO">Contrato Gerado</SelectItem>
           </SelectContent>
         </Select>
       </div>

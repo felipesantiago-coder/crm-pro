@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type CRMView = 'dashboard' | 'clients' | 'tags' | 'reminders' | 'settings' | 'admin';
+export type CRMView = 'dashboard' | 'clients' | 'closed-deals' | 'tags' | 'reminders' | 'settings' | 'admin';
 
 interface CRMState {
   currentView: CRMView;

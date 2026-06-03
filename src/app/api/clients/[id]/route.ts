@@ -39,7 +39,27 @@ export async function GET(
       // Tabela interactions ainda não existe no banco — retorna array vazio
     }
 
-    return NextResponse.json({ ...client, interactions });
+    // Buscar agendamentos separadamente com fallback se tabela não existir
+    let schedules = [];
+    try {
+      schedules = await db.schedule.findMany({
+        where: { clientId: id },
+        orderBy: [{ scheduledDate: 'asc' }, { scheduledTime: 'asc' }],
+        include: {
+          creatorUser: { select: { id: true, name: true } },
+        },
+      });
+      // Map creatorUser to creator for the frontend
+      schedules = schedules.map((s: Record<string, unknown>) => ({
+        ...s,
+        creator: s.creatorUser,
+        creatorUser: undefined,
+      }));
+    } catch {
+      // Tabela schedules ainda não existe no banco — retorna array vazio
+    }
+
+    return NextResponse.json({ ...client, interactions, schedules });
   } catch (error) {
     console.error('Error fetching client:', error);
     return NextResponse.json({ error: 'Failed to fetch client' }, { status: 500 });

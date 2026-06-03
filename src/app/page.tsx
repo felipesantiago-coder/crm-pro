@@ -29,6 +29,9 @@ const SettingsView = lazy(() =>
 const AdminPanel = lazy(() =>
   import('@/components/crm/admin-panel').then((m) => ({ default: m.AdminPanel }))
 );
+const ClosedDealsView = lazy(() =>
+  import('@/components/crm/closed-deals-view').then((m) => ({ default: m.ClosedDealsView }))
+);
 
 function ViewLoader() {
   return (
@@ -81,6 +84,8 @@ function CRMApp() {
         return <DashboardView />;
       case 'clients':
         return <ClientsView />;
+      case 'closed-deals':
+        return <ClosedDealsView />;
       case 'tags':
         return <TagsView />;
       case 'reminders':

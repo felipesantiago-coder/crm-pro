@@ -13,8 +13,11 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { toast } from 'sonner';
-import { format, differenceInDays, isToday, isYesterday, isThisYear } from 'date-fns';
+import { format, differenceInDays, isToday, isYesterday, isThisYear, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   Phone,
@@ -31,6 +34,9 @@ import {
   MessageCircle,
   PhoneCall,
   CalendarDays,
+  CalendarPlus,
+  CalendarCheck,
+  CalendarX,
   User,
   StickyNote,
   MessageSquare,
@@ -42,6 +48,13 @@ import {
   Search,
   Crown,
   ShieldCheck,
+  ChevronRight,
+  Trophy,
+  Ban,
+  Target,
+  FileText,
+  Handshake,
+  Eye,
 } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
 import {
@@ -67,6 +80,18 @@ interface Interaction {
   id: string;
   description: string;
   createdAt: string;
+}
+
+interface Schedule {
+  id: string;
+  scheduledDate: string;
+  scheduledTime: string;
+  description: string | null;
+  status: string;
+  completedAt: string | null;
+  createdBy: string;
+  createdAt: string;
+  creator?: { id: string; name: string } | null;
 }
 
 interface Partner {
@@ -95,6 +120,7 @@ interface ClientDetail {
   } | null;
   notes: string | null;
   updatePeriod: number;
+  stage: string;
   lastInteractionAt: string | null;
   createdBy: string;
   createdAt: string;
@@ -102,6 +128,7 @@ interface ClientDetail {
   creator?: { id: string; name: string; email: string } | null;
   tags: Array<{ tagId: string; tag: { id: string; name: string; color: string } }>;
   interactions: Interaction[];
+  schedules: Schedule[];
   partners: Partner[];
   reminders: Array<{
     id: string;
@@ -165,6 +192,21 @@ function formatTimelineDate(dateStr: string): string {
   return format(date, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
 }
 
+const STAGES = [
+  { value: 'LEAD', label: 'Lead', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300', icon: Target, borderColor: 'border-slate-200 dark:border-slate-700/50' },
+  { value: 'PROSPECT', label: 'Prospect', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300', icon: Eye, borderColor: 'border-blue-200 dark:border-blue-800/50' },
+  { value: 'VISITA_AGENDADA', label: 'Visita Agendada', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300', icon: CalendarDays, borderColor: 'border-amber-200 dark:border-amber-800/50' },
+  { value: 'VISITA_REALIZADA', label: 'Visita Realizada', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300', icon: CalendarCheck, borderColor: 'border-emerald-200 dark:border-emerald-800/50' },
+  { value: 'CARTA_PROPOSTA', label: 'Carta Proposta', color: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300', icon: FileText, borderColor: 'border-violet-200 dark:border-violet-800/50' },
+  { value: 'CONTRATO_GERADO', label: 'Contrato Gerado', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300', icon: Handshake, borderColor: 'border-indigo-200 dark:border-indigo-800/50' },
+  { value: 'FECHADO_GANHO', label: 'Fechado e Ganho', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300', icon: Trophy, borderColor: 'border-green-200 dark:border-green-800/50' },
+  { value: 'FECHADO_PERDIDO', label: 'Fechado e Perdido', color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300', icon: Ban, borderColor: 'border-rose-200 dark:border-rose-800/50' },
+];
+
+function getStageInfo(stageValue: string) {
+  return STAGES.find((s) => s.value === stageValue) || STAGES[0];
+}
+
 function DetailContent({
   client,
   onEdit,
@@ -191,6 +233,18 @@ function DetailContent({
   const [searching, setSearching] = useState(false);
   const [addingPartner, setAddingPartner] = useState<string | null>(null);
   const [removingPartner, setRemovingPartner] = useState<string | null>(null);
+  const [currentStage, setCurrentStage] = useState(client.stage || 'LEAD');
+  const [updatingStage, setUpdatingStage] = useState(false);
+
+  // Schedule state
+  const [schedules, setSchedules] = useState<Schedule[]>(client.schedules || []);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
+  const [scheduleTime, setScheduleTime] = useState('10:00');
+  const [scheduleDescription, setScheduleDescription] = useState('');
+  const [creatingSchedule, setCreatingSchedule] = useState(false);
+  const [updatingScheduleStatus, setUpdatingScheduleStatus] = useState<string | null>(null);
+  const [deletingSchedule, setDeletingSchedule] = useState<string | null>(null);
   const period = client.updatePeriod || 30;
   const isOverdue = needsUpdate(client.lastInteractionAt, client.createdAt, period);
   const daysLeft = daysUntilUpdate(client.lastInteractionAt, client.createdAt, period);
@@ -199,6 +253,16 @@ function DetailContent({
   const phoneUrl = client.phone ? getPhoneCallUrl(client.phone) : null;
   const currentUserId = (session?.user as { id?: string })?.id;
   const isCreator = currentUserId === client.createdBy;
+
+  // Sync stage from client prop
+  useEffect(() => {
+    setCurrentStage(client.stage || 'LEAD');
+  }, [client.stage]);
+
+  // Sync schedules from client prop
+  useEffect(() => {
+    setSchedules(client.schedules || []);
+  }, [client.schedules]);
 
   const handleSubmit = () => {
     const trimmed = interactionText.trim();
@@ -229,6 +293,141 @@ function DetailContent({
     }
     currentGroup.items.push(interaction);
   });
+
+  // --- Stage Management ---
+  async function updateStage(newStage: string) {
+    setUpdatingStage(true);
+    try {
+      const res = await fetch(`/api/clients/${client.id}/stage`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: newStage }),
+      });
+      if (res.ok) {
+        setCurrentStage(newStage);
+        toast.success(`Etapa atualizada para: ${getStageInfo(newStage).label}`);
+        onRefresh();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Erro ao atualizar etapa');
+      }
+    } catch {
+      toast.error('Erro ao atualizar etapa');
+    } finally {
+      setUpdatingStage(false);
+    }
+  }
+
+  // --- Schedule Management ---
+  async function fetchSchedules() {
+    try {
+      const res = await fetch(`/api/clients/${client.id}/schedules`);
+      if (res.ok) {
+        const data = await res.json();
+        setSchedules(data);
+      }
+    } catch {
+      // silently fail
+    }
+  }
+
+  async function createSchedule() {
+    if (!scheduleDate || !scheduleTime) {
+      toast.error('Selecione uma data e horário para o agendamento');
+      return;
+    }
+    setCreatingSchedule(true);
+    try {
+      const dateStr = format(scheduleDate, 'yyyy-MM-dd');
+      const res = await fetch(`/api/clients/${client.id}/schedules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduledDate: dateStr, scheduledTime: scheduleTime, description: scheduleDescription.trim() || null }),
+      });
+      if (res.ok) {
+        toast.success('Visita agendada com sucesso!');
+        setScheduleDialogOpen(false);
+        setScheduleDate(undefined);
+        setScheduleTime('10:00');
+        setScheduleDescription('');
+        fetchSchedules();
+        onRefresh();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Erro ao criar agendamento');
+      }
+    } catch {
+      toast.error('Erro ao criar agendamento');
+    } finally {
+      setCreatingSchedule(false);
+    }
+  }
+
+  async function confirmSchedule(scheduleId: string) {
+    setUpdatingScheduleStatus(scheduleId);
+    try {
+      const res = await fetch(`/api/clients/${client.id}/schedules`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduleId, status: 'COMPLETED' }),
+      });
+      if (res.ok) {
+        toast.success('Visita confirmada como realizada!');
+        fetchSchedules();
+        onRefresh();
+      } else {
+        toast.error('Erro ao confirmar visita');
+      }
+    } catch {
+      toast.error('Erro ao confirmar visita');
+    } finally {
+      setUpdatingScheduleStatus(null);
+    }
+  }
+
+  async function cancelSchedule(scheduleId: string) {
+    setUpdatingScheduleStatus(scheduleId);
+    try {
+      const res = await fetch(`/api/clients/${client.id}/schedules`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduleId, status: 'CANCELLED' }),
+      });
+      if (res.ok) {
+        toast.success('Agendamento cancelado');
+        fetchSchedules();
+        onRefresh();
+      } else {
+        toast.error('Erro ao cancelar agendamento');
+      }
+    } catch {
+      toast.error('Erro ao cancelar agendamento');
+    } finally {
+      setUpdatingScheduleStatus(null);
+    }
+  }
+
+  async function deleteSchedule(scheduleId: string) {
+    setDeletingSchedule(scheduleId);
+    try {
+      const res = await fetch(`/api/clients/${client.id}/schedules`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduleId }),
+      });
+      if (res.ok) {
+        toast.success('Agendamento removido');
+        fetchSchedules();
+        onRefresh();
+      } else {
+        toast.error('Erro ao remover agendamento');
+      }
+    } catch {
+      toast.error('Erro ao remover agendamento');
+    } finally {
+      setDeletingSchedule(null);
+    }
+  }
 
   // --- Partner Management ---
 
@@ -401,6 +600,291 @@ function DetailContent({
           </div>
         </div>
       </div>
+
+      {/* Pipeline Stage */}
+      <div className="space-y-3">
+        <Separator />
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Target className="h-3.5 w-3.5 text-emerald-500" />
+            Etapa de Atendimento
+          </h3>
+        </div>
+        <div className="p-4 rounded-xl border bg-card space-y-3">
+          {/* Current stage badge */}
+          <div className="flex items-center gap-3">
+            {(() => {
+              const stageInfo = getStageInfo(currentStage);
+              const StageIcon = stageInfo.icon;
+              return (
+                <div className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg ${stageInfo.color} ${stageInfo.borderColor} border`}>
+                  <StageIcon className="h-4.5 w-4.5" />
+                  <span className="text-sm font-semibold">{stageInfo.label}</span>
+                  {updatingStage && <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" />}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Stage pipeline */}
+          <div className="flex flex-wrap gap-1.5">
+            {STAGES.map((stage) => {
+              const isActive = currentStage === stage.value;
+              const StageIcon = stage.icon;
+              const currentIndex = STAGES.findIndex((s) => s.value === currentStage);
+              const stageIndex = STAGES.findIndex((s) => s.value === stage.value);
+              const isPast = stageIndex < currentIndex;
+
+              return (
+                <button
+                  key={stage.value}
+                  onClick={() => updateStage(stage.value)}
+                  disabled={updatingStage || isActive}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all duration-200 ${
+                    isActive
+                      ? `${stage.color} ${stage.borderColor} ring-2 ring-offset-1 ring-emerald-500/30 dark:ring-offset-background`
+                      : isPast
+                        ? `${stage.color} ${stage.borderColor} opacity-60 hover:opacity-100`
+                        : `bg-card border-border hover:border-emerald-300 dark:hover:border-emerald-700 text-muted-foreground hover:text-foreground`
+                  }`}
+                  title={stage.label}
+                >
+                  <StageIcon className="h-3 w-3 flex-shrink-0" />
+                  <span className="hidden sm:inline">{stage.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Schedules Section */}
+      <div className="space-y-3">
+        <Separator />
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <CalendarDays className="h-3.5 w-3.5 text-emerald-500" />
+            Agendamentos ({schedules.filter((s) => s.status === 'PENDING').length} pendente{schedules.filter((s) => s.status === 'PENDING').length !== 1 ? 's' : ''})
+          </h3>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setScheduleDialogOpen(true);
+              setScheduleDate(undefined);
+              setScheduleTime('10:00');
+              setScheduleDescription('');
+            }}
+            className="h-7 text-xs gap-1"
+          >
+            <CalendarPlus className="h-3 w-3" />
+            Agendar Visita
+          </Button>
+        </div>
+
+        {schedules.length === 0 ? (
+          <div className="text-center py-8 bg-muted/40 rounded-xl border border-dashed">
+            <CalendarDays className="h-7 w-7 text-muted-foreground/30 mx-auto mb-1.5" />
+            <p className="text-xs text-muted-foreground">Nenhum agendamento</p>
+            <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+              Clique em "Agendar Visita" para criar um novo agendamento
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {schedules.map((schedule) => {
+              const scheduleDate = parseISO(schedule.scheduledDate);
+              const isPending = schedule.status === 'PENDING';
+              const isCompleted = schedule.status === 'COMPLETED';
+              const isCancelled = schedule.status === 'CANCELLED';
+              const isPast = isPending && scheduleDate < new Date();
+
+              return (
+                <div
+                  key={schedule.id}
+                  className={`p-3.5 rounded-xl border group ${
+                    isCompleted
+                      ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800/50 dark:bg-emerald-950/20'
+                      : isCancelled
+                        ? 'border-gray-200 bg-gray-50/50 dark:border-gray-800/50 dark:bg-gray-950/20 opacity-60'
+                        : isPast
+                          ? 'border-rose-200 bg-rose-50/50 dark:border-rose-800/50 dark:bg-rose-950/20'
+                          : 'border-amber-200 bg-amber-50/50 dark:border-amber-800/50 dark:bg-amber-950/20'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        {isCompleted ? (
+                          <CalendarCheck className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                        ) : isCancelled ? (
+                          <CalendarX className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                        ) : isPast ? (
+                          <AlertTriangle className="h-3.5 w-3.5 text-rose-500 flex-shrink-0" />
+                        ) : (
+                          <CalendarDays className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                        )}
+                        <p className="text-sm font-medium truncate">
+                          {format(scheduleDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                        </p>
+                        <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 flex-shrink-0 ${
+                          isCompleted
+                            ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : isCancelled
+                              ? 'bg-gray-100 text-gray-600 dark:bg-gray-900/30 dark:text-gray-400'
+                              : isPast
+                                ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+                                : 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
+                        }`}>
+                          {schedule.scheduledTime}
+                        </Badge>
+                      </div>
+                      {schedule.description && (
+                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">{schedule.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${
+                          isCompleted
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : isCancelled
+                              ? 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+                              : isPast
+                                ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                                : ''
+                        }`}>
+                          {isCompleted ? 'Realizada' : isCancelled ? 'Cancelada' : isPast ? 'Atrasada' : 'Pendente'}
+                        </Badge>
+                        {schedule.creator && (
+                          <span className="text-[10px] text-muted-foreground">por {schedule.creator.name}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {isPending && (
+                        <button
+                          onClick={() => confirmSchedule(schedule.id)}
+                          disabled={updatingScheduleStatus === schedule.id}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-emerald-100 hover:text-emerald-600 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400"
+                          title="Confirmar visita realizada"
+                        >
+                          {updatingScheduleStatus === schedule.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Check className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      )}
+                      {isPending && (
+                        <button
+                          onClick={() => cancelSchedule(schedule.id)}
+                          disabled={updatingScheduleStatus === schedule.id}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-amber-100 hover:text-amber-600 dark:hover:bg-amber-900/30 dark:hover:text-amber-400"
+                          title="Cancelar agendamento"
+                        >
+                          <CalendarX className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => deleteSchedule(schedule.id)}
+                        disabled={deletingSchedule === schedule.id}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-destructive/10 hover:text-destructive"
+                        title="Remover agendamento"
+                      >
+                        {deletingSchedule === schedule.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <X className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Schedule Dialog (Calendar) */}
+      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarPlus className="h-5 w-5 text-emerald-500" />
+              Agendar Visita
+            </DialogTitle>
+            <DialogDescription>
+              Selecione a data e horário para o agendamento da visita ao cliente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Data *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={`w-full justify-start text-left font-normal ${!scheduleDate && 'text-muted-foreground'}`}
+                  >
+                    <CalendarDays className="mr-2 h-4 w-4" />
+                    {scheduleDate ? format(scheduleDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : 'Selecionar data'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={scheduleDate}
+                    onSelect={setScheduleDate}
+                    locale={ptBR}
+                    disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Horário *</Label>
+              <Input
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Observações</Label>
+              <Textarea
+                placeholder="Observações sobre a visita (opcional)..."
+                value={scheduleDescription}
+                onChange={(e) => setScheduleDescription(e.target.value)}
+                className="min-h-[80px] resize-y text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)} disabled={creatingSchedule}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={createSchedule}
+              disabled={!scheduleDate || !scheduleTime || creatingSchedule}
+              className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+            >
+              {creatingSchedule ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Agendando...
+                </>
+              ) : (
+                <>
+                  <CalendarPlus className="h-4 w-4 mr-2" />
+                  Agendar
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Partners Section */}
       <div className="space-y-3">

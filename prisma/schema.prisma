@@ -18,6 +18,7 @@ model Client {
   enterpriseId      String?   @map("enterpriseId")
   notes             String?   @map("notes")
   updatePeriod      Int       @default(30) @map("updatePeriod")
+  stage             String    @default("LEAD") @map("stage")
   lastInteractionAt DateTime? @map("lastInteractionAt")
   createdBy         String    @map("createdBy")
   createdAt         DateTime  @default(now()) @map("createdAt")
@@ -26,6 +27,7 @@ model Client {
   tags         ClientTag[]
   reminders    Reminder[]
   interactions Interaction[]
+  schedules    Schedule[]
   partners     ClientPartner[]
   linkedEnterprise Enterprise? @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
   creator      User          @relation("CreatedClients", fields: [createdBy], references: [id], onDelete: Cascade)
@@ -107,6 +109,7 @@ model User {
   updatedAt         DateTime  @updatedAt @map("updatedAt")
 
   createdClients  Client[]          @relation("CreatedClients")
+  createdSchedules Schedule[]       @relation("CreatedSchedules")
   partnerOf       ClientPartner[]
   addedPartners   ClientPartner[]  @relation("AddedPartners")
 
@@ -135,4 +138,22 @@ model UserSettings {
   updatedAt DateTime  @updatedAt @map("updatedAt")
 
   @@map("user_settings")
+}
+
+model Schedule {
+  id            String    @id @default(cuid()) @map("id")
+  scheduledDate DateTime  @map("scheduledDate")
+  scheduledTime String   @map("scheduledTime")
+  description   String?  @map("description")
+  status        String    @default("PENDING") @map("status")
+  completedAt   DateTime? @map("completedAt")
+  clientId      String    @map("clientId")
+  createdBy     String    @map("createdBy")
+  createdAt     DateTime  @default(now()) @map("createdAt")
+  updatedAt     DateTime  @updatedAt @map("updatedAt")
+
+  client      Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  creatorUser User   @relation("CreatedSchedules", fields: [createdBy], references: [id])
+
+  @@map("schedules")
 }
