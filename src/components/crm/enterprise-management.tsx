@@ -15,6 +15,11 @@ import {
   X,
   Users,
   Upload,
+  FileSpreadsheet,
+  CheckCircle2,
+  AlertCircle,
+  Ban,
+  Download,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -87,6 +92,18 @@ export function EnterpriseManagement() {
   // Image upload
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // Batch import
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [batchFile, setBatchFile] = useState<File | null>(null);
+  const [batchImporting, setBatchImporting] = useState(false);
+  const [batchResults, setBatchResults] = useState<{
+    created: { name: string; region: string | null }[];
+    duplicates: { name: string; reason: string }[];
+    invalid: { row: number; reason: string }[];
+    total: number;
+  } | null>(null);
+  const batchFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchEnterprises = useCallback(async () => {
     try {
@@ -247,6 +264,56 @@ export function EnterpriseManagement() {
     }
   }
 
+  function resetBatchDialog() {
+    setBatchFile(null);
+    setBatchResults(null);
+    setBatchImporting(false);
+  }
+
+  async function handleBatchImport() {
+    if (!batchFile) return;
+    setBatchImporting(true);
+    setBatchResults(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', batchFile);
+
+      const res = await fetch('/api/enterprises/batch', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Erro ao importar empreendimentos');
+        return;
+      }
+
+      const data = await res.json();
+      setBatchResults(data);
+
+      const totalCreated = data.created.length;
+      const totalDupes = data.duplicates.length;
+      const totalInvalid = data.invalid.length;
+
+      if (totalCreated > 0) {
+        toast.success(`${totalCreated} empreendimento${totalCreated > 1 ? 's' : ''} importado${totalCreated > 1 ? 's' : ''} com sucesso!`);
+      }
+      if (totalDupes > 0) {
+        toast.warning(`${totalDupes} duplicata${totalDupes > 1 ? 's' : ''} ignorada${totalDupes > 1 ? 's' : ''}`);
+      }
+      if (totalInvalid > 0) {
+        toast.error(`${totalInvalid} registro${totalInvalid > 1 ? 's' : ''} inválido${totalInvalid > 1 ? 's' : ''}`);
+      }
+
+      fetchEnterprises();
+    } catch {
+      toast.error('Erro ao importar empreendimentos');
+    } finally {
+      setBatchImporting(false);
+    }
+  }
+
   if ((session?.user as { role?: string })?.role !== 'ADMIN') {
     return (
       <div className="flex items-center justify-center h-64">
@@ -271,7 +338,211 @@ export function EnterpriseManagement() {
             Cadastre empreendimentos para vincular aos clientes
           </p>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <div className="flex items-center gap-2">
+          <Dialog open={batchDialogOpen} onOpenChange={(open) => { if (!open) resetBatchDialog(); setBatchDialogOpen(open); }}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="font-semibold">
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Importar em Lote
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[520px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FileSpreadsheet className="h-5 w-5 text-emerald-500" />
+                  Importar Empreendimentos em Lote
+                </DialogTitle>
+                <DialogDescription>
+                  Faça upload de um arquivo Excel (.xlsx ou .xls) ou CSV contendo os empreendimentos.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                {/* Template info */}
+                <div className="rounded-xl border bg-muted/50 p-4 space-y-3">
+                  <p className="text-sm font-medium">Formato esperado do arquivo:</p>
+                  <div className="rounded-lg border bg-background overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-emerald-50 dark:bg-emerald-950/30">
+                          <th className="px-3 py-2 text-left font-semibold text-emerald-700 dark:text-emerald-400">Nome *</th>
+                          <th className="px-3 py-2 text-left font-semibold text-emerald-700 dark:text-emerald-400">Região</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-t">
+                          <td className="px-3 py-2">Residencial Parque das Flores</td>
+                          <td className="px-3 py-2">Zona Sul</td>
+                        </tr>
+                        <tr className="border-t">
+                          <td className="px-3 py-2">Empreendimento Central</td>
+                          <td className="px-3 py-2">Centro</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    A coluna <strong>Nome</strong> é obrigatória. A coluna <strong>Região</strong> é opcional.
+                    Empreendimentos com nome duplicado serão ignorados.
+                  </p>
+                </div>
+
+                {/* File upload area */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Arquivo</label>
+                  <div
+                    className={`relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 cursor-pointer transition-colors ${
+                      batchFile
+                        ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20'
+                        : 'border-muted-foreground/25 hover:border-emerald-500/50 hover:bg-muted/50'
+                    }`}
+                    onClick={() => batchFileInputRef.current?.click()}
+                  >
+                    <input
+                      ref={batchFileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setBatchFile(file);
+                          setBatchResults(null);
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                    {batchFile ? (
+                      <>
+                        <div className="h-12 w-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-2">
+                          <FileSpreadsheet className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">{batchFile.name}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{(batchFile.size / 1024).toFixed(1)} KB</p>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setBatchFile(null); setBatchResults(null); }}
+                          className="absolute top-2 right-2 p-1 rounded-md hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center mb-2">
+                          <Upload className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <p className="text-sm font-medium">Clique para selecionar o arquivo</p>
+                        <p className="text-xs text-muted-foreground mt-1">.xlsx, .xls ou .csv — máximo 5MB</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Results */}
+                {batchResults && (
+                  <div className="space-y-3">
+                    <Separator />
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold">Resultado da Importação</p>
+                      <Badge variant="secondary" className="text-xs">
+                        {batchResults.created.length + batchResults.duplicates.length + batchResults.invalid.length} / {batchResults.total}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className={`rounded-lg border p-2.5 text-center ${
+                        batchResults.created.length > 0
+                          ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-950/20'
+                          : 'border-border bg-muted/30'
+                      }`}>
+                        <CheckCircle2 className={`h-4 w-4 mx-auto mb-1 ${batchResults.created.length > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`} />
+                        <p className={`text-lg font-bold ${batchResults.created.length > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>{batchResults.created.length}</p>
+                        <p className="text-[10px] text-muted-foreground">Criados</p>
+                      </div>
+                      <div className={`rounded-lg border p-2.5 text-center ${
+                        batchResults.duplicates.length > 0
+                          ? 'border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/20'
+                          : 'border-border bg-muted/30'
+                      }`}>
+                        <Ban className={`h-4 w-4 mx-auto mb-1 ${batchResults.duplicates.length > 0 ? 'text-amber-600' : 'text-muted-foreground'}`} />
+                        <p className={`text-lg font-bold ${batchResults.duplicates.length > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>{batchResults.duplicates.length}</p>
+                        <p className="text-[10px] text-muted-foreground">Duplicatas</p>
+                      </div>
+                      <div className={`rounded-lg border p-2.5 text-center ${
+                        batchResults.invalid.length > 0
+                          ? 'border-rose-200 bg-rose-50 dark:border-rose-800/50 dark:bg-rose-950/20'
+                          : 'border-border bg-muted/30'
+                      }`}>
+                        <AlertCircle className={`h-4 w-4 mx-auto mb-1 ${batchResults.invalid.length > 0 ? 'text-rose-600' : 'text-muted-foreground'}`} />
+                        <p className={`text-lg font-bold ${batchResults.invalid.length > 0 ? 'text-rose-700 dark:text-rose-400' : 'text-muted-foreground'}`}>{batchResults.invalid.length}</p>
+                        <p className="text-[10px] text-muted-foreground">Inválidos</p>
+                      </div>
+                    </div>
+
+                    {/* Created items list */}
+                    {batchResults.created.length > 0 && (
+                      <div className="rounded-lg border max-h-[150px] overflow-y-auto">
+                        <div className="p-2 space-y-1">
+                          {batchResults.created.map((item, i) => (
+                            <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-emerald-50/50 dark:bg-emerald-950/10 text-xs">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                              <span className="truncate font-medium">{item.name}</span>
+                              {item.region && (
+                                <span className="text-muted-foreground ml-auto flex-shrink-0">{item.region}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Duplicates list */}
+                    {batchResults.duplicates.length > 0 && (
+                      <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 max-h-[100px] overflow-y-auto">
+                        <div className="p-2 space-y-1">
+                          {batchResults.duplicates.map((item, i) => (
+                            <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-50/50 dark:bg-amber-950/10 text-xs">
+                              <Ban className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                              <span className="truncate font-medium">{item.name}</span>
+                              <span className="text-amber-600 dark:text-amber-400 ml-auto flex-shrink-0">Duplicata</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { resetBatchDialog(); setBatchDialogOpen(false); }}>
+                  {batchResults ? 'Fechar' : 'Cancelar'}
+                </Button>
+                {!batchResults && (
+                  <Button
+                    onClick={handleBatchImport}
+                    disabled={!batchFile || batchImporting}
+                    className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+                  >
+                    {batchImporting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Importando...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Importar
+                      </>
+                    )}
+                  </Button>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold">
               <Plus className="h-4 w-4 mr-2" />
