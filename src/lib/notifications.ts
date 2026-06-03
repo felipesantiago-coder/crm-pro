@@ -10,11 +10,11 @@ import {
 } from './email';
 import {
   sendWhatsApp,
-  whatsappScheduleCreated,
-  whatsappReminderDue,
-  whatsappPartnerAdded,
-  whatsappInteractionAdded,
-  whatsappScheduleUpcoming,
+  sendWhatsAppScheduleCreated,
+  sendWhatsAppReminderDue,
+  sendWhatsAppPartnerAdded,
+  sendWhatsAppInteractionAdded,
+  sendWhatsAppScheduleUpcoming,
 } from './whatsapp';
 
 // ──── Helpers para buscar destinatários ──────────────────────────
@@ -45,15 +45,21 @@ async function getClientTeam(clientId: string): Promise<Recipient[]> {
   // Criador
   const creator = await db.user.findUnique({
     where: { id: client.createdBy },
-    select: { name: true, email: true },
+    select: { name: true, email: true, phone: true },
   });
   if (creator) {
-    recipients.push({ email: creator.email, name: creator.name });
+    recipients.push({ email: creator.email, name: creator.name, phone: creator.phone });
   }
 
   // Parceiros
   for (const p of client.partners) {
-    recipients.push({ email: p.user.email, name: p.user.name });
+    const userWithPhone = await db.user.findUnique({
+      where: { id: p.userId },
+      select: { email: true, name: true, phone: true },
+    });
+    if (userWithPhone) {
+      recipients.push({ email: userWithPhone.email, name: userWithPhone.name, phone: userWithPhone.phone });
+    }
   }
 
   return recipients;
@@ -95,21 +101,15 @@ export async function notifyTeamScheduleCreated(params: {
         clientId: params.clientId,
       });
 
-      // WhatsApp (usa telefone do usuário)
-      const userWithPhone = await db.user.findUnique({
-        where: { email: recipient.email },
-        select: { phone: true },
-      });
-      if (userWithPhone?.phone) {
-        await sendWhatsApp({
-          phone: userWithPhone.phone,
-          message: whatsappScheduleCreated({
-            clientName,
-            scheduledDate: dateStr,
-            scheduledTime: params.scheduledTime,
-            description: params.description,
-            createdBy: params.creatorName,
-          }),
+      // WhatsApp (usa telefone do usuário — Meta Cloud API)
+      if (recipient.phone) {
+        await sendWhatsAppScheduleCreated({
+          phone: recipient.phone,
+          clientName,
+          scheduledDate: dateStr,
+          scheduledTime: params.scheduledTime,
+          description: params.description,
+          createdBy: params.creatorName,
         });
       }
     }
@@ -143,19 +143,13 @@ export async function notifyTeamPartnerAdded(params: {
         clientId: params.clientId,
       });
 
-      // WhatsApp
-      const userWithPhone = await db.user.findUnique({
-        where: { email: recipient.email },
-        select: { phone: true },
-      });
-      if (userWithPhone?.phone) {
-        await sendWhatsApp({
-          phone: userWithPhone.phone,
-          message: whatsappPartnerAdded({
-            clientName,
-            newPartnerName: params.newPartnerName,
-            addedBy: params.addedByName,
-          }),
+      // WhatsApp (Meta Cloud API)
+      if (recipient.phone) {
+        await sendWhatsAppPartnerAdded({
+          phone: recipient.phone,
+          clientName,
+          newPartnerName: params.newPartnerName,
+          addedBy: params.addedByName,
         });
       }
     }
@@ -216,18 +210,12 @@ export async function notifyTeamInteractionAdded(params: {
         clientId: params.clientId,
       });
 
-      // WhatsApp
-      const userWithPhone = await db.user.findUnique({
-        where: { email: recipient.email },
-        select: { phone: true },
-      });
-      if (userWithPhone?.phone) {
-        await sendWhatsApp({
-          phone: userWithPhone.phone,
-          message: whatsappInteractionAdded({
-            clientName,
-            interactionDescription: params.interactionDescription,
-          }),
+      // WhatsApp (Meta Cloud API)
+      if (recipient.phone) {
+        await sendWhatsAppInteractionAdded({
+          phone: recipient.phone,
+          clientName,
+          interactionDescription: params.interactionDescription,
         });
       }
     }
@@ -277,18 +265,12 @@ export async function checkAndNotifyUpcomingSchedules() {
           clientId: schedule.client.id,
         });
 
-        const userWithPhone = await db.user.findUnique({
-          where: { email: recipient.email },
-          select: { phone: true },
-        });
-        if (userWithPhone?.phone) {
-          await sendWhatsApp({
-            phone: userWithPhone.phone,
-            message: whatsappScheduleUpcoming({
-              clientName: schedule.client.name,
-              scheduledDate: dateStr,
-              scheduledTime: schedule.scheduledTime,
-            }),
+        if (recipient.phone) {
+          await sendWhatsAppScheduleUpcoming({
+            phone: recipient.phone,
+            clientName: schedule.client.name,
+            scheduledDate: dateStr,
+            scheduledTime: schedule.scheduledTime,
           });
         }
       }
@@ -339,19 +321,13 @@ export async function checkAndNotifyDueReminders() {
           clientId: reminder.client.id,
         });
 
-        const userWithPhone = await db.user.findUnique({
-          where: { email: recipient.email },
-          select: { phone: true },
-        });
-        if (userWithPhone?.phone) {
-          await sendWhatsApp({
-            phone: userWithPhone.phone,
-            message: whatsappReminderDue({
-              clientName: reminder.client.name,
-              reminderTitle: reminder.title,
-              reminderDescription: reminder.description,
-              dueDate: dateStr,
-            }),
+        if (recipient.phone) {
+          await sendWhatsAppReminderDue({
+            phone: recipient.phone,
+            clientName: reminder.client.name,
+            reminderTitle: reminder.title,
+            reminderDescription: reminder.description,
+            dueDate: dateStr,
           });
         }
       }
