@@ -1,9 +1,20 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
+import { requireAuth } from '@/lib/api-auth';
+
+const EXPORT_LIMIT = 10000;
 
 export async function GET() {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
+    const total = await db.client.count();
+    if (total > EXPORT_LIMIT) {
+      console.warn(`[EXPORT] Total clients (${total}) exceeds limit (${EXPORT_LIMIT}). Exporting first ${EXPORT_LIMIT}.`);
+    }
+
     const clients = await db.client.findMany({
       include: {
         tags: {
@@ -11,6 +22,7 @@ export async function GET() {
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: EXPORT_LIMIT,
     });
 
     const data = clients.map((client) => ({

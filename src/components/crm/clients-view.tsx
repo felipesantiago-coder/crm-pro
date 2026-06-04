@@ -65,11 +65,21 @@ export function ClientsView() {
 
   const limit = 18;
 
+  // Debounce search input
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (searchQuery) params.set('search', searchQuery);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       if (filterRegion) params.set('region', filterRegion);
       if (filterTagId) params.set('tagId', filterTagId);
       if (filterStage) params.set('stage', filterStage);
@@ -87,7 +97,7 @@ export function ClientsView() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, filterRegion, filterTagId, filterStage, page]);
+  }, [debouncedSearch, filterRegion, filterTagId, filterStage, page]);
 
   useEffect(() => {
     fetchClients();
@@ -180,7 +190,6 @@ export function ClientsView() {
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              setPage(1);
             }}
             className="pl-9"
           />

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Plus,
   Bell,
@@ -193,16 +193,17 @@ export function RemindersView() {
     }
   }
 
-  const filteredReminders = reminders.filter((r) => {
-    if (filter === 'pending') return !r.notified;
-    if (filter === 'completed') return r.notified;
-    return true;
-  });
-
-  const pendingCount = reminders.filter((r) => !r.notified).length;
-  const overdueCount = reminders.filter(
-    (r) => !r.notified && isPast(new Date(r.dueDate))
-  ).length;
+  const { filteredReminders, pendingCount, overdueCount } = useMemo(() => {
+    const now = new Date();
+    const filtered = reminders.filter((r) => {
+      if (filter === 'pending') return !r.notified;
+      if (filter === 'completed') return r.notified;
+      return true;
+    });
+    const pending = filtered.filter((r) => !r.notified).length;
+    const overdue = filtered.filter((r) => !r.notified && isPast(new Date(r.dueDate))).length;
+    return { filteredReminders: filtered, pendingCount: pending, overdueCount: overdue };
+  }, [reminders, filter]);
 
   return (
     <div className="space-y-6">

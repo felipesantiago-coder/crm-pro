@@ -1,27 +1,36 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/api-auth';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId') || '';
 
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '50');
+
     const where: Record<string, unknown> = {};
     if (clientId) {
       where.clientId = clientId;
     }
 
-    const reminders = await db.reminder.findMany({
-      where,
-      include: {
-        client: {
-          select: { id: true, name: true },
+    const [reminders, total] = await Promise.all([
+      db.reminder.findMany({
+        where,
+        include: {
+          client: {
+            select: { id: true, name: true },
+          },
         },
-      },
-      orderBy: { dueDate: 'asc' },
-    });
+        orderBy: { dueDate: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      db.reminder.count({ where }),
+    ]);
 
-    return NextResponse.json(reminders);
+    return NextResponse.json({ reminders, total, page, limit });
   } catch (error) {
     console.error('Error fetching reminders:', error);
     return NextResponse.json({ error: 'Failed to fetch reminders' }, { status: 500 });
@@ -30,6 +39,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
     const body = await request.json();
     const { title, description, dueDate, clientId } = body;
 

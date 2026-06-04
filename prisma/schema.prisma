@@ -32,6 +32,10 @@ model Client {
   linkedEnterprise Enterprise? @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
   creator      User          @relation("CreatedClients", fields: [createdBy], references: [id], onDelete: Cascade)
 
+  @@index([createdBy])
+  @@index([stage])
+  @@index([region])
+  @@index([enterpriseId])
   @@map("clients")
 }
 
@@ -43,6 +47,8 @@ model Interaction {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
+  @@index([clientId])
+  @@index([createdAt])
   @@map("interactions")
 }
 
@@ -82,6 +88,9 @@ model Reminder {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
+  @@index([clientId])
+  @@index([dueDate])
+  @@index([notified, dueDate])
   @@map("reminders")
 }
 
@@ -129,6 +138,7 @@ model ClientPartner {
   addedByUser User   @relation("AddedPartners", fields: [addedBy], references: [id])
 
   @@unique([clientId, userId])
+  @@index([userId])
   @@map("client_partners")
 }
 
@@ -156,5 +166,7 @@ model Schedule {
   client      Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   creatorUser User   @relation("CreatedSchedules", fields: [createdBy], references: [id])
 
+  @@index([clientId])
+  @@index([status])
   @@map("schedules")
 }

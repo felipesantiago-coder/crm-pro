@@ -6,6 +6,7 @@ export async function GET() {
     const clients = await db.client.findMany({
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
+      take: 1000,
     });
     return NextResponse.json(clients);
   } catch (error) {

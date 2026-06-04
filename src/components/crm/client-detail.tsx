@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -283,17 +283,26 @@ function DetailContent({
   };
 
   // Group interactions by date
-  const groupedInteractions: { date: string; items: Interaction[] }[] = [];
-  let currentGroup: { date: string; items: Interaction[] } | null = null;
+  const groupedInteractions = useMemo(() => {
+    const groups: { date: string; items: Interaction[] }[] = [];
+    let currentGroup: { date: string; items: Interaction[] } | null = null;
 
-  client.interactions.forEach((interaction) => {
-    const dateKey = formatTimelineDate(interaction.createdAt);
-    if (!currentGroup || currentGroup.date !== dateKey) {
-      currentGroup = { date: dateKey, items: [] };
-      groupedInteractions.push(currentGroup);
-    }
-    currentGroup.items.push(interaction);
-  });
+    client.interactions.forEach((interaction) => {
+      const dateKey = formatTimelineDate(interaction.createdAt);
+      if (!currentGroup || currentGroup.date !== dateKey) {
+        currentGroup = { date: dateKey, items: [] };
+        groups.push(currentGroup);
+      }
+      currentGroup.items.push(interaction);
+    });
+
+    return groups;
+  }, [client.interactions]);
+
+  const pendingSchedulesCount = useMemo(
+    () => schedules.filter((s) => s.status === 'PENDING').length,
+    [schedules]
+  );
 
   // --- Stage Management ---
   async function updateStage(newStage: string) {
@@ -665,7 +674,7 @@ function DetailContent({
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
             <CalendarDays className="h-3.5 w-3.5 text-emerald-500" />
-            Agendamentos ({schedules.filter((s) => s.status === 'PENDING').length} pendente{schedules.filter((s) => s.status === 'PENDING').length !== 1 ? 's' : ''})
+            Agendamentos ({pendingSchedulesCount} pendente{pendingSchedulesCount !== 1 ? 's' : ''})
           </h3>
           <Button
             size="sm"

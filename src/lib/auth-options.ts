@@ -13,10 +13,7 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         try {
-          console.log('[AUTH] Tentativa de login - email:', credentials?.email);
-
           if (!credentials?.email || !credentials?.password) {
-            console.log('[AUTH] ERRO: email ou senha não fornecidos');
             return null;
           }
 
@@ -25,20 +22,14 @@ export const authOptions: NextAuthOptions = {
           });
 
           if (!user) {
-            console.log('[AUTH] ERRO: usuário não encontrado no banco de dados');
             return null;
           }
-
-          console.log('[AUTH] Usuário encontrado:', user.email, 'role:', user.role, 'hash present:', !!user.passwordHash);
 
           const isValid = await verifyPassword(credentials.password, user.passwordHash);
 
           if (!isValid) {
-            console.log('[AUTH] ERRO: senha inválida');
             return null;
           }
-
-          console.log('[AUTH] Login realizado com sucesso:', user.email);
           return {
             id: user.id,
             name: user.name,
@@ -46,8 +37,7 @@ export const authOptions: NextAuthOptions = {
             role: user.role,
             mustChangePassword: user.mustChangePassword,
           };
-        } catch (error) {
-          console.error('[AUTH] ERRO INTERNO no authorize:', error);
+        } catch {
           return null;
         }
       },
@@ -75,7 +65,7 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET || 'crm-pro-secret-change-in-production',
+  secret: process.env.NEXTAUTH_SECRET,
   session: {
     strategy: 'jwt',
   },

@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/api-auth';
 
 export async function GET() {
   try {
@@ -21,6 +22,9 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     const body = await request.json();
     const { key, value } = body;
 
