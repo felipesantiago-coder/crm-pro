@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   keywords: ["CRM", "gestão de clientes", "CRM Pro", "sales", "relationship management"],
   authors: [{ name: "CRM Pro Team" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo.svg",
   },
   openGraph: {
     title: "CRM Pro - Sistema de Gestão de Clientes",
