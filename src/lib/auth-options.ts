@@ -12,32 +12,53 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Senha', type: 'password' },
       },
       async authorize(credentials) {
+        const t0 = Date.now();
         try {
-          console.log('[AUTH] Login attempt for:', credentials?.email);
+          console.log('[AUTH] Login attempt started at', new Date().toISOString());
 
+          // Defensive: ensure credentials exist
           if (!credentials?.email || !credentials?.password) {
-            console.log('[AUTH] Missing credentials');
+            console.log('[AUTH] Missing credentials. Received:', {
+              hasEmail: !!credentials?.email,
+              hasPassword: !!credentials?.password,
+              credKeys: credentials ? Object.keys(credentials) : 'null',
+              credType: typeof credentials,
+            });
             return null;
           }
+
+          const email = credentials.email.trim().toLowerCase();
+          const password = credentials.password;
+
+          console.log('[AUTH] Looking up user:', email, '(elapsed:', Date.now() - t0, 'ms)');
 
           const user = await db.user.findUnique({
-            where: { email: credentials.email },
+            where: { email },
           });
 
+          console.log('[AUTH] DB lookup completed. User found:', !!user, '(elapsed:', Date.now() - t0, 'ms)');
+
           if (!user) {
-            console.log('[AUTH] User not found:', credentials.email);
+            console.log('[AUTH] User not found for:', email);
             return null;
           }
 
-          console.log('[AUTH] User found, verifying password...');
-          const isValid = await verifyPassword(credentials.password, user.passwordHash);
+          if (!user.passwordHash) {
+            console.error('[AUTH] CRITICAL: User found but passwordHash is empty for:', email);
+            return null;
+          }
+
+          console.log('[AUTH] Verifying password... (elapsed:', Date.now() - t0, 'ms)');
+          const isValid = await verifyPassword(password, user.passwordHash);
+
+          console.log('[AUTH] Password valid:', isValid, '(elapsed:', Date.now() - t0, 'ms)');
 
           if (!isValid) {
-            console.log('[AUTH] Invalid password for:', credentials.email);
+            console.log('[AUTH] Invalid password for:', email);
             return null;
           }
 
-          console.log('[AUTH] Login successful:', user.email, 'role:', user.role);
+          console.log('[AUTH] Login successful:', user.email, 'role:', user.role, '(total:', Date.now() - t0, 'ms)');
           return {
             id: user.id,
             name: user.name,
@@ -46,7 +67,7 @@ export const authOptions: NextAuthOptions = {
             mustChangePassword: user.mustChangePassword,
           };
         } catch (error) {
-          console.error('[AUTH] ERROR in authorize:', error);
+          console.error('[AUTH] ERROR in authorize after', Date.now() - t0, 'ms:', error);
           return null;
         }
       },
