@@ -64,18 +64,20 @@ export function DashboardView() {
   useEffect(() => {
     async function loadDashboard() {
       try {
-        const [clientsRes, remindersRes, needsUpdateRes] = await Promise.all([
+        const [clientsRes, remindersRes, needsUpdateRes, statsRes] = await Promise.all([
           fetch('/api/clients?page=1&limit=5'),
-          fetch('/api/reminders'),
+          fetch('/api/reminders?limit=50'),
           fetch('/api/clients?needsUpdate=true&limit=10'),
+          fetch('/api/clients/stats'),
         ]);
 
         const clientsData = await clientsRes.json();
         const remindersData = await remindersRes.json();
         const needsUpdateData = await needsUpdateRes.json();
+        const statsData = await statsRes.json();
 
-        const total = clientsData.total || 0;
-        setTotalClients(total);
+        setTotalClients(statsData.total || clientsData.total || 0);
+        setClientsThisMonth(statsData.thisMonth || 0);
 
         setRecentClients(
           (clientsData.clients || []).slice(0, 5).map((c: ClientSummary) => ({
@@ -91,7 +93,7 @@ export function DashboardView() {
 
         setNeedsUpdateClients(needsUpdateData.clients || []);
 
-        const allReminders: ReminderSummary[] = remindersData || [];
+        const allReminders: ReminderSummary[] = remindersData.reminders || remindersData || [];
         setTotalReminders(allReminders.length);
         setPendingReminders(allReminders.filter((r) => !r.notified).length);
 
@@ -101,13 +103,6 @@ export function DashboardView() {
           .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
           .slice(0, 5);
         setUpcomingReminders(upcoming);
-
-        // Calculate clients this month
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const monthClients = (clientsData.clients || []).filter(
-          (c: ClientSummary) => new Date(c.createdAt) >= startOfMonth
-        ).length;
-        setClientsThisMonth(monthClients);
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {

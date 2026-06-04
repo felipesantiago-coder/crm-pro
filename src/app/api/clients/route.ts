@@ -52,7 +52,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (stage) {
-      baseWhere.stage = stage;
+      const stages = stage.split(',').map((s) => s.trim()).filter(Boolean);
+      if (stages.length === 1) {
+        baseWhere.stage = stages[0];
+      } else if (stages.length > 1) {
+        baseWhere.stage = { in: stages };
+      }
     }
 
     const excludeClosed = searchParams.get('excludeClosed') === 'true';
@@ -92,10 +97,28 @@ export async function GET(request: NextRequest) {
     }
 
     if (needsUpdate) {
-      const allWhere: Record<string, unknown> = { ...where };
-      // Se AND existe, aplica no findMany
-      const clientsNeedingUpdate = await db.client.findMany({
-        where: allWhere,
+      const now = new Date();
+      const clientsNeedingUpdate = await db.$queryRaw`
+        SELECT c.* FROM "clients" c
+        WHERE 
+          CASE 
+            WHEN c."lastInteractionAt" IS NOT NULL 
+            THEN (c."lastInteractionAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
+            ELSE (c."createdAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
+          END
+        ORDER BY c."createdAt" DESC
+      `;
+
+      const paginatedIds = (clientsNeedingUpdate as Array<{id: string}>)
+        .slice((page - 1) * limit, page * limit)
+        .map(c => c.id);
+
+      if (paginatedIds.length === 0) {
+        return NextResponse.json({ clients: [], total: 0, page, limit });
+      }
+
+      const clients = await db.client.findMany({
+        where: { id: { in: paginatedIds } },
         include: {
           tags: { include: { tag: true } },
           reminders: { orderBy: { dueDate: 'asc' }, take: 3 },
@@ -105,16 +128,7 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'desc' },
       });
 
-      const filtered = clientsNeedingUpdate.filter((client) => {
-        const referenceDate = client.lastInteractionAt ? new Date(client.lastInteractionAt) : new Date(client.createdAt);
-        const dueDate = new Date(referenceDate);
-        dueDate.setDate(dueDate.getDate() + (client.updatePeriod || 30));
-        return dueDate <= new Date();
-      });
-
-      const paginatedFiltered = filtered.slice((page - 1) * limit, page * limit);
-
-      return NextResponse.json({ clients: paginatedFiltered, total: filtered.length, page, limit });
+      return NextResponse.json({ clients, total: (clientsNeedingUpdate as Array<unknown>).length, page, limit });
     }
 
     const [clients, total] = await Promise.all([
@@ -136,10 +150,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ clients, total, page, limit });
   } catch (error) {
     console.error('Error fetching clients:', error);
-    return NextResponse.json({ 
-      error: 'Failed to fetch clients',
-      details: String(error),
-    }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch clients' }, { status: 500 });
   }
 }
 

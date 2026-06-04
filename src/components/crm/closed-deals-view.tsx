@@ -52,59 +52,53 @@ export function ClosedDealsView() {
 
   const limit = 18;
 
+  // Debounce search input
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch closed won
-      const wonParams = new URLSearchParams();
-      wonParams.set('stage', 'FECHADO_GANHO');
-      if (searchQuery) wonParams.set('search', searchQuery);
-      wonParams.set('page', '1');
-      wonParams.set('limit', '9999');
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      params.set('page', page.toString());
+      params.set('limit', limit.toString());
 
-      // Fetch closed lost
-      const lostParams = new URLSearchParams();
-      lostParams.set('stage', 'FECHADO_PERDIDO');
-      if (searchQuery) lostParams.set('search', searchQuery);
-      lostParams.set('page', '1');
-      lostParams.set('limit', '9999');
+      // Set stage filter
+      const stages = stageFilter === 'FECHADO_GANHO'
+        ? 'FECHADO_GANHO'
+        : stageFilter === 'FECHADO_PERDIDO'
+          ? 'FECHADO_PERDIDO'
+          : 'FECHADO_GANHO,FECHADO_PERDIDO';
 
-      const [wonRes, lostRes] = await Promise.all([
-        fetch(`/api/clients?${wonParams}`),
-        fetch(`/api/clients?${lostParams}`),
+      params.set('stage', stages);
+
+      const res = await fetch(`/api/clients?${params}`);
+      const data = await res.json();
+      setClients(data.clients || []);
+      setTotal(data.total || 0);
+
+      // Fetch counts for won/lost badges (separate lightweight queries)
+      const [wonCountRes, lostCountRes] = await Promise.all([
+        fetch('/api/clients?stage=FECHADO_GANHO&page=1&limit=1'),
+        fetch('/api/clients?stage=FECHADO_PERDIDO&page=1&limit=1'),
       ]);
-
-      const wonData = await wonRes.json();
-      const lostData = await lostRes.json();
-
-      const wonClients = (wonData.clients || []) as Client[];
-      const lostClients = (lostData.clients || []) as Client[];
-
-      const allClients = [...wonClients, ...lostClients];
-
-      setWonCount(wonClients.length);
-      setLostCount(lostClients.length);
-
-      // Apply additional filter
-      let filtered = allClients;
-      if (stageFilter === 'FECHADO_GANHO') {
-        filtered = wonClients;
-      } else if (stageFilter === 'FECHADO_PERDIDO') {
-        filtered = lostClients;
-      }
-
-      // Sort by updatedAt desc (most recently closed first)
-      filtered.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-
-      const paginated = filtered.slice((page - 1) * limit, page * limit);
-      setClients(paginated);
-      setTotal(filtered.length);
+      const wonCountData = await wonCountRes.json();
+      const lostCountData = await lostCountRes.json();
+      setWonCount(wonCountData.total || 0);
+      setLostCount(lostCountData.total || 0);
     } catch (err) {
       console.error('Error fetching closed deals:', err);
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, page, stageFilter]);
+  }, [debouncedSearch, page, stageFilter]);
 
   useEffect(() => {
     fetchClients();
@@ -162,7 +156,6 @@ export function ClosedDealsView() {
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              setPage(1);
             }}
             className="pl-9"
           />

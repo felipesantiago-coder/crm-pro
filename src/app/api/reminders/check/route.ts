@@ -1,8 +1,12 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/api-auth';
 
 export async function GET() {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
     const now = new Date();
 
     const dueReminders = await db.reminder.findMany({

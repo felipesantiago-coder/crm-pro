@@ -28,11 +28,11 @@ interface Recipient {
 async function getClientTeam(clientId: string): Promise<Recipient[]> {
   const client = await db.client.findUnique({
     where: { id: clientId },
-    select: {
-      createdBy: true,
+    include: {
+      creator: { select: { id: true, name: true, email: true, phone: true } },
       partners: {
         include: {
-          user: { select: { id: true, name: true, email: true } },
+          user: { select: { id: true, name: true, email: true, phone: true } },
         },
       },
     },
@@ -43,23 +43,13 @@ async function getClientTeam(clientId: string): Promise<Recipient[]> {
   const recipients: Recipient[] = [];
 
   // Criador
-  const creator = await db.user.findUnique({
-    where: { id: client.createdBy },
-    select: { name: true, email: true, phone: true },
-  });
-  if (creator) {
-    recipients.push({ email: creator.email, name: creator.name, phone: creator.phone });
+  if (client.creator) {
+    recipients.push({ email: client.creator.email, name: client.creator.name, phone: client.creator.phone });
   }
 
   // Parceiros
   for (const p of client.partners) {
-    const userWithPhone = await db.user.findUnique({
-      where: { id: p.userId },
-      select: { email: true, name: true, phone: true },
-    });
-    if (userWithPhone) {
-      recipients.push({ email: userWithPhone.email, name: userWithPhone.name, phone: userWithPhone.phone });
-    }
+    recipients.push({ email: p.user.email, name: p.user.name, phone: p.user.phone });
   }
 
   return recipients;
@@ -88,8 +78,7 @@ export async function notifyTeamScheduleCreated(params: {
     const client = await db.client.findUnique({ where: { id: params.clientId }, select: { name: true } });
     const clientName = client?.name || 'Cliente';
 
-    for (const recipient of team) {
-      // E-mail
+    await Promise.allSettled(team.map(async (recipient) => {
       await notifyScheduleCreated({
         recipientEmail: recipient.email,
         recipientName: recipient.name,
@@ -101,7 +90,6 @@ export async function notifyTeamScheduleCreated(params: {
         clientId: params.clientId,
       });
 
-      // WhatsApp (usa telefone do usuário — Meta Cloud API)
       if (recipient.phone) {
         await sendWhatsAppScheduleCreated({
           phone: recipient.phone,
@@ -112,7 +100,7 @@ export async function notifyTeamScheduleCreated(params: {
           createdBy: params.creatorName,
         });
       }
-    }
+    }));
 
     console.log(`[NOTIFY] Agendamento notificado para ${team.length} membros do cliente ${clientName}`);
   } catch (error) {
@@ -132,8 +120,7 @@ export async function notifyTeamPartnerAdded(params: {
     const clientName = client?.name || 'Cliente';
     const team = await getCreatorAndPartners(params.clientId);
 
-    for (const recipient of team) {
-      // E-mail
+    await Promise.allSettled(team.map(async (recipient) => {
       await notifyPartnerAdded({
         recipientEmail: recipient.email,
         recipientName: recipient.name,
@@ -143,7 +130,6 @@ export async function notifyTeamPartnerAdded(params: {
         clientId: params.clientId,
       });
 
-      // WhatsApp (Meta Cloud API)
       if (recipient.phone) {
         await sendWhatsAppPartnerAdded({
           phone: recipient.phone,
@@ -152,7 +138,7 @@ export async function notifyTeamPartnerAdded(params: {
           addedBy: params.addedByName,
         });
       }
-    }
+    }));
 
     // Também notificar o novo parceiro (ele mesmo)
     const newPartner = await db.clientPartner.findFirst({
@@ -200,8 +186,7 @@ export async function notifyTeamInteractionAdded(params: {
 
     if (team.length === 0) return;
 
-    for (const recipient of team) {
-      // E-mail
+    await Promise.allSettled(team.map(async (recipient) => {
       await notifyInteractionAdded({
         recipientEmail: recipient.email,
         recipientName: recipient.name,
@@ -210,7 +195,6 @@ export async function notifyTeamInteractionAdded(params: {
         clientId: params.clientId,
       });
 
-      // WhatsApp (Meta Cloud API)
       if (recipient.phone) {
         await sendWhatsAppInteractionAdded({
           phone: recipient.phone,
@@ -218,7 +202,7 @@ export async function notifyTeamInteractionAdded(params: {
           interactionDescription: params.interactionDescription,
         });
       }
-    }
+    }));
 
     console.log(`[NOTIFY] Interação notificada para ${team.length} parceiros do cliente ${clientName}`);
   } catch (error) {
@@ -254,7 +238,7 @@ export async function checkAndNotifyUpcomingSchedules() {
       const dateStr = format(new Date(schedule.scheduledDate), "dd 'de' MMMM", { locale: ptBR });
       const team = await getCreatorAndPartners(schedule.client.id);
 
-      for (const recipient of team) {
+      await Promise.allSettled(team.map(async (recipient) => {
         await notifyScheduleUpcoming({
           recipientEmail: recipient.email,
           recipientName: recipient.name,
@@ -273,7 +257,7 @@ export async function checkAndNotifyUpcomingSchedules() {
             scheduledTime: schedule.scheduledTime,
           });
         }
-      }
+      }));
 
       results.push({ scheduleId: schedule.id, clientName: schedule.client.name, notified: team.length });
     }
@@ -310,7 +294,7 @@ export async function checkAndNotifyDueReminders() {
       const dateStr = format(new Date(reminder.dueDate), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
       const team = await getCreatorAndPartners(reminder.client.id);
 
-      for (const recipient of team) {
+      await Promise.allSettled(team.map(async (recipient) => {
         await notifyReminderDue({
           recipientEmail: recipient.email,
           recipientName: recipient.name,
@@ -330,7 +314,7 @@ export async function checkAndNotifyDueReminders() {
             dueDate: dateStr,
           });
         }
-      }
+      }));
 
       // Marcar como notificado
       await db.reminder.update({
