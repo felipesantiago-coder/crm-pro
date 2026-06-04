@@ -8,7 +8,7 @@ export async function requireAuth(request: NextRequest): Promise<{ authorized: b
   try {
     const token = await getToken({
       req: request,
-      secret: process.env.NEXTAUTH_SECRET || 'crm-pro-secret-change-in-production',
+      secret: process.env.NEXTAUTH_SECRET || 'crm-pro-fallback-secret-v1',
     });
 
     if (!token) {
