@@ -31,6 +31,12 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useCRMStore, type CRMView } from '@/store/crm-store';
 import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from '@/components/ui/tooltip';
 
 function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   const { currentView, setCurrentView, notificationReminders } = useCRMStore();
@@ -52,53 +58,62 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
   );
 
   return (
-    <nav className="flex flex-col gap-1 mt-2">
-      {visibleItems.map((item) => {
-        const isActive = currentView === item.view;
-        const reminderCount =
-          item.view === 'reminders'
-            ? notificationReminders.length
-            : 0;
+    <TooltipProvider delayDuration={0}>
+      <nav className="flex flex-col gap-1 mt-2 relative">
+        {visibleItems.map((item) => {
+          const isActive = currentView === item.view;
+          const reminderCount =
+            item.view === 'reminders'
+              ? notificationReminders.length
+              : 0;
 
-        return (
-          <button
-            key={item.view}
-            onClick={() => {
-              setCurrentView(item.view);
-              onNavigate?.();
-            }}
-            className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
-              isActive
-                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-            )}
-          >
-            <span
+          const button = (
+            <button
+              key={item.view}
+              onClick={() => {
+                setCurrentView(item.view);
+                onNavigate?.();
+              }}
               className={cn(
-                'flex-shrink-0',
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 relative',
+                collapsed && 'justify-center',
                 isActive
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-muted-foreground'
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               )}
             >
-              {item.icon}
-            </span>
-            {!collapsed && (
-              <span className="flex-1 text-left">{item.label}</span>
-            )}
-            {!collapsed && reminderCount > 0 && (
-              <Badge
-                variant="destructive"
-                className="h-5 min-w-[20px] flex items-center justify-center px-1.5 text-[10px] font-bold"
-              >
-                {reminderCount}
-              </Badge>
-            )}
-          </button>
-        );
-      })}
-    </nav>
+              <span className={cn('flex-shrink-0', isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
+                {item.icon}
+              </span>
+              {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
+              {!collapsed && reminderCount > 0 && (
+                <Badge variant="destructive" className="h-5 min-w-[20px] flex items-center justify-center px-1.5 text-[10px] font-bold">
+                  {reminderCount}
+                </Badge>
+              )}
+              {collapsed && reminderCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold px-1">
+                  {reminderCount}
+                </span>
+              )}
+            </button>
+          );
+
+          if (collapsed) {
+            return (
+              <Tooltip key={item.view} delayDuration={0}>
+                <TooltipTrigger asChild>{button}</TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  {item.label}
+                </TooltipContent>
+              </Tooltip>
+            );
+          }
+
+          return button;
+        })}
+      </nav>
+    </TooltipProvider>
   );
 }
 
@@ -221,21 +236,21 @@ export function CRMLayout({ children }: { children: React.ReactNode }) {
 
         <div className="px-3 py-3 border-t space-y-1">
           <UserMenu collapsed={sidebarCollapsed} />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleSidebar}
-            className="w-full justify-center"
-          >
-            {sidebarCollapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <>
-                <ChevronLeft className="h-4 w-4 mr-2" />
-                <span>Recolher</span>
-              </>
-            )}
-          </Button>
+          {sidebarCollapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={toggleSidebar} className="w-full justify-center">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8}>Expandir painel</TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={toggleSidebar} className="w-full justify-center">
+              <ChevronLeft className="h-4 w-4 mr-2" />
+              <span>Recolher</span>
+            </Button>
+          )}
         </div>
       </aside>
 
@@ -287,7 +302,7 @@ export function CRMLayout({ children }: { children: React.ReactNode }) {
             sidebarCollapsed ? 'lg:ml-[68px]' : 'lg:ml-[260px]'
           )}
         >
-          <div className="p-4 md:p-6 lg:p-8">{children}</div>
+          <div className="p-4 sm:p-5 lg:p-6">{children}</div>
         </main>
       </div>
     </div>

@@ -745,8 +745,9 @@ export function EnterpriseManagement() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 w-7 p-0"
+                        className="h-8 w-8 p-2"
                         onClick={() => openEditDialog(enterprise)}
+                        title="Editar"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
@@ -758,8 +759,9 @@ export function EnterpriseManagement() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                            className="h-8 w-8 p-2 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
                             onClick={() => setDeletingEnterprise(enterprise)}
+                            title="Excluir"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>

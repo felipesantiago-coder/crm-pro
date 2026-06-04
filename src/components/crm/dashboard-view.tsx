@@ -235,7 +235,7 @@ export function DashboardView() {
               </div>
               <div className="flex items-center mt-3 text-xs text-muted-foreground">
                 <TrendingUp className="h-3 w-3 mr-1 text-emerald-500" />
-                <span>Atualizado agora</span>
+                <span>Atualizado às {format(new Date(), 'HH:mm')}</span>
               </div>
             </CardContent>
           </Card>
