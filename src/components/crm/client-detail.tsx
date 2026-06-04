@@ -524,7 +524,7 @@ function DetailContent({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Header with gradient */}
       <div className="bg-gradient-to-br from-emerald-500 to-teal-600 -mx-6 -mt-2 first:-mt-2 px-5 pt-4 pb-5 rounded-b-2xl">
         <div className="flex items-start justify-between">
@@ -615,7 +615,7 @@ function DetailContent({
       <div className="space-y-3">
         <Separator />
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
             <Target className="h-3.5 w-3.5 text-emerald-500" />
             Etapa de Atendimento
           </h3>
@@ -665,6 +665,7 @@ function DetailContent({
               );
             })}
           </div>
+          <p className="text-[10px] text-muted-foreground mt-1">Clique em uma etapa para alterar o status do cliente</p>
         </div>
       </div>
 
@@ -672,7 +673,7 @@ function DetailContent({
       <div className="space-y-3">
         <Separator />
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
             <CalendarDays className="h-3.5 w-3.5 text-emerald-500" />
             Agendamentos ({pendingSchedulesCount} pendente{pendingSchedulesCount !== 1 ? 's' : ''})
           </h3>
@@ -694,7 +695,7 @@ function DetailContent({
 
         {schedules.length === 0 ? (
           <div className="text-center py-8 bg-muted/40 rounded-xl border border-dashed">
-            <CalendarDays className="h-7 w-7 text-muted-foreground/30 mx-auto mb-1.5" />
+            <CalendarDays className="h-7 w-7 text-muted-foreground/40 mx-auto mb-1.5" />
             <p className="text-xs text-muted-foreground">Nenhum agendamento</p>
             <p className="text-[11px] text-muted-foreground/70 mt-0.5">
               Clique em "Agendar Visita" para criar um novo agendamento
@@ -760,7 +761,7 @@ function DetailContent({
                               ? 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
                               : isPast
                                 ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
-                                : ''
+                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                         }`}>
                           {isCompleted ? 'Realizada' : isCancelled ? 'Cancelada' : isPast ? 'Atrasada' : 'Pendente'}
                         </Badge>
@@ -776,7 +777,7 @@ function DetailContent({
                         <button
                           onClick={() => confirmSchedule(schedule.id)}
                           disabled={updatingScheduleStatus === schedule.id}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-emerald-100 hover:text-emerald-600 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400"
+                          className="p-2 h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-emerald-600 hover:bg-emerald-100 dark:hover:text-emerald-400 dark:hover:bg-emerald-900/30 transition-colors"
                           title="Confirmar visita realizada"
                         >
                           {updatingScheduleStatus === schedule.id ? (
@@ -790,7 +791,7 @@ function DetailContent({
                         <button
                           onClick={() => cancelSchedule(schedule.id)}
                           disabled={updatingScheduleStatus === schedule.id}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-amber-100 hover:text-amber-600 dark:hover:bg-amber-900/30 dark:hover:text-amber-400"
+                          className="p-2 h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-amber-600 hover:bg-amber-100 dark:hover:text-amber-400 dark:hover:bg-amber-900/30 transition-colors"
                           title="Cancelar agendamento"
                         >
                           <CalendarX className="h-3.5 w-3.5" />
@@ -799,7 +800,7 @@ function DetailContent({
                       <button
                         onClick={() => deleteSchedule(schedule.id)}
                         disabled={deletingSchedule === schedule.id}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-destructive/10 hover:text-destructive"
+                        className="p-2 h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
                         title="Remover agendamento"
                       >
                         {deletingSchedule === schedule.id ? (
@@ -941,7 +942,7 @@ function DetailContent({
           {/* Partners */}
           {partners.length === 0 ? (
             <div className="text-center py-6 bg-muted/40 rounded-xl border border-dashed">
-              <Users className="h-7 w-7 text-muted-foreground/30 mx-auto mb-1.5" />
+              <Users className="h-7 w-7 text-muted-foreground/40 mx-auto mb-1.5" />
               <p className="text-xs text-muted-foreground">Nenhum parceiro vinculado</p>
               <p className="text-[11px] text-muted-foreground/70 mt-0.5">
                 Adicione parceiros para compartilhar o acompanhamento deste cliente
@@ -966,7 +967,7 @@ function DetailContent({
                   <button
                     onClick={() => removePartner(partner.userId)}
                     disabled={removingPartner === partner.userId}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-destructive/10 hover:text-destructive"
+                    className="p-2 h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
                     title="Remover parceiro"
                   >
                     {removingPartner === partner.userId ? (
@@ -1037,7 +1038,7 @@ function DetailContent({
 
         {groupedInteractions.length === 0 ? (
           <div className="text-center py-10 bg-muted/40 rounded-xl border border-dashed">
-            <History className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+            <History className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">Nenhuma interação registrada</p>
             <p className="text-xs text-muted-foreground/70 mt-1">
               Use o campo acima para registrar o primeiro acompanhamento
@@ -1075,7 +1076,7 @@ function DetailContent({
                             </div>
                             <button
                               onClick={() => onDeleteInteraction(interaction.id)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-destructive/10 hover:text-destructive"
+                              className="p-2 h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
                               title="Excluir interação"
                             >
                               <X className="h-3.5 w-3.5" />
@@ -1195,7 +1196,7 @@ function DetailContent({
         </div>
         {client.reminders.length === 0 ? (
           <div className="text-center py-8 bg-muted/40 rounded-xl border border-dashed">
-            <Bell className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+            <Bell className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">Nenhum lembrete cadastrado</p>
           </div>
         ) : (

@@ -119,25 +119,25 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
 
         <div className="space-y-1.5">
           {client.phone && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 text-[13px] text-muted-foreground font-medium">
               <Phone className="h-3 w-3 flex-shrink-0" />
               <span className="truncate">{client.phone}</span>
             </div>
           )}
           {client.email && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 text-[13px] text-muted-foreground font-medium">
               <Mail className="h-3 w-3 flex-shrink-0" />
               <span className="truncate">{client.email}</span>
             </div>
           )}
           {client.region && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 text-[13px] text-muted-foreground font-medium">
               <MapPin className="h-3 w-3 flex-shrink-0" />
               <span className="truncate">{client.region}</span>
             </div>
           )}
           {(client.enterprise || client.linkedEnterprise) && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 text-[13px] text-muted-foreground font-medium">
               {client.linkedEnterprise?.imageUrl ? (
                 <div className="h-5 w-5 rounded overflow-hidden flex-shrink-0">
                   <img

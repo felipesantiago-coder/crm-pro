@@ -200,12 +200,13 @@ export function TagsView() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex gap-1">
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => openEditForm(tag)}
+                      title="Editar"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
@@ -214,6 +215,7 @@ export function TagsView() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => openDeleteDialog(tag)}
+                      title="Excluir"
                     >
                       <Trash2 className="h-3.5 w-3.5 text-destructive" />
                     </Button>
