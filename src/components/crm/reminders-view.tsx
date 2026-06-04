@@ -87,10 +87,14 @@ export function RemindersView() {
         fetch('/api/reminders'),
         fetch('/api/clients/client-names'),
       ]);
-      const remindersData = await remindersRes.json();
+      const remindersJson = await remindersRes.json();
       const clientsData = await clientsRes.json();
 
-      setReminders(remindersData || []);
+      // API returns { reminders: [...], total, page, limit }
+      const remindersArray = Array.isArray(remindersJson)
+        ? remindersJson
+        : remindersJson?.reminders || [];
+      setReminders(remindersArray);
       setClients(
         (clientsData || []).map((c: ClientOption) => ({
           id: c.id,
