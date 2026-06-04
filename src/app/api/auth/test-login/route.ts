@@ -103,7 +103,10 @@ export async function POST(request: NextRequest) {
     // Ação de reset de senha
     if (action === 'reset-password' && email) {
       const resetStart = Date.now();
-      const user = await db.user.findUnique({ where: { email } });
+      const user = await db.user.findUnique({
+        where: { email },
+        select: { id: true, name: true, email: true },
+      });
       timing['db_lookup'] = Date.now() - resetStart;
 
       if (!user) {
@@ -154,6 +157,14 @@ export async function POST(request: NextRequest) {
     const trimmedEmail = email.trim().toLowerCase();
     const user = await db.user.findUnique({
       where: { email: trimmedEmail },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        mustChangePassword: true,
+        passwordHash: true,
+      },
     });
     timing['db_lookup'] = Date.now() - dbStart;
 

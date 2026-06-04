@@ -6,6 +6,7 @@ export async function POST(request: NextRequest) {
   try {
     const existingAdmin = await db.user.findUnique({
       where: { email: 'felipesantiagoquadra@gmail.com' },
+      select: { id: true, name: true, email: true, role: true },
     });
 
     if (existingAdmin) {

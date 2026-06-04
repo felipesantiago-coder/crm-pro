@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
 
     const existingUser = await db.user.findUnique({
       where: { email },
+      select: { id: true },
     });
 
     if (existingUser) {

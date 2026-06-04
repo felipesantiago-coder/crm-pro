@@ -60,6 +60,7 @@ export async function DELETE(
 
     const user = await db.user.findUnique({
       where: { id },
+      select: { id: true },
     });
 
     if (!user) {
