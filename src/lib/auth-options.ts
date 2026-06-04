@@ -13,7 +13,10 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         try {
+          console.log('[AUTH] Login attempt for:', credentials?.email);
+
           if (!credentials?.email || !credentials?.password) {
+            console.log('[AUTH] Missing credentials');
             return null;
           }
 
@@ -22,14 +25,19 @@ export const authOptions: NextAuthOptions = {
           });
 
           if (!user) {
+            console.log('[AUTH] User not found:', credentials.email);
             return null;
           }
 
+          console.log('[AUTH] User found, verifying password...');
           const isValid = await verifyPassword(credentials.password, user.passwordHash);
 
           if (!isValid) {
+            console.log('[AUTH] Invalid password for:', credentials.email);
             return null;
           }
+
+          console.log('[AUTH] Login successful:', user.email, 'role:', user.role);
           return {
             id: user.id,
             name: user.name,
@@ -37,7 +45,8 @@ export const authOptions: NextAuthOptions = {
             role: user.role,
             mustChangePassword: user.mustChangePassword,
           };
-        } catch {
+        } catch (error) {
+          console.error('[AUTH] ERROR in authorize:', error);
           return null;
         }
       },
