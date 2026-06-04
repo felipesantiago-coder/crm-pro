@@ -65,7 +65,7 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET || (process.env.NODE_ENV === 'development' ? 'crm-pro-dev-secret' : undefined),
+  secret: process.env.NEXTAUTH_SECRET || 'crm-pro-fallback-secret-v1',
   session: {
     strategy: 'jwt',
   },
