@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Users,
   UserPlus,
@@ -8,17 +8,21 @@ import {
   BellRing,
   TrendingUp,
   Calendar,
+  CalendarDays,
   AlertTriangle,
   Clock,
   RefreshCw,
   MessageCircle,
   PhoneCall,
+  CheckCircle2,
+  XCircle,
+  MapPin,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
-import { format, differenceInDays } from 'date-fns';
+import { format, differenceInDays, isToday, isTomorrow, isPast, isThisWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useCRMStore } from '@/store/crm-store';
 import { toast } from 'sonner';
@@ -50,6 +54,79 @@ interface NeedsUpdateClient {
   createdAt: string;
 }
 
+interface ScheduleItem {
+  id: string;
+  scheduledDate: string;
+  scheduledTime: string;
+  description: string | null;
+  status: string;
+  completedAt: string | null;
+  clientId: string;
+  createdBy: string;
+  createdAt: string;
+  client: {
+    id: string;
+    name: string;
+    phone: string | null;
+  };
+  creatorUser: {
+    id: string;
+    name: string;
+  };
+}
+
+function getScheduleStatusConfig(status: string, scheduledDate: string) {
+  const now = new Date();
+  const date = new Date(scheduledDate);
+  const isOverdue = isPast(date) && status === 'PENDING';
+
+  switch (status) {
+    case 'COMPLETED':
+      return {
+        label: 'Concluído',
+        icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+        bgClass: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+        borderClass: 'border-emerald-100 dark:border-emerald-800/30',
+        dotClass: 'bg-emerald-500',
+        rowBg: 'bg-emerald-50/30 dark:bg-emerald-950/5',
+      };
+    case 'CANCELLED':
+      return {
+        label: 'Cancelado',
+        icon: <XCircle className="h-3.5 w-3.5" />,
+        bgClass: 'bg-gray-100 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400',
+        borderClass: 'border-gray-100 dark:border-gray-800/30',
+        dotClass: 'bg-gray-400',
+        rowBg: 'bg-gray-50/30 dark:bg-gray-950/5',
+      };
+    default: // PENDING
+      if (isOverdue) {
+        return {
+          label: 'Atrasado',
+          icon: <AlertTriangle className="h-3.5 w-3.5" />,
+          bgClass: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400',
+          borderClass: 'border-rose-100 dark:border-rose-800/30',
+          dotClass: 'bg-rose-500',
+          rowBg: 'bg-rose-50/50 dark:bg-rose-950/10',
+        };
+      }
+      return {
+        label: isToday(date) ? 'Hoje' : isTomorrow(date) ? 'Amanhã' : 'Agendado',
+        icon: <CalendarDays className="h-3.5 w-3.5" />,
+        bgClass: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
+        borderClass: 'border-blue-100 dark:border-blue-800/30',
+        dotClass: 'bg-blue-500',
+        rowBg: 'bg-blue-50/30 dark:bg-blue-950/5',
+      };
+  }
+}
+
+function getRelativeDateLabel(date: Date): string {
+  if (isToday(date)) return 'Hoje';
+  if (isTomorrow(date)) return 'Amanhã';
+  return format(date, "EEE, dd 'de' MMM", { locale: ptBR });
+}
+
 export function DashboardView() {
   const [totalClients, setTotalClients] = useState(0);
   const [clientsThisMonth, setClientsThisMonth] = useState(0);
@@ -58,23 +135,26 @@ export function DashboardView() {
   const [recentClients, setRecentClients] = useState<ClientSummary[]>([]);
   const [upcomingReminders, setUpcomingReminders] = useState<ReminderSummary[]>([]);
   const [needsUpdateClients, setNeedsUpdateClients] = useState<NeedsUpdateClient[]>([]);
+  const [allSchedules, setAllSchedules] = useState<ScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const { setCurrentView } = useCRMStore();
+  const { setCurrentView, setSelectedClientId } = useCRMStore();
 
   useEffect(() => {
     async function loadDashboard() {
       try {
-        const [clientsRes, remindersRes, needsUpdateRes, statsRes] = await Promise.all([
+        const [clientsRes, remindersRes, needsUpdateRes, statsRes, schedulesRes] = await Promise.all([
           fetch('/api/clients?page=1&limit=5'),
           fetch('/api/reminders?limit=50'),
           fetch('/api/clients?needsUpdate=true&limit=10'),
           fetch('/api/clients/stats'),
+          fetch('/api/schedules?limit=30'),
         ]);
 
         const clientsData = await clientsRes.json();
         const remindersData = await remindersRes.json();
         const needsUpdateData = await needsUpdateRes.json();
         const statsData = await statsRes.json();
+        const schedulesData = await schedulesRes.json();
 
         setTotalClients(statsData.total || clientsData.total || 0);
         setClientsThisMonth(statsData.thisMonth || 0);
@@ -107,6 +187,9 @@ export function DashboardView() {
           .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
           .slice(0, 5);
         setUpcomingReminders(upcoming);
+
+        const schedules = Array.isArray(schedulesData.schedules) ? schedulesData.schedules : [];
+        setAllSchedules(schedules);
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {
@@ -115,6 +198,37 @@ export function DashboardView() {
     }
     loadDashboard();
   }, []);
+
+  // Classify schedules
+  const { pastSchedules, futureSchedules, todaySchedules } = useMemo(() => {
+    const now = new Date();
+    const today = todaySchedules;
+    const past: ScheduleItem[] = [];
+    const future: ScheduleItem[] = [];
+    const todayList: ScheduleItem[] = [];
+
+    for (const s of allSchedules) {
+      const date = new Date(s.scheduledDate);
+      if (isToday(date)) {
+        todayList.push(s);
+      } else if (isPast(date)) {
+        past.push(s);
+      } else {
+        future.push(s);
+      }
+    }
+
+    // Sort: today by time, past newest first, future soonest first
+    todayList.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+    past.sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
+    future.sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
+
+    return { pastSchedules: past.slice(0, 5), futureSchedules: future.slice(0, 10), todaySchedules: todayList };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allSchedules]);
+
+  const pendingSchedulesCount = allSchedules.filter((s) => s.status === 'PENDING' && !isPast(new Date(s.scheduledDate))).length;
+  const overdueSchedulesCount = allSchedules.filter((s) => s.status === 'PENDING' && isPast(new Date(s.scheduledDate))).length;
 
   async function handleRecordInteraction(clientId: string) {
     try {
@@ -126,6 +240,11 @@ export function DashboardView() {
     } catch {
       toast.error('Erro ao registrar interação');
     }
+  }
+
+  function handleNavigateToClient(clientId: string) {
+    setSelectedClientId(clientId);
+    setCurrentView('clientDetail');
   }
 
   function getInitials(name: string) {
@@ -160,6 +279,88 @@ export function DashboardView() {
     return Math.abs(differenceInDays(new Date(), due));
   }
 
+  function renderScheduleRow(schedule: ScheduleItem) {
+    const date = new Date(schedule.scheduledDate);
+    const config = getScheduleStatusConfig(schedule.status, schedule.scheduledDate);
+    const relativeDate = isToday(date) || isTomorrow(date)
+      ? getRelativeDateLabel(date)
+      : format(date, "dd/MM/yyyy");
+
+    return (
+      <div
+        key={schedule.id}
+        className={`flex items-center gap-3 p-3 rounded-lg border ${config.borderClass} ${config.rowBg} hover:opacity-80 transition-all cursor-pointer`}
+        onClick={() => handleNavigateToClient(schedule.clientId)}
+      >
+        {/* Date indicator */}
+        <div className="flex-shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-800">
+          <span className="text-[10px] font-medium uppercase text-muted-foreground leading-none">
+            {format(date, 'MMM', { locale: ptBR })}
+          </span>
+          <span className="text-lg font-bold leading-tight">
+            {format(date, 'dd')}
+          </span>
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold truncate">{schedule.client.name}</p>
+            <Badge className={`text-[10px] h-5 px-1.5 ${config.bgClass}`}>
+              {config.icon}
+              <span className="ml-1">{config.label}</span>
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+            <Clock className="h-3 w-3" />
+            <span>{schedule.scheduledTime}</span>
+            <span className="text-muted-foreground/50">&bull;</span>
+            <span>{relativeDate}</span>
+            {schedule.creatorUser && (
+              <>
+                <span className="text-muted-foreground/50">&bull;</span>
+                <span>por {schedule.creatorUser.name}</span>
+              </>
+            )}
+          </div>
+          {schedule.description && (
+            <p className="text-xs text-muted-foreground/70 mt-1 truncate">
+              {schedule.description}
+            </p>
+          )}
+        </div>
+
+        {/* Quick actions */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {schedule.client.phone && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-[10px] h-7 px-2 border-green-200 dark:border-green-800/50 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(getWhatsAppUrl(schedule.client.phone), '_blank', 'noopener,noreferrer');
+                }}
+              >
+                <MessageCircle className="h-3 w-3" />
+              </Button>
+              <a href={getPhoneCallUrl(schedule.client.phone)} onClick={(e) => e.stopPropagation()}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-[10px] h-7 px-2 border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                >
+                  <PhoneCall className="h-3 w-3" />
+                </Button>
+              </a>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -191,10 +392,12 @@ export function DashboardView() {
       accent: 'from-teal-500 to-cyan-600',
     },
     {
-      title: 'Lembretes Pendentes',
-      value: pendingReminders,
-      icon: <BellRing className="h-5 w-5" />,
-      accent: 'from-amber-500 to-orange-600',
+      title: 'Visitas Agendadas',
+      value: pendingSchedulesCount,
+      icon: <CalendarDays className="h-5 w-5" />,
+      accent: pendingSchedulesCount > 0 ? 'from-blue-500 to-indigo-600' : 'from-emerald-500 to-teal-600',
+      subtitle: overdueSchedulesCount > 0 ? `${overdueSchedulesCount} atrasada${overdueSchedulesCount > 1 ? 's' : ''}` : undefined,
+      highlight: overdueSchedulesCount > 0,
     },
     {
       title: 'Precisam de Atualização',
@@ -239,11 +442,108 @@ export function DashboardView() {
               </div>
               <div className="flex items-center mt-3 text-xs text-muted-foreground">
                 <TrendingUp className="h-3 w-3 mr-1 text-emerald-500" />
-                <span>Atualizado às {format(new Date(), 'HH:mm')}</span>
+                <span>
+                  {kpi.subtitle || `Atualizado às ${format(new Date(), 'HH:mm')}`}
+                </span>
               </div>
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* ─── Agendamentos de Hoje ─── */}
+      {todaySchedules.length > 0 && (
+        <Card className="hover:shadow-md transition-shadow duration-200 border-blue-200 dark:border-blue-800/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-blue-500" />
+              <span className="flex-1">Visitas de Hoje</span>
+              <Badge className="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                {todaySchedules.length}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            <div className="space-y-3">
+              {todaySchedules.map((schedule) => renderScheduleRow(schedule))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Agendamentos: Próximos e Passados ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Próximas Visitas */}
+        <Card className="hover:shadow-md transition-shadow duration-200">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-blue-500" />
+                Próximas Visitas
+              </CardTitle>
+              {futureSchedules.length > 0 && (
+                <Badge className="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                  {futureSchedules.length}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            {futureSchedules.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="h-12 w-12 rounded-xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center mx-auto mb-3">
+                  <Calendar className="h-6 w-6 text-blue-400" />
+                </div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Nenhuma visita agendada
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Os próximos agendamentos aparecerão aqui.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                {futureSchedules.map((schedule) => renderScheduleRow(schedule))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Visitas Passadas */}
+        <Card className="hover:shadow-md transition-shadow duration-200">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                Histórico de Visitas
+              </CardTitle>
+              {pastSchedules.length > 0 && (
+                <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-400">
+                  {pastSchedules.length}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            {pastSchedules.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="h-12 w-12 rounded-xl bg-gray-50 dark:bg-gray-900/30 flex items-center justify-center mx-auto mb-3">
+                  <Clock className="h-6 w-6 text-gray-400" />
+                </div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Nenhuma visita realizada ainda
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  As visitas concluídas e canceladas aparecerão aqui.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                {pastSchedules.map((schedule) => renderScheduleRow(schedule))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Clients Needing Update - Priority Section */}
@@ -385,7 +685,8 @@ export function DashboardView() {
                 {recentClients.map((client) => (
                   <div
                     key={client.id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => handleNavigateToClient(client.id)}
                   >
                     <div
                       className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold ${getAvatarColor(client.name)}`}
