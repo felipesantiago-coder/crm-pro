@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const region = searchParams.get('region') || '';
-    const tagId = searchParams.get('tagId') || '';
+    const tagIds = searchParams.getAll('tagId').filter(Boolean);
     const stage = searchParams.get('stage') || '';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
@@ -47,8 +47,8 @@ export async function GET(request: NextRequest) {
       baseWhere.region = { contains: region, mode: 'insensitive' };
     }
 
-    if (tagId) {
-      baseWhere.tags = { some: { tagId } };
+    if (tagIds.length > 0) {
+      baseWhere.tags = { every: tagIds.map((id) => ({ tagId: id })) };
     }
 
     if (stage) {
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Se há filtros de busca/região/tag, combinar com o filtro de acesso
-    if (baseWhere.OR || baseWhere.region || baseWhere.tags || baseWhere.stage) {
+    if (baseWhere.OR || baseWhere.region || baseWhere.tags || baseWhere.stage || (baseWhere.AND && baseWhere.AND.length > 0)) {
       if (!isAdminUser) {
         // Precisa combinar AND com OR
         const searchFilter = { ...baseWhere };

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Search, Plus, Upload, Download, X } from 'lucide-react';
+import { Search, Plus, Upload, Download, X, Tag, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -11,6 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import { ClientCard } from './client-card';
 import { ClientForm } from './client-form';
 import { ClientDetail } from './client-detail';
@@ -43,8 +46,8 @@ export function ClientsView() {
     setSearchQuery,
     filterRegion,
     setFilterRegion,
-    filterTagId,
-    setFilterTagId,
+    filterTagIds,
+    setFilterTagIds,
     selectedClientId,
     setSelectedClientId,
   } = useCRMStore();
@@ -81,7 +84,7 @@ export function ClientsView() {
       const params = new URLSearchParams();
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (filterRegion) params.set('region', filterRegion);
-      if (filterTagId) params.set('tagId', filterTagId);
+      filterTagIds.forEach((id) => params.append('tagId', id));
       if (filterStage) params.set('stage', filterStage);
       // Excluir negócios finalizados da lista principal (têm view dedicada)
       params.set('excludeClosed', 'true');
@@ -97,7 +100,7 @@ export function ClientsView() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filterRegion, filterTagId, filterStage, page]);
+  }, [debouncedSearch, filterRegion, filterTagIds, filterStage, page]);
 
   useEffect(() => {
     fetchClients();
@@ -213,25 +216,97 @@ export function ClientsView() {
             ))}
           </SelectContent>
         </Select>
-        <Select
-          value={filterTagId || 'all'}
-          onValueChange={(v) => {
-            setFilterTagId(v === 'all' ? '' : v);
-            setPage(1);
-          }}
-        >
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Tag" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as Tags</SelectItem>
-            {tags.map((tag) => (
-              <SelectItem key={tag.id} value={tag.id}>
-                {tag.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto justify-start h-9 gap-1.5"
+            >
+              <Tag className="h-4 w-4 text-muted-foreground" />
+              {filterTagIds.length === 0
+                ? 'Todas as Tags'
+                : `${filterTagIds.length} tag${filterTagIds.length !== 1 ? 's' : ''}`}
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56 p-2" align="start">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between px-1 pb-1.5 border-b">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Filtrar por tags
+                </span>
+                {filterTagIds.length > 0 && (
+                  <button
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => { setFilterTagIds([]); setPage(1); }}
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+              {tags.length === 0 ? (
+                <p className="text-xs text-muted-foreground px-1 py-3 text-center">
+                  Nenhuma tag cadastrada
+                </p>
+              ) : (
+                tags.map((tag) => {
+                  const isSelected = filterTagIds.includes(tag.id);
+                  return (
+                    <label
+                      key={tag.id}
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5 cursor-pointer hover:bg-accent transition-colors"
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => {
+                          if (isSelected) {
+                            setFilterTagIds(filterTagIds.filter((id) => id !== tag.id));
+                          } else {
+                            setFilterTagIds([...filterTagIds, tag.id]);
+                          }
+                          setPage(1);
+                        }}
+                      />
+                      <span
+                        className="h-2.5 w-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: tag.color }}
+                      />
+                      <span className="text-sm flex-1 truncate">{tag.name}</span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+            {filterTagIds.length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-2 mt-1.5 border-t">
+                {filterTagIds.map((tagId) => {
+                  const tag = tags.find((t) => t.id === tagId);
+                  if (!tag) return null;
+                  return (
+                    <Badge
+                      key={tag.id}
+                      variant="secondary"
+                      className="text-[10px] gap-1 px-1.5 py-0"
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: tag.color }}
+                      />
+                      {tag.name}
+                      <X
+                        className="h-2.5 w-2.5 cursor-pointer hover:text-destructive"
+                        onClick={() => {
+                          setFilterTagIds(filterTagIds.filter((id) => id !== tag.id));
+                          setPage(1);
+                        }}
+                      />
+                    </Badge>
+                  );
+                })}
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
         <Select
           value={filterStage || 'all'}
           onValueChange={(v) => {
@@ -271,11 +346,11 @@ export function ClientsView() {
           </div>
           <h3 className="text-lg font-semibold">Nenhum cliente encontrado</h3>
           <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-            {searchQuery || filterRegion || filterTagId
+            {searchQuery || filterRegion || filterTagIds.length > 0
               ? 'Tente ajustar os filtros de busca.'
               : 'Comece cadastrando seu primeiro cliente.'}
           </p>
-          {!searchQuery && !filterRegion && !filterTagId && (
+          {!searchQuery && !filterRegion && filterTagIds.length === 0 && (
             <Button className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white" onClick={handleNewClient}>
               <Plus className="h-4 w-4 mr-2" />
               Novo Cliente
