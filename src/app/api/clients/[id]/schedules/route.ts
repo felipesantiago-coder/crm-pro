@@ -74,9 +74,16 @@ export async function POST(
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
     }
 
+    // Parse date string manually to avoid UTC timezone offset bug.
+    // new Date('2025-06-07') creates midnight UTC, which becomes
+    // 21h of the PREVIOUS day in UTC-3 (Brazil). Using Date constructor
+    // with year/month/day creates local midnight correctly.
+    const [year, month, day] = scheduledDate.split('-').map(Number);
+    const parsedDate = new Date(year, month - 1, day, 12, 0, 0);
+
     const schedule = await db.schedule.create({
       data: {
-        scheduledDate: new Date(scheduledDate),
+        scheduledDate: parsedDate,
         scheduledTime,
         description: description?.trim() || null,
         status: 'PENDING',
@@ -93,7 +100,7 @@ export async function POST(
     // Notificar equipe do cliente sobre o agendamento (fire-and-forget)
     notifyTeamScheduleCreated({
       clientId: id,
-      scheduledDate: new Date(scheduledDate),
+      scheduledDate: parsedDate,
       scheduledTime,
       description: description?.trim() || null,
       creatorName: session.user.name || 'Usuário',
