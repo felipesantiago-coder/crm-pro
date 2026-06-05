@@ -148,17 +148,5 @@ export function SupabaseRealtimeProvider({ children }: SupabaseRealtimeProviderP
     return <>{children}</>
   }
 
-  return (
-    <>
-      {children}
-      {connected && (
-        <div className="fixed bottom-4 right-4 z-50 pointer-events-none">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-medium pointer-events-none">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Real-time ativo
-          </div>
-        </div>
-      )}
-    </>
-  )
+  return <>{children}</>
 }
