@@ -2,9 +2,5 @@
   "framework": "nextjs",
   "installCommand": "npm install",
   "outputDirectory": ".next",
-  "regions": ["gru1"],
-  "crons": [
-    { "path": "/api", "schedule": "*/5 * * * *" },
-    { "path": "/api/notifications/cron", "schedule": "0 8 * * *" }
-  ]
+  "regions": ["gru1"]
 }
