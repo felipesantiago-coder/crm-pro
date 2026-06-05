@@ -8,7 +8,7 @@ interface CRMState {
   selectedClientId: string | null;
   searchQuery: string;
   filterRegion: string;
-  filterTagId: string;
+  filterTagIds: string[];
   notificationReminders: Array<{
     id: string;
     title: string;
@@ -23,7 +23,9 @@ interface CRMState {
   setSelectedClientId: (id: string | null) => void;
   setSearchQuery: (query: string) => void;
   setFilterRegion: (region: string) => void;
-  setFilterTagId: (tagId: string) => void;
+  setFilterTagIds: (tagIds: string[]) => void;
+  addFilterTagId: (tagId: string) => void;
+  removeFilterTagId: (tagId: string) => void;
   setNotificationReminders: (reminders: CRMState['notificationReminders']) => void;
   clearFilters: () => void;
 }
@@ -34,7 +36,7 @@ export const useCRMStore = create<CRMState>((set) => ({
   selectedClientId: null,
   searchQuery: '',
   filterRegion: '',
-  filterTagId: '',
+  filterTagIds: [],
   notificationReminders: [],
 
   setCurrentView: (view) => set({ currentView: view }),
@@ -43,7 +45,15 @@ export const useCRMStore = create<CRMState>((set) => ({
   setSelectedClientId: (id) => set({ selectedClientId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setFilterRegion: (region) => set({ filterRegion: region }),
-  setFilterTagId: (tagId) => set({ filterTagId: tagId }),
+  setFilterTagIds: (tagIds) => set({ filterTagIds: tagIds }),
+  addFilterTagId: (tagId) => set((state) => ({
+    filterTagIds: state.filterTagIds.includes(tagId)
+      ? state.filterTagIds
+      : [...state.filterTagIds, tagId],
+  })),
+  removeFilterTagId: (tagId) => set((state) => ({
+    filterTagIds: state.filterTagIds.filter((id) => id !== tagId),
+  })),
   setNotificationReminders: (reminders) => set({ notificationReminders: reminders }),
-  clearFilters: () => set({ searchQuery: '', filterRegion: '', filterTagId: '' }),
+  clearFilters: () => set({ searchQuery: '', filterRegion: '', filterTagIds: [] }),
 }));
