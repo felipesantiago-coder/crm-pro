@@ -48,7 +48,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (tagIds.length > 0) {
-      baseWhere.tags = { every: tagIds.map((id) => ({ tagId: id })) };
+      // Each tag must be present (AND logic)
+      const tagFilters = tagIds.map((id) => ({
+        tags: { some: { tagId: id } },
+      }));
+      // Store for later AND combination
+      baseWhere._tagFilters = tagFilters;
     }
 
     if (stage) {
@@ -78,17 +83,32 @@ export async function GET(request: NextRequest) {
       ...accessFilter,
     };
 
-    // Se há filtros de busca/região/tag, combinar com o filtro de acesso
-    if (baseWhere.OR || baseWhere.region || baseWhere.tags || baseWhere.stage || (baseWhere.AND && baseWhere.AND.length > 0)) {
-      if (!isAdminUser) {
-        // Precisa combinar AND com OR
-        const searchFilter = { ...baseWhere };
-        where.AND = [accessFilter, searchFilter];
-        delete where.OR;
-        delete where.region;
-        delete where.tags;
-        delete where.stage;
-      }
+    // Remove internal marker before passing to Prisma
+    const tagFilters = baseWhere._tagFilters as Array<Record<string, unknown>> | undefined;
+    delete baseWhere._tagFilters;
+    delete where._tagFilters;
+
+    // Build AND conditions for access filter and tag filters
+    const andConditions: Record<string, unknown>[] = [];
+    if (!isAdminUser) {
+      andConditions.push(accessFilter);
+    }
+    if (tagFilters && tagFilters.length > 0) {
+      andConditions.push(...tagFilters);
+    }
+    if (baseWhere.OR || baseWhere.region || baseWhere.stage) {
+      const searchFilter: Record<string, unknown> = {};
+      if (baseWhere.OR) searchFilter.OR = baseWhere.OR;
+      if (baseWhere.region) searchFilter.region = baseWhere.region;
+      if (baseWhere.stage) searchFilter.stage = baseWhere.stage;
+      andConditions.push(searchFilter);
+    }
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
+      delete where.OR;
+      delete where.region;
+      delete where.tags;
+      delete where.stage;
     }
 
     // Excluir negócios finalizados da listagem principal
