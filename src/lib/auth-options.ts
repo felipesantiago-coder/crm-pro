@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { db } from '@/lib/db';
 import { verifyPassword } from '@/lib/auth';
 
+// Auth configuration — last updated: fix phone column crash
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
