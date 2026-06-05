@@ -29,10 +29,10 @@ async function getClientTeam(clientId: string): Promise<Recipient[]> {
   const client = await db.client.findUnique({
     where: { id: clientId },
     include: {
-      creator: { select: { id: true, name: true, email: true, phone: true } },
+      creator: { select: { id: true, name: true, email: true } },
       partners: {
         include: {
-          user: { select: { id: true, name: true, email: true, phone: true } },
+          user: { select: { id: true, name: true, email: true } },
         },
       },
     },
@@ -44,12 +44,12 @@ async function getClientTeam(clientId: string): Promise<Recipient[]> {
 
   // Criador
   if (client.creator) {
-    recipients.push({ email: client.creator.email, name: client.creator.name, phone: client.creator.phone });
+    recipients.push({ email: client.creator.email, name: client.creator.name });
   }
 
   // Parceiros
   for (const p of client.partners) {
-    recipients.push({ email: p.user.email, name: p.user.name, phone: p.user.phone });
+    recipients.push({ email: p.user.email, name: p.user.name });
   }
 
   return recipients;
@@ -144,7 +144,7 @@ export async function notifyTeamPartnerAdded(params: {
     const newPartner = await db.clientPartner.findFirst({
       where: { clientId: params.clientId },
       orderBy: { createdAt: 'desc' },
-      include: { user: { select: { email: true, name: true, phone: true } } },
+      include: { user: { select: { email: true, name: true } } },
     });
     if (newPartner) {
       await notifyPartnerAdded({
@@ -155,9 +155,9 @@ export async function notifyTeamPartnerAdded(params: {
         addedBy: params.addedByName,
         clientId: params.clientId,
       });
-      if (newPartner.user.phone) {
+      if (newPartner.user.email) {
         await sendWhatsApp({
-          phone: newPartner.user.phone,
+          phone: newPartner.user.email,
           message: `🤝 *Você foi adicionado como parceiro!*\n\n` +
             `👤 Cliente: ${clientName}\n` +
             `👤 Adicionado por: ${params.addedByName}\n\n` +
