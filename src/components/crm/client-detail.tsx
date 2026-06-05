@@ -765,8 +765,8 @@ function DetailContent({
                         }`}>
                           {isCompleted ? 'Realizada' : isCancelled ? 'Cancelada' : isPast ? 'Atrasada' : 'Pendente'}
                         </Badge>
-                        {schedule.creator && (
-                          <span className="text-[10px] text-muted-foreground">por {schedule.creator.name}</span>
+                        {schedule.creatorUser && (
+                          <span className="text-[10px] text-muted-foreground">por {schedule.creatorUser.name}</span>
                         )}
                       </div>
                     </div>

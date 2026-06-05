@@ -26,7 +26,7 @@ export async function GET(
           { scheduledTime: 'asc' },
         ],
         include: {
-          creator: {
+          creatorUser: {
             select: { id: true, name: true },
           },
         },
@@ -84,7 +84,7 @@ export async function POST(
         createdBy: currentUser.id,
       },
       include: {
-        creator: {
+        creatorUser: {
           select: { id: true, name: true },
         },
       },
@@ -151,7 +151,7 @@ export async function PATCH(
         ...(status === 'COMPLETED' ? { completedAt: new Date() } : {}),
       },
       include: {
-        creator: {
+        creatorUser: {
           select: { id: true, name: true },
         },
       },
