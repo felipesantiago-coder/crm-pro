@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
         passwordHash: hashedNewPassword,
         mustChangePassword: false,
       },
+      select: { id: true },
     });
 
     return NextResponse.json({ message: 'Senha alterada com sucesso' });

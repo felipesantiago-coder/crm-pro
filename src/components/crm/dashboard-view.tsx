@@ -91,9 +91,13 @@ export function DashboardView() {
           }))
         );
 
-        setNeedsUpdateClients(needsUpdateData.clients || []);
+        setNeedsUpdateClients(Array.isArray(needsUpdateData.clients) ? needsUpdateData.clients : []);
 
-        const allReminders: ReminderSummary[] = remindersData.reminders || remindersData || [];
+        const allReminders: ReminderSummary[] = Array.isArray(remindersData.reminders)
+          ? remindersData.reminders
+          : Array.isArray(remindersData)
+            ? remindersData
+            : [];
         setTotalReminders(allReminders.length);
         setPendingReminders(allReminders.filter((r) => !r.notified).length);
 

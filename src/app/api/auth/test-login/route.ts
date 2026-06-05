@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
           passwordHash: newHash,
           mustChangePassword: false,
         },
+        select: { id: true },
       });
 
       return NextResponse.json({

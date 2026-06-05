@@ -226,7 +226,7 @@ export async function checkAndNotifyUpcomingSchedules() {
       },
       include: {
         client: { select: { id: true, name: true } },
-        creator: { select: { id: true, name: true, email: true } },
+        creatorUser: { select: { id: true, name: true, email: true } },
       },
     });
 
