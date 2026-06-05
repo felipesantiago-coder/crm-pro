@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
         role: 'ADMIN',
         mustChangePassword: true,
       },
+      select: { id: true, name: true, email: true, role: true },
     });
 
     return NextResponse.json({
