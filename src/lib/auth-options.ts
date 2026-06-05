@@ -1,9 +1,9 @@
 import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { db } from '@/lib/db';
+import { db, ensureDbConnection } from '@/lib/db';
 import { verifyPassword } from '@/lib/auth';
 
-// Auth configuration — last updated: fix phone column crash
+// Auth configuration — last updated: fix intermittent DB connection issues
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -13,16 +13,20 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Senha', type: 'password' },
       },
       async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
+
+        const email = credentials.email.trim().toLowerCase();
+        const password = credentials.password;
+
+        // CRITICAL: Use select to avoid querying missing columns (e.g. phone)
+        let user: Awaited<ReturnType<typeof db.user.findUnique>> | null = null;
+
+        // First attempt — ensure DB connection is alive
         try {
-          if (!credentials?.email || !credentials?.password) {
-            return null;
-          }
-
-          const email = credentials.email.trim().toLowerCase();
-          const password = credentials.password;
-
-          // CRITICAL: Use select to avoid querying missing columns (e.g. phone)
-          const user = await db.user.findUnique({
+          await ensureDbConnection();
+          user = await db.user.findUnique({
             where: { email },
             select: {
               id: true,
@@ -33,28 +37,44 @@ export const authOptions: NextAuthOptions = {
               mustChangePassword: true,
             },
           });
-
-          if (!user || !user.passwordHash) {
+        } catch (firstErr) {
+          console.error('[AUTH] First DB attempt failed, retrying...', firstErr);
+          // Second attempt — DB may have been paused (Supabase free tier)
+          try {
+            await ensureDbConnection();
+            user = await db.user.findUnique({
+              where: { email },
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                passwordHash: true,
+                role: true,
+                mustChangePassword: true,
+              },
+            });
+          } catch (retryErr) {
+            console.error('[AUTH] Second DB attempt failed:', retryErr);
             return null;
           }
+        }
 
-          const isValid = await verifyPassword(password, user.passwordHash);
-
-          if (!isValid) {
-            return null;
-          }
-
-          return {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            mustChangePassword: user.mustChangePassword,
-          };
-        } catch (error) {
-          console.error('[AUTH] ERROR in authorize:', error);
+        if (!user || !user.passwordHash) {
           return null;
         }
+
+        const isValid = await verifyPassword(password, user.passwordHash);
+        if (!isValid) {
+          return null;
+        }
+
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          mustChangePassword: user.mustChangePassword,
+        };
       },
     }),
   ],

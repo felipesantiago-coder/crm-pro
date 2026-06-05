@@ -4,9 +4,7 @@
   "outputDirectory": ".next",
   "regions": ["gru1"],
   "crons": [
-    {
-      "path": "/api/notifications/cron",
-      "schedule": "0 8 * * *"
-    }
+    { "path": "/api", "schedule": "*/5 * * * *" },
+    { "path": "/api/notifications/cron", "schedule": "0 8 * * *" }
   ]
 }
