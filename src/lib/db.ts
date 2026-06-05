@@ -7,6 +7,11 @@ const globalForPrisma = globalThis as unknown as {
 function createPrismaClient() {
   return new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL,
+      },
+    },
   })
 }
 
@@ -32,3 +37,21 @@ export const db = new Proxy({} as PrismaClient, {
     return value
   },
 })
+
+// Ensure database connection is alive; useful to wake up
+// Supabase's free tier after idle pause.
+export async function ensureDbConnection() {
+  const client = getDb()
+  try {
+    await client.$connect()
+  } catch {
+    // If connection failed, disconnect and retry once
+    try {
+      await client.$disconnect()
+      await client.$connect()
+    } catch (retryErr) {
+      console.error('[DB] Failed to reconnect after retry:', retryErr)
+    }
+  }
+  return client
+}
