@@ -39,7 +39,7 @@ export const db = new Proxy({} as PrismaClient, {
 })
 
 // Ensure database connection is alive; useful to wake up
-// Supabase's free tier after idle pause.
+// Supabase's free tier after idle pause. v2
 export async function ensureDbConnection() {
   const client = getDb()
   try {
