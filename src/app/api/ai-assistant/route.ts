@@ -1,25 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
-import { ensureDbConnection } from '@/lib/db';
-import ZAI from 'z-ai-web-dev-sdk';
+import { db } from '@/lib/db';
 
 const SYSTEM_PROMPT = `Você é o assistente virtual do CRM Pro, um sistema brasileiro de gestão de relacionamento com clientes. Seu papel é ajudar o usuário a:
 
-1. **Encontrar clientes** — busque nos dados fornecidos por nome, região, empresa, estágio (LEAD, PROSPECT, NEGOTIATING, WON, LOST), tags ou qualquer critério mencionado.
+1. **Encontrar clientes** — busque nos dados fornecidos por nome, região, empresa, estágio (LEAD, PROSPECT, NEGOTIATING, WON, LOST), tags ou qualquer critério.
 2. **Ver agendamentos** — informe sobre visitas agendadas, passadas ou futuras.
 3. **Lembretes** — mostre lembretes pendentes ou próximos.
-4. **Explicar funcionalidades** — se o usuário perguntar como fazer algo no CRM, explique de forma clara e direta.
+4. **Explicar funcionalidades** — explique como usar o CRM de forma clara.
 
 Regras:
 - Responda SEMPRE em português brasileiro.
 - Seja objetivo e direto. Use listas quando apropriado.
-- Quando apresentar dados de clientes, inclua: nome, região, estágio, empresa (se houver) e telefone (se houver).
+- Quando apresentar clientes, inclua: nome, região, estágio, empresa (se houver) e telefone (se houver).
 - Quando apresentar agendamentos, inclua: data, horário, cliente e status.
-- Se os dados fornecidos não contiverem informação suficiente, diga que não encontrou e sugira outros termos de busca.
-- Nunca invente dados que não estejam no contexto fornecido.
+- Nunca invente dados que não estejam no contexto.
 - Para perguntas sobre como usar o CRM, responda com base no seu conhecimento das funcionalidades: Dashboard, Clientes, Negócios Finalizados, Tags, Lembretes, Agendamentos, Administração e Configurações.
-- Use formatação Markdown para organizar melhor as respostas (negrito, listas, etc.).`;
+- Use formatação Markdown (negrito, listas).`;
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -27,95 +25,99 @@ interface Message {
 }
 
 async function fetchUserData(userId: string, userRole: string) {
-  const client = await ensureDbConnection(3);
+  // Direct queries without retries to stay within Vercel's 10s timeout
+  const isAdmin = userRole === 'ADMIN';
+  const userFilter = isAdmin ? {} : {
+    OR: [{ createdBy: userId }, { partners: { some: { userId } } }],
+  };
 
-  const clients = await client.client.findMany({
-    where: userRole === 'ADMIN' ? {} : { OR: [{ createdBy: userId }, { partners: { some: { userId } } }] },
-    select: {
-      id: true, name: true, phone: true, email: true, region: true,
-      enterprise: true, stage: true, updatedAt: true,
-      tags: { select: { tag: { select: { name: true, color: true } } } },
-    },
-    orderBy: { updatedAt: 'desc' },
-    take: 100,
-  });
-
-  const today = new Date();
-  const thirtyDaysAgo = new Date(today);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const thirtyDaysLater = new Date(today);
-  thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
-
-  const schedules = await client.schedule.findMany({
-    where: {
-      scheduledDate: { gte: thirtyDaysAgo, lte: thirtyDaysLater },
-      ...(userRole !== 'ADMIN' ? { OR: [{ createdBy: userId }, { client: { partners: { some: { userId } } } }] } : {}),
-    },
-    select: {
-      id: true, scheduledDate: true, scheduledTime: true,
-      description: true, status: true,
-      client: { select: { name: true } },
-      creatorUser: { select: { name: true } },
-    },
-    orderBy: { scheduledDate: 'asc' },
-    take: 50,
-  });
-
-  const reminders = await client.reminder.findMany({
-    where: {
-      notified: false,
-      ...(userRole !== 'ADMIN' ? { client: { createdBy: userId } } : {}),
-    },
-    select: {
-      id: true, title: true, description: true, dueDate: true,
-      client: { select: { name: true } },
-    },
-    orderBy: { dueDate: 'asc' },
-    take: 30,
-  });
+  const [clients, schedules, reminders] = await Promise.all([
+    db.client.findMany({
+      where: userFilter,
+      select: {
+        name: true, phone: true, email: true, region: true,
+        enterprise: true, stage: true,
+        tags: { select: { tag: { select: { name: true } } } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 80,
+    }),
+    db.schedule.findMany({
+      where: {
+        scheduledDate: {
+          gte: new Date(Date.now() - 30 * 86400000),
+          lte: new Date(Date.now() + 30 * 86400000),
+        },
+        ...(!isAdmin ? userFilter : {}),
+      },
+      select: {
+        scheduledDate: true, scheduledTime: true,
+        description: true, status: true,
+        client: { select: { name: true } },
+        creatorUser: { select: { name: true } },
+      },
+      orderBy: { scheduledDate: 'asc' },
+      take: 40,
+    }),
+    db.reminder.findMany({
+      where: {
+        notified: false,
+        ...(!isAdmin ? { client: { createdBy: userId } } : {}),
+      },
+      select: {
+        title: true, dueDate: true,
+        client: { select: { name: true } },
+      },
+      orderBy: { dueDate: 'asc' },
+      take: 20,
+    }),
+  ]);
 
   return { clients, schedules, reminders };
 }
 
 function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): string {
-  const lines: string[] = [];
+  const parts: string[] = [];
 
-  lines.push('=== CLIENTES ===');
+  // Clients
+  parts.push('=== CLIENTES ===');
   if (data.clients.length === 0) {
-    lines.push('Nenhum cliente encontrado.');
+    parts.push('Nenhum cliente cadastrado.');
   } else {
     data.clients.forEach(c => {
-      const tags = c.tags.map(t => t.tag.name).join(', ') || 'nenhuma';
-      lines.push(`- ${c.name} | Região: ${c.region || 'N/A'} | Estágio: ${c.stage} | Empresa: ${c.enterprise || 'N/A'} | Tel: ${c.phone || 'N/A'} | Email: ${c.email || 'N/A'} | Tags: ${tags}`);
+      const tags = c.tags.map(t => t.tag.name).join(', ') || '-';
+      parts.push(`- ${c.name} | Região: ${c.region || '-'} | Estágio: ${c.stage} | Empresa: ${c.enterprise || '-'} | Tel: ${c.phone || '-'} | Email: ${c.email || '-'} | Tags: ${tags}`);
     });
   }
 
-  lines.push('');
-  lines.push('=== AGENDAMENTOS (últimos 30 dias e próximos 30 dias) ===');
+  // Schedules
+  parts.push('\n=== AGENDAMENTOS ===');
   if (data.schedules.length === 0) {
-    lines.push('Nenhum agendamento encontrado.');
+    parts.push('Nenhum agendamento no período.');
   } else {
     data.schedules.forEach(s => {
-      const dateStr = new Date(s.scheduledDate).toLocaleDateString('pt-BR');
-      lines.push(`- ${dateStr} às ${s.scheduledTime} | Cliente: ${s.client.name} | Status: ${s.status} | Criado por: ${s.creatorUser.name}${s.description ? ` | Descrição: ${s.description}` : ''}`);
+      const d = new Date(s.scheduledDate).toLocaleDateString('pt-BR');
+      parts.push(`- ${d} ${s.scheduledTime} | ${s.client.name} | ${s.status} | Por: ${s.creatorUser.name}${s.description ? ' | ' + s.description : ''}`);
     });
   }
 
-  lines.push('');
-  lines.push('=== LEMBRETES PENDENTES ===');
+  // Reminders
+  parts.push('\n=== LEMBRETES PENDENTES ===');
   if (data.reminders.length === 0) {
-    lines.push('Nenhum lembrete pendente.');
+    parts.push('Nenhum lembrete pendente.');
   } else {
     data.reminders.forEach(r => {
-      const dateStr = new Date(r.dueDate).toLocaleDateString('pt-BR');
-      lines.push(`- ${dateStr} | ${r.title} | Cliente: ${r.client.name}${r.description ? ` | ${r.description}` : ''}`);
+      const d = new Date(r.dueDate).toLocaleDateString('pt-BR');
+      parts.push(`- ${d} | ${r.title} | ${r.client.name}`);
     });
   }
 
-  return lines.join('\n');
+  return parts.join('\n');
 }
 
 export async function POST(req: NextRequest) {
+  let dbError = false;
+
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -129,25 +131,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Mensagens inválidas' }, { status: 400 });
     }
 
-    // Fetch user data for context
-    const userId = session.user.id;
-    const userRole = (session.user as { role?: string })?.role || 'USER';
+    // Fetch user data — if DB fails, continue without data context
+    let dataContext = '(Dados indisponíveis no momento)';
+    try {
+      const userId = session.user.id;
+      const userRole = (session.user as { role?: string })?.role || 'USER';
+      const data = await fetchUserData(userId, userRole);
+      dataContext = formatDataForContext(data);
+    } catch (err) {
+      dbError = true;
+      console.error('[AI ASSISTANT] DB fetch failed, continuing without data:', err);
+    }
 
-    const data = await fetchUserData(userId, userRole);
-    const dataContext = formatDataForContext(data);
+    // Dynamic import to avoid bundling issues in Vercel serverless
+    const { default: ZAI } = await import('z-ai-web-dev-sdk');
+    const zai = await ZAI.create();
 
-    const contextMessage: Message = {
-      role: 'system',
-      content: `${SYSTEM_PROMPT}\n\n---\nDADOS ATUAIS DO CRM DO USUÁRIO:\n${dataContext}`,
-    };
-
-    // Build conversation: system context + history + new message
     const conversation: Message[] = [
-      contextMessage,
-      ...messages.slice(-10), // Keep last 10 messages for context window
+      { role: 'system', content: `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}` },
+      ...messages.slice(-8),
     ];
 
-    const zai = await ZAI.create();
     const completion = await zai.chat.completions.create({
       messages: conversation,
       temperature: 0.3,
@@ -155,11 +159,17 @@ export async function POST(req: NextRequest) {
 
     const reply = completion.choices?.[0]?.message?.content || 'Desculpe, não consegui gerar uma resposta.';
 
-    return NextResponse.json({ reply });
+    // Append a note if data was unavailable
+    const finalReply = dbError
+      ? reply + '\n\n⚠️ *Nota: Não foi possível acessar os dados do CRM neste momento. As informações acima podem estar incompletas.*'
+      : reply;
+
+    return NextResponse.json({ reply: finalReply });
   } catch (error) {
     console.error('[AI ASSISTANT] Error:', error);
+    const msg = error instanceof Error ? error.message : 'Erro desconhecido';
     return NextResponse.json(
-      { error: 'Erro ao processar sua mensagem. Tente novamente.' },
+      { error: `Erro ao processar: ${msg}` },
       { status: 500 }
     );
   }
