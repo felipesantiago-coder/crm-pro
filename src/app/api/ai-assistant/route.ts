@@ -3,8 +3,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyAbyzE3B7icsNiuyjCmiLKLNFuX0CFAIUQ';
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = 'llama-3.1-8b-instant';
 
 const SYSTEM_PROMPT = `Você é o assistente virtual do CRM Pro, um sistema brasileiro de gestão de relacionamento com clientes. Seu papel é ajudar o usuário a:
 
@@ -114,37 +114,35 @@ function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): 
   return parts.join('\n');
 }
 
-async function askGemini(systemText: string, messages: Message[]): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-
-  // Convert our messages to Gemini format
-  const contents = messages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
+async function askGroq(systemText: string, messages: Message[]): Promise<string> {
+  const url = 'https://api.groq.com/openai/v1/chat/completions';
 
   const body = {
-    systemInstruction: { parts: [{ text: systemText }] },
-    contents,
-    generationConfig: {
-      temperature: 0.3,
-      maxOutputTokens: 1024,
-    },
+    model: GROQ_MODEL,
+    temperature: 0.3,
+    max_tokens: 1024,
+    messages: [
+      { role: 'system', content: systemText },
+      ...messages.map(m => ({ role: m.role, content: m.content })),
+    ],
   };
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GROQ_API_KEY}`,
+    },
     body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Gemini API ${res.status}: ${errText}`);
+    throw new Error(`Groq API ${res.status}: ${errText}`);
   }
 
   const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Desculpe, não consegui gerar uma resposta.';
+  return data.choices?.[0]?.message?.content || 'Desculpe, não consegui gerar uma resposta.';
 }
 
 export async function POST(req: NextRequest) {
@@ -176,7 +174,7 @@ export async function POST(req: NextRequest) {
     }
 
     const systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}`;
-    const reply = await askGemini(systemText, messages.slice(-8));
+    const reply = await askGroq(systemText, messages.slice(-8));
 
     const finalReply = dbError
       ? reply + '\n\n⚠️ *Nota: Não foi possível acessar os dados do CRM neste momento.*'
