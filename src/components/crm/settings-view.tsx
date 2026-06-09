@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Moon, Sun, Database, Monitor, Globe, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save } from 'lucide-react';
+import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,12 +24,6 @@ export function SettingsView() {
   const [userEmail, setUserEmail] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
 
-  // Configurações do sistema (só admin)
-  const [crmName, setCrmName] = useState('CRM Pro');
-  const [defaultRegion, setDefaultRegion] = useState('');
-  const [loadingSettings, setLoadingSettings] = useState(true);
-  const [saving, setSaving] = useState(false);
-
   const isSupabaseConfigured = !!(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -42,25 +36,6 @@ export function SettingsView() {
       setUserEmail(session.user.email || '');
     }
   }, [session]);
-
-  useEffect(() => {
-    if (isAdmin) {
-      fetchSettings();
-    }
-  }, [isAdmin]);
-
-  async function fetchSettings() {
-    try {
-      const res = await fetch('/api/settings');
-      const data = await res.json();
-      if (data.crmName) setCrmName(data.crmName);
-      if (data.defaultRegion) setDefaultRegion(data.defaultRegion);
-    } catch (err) {
-      console.error('Error fetching settings:', err);
-    } finally {
-      setLoadingSettings(false);
-    }
-  }
 
   // Salvar perfil do usuário
   async function saveProfile() {
@@ -90,39 +65,6 @@ export function SettingsView() {
     } finally {
       setSavingProfile(false);
     }
-  }
-
-  // Salvar configurações do sistema (só admin)
-  async function saveSetting(key: string, value: string) {
-    setSaving(true);
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key, value }),
-      });
-      if (res.ok) {
-        toast.success('Configuração salva com sucesso!');
-      } else {
-        throw new Error('Erro ao salvar');
-      }
-    } catch {
-      toast.error('Erro ao salvar configuração');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleSaveCrmName() {
-    if (!crmName.trim()) {
-      toast.error('Nome é obrigatório');
-      return;
-    }
-    saveSetting('crmName', crmName.trim());
-  }
-
-  function handleSaveDefaultRegion() {
-    saveSetting('defaultRegion', defaultRegion.trim());
   }
 
   function copyToClipboard(text: string, label: string) {
@@ -227,64 +169,6 @@ export function SettingsView() {
         {/* ==================== CONFIGURAÇÕES ADMIN ==================== */}
         {isAdmin && (
           <>
-            {/* CRM Name */}
-            <Card className="hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Monitor className="h-4 w-4 text-emerald-500" />
-                  Nome do CRM
-                </CardTitle>
-                <CardDescription>
-                  Personalize o nome exibido no sistema
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="crm-name">Nome</Label>
-                  <Input
-                    id="crm-name"
-                    placeholder="CRM Pro"
-                    value={crmName}
-                    onChange={(e) => setCrmName(e.target.value)}
-                    disabled={loadingSettings}
-                  />
-                </div>
-                <Button onClick={handleSaveCrmName} disabled={saving || loadingSettings}>
-                  {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Salvar
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Default Region */}
-            <Card className="hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-emerald-500" />
-                  Região Padrão
-                </CardTitle>
-                <CardDescription>
-                  Defina uma região padrão para novos clientes
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="default-region">Região Padrão</Label>
-                  <Input
-                    id="default-region"
-                    placeholder="Ex: São Paulo"
-                    value={defaultRegion}
-                    onChange={(e) => setDefaultRegion(e.target.value)}
-                    disabled={loadingSettings}
-                  />
-                </div>
-                <Button onClick={handleSaveDefaultRegion} disabled={saving || loadingSettings}>
-                  {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Salvar
-                </Button>
-              </CardContent>
-            </Card>
-
             {/* Supabase Integration Status */}
             <Card className={`hover:shadow-md transition-shadow duration-200 ${
               isSupabaseConfigured
