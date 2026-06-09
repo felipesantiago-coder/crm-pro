@@ -29,7 +29,10 @@ Funcionalidades do CRM:
 - **Negócios Finalizados**: lista de clientes que chegaram a "Fechado e Ganho" ou "Fechado e Perdido"
 - **Tags**: categorização de clientes com etiquetas coloridas para filtro rápido
 - **Lembretes**: lembretes vinculados a clientes com data e descrição
-- **Agendamentos**: agendamentos de visita com data, hora, descrição e status (PENDENTE, CONCLUIDO, CANCELADO)
+- **Agendamentos de Visita**: visitas agendadas vinculadas a um cliente específico. Cada agendamento possui data, horário, descrição (opcional) e status (PENDENTE, CONCLUIDO, CANCELADO).
+  - **Como criar um agendamento**: os agendamentos são criados DENTRO da ficha de um cliente — não existe uma tela separada para isso. O fluxo é: 1) abra a lista de clientes; 2) clique no cliente desejado para abrir o painel de detalhes; 3) role até a seção "Agendamentos"; 4) clique no botão "Agendar Visita"; 5) preencha a data (obrigatória, pelo seletor de calendário — datas passadas ficam desabilitadas), o horário (obrigatório, formato HH:mm, padrão 10:00) e as observações (opcional, texto livre); 6) clique em "Agendar". A visita é criada com status PENDENTE e a equipe (criador + parceiros do cliente) recebe notificação por e-mail e WhatsApp automaticamente.
+  - **Após a criação**: o agendamento aparece no Dashboard (seções "Visitas de Hoje", "Próximas Visitas" e "Histórico") e na ficha do cliente. Se a data já passou e ainda está PENDENTE, aparece como "Atrasada" em vermelho.
+  - **Ações sobre agendamentos pendentes**: confirmar visita (muda para CONCLUIDO), cancelar (muda para CANCELADO) ou excluir permanentemente. Apenas agendamentos com status PENDENTE podem ser confirmados ou cancelados. A exclusão está disponível para qualquer status.
 - **Administração** (somente admin): gerenciamento de usuários e configurações do sistema
 - **Configurações**: preferências do usuário e gestão de empreendimentos (importação em lote via Excel)
 - **Parcerias**: usuários podem compartilhar acesso a clientes vinculando-se como parceiros
