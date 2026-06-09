@@ -143,9 +143,15 @@ export async function POST(req: NextRequest) {
       console.error('[AI ASSISTANT] DB fetch failed, continuing without data:', err);
     }
 
-    // Dynamic import to avoid bundling issues in Vercel serverless
+    // Dynamic import + direct config (bypasses loadConfig which needs /etc/.z-ai-config)
     const { default: ZAI } = await import('z-ai-web-dev-sdk');
-    const zai = await ZAI.create();
+    const zai = new ZAI({
+      baseUrl: process.env.ZAI_BASE_URL || 'https://internal-api.z.ai/v1',
+      apiKey: process.env.ZAI_API_KEY || 'Z.ai',
+      chatId: process.env.ZAI_CHAT_ID || 'chat-10e71c39-c072-49a8-8d47-4fc57208e35b',
+      userId: process.env.ZAI_USER_ID || '7c5e1429-4415-4038-aee6-8be3df2b78b5',
+      token: process.env.ZAI_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiN2M1ZTE0MjktNDQxNS00MDM4LWFlZTYtOGJlM2RmMmI3OGI1IiwiY2hhdF9pZCI6ImNoYXQtMTBlNzFjMzktYzA3Mi00OWE4LThkNDctNGZjNTcyMDhlMzViIiwicGxhdGZvcm0iOiJ6YWkifQ.eNT3LFs0HOG71nDSicbRkl39bgjPLeGqAGEiH1sRh3g',
+    });
 
     const conversation: Message[] = [
       { role: 'system', content: `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}` },
