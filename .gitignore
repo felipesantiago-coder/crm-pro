@@ -61,3 +61,5 @@ server.log
 
 # Use npm lock for Vercel
 bun.lock
+crm-fix
+crm-pro
