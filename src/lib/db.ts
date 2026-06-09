@@ -38,19 +38,34 @@ export const db = new Proxy({} as PrismaClient, {
   },
 })
 
-// Ensure database connection is alive; useful to wake up
-// Supabase's free tier after idle pause. v2
-export async function ensureDbConnection() {
+/**
+ * Ensures the database connection is alive.
+ * Supabase Free Tier pauses after inactivity — the first connection
+ * attempt may fail while the DB is waking up.
+ *
+ * This function retries with increasing delays (2s, 3s, 4s) to give
+ * the database enough time to resume from its paused state.
+ * Total worst-case wait: ~9 seconds.
+ */
+export async function ensureDbConnection(maxRetries = 3): Promise<PrismaClient> {
   const client = getDb()
-  try {
-    await client.$connect()
-  } catch {
-    // If connection failed, disconnect and retry once
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      await client.$disconnect()
-      await client.$connect()
-    } catch (retryErr) {
-      console.error('[DB] Failed to reconnect after retry:', retryErr)
+      await client.$queryRaw`SELECT 1 as ok`
+      return client
+    } catch (err) {
+      console.error(`[DB] Connection attempt ${attempt}/${maxRetries} failed:`, err)
+      if (attempt < maxRetries) {
+        // Increasing delay: 2s, 3s, 4s — gives Supabase time to wake up
+        const delay = (attempt + 1) * 1000
+        console.log(`[DB] Waiting ${delay}ms before retry...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        // Force a fresh connection on next attempt
+        try { await client.$disconnect() } catch {}
+      } else {
+        console.error('[DB] All connection attempts failed')
+        throw err
+      }
     }
   }
   return client
