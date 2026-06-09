@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
 
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyAbyzE3B7icsNiuyjCmiLKLNFuX0CFAIUQ';
+const GEMINI_MODEL = 'gemini-2.0-flash';
+
 const SYSTEM_PROMPT = `Você é o assistente virtual do CRM Pro, um sistema brasileiro de gestão de relacionamento com clientes. Seu papel é ajudar o usuário a:
 
 1. **Encontrar clientes** — busque nos dados fornecidos por nome, região, empresa, estágio (LEAD, PROSPECT, NEGOTIATING, WON, LOST), tags ou qualquer critério.
@@ -20,12 +23,11 @@ Regras:
 - Use formatação Markdown (negrito, listas).`;
 
 interface Message {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant';
   content: string;
 }
 
 async function fetchUserData(userId: string, userRole: string) {
-  // Direct queries without retries to stay within Vercel's 10s timeout
   const isAdmin = userRole === 'ADMIN';
   const userFilter = isAdmin ? {} : {
     OR: [{ createdBy: userId }, { partners: { some: { userId } } }],
@@ -79,7 +81,6 @@ async function fetchUserData(userId: string, userRole: string) {
 function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): string {
   const parts: string[] = [];
 
-  // Clients
   parts.push('=== CLIENTES ===');
   if (data.clients.length === 0) {
     parts.push('Nenhum cliente cadastrado.');
@@ -90,7 +91,6 @@ function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): 
     });
   }
 
-  // Schedules
   parts.push('\n=== AGENDAMENTOS ===');
   if (data.schedules.length === 0) {
     parts.push('Nenhum agendamento no período.');
@@ -101,7 +101,6 @@ function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): 
     });
   }
 
-  // Reminders
   parts.push('\n=== LEMBRETES PENDENTES ===');
   if (data.reminders.length === 0) {
     parts.push('Nenhum lembrete pendente.');
@@ -113,6 +112,39 @@ function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): 
   }
 
   return parts.join('\n');
+}
+
+async function askGemini(systemText: string, messages: Message[]): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+
+  // Convert our messages to Gemini format
+  const contents = messages.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+
+  const body = {
+    systemInstruction: { parts: [{ text: systemText }] },
+    contents,
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 1024,
+    },
+  };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gemini API ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Desculpe, não consegui gerar uma resposta.';
 }
 
 export async function POST(req: NextRequest) {
@@ -143,31 +175,11 @@ export async function POST(req: NextRequest) {
       console.error('[AI ASSISTANT] DB fetch failed, continuing without data:', err);
     }
 
-    // Dynamic import + direct config (bypasses loadConfig which needs /etc/.z-ai-config)
-    const { default: ZAI } = await import('z-ai-web-dev-sdk');
-    const zai = new ZAI({
-      baseUrl: process.env.ZAI_BASE_URL || 'https://internal-api.z.ai/v1',
-      apiKey: process.env.ZAI_API_KEY || 'Z.ai',
-      chatId: process.env.ZAI_CHAT_ID || 'chat-10e71c39-c072-49a8-8d47-4fc57208e35b',
-      userId: process.env.ZAI_USER_ID || '7c5e1429-4415-4038-aee6-8be3df2b78b5',
-      token: process.env.ZAI_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiN2M1ZTE0MjktNDQxNS00MDM4LWFlZTYtOGJlM2RmMmI3OGI1IiwiY2hhdF9pZCI6ImNoYXQtMTBlNzFjMzktYzA3Mi00OWE4LThkNDctNGZjNTcyMDhlMzViIiwicGxhdGZvcm0iOiJ6YWkifQ.eNT3LFs0HOG71nDSicbRkl39bgjPLeGqAGEiH1sRh3g',
-    });
+    const systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}`;
+    const reply = await askGemini(systemText, messages.slice(-8));
 
-    const conversation: Message[] = [
-      { role: 'system', content: `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}` },
-      ...messages.slice(-8),
-    ];
-
-    const completion = await zai.chat.completions.create({
-      messages: conversation,
-      temperature: 0.3,
-    });
-
-    const reply = completion.choices?.[0]?.message?.content || 'Desculpe, não consegui gerar uma resposta.';
-
-    // Append a note if data was unavailable
     const finalReply = dbError
-      ? reply + '\n\n⚠️ *Nota: Não foi possível acessar os dados do CRM neste momento. As informações acima podem estar incompletas.*'
+      ? reply + '\n\n⚠️ *Nota: Não foi possível acessar os dados do CRM neste momento.*'
       : reply;
 
     return NextResponse.json({ reply: finalReply });
