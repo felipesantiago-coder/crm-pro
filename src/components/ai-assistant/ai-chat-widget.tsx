@@ -3,16 +3,22 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import {
-  MessageSquare,
   X,
   Send,
   Loader2,
   Sparkles,
   Maximize2,
   Minimize2,
+  RotateCcw,
+  Users,
+  CalendarDays,
+  Bell,
+  HelpCircle,
+  Search,
+  MessageSquare,
+  Trash2,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -29,15 +35,52 @@ interface ChatMessage {
 //   3. Em src/app/page.tsx, remova a importação e o <AIChatWidget />
 // ============================================================
 
-const SUGGESTIONS = [
-  'Quais clientes estão em stage LEAD?',
-  'Tenho agendamentos para hoje?',
-  'Quais lembretes estão pendentes?',
-  'Como funciona o funil de clientes?',
+interface Suggestion {
+  icon: React.ReactNode;
+  text: string;
+  category?: string;
+}
+
+const SUGGESTION_CATEGORIES: { title: string; icon: React.ReactNode; items: Suggestion[] }[] = [
+  {
+    title: 'Buscar dados',
+    icon: <Search className="h-3.5 w-3.5" />,
+    items: [
+      {
+        icon: <Users className="h-3.5 w-3.5" />,
+        text: 'Quais clientes são LEADs?',
+      },
+      {
+        icon: <CalendarDays className="h-3.5 w-3.5" />,
+        text: 'Tenho agendamentos para hoje?',
+      },
+      {
+        icon: <Bell className="h-3.5 w-3.5" />,
+        text: 'Quais lembretes estão pendentes?',
+      },
+    ],
+  },
+  {
+    title: 'Aprender a usar',
+    icon: <HelpCircle className="h-3.5 w-3.5" />,
+    items: [
+      {
+        icon: <MessageSquare className="h-3.5 w-3.5" />,
+        text: 'Como funciona o funil de clientes?',
+      },
+      {
+        icon: <CalendarDays className="h-3.5 w-3.5" />,
+        text: 'Como criar um agendamento de visita?',
+      },
+      {
+        icon: <Users className="h-3.5 w-3.5" />,
+        text: 'Quais funcionalidades o CRM tem?',
+      },
+    ],
+  },
 ];
 
 function SimpleMarkdown({ text }: { text: string }) {
-  // Simple markdown rendering: bold, italic, lists, code, line breaks
   const html = text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
@@ -63,17 +106,15 @@ export function AIChatWidget() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, loading]);
 
-  // Focus input when opening
   useEffect(() => {
     if (open && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => inputRef.current?.focus(), 150);
     }
   }, [open]);
 
@@ -118,105 +159,86 @@ export function AIChatWidget() {
     }
   }
 
-  function handleSuggestion(text: string) {
-    sendMessage(text);
-  }
-
   function clearChat() {
     setMessages([]);
   }
 
-  return (
-    <>
-      {/* Floating Button */}
-      <button
-        onClick={() => setOpen(!open)}
-        className={cn(
-          'fixed bottom-5 right-5 z-50 h-14 w-14 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center',
-          'bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white',
-          'hover:scale-110 active:scale-95',
-          open && 'scale-0 opacity-0 pointer-events-none'
-        )}
-        title="Assistente IA"
-      >
-        <Sparkles className="h-6 w-6" />
-      </button>
-
-      {/* Chat Panel */}
-      <div
-        className={cn(
-          'fixed z-50 bg-card border shadow-2xl rounded-2xl flex flex-col transition-all duration-300 ease-out overflow-hidden',
-          'right-5 bottom-5',
-          expanded
-            ? 'w-[min(560px,calc(100vw-2.5rem))] h-[min(700px,calc(100vh-2.5rem))]'
-            : 'w-[380px] h-[520px]',
-          open
-            ? 'opacity-100 scale-100 pointer-events-auto'
-            : 'opacity-0 scale-95 pointer-events-none translate-y-4'
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-emerald-500 to-teal-600 text-white">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5" />
-            <div>
-              <h3 className="font-semibold text-sm">Assistente CRM Pro</h3>
-              <p className="text-xs text-emerald-100">Pergunte sobre clientes, agendamentos...</p>
-            </div>
+  // -- Render: Welcome Screen (no messages yet) --
+  function renderWelcome() {
+    return (
+      <div className="flex flex-col h-full px-3 py-2 gap-3 overflow-y-auto">
+        {/* Hero */}
+        <div className="flex flex-col items-center text-center gap-2 pt-2 pb-1">
+          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-600/20 flex items-center justify-center">
+            <Sparkles className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
-              title={expanded ? 'Reduzir' : 'Expandir'}
-            >
-              {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            </button>
-            {messages.length > 0 && (
-              <button
-                onClick={clearChat}
-                className="p-1.5 rounded-lg hover:bg-white/20 transition-colors text-xs"
-                title="Limpar conversa"
-              >
-                <MessageSquare className="h-4 w-4" />
-              </button>
-            )}
-            <button
-              onClick={() => setOpen(false)}
-              className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
+          <div>
+            <p className="font-semibold text-sm">Assistente IA do CRM Pro</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed max-w-[260px]">
+              Pergunte sobre seus clientes, agendamentos, lembretes ou tire dúvidas sobre como usar o sistema.
+            </p>
           </div>
         </div>
 
-        {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-4">
-              <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-600/20 flex items-center justify-center">
-                <Sparkles className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+        {/* Capability badges */}
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {[
+            { icon: <Search className="h-3 w-3" />, label: 'Buscar clientes' },
+            { icon: <CalendarDays className="h-3 w-3" />, label: 'Agendamentos' },
+            { icon: <Bell className="h-3 w-3" />, label: 'Lembretes' },
+            { icon: <HelpCircle className="h-3 w-3" />, label: 'Ajuda do CRM' },
+          ].map(({ icon, label }) => (
+            <span
+              key={label}
+              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/60 px-2 py-1 rounded-full"
+            >
+              {icon}
+              {label}
+            </span>
+          ))}
+        </div>
+
+        {/* Suggestion categories */}
+        <div className="flex flex-col gap-3 flex-1">
+          {SUGGESTION_CATEGORIES.map((cat) => (
+            <div key={cat.title}>
+              <div className="flex items-center gap-1.5 mb-1.5 px-1">
+                <span className="text-emerald-600 dark:text-emerald-400">{cat.icon}</span>
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  {cat.title}
+                </span>
               </div>
-              <div>
-                <p className="font-semibold text-sm">Olá! Sou o assistente do CRM Pro</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Posso ajudar você a encontrar clientes, agendamentos e responder dúvidas sobre o sistema.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 gap-2 w-full max-w-[280px]">
-                {SUGGESTIONS.map((s) => (
+              <div className="flex flex-col gap-1.5">
+                {cat.items.map((item) => (
                   <button
-                    key={s}
-                    onClick={() => handleSuggestion(s)}
-                    className="text-left text-xs px-3 py-2 rounded-lg border bg-muted/50 hover:bg-muted transition-colors text-foreground"
+                    key={item.text}
+                    onClick={() => sendMessage(item.text)}
+                    className="flex items-center gap-2.5 text-left text-xs px-3 py-2 rounded-lg border bg-muted/40 hover:bg-muted transition-colors text-foreground group"
                   >
-                    {s}
+                    <span className="flex-shrink-0 text-muted-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                      {item.icon}
+                    </span>
+                    <span>{item.text}</span>
                   </button>
                 ))}
               </div>
             </div>
-          )}
+          ))}
+        </div>
 
+        {/* Hint */}
+        <p className="text-[10px] text-muted-foreground/60 text-center pb-1">
+          Digite qualquer pergunta ou clique em uma sugestão acima
+        </p>
+      </div>
+    );
+  }
+
+  // -- Render: Chat messages --
+  function renderMessages() {
+    return (
+      <div className="flex flex-col h-full">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
           {messages.map((msg, i) => (
             <div
               key={i}
@@ -253,16 +275,112 @@ export function AIChatWidget() {
             </div>
           )}
         </div>
+      </div>
+    );
+  }
+
+  const hasMessages = messages.length > 0;
+
+  return (
+    <>
+      {/* Floating Button */}
+      <button
+        onClick={() => setOpen(!open)}
+        className={cn(
+          'fixed bottom-5 right-5 z-50 h-14 w-14 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center',
+          'bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white',
+          'hover:scale-110 active:scale-95',
+          open && 'scale-0 opacity-0 pointer-events-none'
+        )}
+        title="Assistente IA"
+      >
+        <Sparkles className="h-6 w-6" />
+      </button>
+
+      {/* Chat Panel */}
+      <div
+        className={cn(
+          'fixed z-50 bg-card border shadow-2xl rounded-2xl flex flex-col transition-all duration-300 ease-out overflow-hidden',
+          'right-5 bottom-5',
+          expanded
+            ? 'w-[min(560px,calc(100vw-2.5rem))] h-[min(700px,calc(100vh-2.5rem))]'
+            : 'w-[380px] h-[540px]',
+          open
+            ? 'opacity-100 scale-100 pointer-events-auto'
+            : 'opacity-0 scale-95 pointer-events-none translate-y-4'
+        )}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-emerald-500 to-teal-600 text-white flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center">
+              <Sparkles className="h-4.5 w-4.5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm leading-tight">Assistente IA</h3>
+              <p className="text-[10px] text-emerald-100/80 leading-tight">
+                {hasMessages ? `${messages.length} mensagens` : 'Clientes, agendamentos, lembretes e ajuda'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
+              title={expanded ? 'Reduzir' : 'Expandir'}
+            >
+              {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </button>
+            {hasMessages && (
+              <button
+                onClick={clearChat}
+                className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
+                title="Nova conversa"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <button
+              onClick={() => setOpen(false)}
+              className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Body: Welcome or Messages */}
+        {hasMessages ? renderMessages() : renderWelcome()}
+
+        {/* Quick suggestions bar (shown when chat has messages) */}
+        {hasMessages && !loading && (
+          <div className="flex gap-1.5 px-3 py-2 overflow-x-auto flex-shrink-0 border-t bg-muted/20">
+            {[
+              'Meus clientes',
+              'Agendamentos hoje',
+              'Lembretes pendentes',
+              'Como usar o CRM',
+            ].map((s) => (
+              <button
+                key={s}
+                onClick={() => sendMessage(s)}
+                className="text-[10px] px-2.5 py-1 rounded-full border bg-card hover:bg-muted transition-colors text-muted-foreground hover:text-foreground whitespace-nowrap flex-shrink-0"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Input */}
-        <div className="border-t p-3">
+        <div className="border-t p-3 flex-shrink-0">
           <div className="flex items-end gap-2">
             <Textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Digite sua pergunta..."
+              placeholder="Pergunte sobre clientes, agendamentos, como usar o CRM..."
               className="min-h-[40px] max-h-[120px] resize-none text-sm rounded-xl"
               rows={1}
               disabled={loading}
