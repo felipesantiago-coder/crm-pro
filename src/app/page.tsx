@@ -9,6 +9,7 @@ import { CRMLayout } from '@/components/crm/crm-layout';
 import { SupabaseRealtimeProvider } from '@/components/crm/supabase-realtime-provider';
 import { useCRMStore } from '@/store/crm-store';
 import { Toaster } from '@/components/ui/sonner';
+import { AIChatWidget } from '@/components/ai-assistant/ai-chat-widget'; // [AI ASSISTANT] — remova esta linha e o <AIChatWidget /> abaixo para desativar
 
 // Code splitting: carrega apenas a view ativa
 const DashboardView = lazy(() =>
@@ -114,6 +115,7 @@ function CRMApp() {
         </CRMLayout>
       </SupabaseRealtimeProvider>
       <Toaster position="top-right" richColors />
+      <AIChatWidget /> {/* [AI ASSISTANT] — remova esta linha para desativar */}
     </ThemeProvider>
   );
 }
