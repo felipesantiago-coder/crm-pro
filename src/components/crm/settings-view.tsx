@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save } from 'lucide-react';
+import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save, CalendarDays, Link2, Unlink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,34 @@ export function SettingsView() {
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+
+  // Google Calendar
+  const [gcConnected, setGcConnected] = useState(false);
+  const [gcLoading, setGcLoading] = useState(true);
+  const [gcConnecting, setGcConnecting] = useState(false);
+  const [gcDisconnecting, setGcDisconnecting] = useState(false);
+
+  useEffect(() => {
+    // Verificar status da conexão Google Calendar
+    fetch('/api/google-calendar/status')
+      .then((r) => r.json())
+      .then((data) => setGcConnected(data.connected === true))
+      .catch(() => {})
+      .finally(() => setGcLoading(false));
+
+    // Verificar feedback de conexão via URL params
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google_calendar') === 'connected') {
+ setGcConnected(true);
+      toast.success('Google Calendar conectado com sucesso!');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    if (params.get('google_calendar_error')) {
+      const errorMsg = params.get('google_calendar_error');
+      toast.error(`Erro ao conectar Google Calendar: ${errorMsg}`);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const isSupabaseConfigured = !!(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -70,6 +98,33 @@ export function SettingsView() {
   function copyToClipboard(text: string, label: string) {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copiado!`);
+  }
+
+  async function connectGoogleCalendar() {
+    setGcConnecting(true);
+    try {
+      window.location.href = '/api/google-calendar/auth';
+    } catch {
+      toast.error('Erro ao iniciar conexão com Google Calendar');
+      setGcConnecting(false);
+    }
+  }
+
+  async function disconnectGoogleCalendar() {
+    setGcDisconnecting(true);
+    try {
+      const res = await fetch('/api/google-calendar/disconnect', { method: 'POST' });
+      if (res.ok) {
+        setGcConnected(false);
+        toast.success('Google Calendar desconectado');
+      } else {
+        throw new Error();
+      }
+    } catch {
+      toast.error('Erro ao desconectar Google Calendar');
+    } finally {
+      setGcDisconnecting(false);
+    }
   }
 
   return (
@@ -163,6 +218,109 @@ export function SettingsView() {
                 Usar tema do sistema
               </Label>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* ==================== GOOGLE CALENDAR ==================== */}
+        <Card className={`hover:shadow-md transition-shadow duration-200 ${
+          gcConnected
+            ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-950/20'
+            : ''
+        }`}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-emerald-500" />
+              Google Calendar
+            </CardTitle>
+            <CardDescription>
+              Sincronize agendamentos de visita com seu Google Calendar
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {gcLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Verificando conexão...
+              </div>
+            ) : gcConnected ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1">
+                    <Link2 className="h-3 w-3" />
+                    Conectado
+                  </Badge>
+                </div>
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Funcionalidades ativas
+                  </h4>
+                  <ul className="text-xs text-muted-foreground space-y-2">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <span><strong>Criação automática</strong> — Novos agendamentos criam eventos no seu Calendar</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <span><strong>Lembretes duplos</strong> — Notificação 24 horas e 2 horas antes (popup + e-mail)</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <span><strong>Atualização de status</strong> — Cancelar ou concluir visita atualiza o evento no Calendar</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <span><strong>Exclusão sincronizada</strong> — Excluir agendamento remove o evento do Calendar</span>
+                    </li>
+                  </ul>
+                </div>
+                <Separator />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={disconnectGoogleCalendar}
+                  disabled={gcDisconnecting}
+                  className="text-destructive hover:text-destructive"
+                >
+                  {gcDisconnecting ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Desconectando...</>
+                  ) : (
+                    <><Unlink className="h-4 w-4 mr-2" /> Desconectar Google Calendar</>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-muted text-muted-foreground gap-1">
+                    <Unlink className="h-3 w-3" />
+                    Não conectado
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Conecte sua conta Google para que os agendamentos de visita sejam automaticamente
+                  criados no seu Google Calendar com lembretes configurados.
+                </p>
+                <Button
+                  onClick={connectGoogleCalendar}
+                  disabled={gcConnecting}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {gcConnecting ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Conectando...</>
+                  ) : (
+                    <><Link2 className="h-4 w-4 mr-2" /> Conectar Google Calendar</>
+                  )}
+                </Button>
+                {!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && (
+                  <div className="p-3 rounded-lg bg-amber-100/50 dark:bg-amber-900/20">
+                    <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                      As variáveis de ambiente do Google Calendar não estão configuradas.
+                      Consulte o tutorial para configurar as credenciais OAuth 2.0.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
 
