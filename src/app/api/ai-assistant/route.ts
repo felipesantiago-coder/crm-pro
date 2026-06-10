@@ -71,7 +71,7 @@ async function fetchUserData(userId: string, userRole: string) {
         tags: { select: { tag: { select: { name: true } } } },
       },
       orderBy: { updatedAt: 'desc' },
-      take: 80,
+      take: 40,
     }),
     db.schedule.findMany({
       where: {
@@ -88,7 +88,7 @@ async function fetchUserData(userId: string, userRole: string) {
         creatorUser: { select: { name: true } },
       },
       orderBy: { scheduledDate: 'asc' },
-      take: 40,
+      take: 20,
     }),
     db.reminder.findMany({
       where: {
@@ -100,14 +100,14 @@ async function fetchUserData(userId: string, userRole: string) {
         client: { select: { name: true } },
       },
       orderBy: { dueDate: 'asc' },
-      take: 20,
+      take: 10,
     }),
   ]);
 
   return { clients, schedules, reminders };
 }
 
-const MAX_PDF_CONTEXT_CHARS = 30000; // ~7.500 tokens — conserva espaço para demais dados e resposta
+const MAX_PDF_CONTEXT_CHARS = 3000; // ~750 tokens — Groq free tier tem limite de 6000 TPM total por requisição
 
 async function fetchEnterprisePdfContent(userMessage: string): Promise<string> {
   try {
@@ -151,10 +151,13 @@ async function fetchEnterprisePdfContent(userMessage: string): Promise<string> {
 
     if (!matched || !matched.pdfContent) return '';
 
-    // Truncar se necessário para não estourar o contexto
+    // Truncar se necessário para não estourar o contexto do Groq free tier (6000 TPM)
     let content = matched.pdfContent;
     if (content.length > MAX_PDF_CONTEXT_CHARS) {
-      content = content.slice(0, MAX_PDF_CONTEXT_CHARS) + '\n\n[...] Conteúdo truncado. O PDF contém mais informações do que foi possível incluir aqui.';
+      // Tenta cortar em quebra de linha para não cortar palavras no meio
+      let cutIndex = content.lastIndexOf('\n', MAX_PDF_CONTEXT_CHARS);
+      if (cutIndex < MAX_PDF_CONTEXT_CHARS * 0.5) cutIndex = MAX_PDF_CONTEXT_CHARS;
+      content = content.slice(0, cutIndex) + '\n\n[...] Conteúdo truncado pelo limite de tokens. Para informações mais detalhadas, consulte o arquivo completo no painel do empreendimento.';
     }
 
     return `=== BASE DE DADOS DO EMPREENDIMENTO: ${matched.name.toUpperCase()} ===\n${content}`;
@@ -268,8 +271,30 @@ export async function POST(req: NextRequest) {
       console.error('[AI ASSISTANT] Enterprise PDF fetch failed:', err);
     }
 
-    const systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}${enterpriseContext ? '\n\n---\n' + enterpriseContext : ''}`;
-    const reply = await askGroq(systemText, messages.slice(-8));
+    // Montar system text com proteção contra limite de tokens do Groq free tier (6000 TPM)
+    // Estimativa conservadora: 1 token ≈ 4 caracteres para texto em português
+    const MAX_TOTAL_CHARS = 20000; // ~5000 tokens, deixando margem para mensagens e resposta
+    let systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}`;
+    
+    // Calcular espaço restante para o contexto da empresa
+    const remainingChars = MAX_TOTAL_CHARS - systemText.length - 200; // 200 de margem
+    if (enterpriseContext && remainingChars > 200) {
+      // Se o contexto da empresa couber, adiciona completo
+      if (enterpriseContext.length <= remainingChars) {
+        systemText += `\n\n---\n${enterpriseContext}`;
+      } else {
+        // Trunca o contexto da empresa para caber
+        const truncatedLen = remainingChars;
+        let cutIndex = enterpriseContext.lastIndexOf('\n', truncatedLen);
+        if (cutIndex < truncatedLen * 0.5) cutIndex = truncatedLen;
+        systemText += `\n\n---\n${enterpriseContext.slice(0, cutIndex)}\n\n[...] Conteúdo truncado pelo limite de tokens.`;
+      }
+    } else if (enterpriseContext) {
+      // Se não há espaço, omite o contexto da empresa (o prompt de sistema já instrui a IA a avisar)
+      console.log('[AI ASSISTANT] Contexto da empresa omitido por limite de tokens');
+    }
+    
+    const reply = await askGroq(systemText, messages.slice(-4));
 
     const finalReply = dbError
       ? reply + '\n\n⚠️ *Nota: Não foi possível acessar os dados do CRM neste momento.*'
