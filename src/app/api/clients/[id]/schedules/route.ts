@@ -107,9 +107,12 @@ export async function POST(
       creatorName: session.user.name || 'Usuário',
     }).catch(() => {});
 
-    // [GOOGLE CALENDAR] Criar evento no Google Calendar (fire-and-forget)
-    (async () => {
-      try {
+    // [GOOGLE CALENDAR] Criar evento no Google Calendar
+    // Na Vercel Hobby, fire-and-forget com IIFE é encerrado quando a response
+    // é devolvida. Usamos Promise.race com timeout de 8s para não bloquear
+    // demais, mas garantir que a chamada chegue a ser feita.
+    Promise.race([
+      (async () => {
         const client = await db.client.findUnique({
           where: { id },
           select: { name: true },
@@ -129,10 +132,11 @@ export async function POST(
           where: { id: schedule.id },
           data: { googleCalendarEventId: eventId },
         });
-      } catch (err) {
-        console.error('[GOOGLE CALENDAR] Erro ao criar evento (fire-and-forget):', err);
-      }
-    })().catch(() => {});
+      })(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+    ]).catch((err) => {
+      console.error('[GOOGLE CALENDAR] Erro ao criar evento:', err);
+    });
 
     return NextResponse.json(schedule, { status: 201 });
   } catch (error) {
@@ -192,21 +196,24 @@ export async function PATCH(
       },
     });
 
-    // [GOOGLE CALENDAR] Atualizar evento no Google Calendar (fire-and-forget)
+    // [GOOGLE CALENDAR] Atualizar evento no Google Calendar
     if (schedule.googleCalendarEventId) {
       const client = await db.client.findUnique({
         where: { id },
         select: { name: true },
       });
       const clientName = client?.name || 'Cliente';
-      updateCalendarEvent({
-        userId: schedule.createdBy,
-        eventId: schedule.googleCalendarEventId,
-        summary: `Visita CRM Pro — ${clientName}`,
-        description: description || undefined,
-        status: status as 'COMPLETED' | 'CANCELLED',
-      }).catch((err) => {
-        console.error('[GOOGLE CALENDAR] Erro ao atualizar evento (fire-and-forget):', err);
+      await Promise.race([
+        updateCalendarEvent({
+          userId: schedule.createdBy,
+          eventId: schedule.googleCalendarEventId,
+          summary: `Visita CRM Pro — ${clientName}`,
+          description: description || undefined,
+          status: status as 'COMPLETED' | 'CANCELLED',
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+      ]).catch((err) => {
+        console.error('[GOOGLE CALENDAR] Erro ao atualizar evento:', err);
       });
     }
 
@@ -251,10 +258,13 @@ export async function DELETE(
       where: { id: scheduleId },
     });
 
-    // [GOOGLE CALENDAR] Excluir evento do Google Calendar (fire-and-forget)
+    // [GOOGLE CALENDAR] Excluir evento do Google Calendar
     if (schedule.googleCalendarEventId) {
-      deleteCalendarEvent(schedule.createdBy, schedule.googleCalendarEventId).catch((err) => {
-        console.error('[GOOGLE CALENDAR] Erro ao excluir evento (fire-and-forget):', err);
+      await Promise.race([
+        deleteCalendarEvent(schedule.createdBy, schedule.googleCalendarEventId),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+      ]).catch((err) => {
+        console.error('[GOOGLE CALENDAR] Erro ao excluir evento:', err);
       });
     }
 

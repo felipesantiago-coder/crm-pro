@@ -16,7 +16,7 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 
 const SCOPES = [
-  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar', // acesso completo ao Google Calendar (inclui events)
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
 
@@ -168,7 +168,9 @@ export interface CreateEventParams {
 }
 
 export async function createCalendarEvent(params: CreateEventParams): Promise<string> {
+  console.log('[GOOGLE CALENDAR] Criando evento para userId:', params.userId, 'data:', params.date, 'hora:', params.time);
   const accessToken = await getValidAccessToken(params.userId);
+  console.log('[GOOGLE CALENDAR] Access token obtido com sucesso, criando evento na API...');
   const tz = params.timeZone || 'America/Sao_Paulo';
 
   const startDateTime = `${params.date}T${params.time}:00`;
