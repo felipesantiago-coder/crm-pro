@@ -3,9 +3,14 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
 
+// --- Provedores de IA ---
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = 'gemini-2.0-flash';
+
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 
+// --- Prompt do sistema ---
 const SYSTEM_PROMPT = `Você é o assistente virtual do CRM Pro, um sistema brasileiro de gestão de relacionamento com clientes. Seu papel é ajudar o usuário a:
 
 1. **Encontrar clientes** — busque nos dados fornecidos por nome, região, empresa, estágio, tags ou qualquer critério.
@@ -37,7 +42,7 @@ Funcionalidades do CRM:
   - **Como conectar o Google Calendar**: vá em Configurações > Google Calendar e clique "Conectar". Será aberta a tela de autorização do Google — basta permitir o acesso. Para funcionar, as variáveis de ambiente GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET precisam estar configuradas no painel da Vercel. Se houver erro 403 ao conectar, verifique no Google Cloud Console se o email do usuário está adicionado como "Usuário de teste" na Tela de consentimento OAuth.
 - **Administração** (somente admin): gerenciamento de usuários e configurações do sistema
 - **Configurações**: preferências do usuário e gestão de empreendimentos (importação em lote via Excel)
-- **Bases de Dados de Empreendimentos**: o administrador pode enviar arquivos PDF com informações detalhadas de cada empreendimento (plantas, valores, metragens, condições de pagamento, etc.). Quando um usuário pergunta sobre um empreendimento específico, você recebe o conteúdo extraído desse PDF como contexto. Cada empreendimento tem sua base de dados individual e separada — nunca misture informações de empreendimentos diferentes.
+- **Bases de Dados de Empreendimentos**: o administrador pode enviar arquivos (PDF, Markdown ou texto) com informações detalhadas de cada empreendimento (plantas, valores, metragens, condições de pagamento, etc.). Quando um usuário pergunta sobre um empreendimento específico, você recebe o conteúdo extraído desse arquivo como contexto. Cada empreendimento tem sua base de dados individual e separada — nunca misture informações de empreendimentos diferentes.
 - **Parcerias**: usuários podem compartilhar acesso a clientes vinculando-se como parceiros
 
 Regras:
@@ -48,14 +53,18 @@ Regras:
 - Nunca invente dados que não estejam no contexto.
 - Quando explicar o funil, use SEMPRE as 8 etapas listadas acima. Nunca invente etapas como "NEGOTIATING" ou "WON" — os nomes corretos são FECHADO_GANHO, FECHADO_PERDIDO, etc.
 - Quando a pergunta mencionar um empreendimento específico e houver uma seção "BASE DE DADOS DO EMPREENDIMENTO" no contexto, use APENAS aquelas informações para responder sobre esse empreendimento. Nunca invente dados que não estejam na base.
-- Se a pergunta for sobre um empreendimento e não houver base de dados disponível no contexto, informe que não há informações detalhadas cadastradas para esse empreendimento e sugira que o administrador envie o PDF com os dados.
+- Se a pergunta for sobre um empreendimento e não houver base de dados disponível no contexto, informe que não há informações detalhadas cadastradas para esse empreendimento e sugira que o administrador envie o arquivo com os dados.
 - Use formatação Markdown (negrito, listas).`;
 
+// --- Tipos ---
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
+type ProviderResult = { reply: string; provider: string };
+
+// --- Busca de dados do CRM ---
 async function fetchUserData(userId: string, userRole: string) {
   const isAdmin = userRole === 'ADMIN';
   const userFilter = isAdmin ? {} : {
@@ -71,7 +80,7 @@ async function fetchUserData(userId: string, userRole: string) {
         tags: { select: { tag: { select: { name: true } } } },
       },
       orderBy: { updatedAt: 'desc' },
-      take: 40,
+      take: 80,
     }),
     db.schedule.findMany({
       where: {
@@ -88,7 +97,7 @@ async function fetchUserData(userId: string, userRole: string) {
         creatorUser: { select: { name: true } },
       },
       orderBy: { scheduledDate: 'asc' },
-      take: 20,
+      take: 40,
     }),
     db.reminder.findMany({
       where: {
@@ -100,18 +109,18 @@ async function fetchUserData(userId: string, userRole: string) {
         client: { select: { name: true } },
       },
       orderBy: { dueDate: 'asc' },
-      take: 10,
+      take: 20,
     }),
   ]);
 
   return { clients, schedules, reminders };
 }
 
-const MAX_PDF_CONTEXT_CHARS = 3000; // ~750 tokens — Groq free tier tem limite de 6000 TPM total por requisição
+// --- Base de dados de empreendimentos ---
+const MAX_ENTERPRISE_CONTEXT_CHARS = 30000; // Gemini suporta 1M tokens — folga total
 
-async function fetchEnterprisePdfContent(userMessage: string): Promise<string> {
+async function fetchEnterpriseContent(userMessage: string): Promise<string> {
   try {
-    // Buscar todos os empreendimentos que têm pdfContent
     const enterprises = await db.enterprise.findMany({
       where: { pdfContent: { not: null } },
       select: { id: true, name: true, pdfContent: true },
@@ -119,11 +128,10 @@ async function fetchEnterprisePdfContent(userMessage: string): Promise<string> {
 
     if (enterprises.length === 0) return '';
 
-    // Normalizar o nome do empreendimento para busca fuzzy simples
     const normalize = (s: string) => s
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // remove acentos
+      .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9\s]/g, '')
       .trim();
 
@@ -132,11 +140,9 @@ async function fetchEnterprisePdfContent(userMessage: string): Promise<string> {
     // Buscar o empreendimento mais relevante mencionado na mensagem
     let matched = enterprises.find(e => {
       const normalizedName = normalize(e.name);
-      // Nome completo do empreendimento aparece na mensagem
       return normalizedMessage.includes(normalizedName);
     });
 
-    // Se não encontrou pelo nome completo, tenta partes do nome (palavras >= 4 chars)
     if (!matched) {
       const scores = enterprises.map(e => {
         const nameParts = normalize(e.name).split(/\s+/).filter(p => p.length >= 4);
@@ -151,22 +157,21 @@ async function fetchEnterprisePdfContent(userMessage: string): Promise<string> {
 
     if (!matched || !matched.pdfContent) return '';
 
-    // Truncar se necessário para não estourar o contexto do Groq free tier (6000 TPM)
     let content = matched.pdfContent;
-    if (content.length > MAX_PDF_CONTEXT_CHARS) {
-      // Tenta cortar em quebra de linha para não cortar palavras no meio
-      let cutIndex = content.lastIndexOf('\n', MAX_PDF_CONTEXT_CHARS);
-      if (cutIndex < MAX_PDF_CONTEXT_CHARS * 0.5) cutIndex = MAX_PDF_CONTEXT_CHARS;
-      content = content.slice(0, cutIndex) + '\n\n[...] Conteúdo truncado pelo limite de tokens. Para informações mais detalhadas, consulte o arquivo completo no painel do empreendimento.';
+    if (content.length > MAX_ENTERPRISE_CONTEXT_CHARS) {
+      let cutIndex = content.lastIndexOf('\n', MAX_ENTERPRISE_CONTEXT_CHARS);
+      if (cutIndex < MAX_ENTERPRISE_CONTEXT_CHARS * 0.5) cutIndex = MAX_ENTERPRISE_CONTEXT_CHARS;
+      content = content.slice(0, cutIndex) + '\n\n[...] Conteúdo truncado. O arquivo contém mais informações do que foi possível incluir aqui.';
     }
 
     return `=== BASE DE DADOS DO EMPREENDIMENTO: ${matched.name.toUpperCase()} ===\n${content}`;
   } catch (err) {
-    console.error('[AI ASSISTANT] Erro ao buscar PDF do empreendimento:', err);
+    console.error('[AI ASSISTANT] Erro ao buscar base de dados do empreendimento:', err);
     return '';
   }
 }
 
+// --- Formatar dados do CRM como texto ---
 function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): string {
   const parts: string[] = [];
 
@@ -203,18 +208,81 @@ function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): 
   return parts.join('\n');
 }
 
-async function askGroq(systemText: string, messages: Message[]): Promise<string> {
-  const url = 'https://api.groq.com/openai/v1/chat/completions';
+// --- Montar system text completo (sem truncar — Gemini suporta 1M tokens) ---
+function buildFullSystemText(dataContext: string, enterpriseContext: string): string {
+  let systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}`;
+  if (enterpriseContext) {
+    systemText += `\n\n---\n${enterpriseContext}`;
+  }
+  return systemText;
+}
 
-  const body = {
-    model: GROQ_MODEL,
-    temperature: 0.3,
-    max_tokens: 1024,
-    messages: [
-      { role: 'system', content: systemText },
-      ...messages.map(m => ({ role: m.role, content: m.content })),
-    ],
-  };
+// --- Montar system text reduzido para Groq fallback (limite 6000 TPM) ---
+function buildGroqSystemText(dataContext: string, enterpriseContext: string): string {
+  // Estimativa conservadora: 1 token ≈ 4 chars para português
+  const MAX_GROQ_CHARS = 20000; // ~5000 tokens, margem para mensagens e resposta
+  let systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}`;
+
+  const remaining = MAX_GROQ_CHARS - systemText.length - 200;
+  if (enterpriseContext && remaining > 200) {
+    if (enterpriseContext.length <= remaining) {
+      systemText += `\n\n---\n${enterpriseContext}`;
+    } else {
+      let cutIndex = enterpriseContext.lastIndexOf('\n', remaining);
+      if (cutIndex < remaining * 0.5) cutIndex = remaining;
+      systemText += `\n\n---\n${enterpriseContext.slice(0, cutIndex)}\n\n[...] Conteúdo truncado pelo limite de tokens do provedor fallback.`;
+    }
+  } else if (enterpriseContext) {
+    console.log('[AI ASSISTANT] Contexto da empresa omitido no fallback por limite de tokens');
+  }
+
+  return systemText;
+}
+
+// --- Provedor: Google Gemini (primário) ---
+async function askGemini(systemText: string, messages: Message[]): Promise<string> {
+  if (!GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY não configurada');
+  }
+
+  // Converter mensagens para formato Gemini ("assistant" → "model")
+  const contents = messages.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemText }] },
+      contents,
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 2048,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gemini API ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text
+    || 'Desculpe, não consegui gerar uma resposta.';
+}
+
+// --- Provedor: Groq (fallback) ---
+async function askGroq(systemText: string, messages: Message[]): Promise<string> {
+  if (!GROQ_API_KEY) {
+    throw new Error('GROQ_API_KEY não configurada');
+  }
+
+  const url = 'https://api.groq.com/openai/v1/chat/completions';
 
   const res = await fetch(url, {
     method: 'POST',
@@ -222,7 +290,15 @@ async function askGroq(systemText: string, messages: Message[]): Promise<string>
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${GROQ_API_KEY}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      temperature: 0.3,
+      max_tokens: 1024,
+      messages: [
+        { role: 'system', content: systemText },
+        ...messages.map(m => ({ role: m.role, content: m.content })),
+      ],
+    }),
   });
 
   if (!res.ok) {
@@ -234,6 +310,39 @@ async function askGroq(systemText: string, messages: Message[]): Promise<string>
   return data.choices?.[0]?.message?.content || 'Desculpe, não consegui gerar uma resposta.';
 }
 
+// --- Chamada principal com fallback automático ---
+async function askAI(systemText: string, messages: Message[]): Promise<ProviderResult> {
+  // 1) Tentar Gemini primeiro (1M tokens, 1500 req/dia grátis)
+  if (GEMINI_API_KEY) {
+    try {
+      const reply = await askGemini(systemText, messages);
+      return { reply, provider: 'Gemini' };
+    } catch (err) {
+      console.warn('[AI ASSISTANT] Gemini falhou, tentando Groq como fallback:', err instanceof Error ? err.message : err);
+    }
+  } else {
+    console.log('[AI ASSISTANT] GEMINI_API_KEY não configurada, usando Groq diretamente');
+  }
+
+  // 2) Fallback para Groq
+  if (GROQ_API_KEY) {
+    // Rebuild system text com limites do Groq (6000 TPM)
+    // Extrair partes do systemText para reconstruir com truncamento
+    const crmMatch = systemText.match(/---\nDADOS DO CRM:\n([\s\S]*?)(?:\n---\n|$)/);
+    const enterpriseMatch = systemText.match(/=== BASE DE DADOS DO EMPREENDIMENTO:[\s\S]*$/);
+    const dataContext = crmMatch ? crmMatch[1].trim() : '(Dados indisponíveis)';
+    const enterpriseContext = enterpriseMatch ? enterpriseMatch[0] : '';
+
+    const groqSystemText = buildGroqSystemText(dataContext, enterpriseContext);
+    const groqMessages = messages.slice(-4); // Menos histórico para economizar tokens
+    const reply = await askGroq(groqSystemText, groqMessages);
+    return { reply, provider: 'Groq (fallback)' };
+  }
+
+  throw new Error('Nenhum provedor de IA disponível. Configure GEMINI_API_KEY ou GROQ_API_KEY.');
+}
+
+// --- Handler principal ---
 export async function POST(req: NextRequest) {
   let dbError = false;
 
@@ -250,7 +359,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Mensagens inválidas' }, { status: 400 });
     }
 
-    // Fetch user data — if DB fails, continue without data context
+    // Buscar dados do CRM
     let dataContext = '(Dados indisponíveis no momento)';
     let enterpriseContext = '';
     try {
@@ -266,35 +375,17 @@ export async function POST(req: NextRequest) {
     // Buscar base de dados de empreendimento se a pergunta mencionar um
     const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content || '';
     try {
-      enterpriseContext = await fetchEnterprisePdfContent(lastUserMessage);
+      enterpriseContext = await fetchEnterpriseContent(lastUserMessage);
     } catch (err) {
-      console.error('[AI ASSISTANT] Enterprise PDF fetch failed:', err);
+      console.error('[AI ASSISTANT] Enterprise content fetch failed:', err);
     }
 
-    // Montar system text com proteção contra limite de tokens do Groq free tier (6000 TPM)
-    // Estimativa conservadora: 1 token ≈ 4 caracteres para texto em português
-    const MAX_TOTAL_CHARS = 20000; // ~5000 tokens, deixando margem para mensagens e resposta
-    let systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}`;
-    
-    // Calcular espaço restante para o contexto da empresa
-    const remainingChars = MAX_TOTAL_CHARS - systemText.length - 200; // 200 de margem
-    if (enterpriseContext && remainingChars > 200) {
-      // Se o contexto da empresa couber, adiciona completo
-      if (enterpriseContext.length <= remainingChars) {
-        systemText += `\n\n---\n${enterpriseContext}`;
-      } else {
-        // Trunca o contexto da empresa para caber
-        const truncatedLen = remainingChars;
-        let cutIndex = enterpriseContext.lastIndexOf('\n', truncatedLen);
-        if (cutIndex < truncatedLen * 0.5) cutIndex = truncatedLen;
-        systemText += `\n\n---\n${enterpriseContext.slice(0, cutIndex)}\n\n[...] Conteúdo truncado pelo limite de tokens.`;
-      }
-    } else if (enterpriseContext) {
-      // Se não há espaço, omite o contexto da empresa (o prompt de sistema já instrui a IA a avisar)
-      console.log('[AI ASSISTANT] Contexto da empresa omitido por limite de tokens');
-    }
-    
-    const reply = await askGroq(systemText, messages.slice(-4));
+    // Montar system text completo (Gemini suporta 1M tokens)
+    const systemText = buildFullSystemText(dataContext, enterpriseContext);
+
+    // Enviar para IA com fallback automático
+    const { reply, provider } = await askAI(systemText, messages);
+    console.log(`[AI ASSISTANT] Resposta gerada via ${provider}`);
 
     const finalReply = dbError
       ? reply + '\n\n⚠️ *Nota: Não foi possível acessar os dados do CRM neste momento.*'
