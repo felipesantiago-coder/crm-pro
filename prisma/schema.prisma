@@ -95,12 +95,13 @@ model Reminder {
 }
 
 model Enterprise {
-  id        String   @id @default(cuid()) @map("id")
-  name      String   @map("name")
-  region    String?  @map("region")
-  imageUrl  String?  @map("imageUrl")
-  createdAt DateTime  @default(now()) @map("createdAt")
-  updatedAt DateTime  @updatedAt @map("updatedAt")
+  id         String   @id @default(cuid()) @map("id")
+  name       String   @map("name")
+  region     String?  @map("region")
+  imageUrl   String?  @map("imageUrl")
+  pdfContent String?  @map("pdfContent")
+  createdAt  DateTime @default(now()) @map("createdAt")
+  updatedAt  DateTime @updatedAt @map("updatedAt")
 
   clients Client[]
 
