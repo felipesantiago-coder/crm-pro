@@ -16,7 +16,7 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 
 const SCOPES = [
-  'https://www.googleapis.com/auth/calendar', // acesso completo ao Google Calendar (inclui events)
+  'https://www.googleapis.com/auth/calendar.events', // criar, editar e excluir eventos
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
 
