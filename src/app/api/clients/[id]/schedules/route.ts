@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { notifyTeamScheduleCreated } from '@/lib/notifications';
@@ -98,7 +99,7 @@ export async function POST(
       },
     });
 
-    // Notificar equipe do cliente sobre o agendamento (fire-and-forget)
+    // Notificar equipe do cliente sobre o agendamento
     notifyTeamScheduleCreated({
       clientId: id,
       scheduledDate: parsedDate,
@@ -107,18 +108,17 @@ export async function POST(
       creatorName: session.user.name || 'Usuário',
     }).catch(() => {});
 
-    // [GOOGLE CALENDAR] Criar evento no Google Calendar
-    // Na Vercel Hobby, fire-and-forget puro (sem await) é morto quando
-    // a response é devolvida. Usamos await com try/catch isolado para
-    // garantir que a chamada complete SEM afetar a response principal.
-    try {
-      const client = await db.client.findUnique({
-        where: { id },
-        select: { name: true },
-      });
-      const clientName = client?.name || 'Cliente';
-      const eventId = await Promise.race([
-        createCalendarEvent({
+    // [GOOGLE CALENDAR] Criar evento APÓS a response ser enviada.
+    // after() do Next.js 16 permite executar código em background
+    // sem ser morto pelo encerramento da serverless function na Vercel.
+    after(async () => {
+      try {
+        const client = await db.client.findUnique({
+          where: { id },
+          select: { name: true },
+        });
+        const clientName = client?.name || 'Cliente';
+        const eventId = await createCalendarEvent({
           userId: currentUser.id,
           summary: `Visita CRM Pro — ${clientName}`,
           description: description?.trim()
@@ -126,16 +126,16 @@ export async function POST(
             : `Visita agendada no CRM Pro para ${clientName}`,
           date: scheduledDate,
           time: scheduledTime,
-        }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-      ]);
-      await db.schedule.update({
-        where: { id: schedule.id },
-        data: { googleCalendarEventId: eventId },
-      });
-    } catch (gcErr) {
-      console.error('[GOOGLE CALENDAR] Erro ao criar evento (não afeta o agendamento):', gcErr);
-    }
+        });
+        await db.schedule.update({
+          where: { id: schedule.id },
+          data: { googleCalendarEventId: eventId },
+        });
+        console.log('[GOOGLE CALENDAR] Evento criado com sucesso:', eventId);
+      } catch (err) {
+        console.error('[GOOGLE CALENDAR] Erro ao criar evento (não afeta o agendamento):', err);
+      }
+    });
 
     return NextResponse.json(schedule, { status: 201 });
   } catch (error) {
@@ -195,26 +195,26 @@ export async function PATCH(
       },
     });
 
-    // [GOOGLE CALENDAR] Atualizar evento no Google Calendar
+    // [GOOGLE CALENDAR] Atualizar evento APÓS a response ser enviada
     if (schedule.googleCalendarEventId) {
-      try {
-        const client = await db.client.findUnique({
-          where: { id },
-          select: { name: true },
-        });
-        const clientName = client?.name || 'Cliente';
-        await Promise.race([
-          updateCalendarEvent({
+      after(async () => {
+        try {
+          const client = await db.client.findUnique({
+            where: { id },
+            select: { name: true },
+          });
+          const clientName = client?.name || 'Cliente';
+          await updateCalendarEvent({
             userId: schedule.createdBy,
             eventId: schedule.googleCalendarEventId,
             summary: `Visita CRM Pro — ${clientName}`,
             status: status as 'COMPLETED' | 'CANCELLED',
-          }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-        ]);
-      } catch (gcErr) {
-        console.error('[GOOGLE CALENDAR] Erro ao atualizar evento (não afeta o agendamento):', gcErr);
-      }
+          });
+          console.log('[GOOGLE CALENDAR] Evento atualizado com sucesso');
+        } catch (err) {
+          console.error('[GOOGLE CALENDAR] Erro ao atualizar evento (não afeta o agendamento):', err);
+        }
+      });
     }
 
     return NextResponse.json(updated);
@@ -258,16 +258,16 @@ export async function DELETE(
       where: { id: scheduleId },
     });
 
-    // [GOOGLE CALENDAR] Excluir evento do Google Calendar
+    // [GOOGLE CALENDAR] Excluir evento APÓS a response ser enviada
     if (schedule.googleCalendarEventId) {
-      try {
-        await Promise.race([
-          deleteCalendarEvent(schedule.createdBy, schedule.googleCalendarEventId),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-        ]);
-      } catch (gcErr) {
-        console.error('[GOOGLE CALENDAR] Erro ao excluir evento (não afeta o agendamento):', gcErr);
-      }
+      after(async () => {
+        try {
+          await deleteCalendarEvent(schedule.createdBy, schedule.googleCalendarEventId);
+          console.log('[GOOGLE CALENDAR] Evento excluído com sucesso');
+        } catch (err) {
+          console.error('[GOOGLE CALENDAR] Erro ao excluir evento (não afeta o agendamento):', err);
+        }
+      });
     }
 
     return NextResponse.json({ success: true });
