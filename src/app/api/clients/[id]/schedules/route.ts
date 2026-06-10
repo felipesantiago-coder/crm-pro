@@ -108,17 +108,17 @@ export async function POST(
     }).catch(() => {});
 
     // [GOOGLE CALENDAR] Criar evento no Google Calendar
-    // Na Vercel Hobby, fire-and-forget com IIFE é encerrado quando a response
-    // é devolvida. Usamos Promise.race com timeout de 8s para não bloquear
-    // demais, mas garantir que a chamada chegue a ser feita.
-    Promise.race([
-      (async () => {
-        const client = await db.client.findUnique({
-          where: { id },
-          select: { name: true },
-        });
-        const clientName = client?.name || 'Cliente';
-        const eventId = await createCalendarEvent({
+    // Na Vercel Hobby, fire-and-forget puro (sem await) é morto quando
+    // a response é devolvida. Usamos await com try/catch isolado para
+    // garantir que a chamada complete SEM afetar a response principal.
+    try {
+      const client = await db.client.findUnique({
+        where: { id },
+        select: { name: true },
+      });
+      const clientName = client?.name || 'Cliente';
+      const eventId = await Promise.race([
+        createCalendarEvent({
           userId: currentUser.id,
           summary: `Visita CRM Pro — ${clientName}`,
           description: description?.trim()
@@ -126,17 +126,16 @@ export async function POST(
             : `Visita agendada no CRM Pro para ${clientName}`,
           date: scheduledDate,
           time: scheduledTime,
-        });
-        // Salvar ID do evento no agendamento
-        await db.schedule.update({
-          where: { id: schedule.id },
-          data: { googleCalendarEventId: eventId },
-        });
-      })(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-    ]).catch((err) => {
-      console.error('[GOOGLE CALENDAR] Erro ao criar evento:', err);
-    });
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+      ]);
+      await db.schedule.update({
+        where: { id: schedule.id },
+        data: { googleCalendarEventId: eventId },
+      });
+    } catch (gcErr) {
+      console.error('[GOOGLE CALENDAR] Erro ao criar evento (não afeta o agendamento):', gcErr);
+    }
 
     return NextResponse.json(schedule, { status: 201 });
   } catch (error) {
@@ -198,23 +197,24 @@ export async function PATCH(
 
     // [GOOGLE CALENDAR] Atualizar evento no Google Calendar
     if (schedule.googleCalendarEventId) {
-      const client = await db.client.findUnique({
-        where: { id },
-        select: { name: true },
-      });
-      const clientName = client?.name || 'Cliente';
-      await Promise.race([
-        updateCalendarEvent({
-          userId: schedule.createdBy,
-          eventId: schedule.googleCalendarEventId,
-          summary: `Visita CRM Pro — ${clientName}`,
-          description: description || undefined,
-          status: status as 'COMPLETED' | 'CANCELLED',
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-      ]).catch((err) => {
-        console.error('[GOOGLE CALENDAR] Erro ao atualizar evento:', err);
-      });
+      try {
+        const client = await db.client.findUnique({
+          where: { id },
+          select: { name: true },
+        });
+        const clientName = client?.name || 'Cliente';
+        await Promise.race([
+          updateCalendarEvent({
+            userId: schedule.createdBy,
+            eventId: schedule.googleCalendarEventId,
+            summary: `Visita CRM Pro — ${clientName}`,
+            status: status as 'COMPLETED' | 'CANCELLED',
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+        ]);
+      } catch (gcErr) {
+        console.error('[GOOGLE CALENDAR] Erro ao atualizar evento (não afeta o agendamento):', gcErr);
+      }
     }
 
     return NextResponse.json(updated);
@@ -260,12 +260,14 @@ export async function DELETE(
 
     // [GOOGLE CALENDAR] Excluir evento do Google Calendar
     if (schedule.googleCalendarEventId) {
-      await Promise.race([
-        deleteCalendarEvent(schedule.createdBy, schedule.googleCalendarEventId),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-      ]).catch((err) => {
-        console.error('[GOOGLE CALENDAR] Erro ao excluir evento:', err);
-      });
+      try {
+        await Promise.race([
+          deleteCalendarEvent(schedule.createdBy, schedule.googleCalendarEventId),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+        ]);
+      } catch (gcErr) {
+        console.error('[GOOGLE CALENDAR] Erro ao excluir evento (não afeta o agendamento):', gcErr);
+      }
     }
 
     return NextResponse.json({ success: true });
