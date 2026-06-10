@@ -118,10 +118,11 @@ model User {
   createdAt         DateTime  @default(now()) @map("createdAt")
   updatedAt         DateTime  @updatedAt @map("updatedAt")
 
-  createdClients  Client[]          @relation("CreatedClients")
-  createdSchedules Schedule[]       @relation("CreatedSchedules")
-  partnerOf       ClientPartner[]
-  addedPartners   ClientPartner[]  @relation("AddedPartners")
+  createdClients      Client[]              @relation("CreatedClients")
+  createdSchedules    Schedule[]           @relation("CreatedSchedules")
+  partnerOf           ClientPartner[]
+  addedPartners       ClientPartner[]      @relation("AddedPartners")
+  googleCalendarToken GoogleCalendarToken?
 
   @@map("users")
 }
@@ -154,12 +155,13 @@ model UserSettings {
 model Schedule {
   id            String    @id @default(cuid()) @map("id")
   scheduledDate DateTime  @map("scheduledDate")
-  scheduledTime String   @map("scheduledTime")
-  description   String?  @map("description")
-  status        String    @default("PENDING") @map("status")
-  completedAt   DateTime? @map("completedAt")
-  clientId      String    @map("clientId")
-  createdBy     String    @map("createdBy")
+  scheduledTime        String   @map("scheduledTime")
+  description           String?  @map("description")
+  status                String   @default("PENDING") @map("status")
+  completedAt           DateTime? @map("completedAt")
+  clientId              String   @map("clientId")
+  createdBy             String   @map("createdBy")
+  googleCalendarEventId String?  @map("googleCalendarEventId")
   createdAt     DateTime  @default(now()) @map("createdAt")
   updatedAt     DateTime  @updatedAt @map("updatedAt")
 
@@ -169,4 +171,18 @@ model Schedule {
   @@index([clientId])
   @@index([status])
   @@map("schedules")
+}
+
+model GoogleCalendarToken {
+  id           String   @id @default(cuid()) @map("id")
+  userId       String   @unique @map("userId")
+  accessToken  String   @map("accessToken")
+  refreshToken String   @map("refreshToken")
+  expiresAt    DateTime @map("expiresAt")
+  createdAt    DateTime @default(now()) @map("createdAt")
+  updatedAt    DateTime @updatedAt @map("updatedAt")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("google_calendar_tokens")
 }

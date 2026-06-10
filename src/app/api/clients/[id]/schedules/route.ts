@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { notifyTeamScheduleCreated } from '@/lib/notifications';
+import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '@/lib/google-calendar';
 
 // GET /api/clients/[id]/schedules — List all schedules for a client
 export async function GET(
@@ -106,6 +107,33 @@ export async function POST(
       creatorName: session.user.name || 'Usuário',
     }).catch(() => {});
 
+    // [GOOGLE CALENDAR] Criar evento no Google Calendar (fire-and-forget)
+    (async () => {
+      try {
+        const client = await db.client.findUnique({
+          where: { id },
+          select: { name: true },
+        });
+        const clientName = client?.name || 'Cliente';
+        const eventId = await createCalendarEvent({
+          userId: currentUser.id,
+          summary: `Visita CRM Pro — ${clientName}`,
+          description: description?.trim()
+            ? `Visita agendada no CRM Pro para ${clientName}\n\nObservações: ${description.trim()}`
+            : `Visita agendada no CRM Pro para ${clientName}`,
+          date: scheduledDate,
+          time: scheduledTime,
+        });
+        // Salvar ID do evento no agendamento
+        await db.schedule.update({
+          where: { id: schedule.id },
+          data: { googleCalendarEventId: eventId },
+        });
+      } catch (err) {
+        console.error('[GOOGLE CALENDAR] Erro ao criar evento (fire-and-forget):', err);
+      }
+    })().catch(() => {});
+
     return NextResponse.json(schedule, { status: 201 });
   } catch (error) {
     console.error('Error creating schedule:', error);
@@ -164,6 +192,24 @@ export async function PATCH(
       },
     });
 
+    // [GOOGLE CALENDAR] Atualizar evento no Google Calendar (fire-and-forget)
+    if (schedule.googleCalendarEventId) {
+      const client = await db.client.findUnique({
+        where: { id },
+        select: { name: true },
+      });
+      const clientName = client?.name || 'Cliente';
+      updateCalendarEvent({
+        userId: schedule.createdBy,
+        eventId: schedule.googleCalendarEventId,
+        summary: `Visita CRM Pro — ${clientName}`,
+        description: description || undefined,
+        status: status as 'COMPLETED' | 'CANCELLED',
+      }).catch((err) => {
+        console.error('[GOOGLE CALENDAR] Erro ao atualizar evento (fire-and-forget):', err);
+      });
+    }
+
     return NextResponse.json(updated);
   } catch (error) {
     console.error('Error updating schedule:', error);
@@ -204,6 +250,13 @@ export async function DELETE(
     await db.schedule.delete({
       where: { id: scheduleId },
     });
+
+    // [GOOGLE CALENDAR] Excluir evento do Google Calendar (fire-and-forget)
+    if (schedule.googleCalendarEventId) {
+      deleteCalendarEvent(schedule.createdBy, schedule.googleCalendarEventId).catch((err) => {
+        console.error('[GOOGLE CALENDAR] Erro ao excluir evento (fire-and-forget):', err);
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
