@@ -219,12 +219,33 @@ function buildFullSystemText(dataContext: string, enterpriseContext: string): st
 
 // --- Montar system text reduzido para Groq fallback (limite 6000 TPM) ---
 function buildGroqSystemText(dataContext: string, enterpriseContext: string): string {
-  // Estimativa conservadora: 1 token ≈ 4 chars para português
-  const MAX_GROQ_CHARS = 20000; // ~5000 tokens, margem para mensagens e resposta
-  let systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}`;
+  // Groq free tier: 6000 TPM. Português com markdown ≈ 3 chars/token.
+  // System prompt ~3500 chars (~1100 tokens). Mensagens (4) ~500 tokens.
+  // Reserve 1024 tokens para resposta. Disponível: 6000-1100-500-1024 = 3376 tokens ≈ 10000 chars.
+  const MAX_GROQ_TOTAL = 10000;
 
-  const remaining = MAX_GROQ_CHARS - systemText.length - 200;
-  if (enterpriseContext && remaining > 200) {
+  // Primeiro, truncar o dataContext se necessário
+  let trimmedData = dataContext;
+  const baseLen = SYSTEM_PROMPT.length + 30; // +30 para "\n\n---\nDADOS DO CRM:\n"
+  const maxDataLen = MAX_GROQ_TOTAL - baseLen - 400; // 400 de margem para enterprise header
+  if (trimmedData.length > maxDataLen) {
+    // Cortar por linhas
+    const lines = trimmedData.split('\n');
+    let totalLen = 0;
+    const keptLines: string[] = [];
+    for (const line of lines) {
+      if (totalLen + line.length + 1 > maxDataLen) break;
+      keptLines.push(line);
+      totalLen += line.length + 1;
+    }
+    trimmedData = keptLines.join('\n') + '\n[...] Dados truncados pelo limite de tokens do provedor fallback.';
+  }
+
+  let systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${trimmedData}`;
+
+  // Calcular espaço restante para a base de dados da empresa
+  const remaining = MAX_GROQ_TOTAL - systemText.length - 100;
+  if (enterpriseContext && remaining > 150) {
     if (enterpriseContext.length <= remaining) {
       systemText += `\n\n---\n${enterpriseContext}`;
     } else {
@@ -311,11 +332,12 @@ async function askGroq(systemText: string, messages: Message[]): Promise<string>
 }
 
 // --- Chamada principal com fallback automático ---
-async function askAI(systemText: string, messages: Message[]): Promise<ProviderResult> {
+async function askAI(dataContext: string, enterpriseContext: string, messages: Message[]): Promise<ProviderResult> {
   // 1) Tentar Gemini primeiro (1M tokens, 1500 req/dia grátis)
   if (GEMINI_API_KEY) {
     try {
-      const reply = await askGemini(systemText, messages);
+      const fullSystemText = buildFullSystemText(dataContext, enterpriseContext);
+      const reply = await askGemini(fullSystemText, messages);
       return { reply, provider: 'Gemini' };
     } catch (err) {
       console.warn('[AI ASSISTANT] Gemini falhou, tentando Groq como fallback:', err instanceof Error ? err.message : err);
@@ -324,15 +346,8 @@ async function askAI(systemText: string, messages: Message[]): Promise<ProviderR
     console.log('[AI ASSISTANT] GEMINI_API_KEY não configurada, usando Groq diretamente');
   }
 
-  // 2) Fallback para Groq
+  // 2) Fallback para Groq — construir system text com limites estritos (6000 TPM)
   if (GROQ_API_KEY) {
-    // Rebuild system text com limites do Groq (6000 TPM)
-    // Extrair partes do systemText para reconstruir com truncamento
-    const crmMatch = systemText.match(/---\nDADOS DO CRM:\n([\s\S]*?)(?:\n---\n|$)/);
-    const enterpriseMatch = systemText.match(/=== BASE DE DADOS DO EMPREENDIMENTO:[\s\S]*$/);
-    const dataContext = crmMatch ? crmMatch[1].trim() : '(Dados indisponíveis)';
-    const enterpriseContext = enterpriseMatch ? enterpriseMatch[0] : '';
-
     const groqSystemText = buildGroqSystemText(dataContext, enterpriseContext);
     const groqMessages = messages.slice(-4); // Menos histórico para economizar tokens
     const reply = await askGroq(groqSystemText, groqMessages);
@@ -380,11 +395,8 @@ export async function POST(req: NextRequest) {
       console.error('[AI ASSISTANT] Enterprise content fetch failed:', err);
     }
 
-    // Montar system text completo (Gemini suporta 1M tokens)
-    const systemText = buildFullSystemText(dataContext, enterpriseContext);
-
     // Enviar para IA com fallback automático
-    const { reply, provider } = await askAI(systemText, messages);
+    const { reply, provider } = await askAI(dataContext, enterpriseContext, messages);
     console.log(`[AI ASSISTANT] Resposta gerada via ${provider}`);
 
     const finalReply = dbError
