@@ -37,6 +37,7 @@ Funcionalidades do CRM:
   - **Como conectar o Google Calendar**: vá em Configurações > Google Calendar e clique "Conectar". Será aberta a tela de autorização do Google — basta permitir o acesso. Para funcionar, as variáveis de ambiente GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET precisam estar configuradas no painel da Vercel. Se houver erro 403 ao conectar, verifique no Google Cloud Console se o email do usuário está adicionado como "Usuário de teste" na Tela de consentimento OAuth.
 - **Administração** (somente admin): gerenciamento de usuários e configurações do sistema
 - **Configurações**: preferências do usuário e gestão de empreendimentos (importação em lote via Excel)
+- **Bases de Dados de Empreendimentos**: o administrador pode enviar arquivos PDF com informações detalhadas de cada empreendimento (plantas, valores, metragens, condições de pagamento, etc.). Quando um usuário pergunta sobre um empreendimento específico, você recebe o conteúdo extraído desse PDF como contexto. Cada empreendimento tem sua base de dados individual e separada — nunca misture informações de empreendimentos diferentes.
 - **Parcerias**: usuários podem compartilhar acesso a clientes vinculando-se como parceiros
 
 Regras:
@@ -46,6 +47,8 @@ Regras:
 - Quando apresentar agendamentos, inclua: data, horário, cliente e status.
 - Nunca invente dados que não estejam no contexto.
 - Quando explicar o funil, use SEMPRE as 8 etapas listadas acima. Nunca invente etapas como "NEGOTIATING" ou "WON" — os nomes corretos são FECHADO_GANHO, FECHADO_PERDIDO, etc.
+- Quando a pergunta mencionar um empreendimento específico e houver uma seção "BASE DE DADOS DO EMPREENDIMENTO" no contexto, use APENAS aquelas informações para responder sobre esse empreendimento. Nunca invente dados que não estejam na base.
+- Se a pergunta for sobre um empreendimento e não houver base de dados disponível no contexto, informe que não há informações detalhadas cadastradas para esse empreendimento e sugira que o administrador envie o PDF com os dados.
 - Use formatação Markdown (negrito, listas).`;
 
 interface Message {
@@ -102,6 +105,63 @@ async function fetchUserData(userId: string, userRole: string) {
   ]);
 
   return { clients, schedules, reminders };
+}
+
+const MAX_PDF_CONTEXT_CHARS = 30000; // ~7.500 tokens — conserva espaço para demais dados e resposta
+
+async function fetchEnterprisePdfContent(userMessage: string): Promise<string> {
+  try {
+    // Buscar todos os empreendimentos que têm pdfContent
+    const enterprises = await db.enterprise.findMany({
+      where: { pdfContent: { not: null } },
+      select: { id: true, name: true, pdfContent: true },
+    });
+
+    if (enterprises.length === 0) return '';
+
+    // Normalizar o nome do empreendimento para busca fuzzy simples
+    const normalize = (s: string) => s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // remove acentos
+      .replace(/[^a-z0-9\s]/g, '')
+      .trim();
+
+    const normalizedMessage = normalize(userMessage);
+
+    // Buscar o empreendimento mais relevante mencionado na mensagem
+    let matched = enterprises.find(e => {
+      const normalizedName = normalize(e.name);
+      // Nome completo do empreendimento aparece na mensagem
+      return normalizedMessage.includes(normalizedName);
+    });
+
+    // Se não encontrou pelo nome completo, tenta partes do nome (palavras >= 4 chars)
+    if (!matched) {
+      const scores = enterprises.map(e => {
+        const nameParts = normalize(e.name).split(/\s+/).filter(p => p.length >= 4);
+        const matchCount = nameParts.filter(p => normalizedMessage.includes(p)).length;
+        return { enterprise: e, score: matchCount / nameParts.length };
+      });
+      scores.sort((a, b) => b.score - a.score);
+      if (scores[0] && scores[0].score >= 0.5) {
+        matched = scores[0].enterprise;
+      }
+    }
+
+    if (!matched || !matched.pdfContent) return '';
+
+    // Truncar se necessário para não estourar o contexto
+    let content = matched.pdfContent;
+    if (content.length > MAX_PDF_CONTEXT_CHARS) {
+      content = content.slice(0, MAX_PDF_CONTEXT_CHARS) + '\n\n[...] Conteúdo truncado. O PDF contém mais informações do que foi possível incluir aqui.';
+    }
+
+    return `=== BASE DE DADOS DO EMPREENDIMENTO: ${matched.name.toUpperCase()} ===\n${content}`;
+  } catch (err) {
+    console.error('[AI ASSISTANT] Erro ao buscar PDF do empreendimento:', err);
+    return '';
+  }
 }
 
 function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): string {
@@ -189,6 +249,7 @@ export async function POST(req: NextRequest) {
 
     // Fetch user data — if DB fails, continue without data context
     let dataContext = '(Dados indisponíveis no momento)';
+    let enterpriseContext = '';
     try {
       const userId = session.user.id;
       const userRole = (session.user as { role?: string })?.role || 'USER';
@@ -199,7 +260,15 @@ export async function POST(req: NextRequest) {
       console.error('[AI ASSISTANT] DB fetch failed, continuing without data:', err);
     }
 
-    const systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}`;
+    // Buscar base de dados de empreendimento se a pergunta mencionar um
+    const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content || '';
+    try {
+      enterpriseContext = await fetchEnterprisePdfContent(lastUserMessage);
+    } catch (err) {
+      console.error('[AI ASSISTANT] Enterprise PDF fetch failed:', err);
+    }
+
+    const systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}${enterpriseContext ? '\n\n---\n' + enterpriseContext : ''}`;
     const reply = await askGroq(systemText, messages.slice(-8));
 
     const finalReply = dbError

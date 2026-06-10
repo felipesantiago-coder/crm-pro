@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Ban,
   Download,
+  FileText,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -57,6 +58,7 @@ interface EnterpriseItem {
   name: string;
   region: string | null;
   imageUrl: string | null;
+  pdfContent: string | null;
   createdAt: string;
   updatedAt: string;
   _count: { clients: number };
@@ -92,6 +94,10 @@ export function EnterpriseManagement() {
   // Image upload
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // PDF upload
+  const [pdfUploadingId, setPdfUploadingId] = useState<string | null>(null);
+  const pdfInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Batch import
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
@@ -264,6 +270,64 @@ export function EnterpriseManagement() {
     }
   }
 
+  async function handlePdfUpload(enterpriseId: string, file: File) {
+    if (file.type !== 'application/pdf') {
+      toast.error('Apenas arquivos PDF são aceitos');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('PDF muito grande. Máximo 10MB.');
+      return;
+    }
+
+    setPdfUploadingId(enterpriseId);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(`/api/enterprises/${enterpriseId}/pdf`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Erro ao processar o PDF');
+        return;
+      }
+
+      const data = await res.json();
+      toast.success(`PDF processado! ${data.extractedChars.toLocaleString('pt-BR')} caracteres extraídos de "${data.fileName}"`);
+      fetchEnterprises();
+    } catch {
+      toast.error('Erro ao enviar PDF');
+    } finally {
+      setPdfUploadingId(null);
+    }
+  }
+
+  async function handlePdfRemove(enterpriseId: string, enterpriseName: string) {
+    setPdfUploadingId(enterpriseId);
+    try {
+      const res = await fetch(`/api/enterprises/${enterpriseId}/pdf`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Erro ao remover PDF');
+        return;
+      }
+
+      toast.success(`Base de dados removida de "${enterpriseName}"`);
+      fetchEnterprises();
+    } catch {
+      toast.error('Erro ao remover PDF');
+    } finally {
+      setPdfUploadingId(null);
+    }
+  }
+
   function resetBatchDialog() {
     setBatchFile(null);
     setBatchResults(null);
@@ -335,7 +399,7 @@ export function EnterpriseManagement() {
             Gestão de Empreendimentos
           </h2>
           <p className="text-muted-foreground mt-1">
-            Cadastre empreendimentos para vincular aos clientes
+            Cadastre empreendimentos, envie bases de dados em PDF e vincule aos clientes
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -553,7 +617,7 @@ export function EnterpriseManagement() {
             <DialogHeader>
               <DialogTitle>Novo Empreendimento</DialogTitle>
               <DialogDescription>
-                Cadastre um novo empreendimento. Você poderá adicionar uma imagem depois.
+                Cadastre um novo empreendimento. Você poderá adicionar uma imagem e base de dados para a IA depois.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -603,7 +667,7 @@ export function EnterpriseManagement() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
             <div className="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
@@ -624,6 +688,19 @@ export function EnterpriseManagement() {
               <p className="text-sm text-muted-foreground">Clientes Vinculados</p>
               <p className="text-2xl font-bold">
                 {enterprises.reduce((acc, e) => acc + e._count.clients, 0)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+              <FileText className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Bases de Dados (PDF)</p>
+              <p className="text-2xl font-bold">
+                {enterprises.filter(e => e.pdfContent).length}
               </p>
             </div>
           </CardContent>
@@ -695,7 +772,7 @@ export function EnterpriseManagement() {
                   </div>
                 )}
 
-                {/* Upload overlay */}
+                {/* Upload image overlay */}
                 <label className="absolute top-2 right-2 cursor-pointer">
                   <input
                     ref={(el) => { fileInputRefs.current[enterprise.id] = el; }}
@@ -726,6 +803,17 @@ export function EnterpriseManagement() {
               </div>
 
               <CardContent className="p-3">
+                {/* PDF indicator */}
+                {enterprise.pdfContent && (
+                  <div className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 mb-2 px-2 py-1.5 bg-blue-50 dark:bg-blue-950/30 rounded-md">
+                    <FileText className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate font-medium">Base de dados vinculada</span>
+                    <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">
+                      {(enterprise.pdfContent.length / 1024).toFixed(0)} KB
+                    </span>
+                  </div>
+                )}
+
                 {/* Info */}
                 <div className="space-y-2">
                   {enterprise.region && (
@@ -742,6 +830,70 @@ export function EnterpriseManagement() {
                     </Badge>
 
                     <div className="flex items-center gap-1">
+                      {/* PDF upload button */}
+                      <label className="cursor-pointer">
+                        <input
+                          ref={(el) => { pdfInputRefs.current[enterprise.id] = el; }}
+                          type="file"
+                          accept=".pdf,application/pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handlePdfUpload(enterprise.id, file);
+                            e.target.value = '';
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className={`h-8 w-8 p-2 ${enterprise.pdfContent ? 'text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30' : 'text-muted-foreground hover:text-amber-600'}`}
+                          title={enterprise.pdfContent ? 'Substituir base de dados (PDF)' : 'Enviar base de dados (PDF)'}
+                          disabled={pdfUploadingId === enterprise.id}
+                          asChild
+                        >
+                          <span>
+                            {pdfUploadingId === enterprise.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <FileText className="h-3.5 w-3.5" />
+                            )}
+                          </span>
+                        </Button>
+                      </label>
+                      {/* PDF remove button */}
+                      {enterprise.pdfContent && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-2 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                              title="Remover base de dados"
+                              disabled={pdfUploadingId === enterprise.id}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remover Base de Dados</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Remover a base de dados de &quot;{enterprise.name}&quot;? O assistente de IA não poderá mais responder perguntas sobre este empreendimento.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handlePdfRemove(enterprise.id, enterprise.name)}
+                                disabled={pdfUploadingId === enterprise.id}
+                                className="bg-red-600 hover:bg-red-700 text-white"
+                              >
+                                {pdfUploadingId === enterprise.id ? 'Removendo...' : 'Remover'}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"
@@ -772,6 +924,7 @@ export function EnterpriseManagement() {
                             <AlertDialogDescription>
                               Tem certeza que deseja excluir &quot;{enterprise.name}&quot;?
                               Os clientes vinculados não serão excluídos, mas perderão o vínculo com este empreendimento.
+                              {enterprise.pdfContent && ' A base de dados do PDF também será removida permanentemente.'}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -807,7 +960,7 @@ export function EnterpriseManagement() {
         open={!!editingEnterprise}
         onOpenChange={(open) => !open && setEditingEnterprise(null)}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>Editar Empreendimento</DialogTitle>
             <DialogDescription>
@@ -832,6 +985,86 @@ export function EnterpriseManagement() {
                 onChange={(e) => setEditRegion(e.target.value)}
                 disabled={saving}
               />
+            </div>
+
+            {/* PDF section in edit dialog */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <FileText className="h-4 w-4" />
+                Base de Dados para a IA (PDF)
+              </Label>
+              {editingEnterprise?.pdfContent ? (
+                <div className="flex items-center gap-3 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20">
+                  <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Base de dados vinculada</p>
+                    <p className="text-xs text-muted-foreground">
+                      {(editingEnterprise.pdfContent.length / 1024).toFixed(0)} KB de texto extraído — disponível para o assistente de IA
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 flex-shrink-0"
+                    onClick={async () => {
+                      if (editingEnterprise) {
+                        await handlePdfRemove(editingEnterprise.id, editingEnterprise.name);
+                        setEditingEnterprise({ ...editingEnterprise, pdfContent: null });
+                      }
+                    }}
+                    disabled={pdfUploadingId === editingEnterprise?.id}
+                  >
+                    {pdfUploadingId === editingEnterprise?.id ? (
+                      <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Removendo...</>
+                    ) : (
+                      'Remover'
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground py-1">
+                  Nenhuma base de dados vinculada. O assistente de IA não poderá responder perguntas específicas sobre este empreendimento.
+                </p>
+              )}
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && editingEnterprise) {
+                      handlePdfUpload(editingEnterprise.id, file).then(() => {
+                        // Refresh the editing enterprise data
+                        fetch(`/api/enterprises/${editingEnterprise.id}`)
+                          .then(r => r.json())
+                          .then(data => {
+                            if (editingEnterprise) {
+                              setEditingEnterprise({ ...editingEnterprise, pdfContent: data.pdfContent });
+                            }
+                          })
+                          .catch(() => {});
+                      });
+                    }
+                    e.target.value = '';
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={pdfUploadingId === editingEnterprise?.id}
+                  asChild
+                >
+                  <span>
+                    {pdfUploadingId === editingEnterprise?.id ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processando PDF...</>
+                    ) : (
+                      <><Upload className="h-4 w-4 mr-2" />{editingEnterprise?.pdfContent ? 'Substituir Base de Dados (PDF)' : 'Enviar Base de Dados (PDF)'}</>
+                    )}
+                  </span>
+                </Button>
+              </label>
             </div>
 
             {/* Image upload in edit dialog */}
