@@ -271,12 +271,15 @@ export function EnterpriseManagement() {
   }
 
   async function handlePdfUpload(enterpriseId: string, file: File) {
-    if (file.type !== 'application/pdf') {
-      toast.error('Apenas arquivos PDF são aceitos');
+    const validTypes = ['application/pdf', 'text/plain', 'text/markdown', ''];
+    const validExts = ['.pdf', '.txt', '.md', '.markdown'];
+    const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+    if (!validTypes.includes(file.type) || !validExts.includes(ext)) {
+      toast.error('Formato inválido. Envie um arquivo PDF, Markdown (.md) ou texto (.txt).');
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      toast.error('PDF muito grande. Máximo 10MB.');
+      toast.error('Arquivo muito grande. Máximo 10MB.');
       return;
     }
 
@@ -835,7 +838,7 @@ export function EnterpriseManagement() {
                         <input
                           ref={(el) => { pdfInputRefs.current[enterprise.id] = el; }}
                           type="file"
-                          accept=".pdf,application/pdf"
+                          accept=".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/markdown"
                           className="hidden"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
@@ -847,7 +850,7 @@ export function EnterpriseManagement() {
                           size="sm"
                           variant="ghost"
                           className={`h-8 w-8 p-2 ${enterprise.pdfContent ? 'text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30' : 'text-muted-foreground hover:text-amber-600'}`}
-                          title={enterprise.pdfContent ? 'Substituir base de dados (PDF)' : 'Enviar base de dados (PDF)'}
+                          title={enterprise.pdfContent ? 'Substituir base de dados (PDF/MD/TXT)' : 'Enviar base de dados (PDF/MD/TXT)'}
                           disabled={pdfUploadingId === enterprise.id}
                           asChild
                         >
@@ -991,7 +994,7 @@ export function EnterpriseManagement() {
             <div className="space-y-2">
               <Label className="flex items-center gap-1.5">
                 <FileText className="h-4 w-4" />
-                Base de Dados para a IA (PDF)
+                Base de Dados para a IA (PDF, Markdown ou TXT)
               </Label>
               {editingEnterprise?.pdfContent ? (
                 <div className="flex items-center gap-3 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20">
@@ -1029,7 +1032,7 @@ export function EnterpriseManagement() {
               <label className="cursor-pointer">
                 <input
                   type="file"
-                  accept=".pdf,application/pdf"
+                  accept=".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/markdown"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -1058,9 +1061,9 @@ export function EnterpriseManagement() {
                 >
                   <span>
                     {pdfUploadingId === editingEnterprise?.id ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processando PDF...</>
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processando arquivo...</>
                     ) : (
-                      <><Upload className="h-4 w-4 mr-2" />{editingEnterprise?.pdfContent ? 'Substituir Base de Dados (PDF)' : 'Enviar Base de Dados (PDF)'}</>
+                      <><Upload className="h-4 w-4 mr-2" />{editingEnterprise?.pdfContent ? 'Substituir Base de Dados (PDF/MD/TXT)' : 'Enviar Base de Dados (PDF/MD/TXT)'}</>
                     )}
                   </span>
                 </Button>
