@@ -4,11 +4,22 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { notifyTeamInteractionAdded } from '@/lib/notifications';
 
+async function requireAuth() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return { error: NextResponse.json({ error: 'Não autorizado' }, { status: 401 }), session: null };
+  }
+  return { error: null, session };
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
     const { id } = await params;
     const body = await request.json();
     const { description } = body;
@@ -25,7 +36,6 @@ export async function POST(
       return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
     }
 
-    // Buscar email do autor para excluir da notificação
     const session = await getServerSession(authOptions);
     const authorEmail = session?.user?.email;
 
@@ -60,6 +70,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
     const { id } = await params;
 
     const interactions = await db.interaction.findMany({
@@ -79,6 +92,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
     const { id: clientId } = await params;
     const body = await request.json();
     const { interactionId } = body;

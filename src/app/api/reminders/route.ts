@@ -4,6 +4,9 @@ import { requireAuth } from '@/lib/api-auth';
 
 export async function GET(request: NextRequest) {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId') || '';
 
