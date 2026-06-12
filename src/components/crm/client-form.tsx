@@ -257,7 +257,7 @@ export function ClientForm({ open, onOpenChange, client, onSuccess }: ClientForm
               {enterprises.length > 0 && (
                 <div className="mb-3">
                   <p className="text-xs text-muted-foreground mb-2">Selecione um empreendimento cadastrado:</p>
-                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
                     {enterprises.map((ent) => (
                       <button
                         key={ent.id}

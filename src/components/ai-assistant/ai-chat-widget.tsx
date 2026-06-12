@@ -299,10 +299,10 @@ export function AIChatWidget() {
       <div
         className={cn(
           'fixed z-50 bg-card border shadow-2xl rounded-2xl flex flex-col transition-all duration-300 ease-out overflow-hidden',
-          'right-5 bottom-5',
+          'right-2 bottom-2 sm:right-5 sm:bottom-5',
           expanded
-            ? 'w-[min(560px,calc(100vw-2.5rem))] h-[min(700px,calc(100vh-2.5rem))]'
-            : 'w-[380px] h-[540px]',
+            ? 'sm:w-[min(560px,calc(100vw-2.5rem))] sm:h-[min(700px,calc(100vh-2.5rem))] w-[calc(100vw-1rem)] h-[calc(100vh-1rem)]'
+            : 'sm:w-[min(380px,calc(100vw-2.5rem))] sm:h-[min(540px,calc(100vh-6rem))] w-[calc(100vw-1rem)] h-[calc(100vh-1rem)]',
           open
             ? 'opacity-100 scale-100 pointer-events-auto'
             : 'opacity-0 scale-95 pointer-events-none translate-y-4'
