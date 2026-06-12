@@ -2,8 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
 
+// Endpoint de seed protegido — requer header secreto para ser executado
 export async function POST(request: NextRequest) {
   try {
+    // Verificar segredo de seed
+    const seedSecret = process.env.SEED_SECRET;
+    if (!seedSecret) {
+      return NextResponse.json({ error: 'Seed desabilitado' }, { status: 403 });
+    }
+
+    const authHeader = request.headers.get('authorization');
+    if (authHeader !== `Bearer ${seedSecret}`) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
     const existingAdmin = await db.user.findUnique({
       where: { email: 'felipesantiagoquadra@gmail.com' },
       select: { id: true, name: true, email: true, role: true },

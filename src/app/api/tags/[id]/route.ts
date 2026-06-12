@@ -1,11 +1,15 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/api-auth';
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     const { id } = await params;
     const body = await request.json();
     const { name, color } = body;
@@ -47,6 +51,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     const { id } = await params;
     await db.clientTag.deleteMany({ where: { tagId: id } });
     await db.tag.delete({ where: { id } });

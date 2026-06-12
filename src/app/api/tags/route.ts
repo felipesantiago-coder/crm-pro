@@ -4,6 +4,9 @@ import { requireAuth } from '@/lib/api-auth';
 
 export async function GET() {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
     const tags = await db.tag.findMany({
       include: {
         _count: {

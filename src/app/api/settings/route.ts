@@ -4,6 +4,9 @@ import { requireAdmin } from '@/lib/api-auth';
 
 export async function GET() {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     const settings = await db.userSettings.findMany({
       orderBy: { key: 'asc' },
     });

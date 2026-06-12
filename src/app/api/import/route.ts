@@ -5,8 +5,10 @@ import { requireAuth } from '@/lib/api-auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const { error } = await requireAuth();
+    const { error, session } = await requireAuth();
     if (error) return error;
+
+    const userId = session!.user.id;
 
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
@@ -57,6 +59,7 @@ export async function POST(request: NextRequest) {
             region,
             enterprise,
             updatePeriod,
+            createdBy: userId,
           },
         });
         imported++;

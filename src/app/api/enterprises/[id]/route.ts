@@ -9,6 +9,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session || !isAdmin(session)) {
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    }
+
     const { id } = await params;
     const enterprise = await db.enterprise.findUnique({
       where: { id },
