@@ -7,13 +7,13 @@ import crypto from 'crypto';
 // Recebe leads de anúncios do Facebook/Instagram e cria
 // automaticamente clientes no CRM.
 //
+// IMPORTANTE: O Meta envia apenas o leadgen_id no webhook.
+// Os dados do formulário são buscados via Graph API.
+//
 // Fluxo:
-//   1. No Meta Ads Manager, crie um formulário de lead
-//   2. Vá em Integrações → Webhooks → adicione a URL deste endpoint
-//   3. Configure o verify_token nas Configurações do CRM (admin)
-//   4. O Meta enviará um GET para verificar → respondemos com hub.challenge
-//   5. Quando alguém preenche o formulário, o Meta envia POST com os dados
-//   6. Criamos o cliente automaticamente com stage LEAD
+//   1. Meta envia POST com leadgen_id
+//   2. Chamamos Graph API para buscar os dados do lead
+//   3. Criamos o cliente automaticamente com stage LEAD
 // ============================================================
 
 /**
@@ -24,7 +24,7 @@ async function getMetaConfig() {
   const settings = await db.userSettings.findMany({
     where: {
       key: {
-        in: ['meta_webhook_verify_token', 'meta_app_secret', 'meta_webhook_enabled'],
+        in: ['meta_webhook_verify_token', 'meta_app_secret', 'meta_webhook_enabled', 'meta_page_access_token'],
       },
     },
   });
@@ -38,6 +38,7 @@ async function getMetaConfig() {
     verifyToken: map['meta_webhook_verify_token'] || null,
     appSecret: map['meta_app_secret'] || null,
     enabled: map['meta_webhook_enabled'] === 'true',
+    pageAccessToken: map['meta_page_access_token'] || null,
   };
 }
 
@@ -103,6 +104,42 @@ function formatPhone(phone: string | null): string | null {
 
   // Retorno o que temos, adicionando + se não tiver
   return digits.length > 0 ? `+${digits}` : null;
+}
+
+/**
+ * Busca os dados completos do lead via Graph API.
+ * O webhook do Meta envia apenas o leadgen_id,
+ * sem os field_data. Precisamos chamar a API para obter
+ * nome, email, telefone, etc.
+ */
+async function fetchLeadData(leadgenId: string, pageAccessToken: string): Promise<Array<{ name: string; values: string[] }> | null> {
+  try {
+    const url = `https://graph.facebook.com/v25.0/${leadgenId}?access_token=${encodeURIComponent(pageAccessToken)}&fields=field_data`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Meta Webhook] Erro ao buscar lead ${leadgenId} via Graph API: ${response.status} - ${errorText}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const fieldData = data?.field_data;
+
+    if (!fieldData || !Array.isArray(fieldData)) {
+      console.error(`[Meta Webhook] field_data vazio ou inválido na resposta do Graph API para lead ${leadgenId}`);
+      return null;
+    }
+
+    console.log(`[Meta Webhook] Dados do lead ${leadgenId} obtidos via Graph API (${fieldData.length} campos)`);
+    return fieldData;
+  } catch (error) {
+    console.error(`[Meta Webhook] Falha ao buscar lead ${leadgenId}:`, error);
+    return null;
+  }
 }
 
 /**
@@ -238,16 +275,30 @@ export async function POST(request: NextRequest) {
       const changes = entry.changes || [];
 
       for (const change of changes) {
-        if (change.field !== 'leadgen_id') continue;
+        // Meta pode enviar field como "leadgen" ou "leadgen_id"
+        if (change.field !== 'leadgen_id' && change.field !== 'leadgen') continue;
 
         const leadData = change.value;
         if (!leadData) continue;
 
         const leadgenId = String(leadData.leadgen_id || 'unknown');
-        const fieldData = leadData.field_data || [];
+        let fieldData = leadData.field_data || [];
         const adName = leadData.ad_name || 'Anúncio Meta Ads';
         const campaignName = leadData.campaign_name || '';
         const formName = leadData.form_name || '';
+
+        // O Meta envia apenas o ID — buscar dados via Graph API
+        if (fieldData.length === 0 && config.pageAccessToken) {
+          console.log(`[Meta Webhook] field_data vazio para lead ${leadgenId} — buscando via Graph API`);
+          const fetched = await fetchLeadData(leadgenId, config.pageAccessToken);
+          if (fetched) {
+            fieldData = fetched;
+          } else {
+            console.error(`[Meta Webhook] Não foi possível obter dados do lead ${leadgenId}. Verifique o Page Access Token.`);
+          }
+        } else if (fieldData.length === 0) {
+          console.error(`[Meta Webhook] field_data vazio E sem Page Access Token. Lead ${leadgenId} será criado com dados mínimos.`);
+        }
 
         // Extrair campos do formulário
         const rawName = getFieldValue(fieldData, 'full_name')

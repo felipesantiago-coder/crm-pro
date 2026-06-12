@@ -21,6 +21,8 @@ function MetaAdsCard() {
   const [verifyToken, setVerifyToken] = useState('');
   const [appSecret, setAppSecret] = useState('');
   const [showAppSecret, setShowAppSecret] = useState(false);
+  const [pageAccessToken, setPageAccessToken] = useState('');
+  const [showPageToken, setShowPageToken] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<any>(null);
@@ -72,6 +74,7 @@ function MetaAdsCard() {
         body: JSON.stringify({
           verifyToken: verifyToken || null,
           appSecret: appSecret || null,
+          pageAccessToken: pageAccessToken || null,
           enabled,
         }),
       });
@@ -81,6 +84,7 @@ function MetaAdsCard() {
         // Se acabou de ativar, limpar campos sensíveis da tela
         if (!verifyToken) setVerifyToken('');
         if (!appSecret) setAppSecret('');
+        if (!pageAccessToken) setPageAccessToken('');
         loadConfig();
       } else {
         const data = await res.json();
@@ -228,13 +232,43 @@ function MetaAdsCard() {
           </p>
         </div>
 
+        {/* Page Access Token */}
+        <div className="space-y-2">
+          <Label htmlFor="meta-page-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Page Access Token (obrigatório)
+          </Label>
+          <div className="relative">
+            <Input
+              id="meta-page-token"
+              placeholder="EAAxxxxxxxxxxxxxxxxx..."
+              value={pageAccessToken}
+              onChange={(e) => setPageAccessToken(e.target.value)}
+              type={showPageToken ? 'text' : 'password'}
+              className="font-mono text-sm pr-10"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+              onClick={() => setShowPageToken(!showPageToken)}
+            >
+              {showPageToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Necessário para buscar dados do lead (o Meta envia apenas o ID no webhook).
+            Para obter: acesse o <span className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer" onClick={() => window.open('https://developers.facebook.com/tools/explorer/', '_blank')}>Graph API Explorer</span>, selecione sua Página como Token User, marque a permissão <code className="bg-muted px-1 rounded">pages_read_engagement</code> e copie o token gerado.
+          </p>
+        </div>
+
         <Separator />
 
         {/* Botões */}
         <div className="flex items-center gap-2">
           <Button
             onClick={saveConfig}
-            disabled={saving || (!verifyToken && !appSecret && !enabled)}
+            disabled={saving || (!verifyToken && !appSecret && !pageAccessToken && !enabled)}
             className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
           >
             {saving ? (
