@@ -103,7 +103,7 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET || 'crm-pro-fallback-secret-v1',
+  secret: process.env.NEXTAUTH_SECRET!,
   session: {
     strategy: 'jwt',
   },
