@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save, CalendarDays, Link2, Unlink } from 'lucide-react';
+import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save, CalendarDays, Link2, Unlink, Megaphone, Eye, EyeOff, RefreshCw, Zap } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,288 @@ import { Badge } from '@/components/ui/badge';
 import { useTheme } from 'next-themes';
 import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
+
+// ============================================================
+// Meta Ads Integration Card (Admin only)
+// ============================================================
+function MetaAdsCard() {
+  const [enabled, setEnabled] = useState(false);
+  const [verifyToken, setVerifyToken] = useState('');
+  const [appSecret, setAppSecret] = useState('');
+  const [showAppSecret, setShowAppSecret] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [webhookStatus, setWebhookStatus] = useState<any>(null);
+  const [leadCount, setLeadCount] = useState(0);
+
+  const webhookUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/api/webhooks/meta-leads`
+    : '';
+
+  useEffect(() => {
+    loadConfig();
+  }, []);
+
+  async function loadConfig() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/webhooks/meta-leads/config');
+      if (res.ok) {
+        const data = await res.json();
+        setEnabled(data.enabled);
+        setLeadCount(data.leadCount);
+      }
+    } catch {
+      // Silencioso — pode estar offline
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function checkWebhookStatus() {
+    try {
+      const res = await fetch('/api/webhooks/meta-leads');
+      if (res.ok) {
+        const data = await res.json();
+        setWebhookStatus(data);
+        toast.success(data.enabled ? 'Webhook ativo e pronto' : 'Webhook configurado mas desativado');
+      }
+    } catch {
+      toast.error('Erro ao verificar status do webhook');
+    }
+  }
+
+  async function saveConfig() {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/webhooks/meta-leads/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          verifyToken: verifyToken || null,
+          appSecret: appSecret || null,
+          enabled,
+        }),
+      });
+
+      if (res.ok) {
+        toast.success('Configurações do Meta Ads salvas com sucesso');
+        // Se acabou de ativar, limpar campos sensíveis da tela
+        if (!verifyToken) setVerifyToken('');
+        if (!appSecret) setAppSecret('');
+        loadConfig();
+      } else {
+        const data = await res.json();
+        throw new Error(data.error || 'Erro ao salvar');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao salvar configurações');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function copyToClipboard(text: string, label: string) {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copiado!`);
+  }
+
+  if (loading) {
+    return (
+      <Card className="hover:shadow-md transition-shadow duration-200">
+        <CardContent className="flex items-center justify-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className={`hover:shadow-md transition-shadow duration-200 ${
+      enabled
+        ? 'border-blue-200 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-950/20'
+        : ''
+    }`}>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <div className="h-7 w-7 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+            <Megaphone className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          </div>
+          Meta Ads — Lead Ads
+        </CardTitle>
+        <CardDescription>
+          Receba clientes gerados por anúncios do Facebook e Instagram diretamente no CRM
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Status */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {enabled ? (
+              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 gap-1">
+                <Zap className="h-3 w-3" />
+                Ativo
+              </Badge>
+            ) : (
+              <Badge className="bg-muted text-muted-foreground gap-1">
+                <Circle className="h-3 w-3" />
+                Inativo
+              </Badge>
+            )}
+            {leadCount > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {leadCount} lead{leadCount !== 1 ? 's' : ''} recebido{leadCount !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch id="meta-enabled" checked={enabled} onCheckedChange={setEnabled} />
+            <Label htmlFor="meta-enabled" className="text-xs cursor-pointer">
+              {enabled ? 'Ativado' : 'Desativado'}
+            </Label>
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Webhook URL */}
+        <div className="space-y-2">
+          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            URL do Webhook
+          </Label>
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border">
+            <code className="flex-1 text-xs font-mono truncate text-foreground">
+              {webhookUrl}
+            </code>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 flex-shrink-0"
+              onClick={() => copyToClipboard(webhookUrl, 'URL do Webhook')}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Cole esta URL no campo &quot;Callback URL&quot; ao configurar o webhook no Meta for Developers ou Ads Manager
+          </p>
+        </div>
+
+        {/* Verify Token */}
+        <div className="space-y-2">
+          <Label htmlFor="meta-verify-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Token de Verificação
+          </Label>
+          <Input
+            id="meta-verify-token"
+            placeholder="Ex: meu_token_secreto_123"
+            value={verifyToken}
+            onChange={(e) => setVerifyToken(e.target.value)}
+            type="text"
+            className="font-mono text-sm"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Crie uma string aleatória segura (ex: <code className="bg-muted px-1 rounded">openssl rand -hex 16</code>).
+            Use o mesmo valor no campo &quot;Verify Token&quot; do Meta.
+          </p>
+        </div>
+
+        {/* App Secret */}
+        <div className="space-y-2">
+          <Label htmlFor="meta-app-secret" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            App Secret (segurança)
+          </Label>
+          <div className="relative">
+            <Input
+              id="meta-app-secret"
+              placeholder="Ex: a1b2c3d4e5f6..."
+              value={appSecret}
+              onChange={(e) => setAppSecret(e.target.value)}
+              type={showAppSecret ? 'text' : 'password'}
+              className="font-mono text-sm pr-10"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+              onClick={() => setShowAppSecret(!showAppSecret)}
+            >
+              {showAppSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Encontrado em Meta for Developers → Seu App → Settings → Basic → App Secret.
+            Obrigatório para validar que os leads vieram realmente do Meta (HMAC-SHA256).
+          </p>
+        </div>
+
+        <Separator />
+
+        {/* Botões */}
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={saveConfig}
+            disabled={saving || (!verifyToken && !appSecret && !enabled)}
+            className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
+          >
+            {saving ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
+            ) : (
+              <><Save className="h-4 w-4 mr-2" /> Salvar Configurações</>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={checkWebhookStatus}
+          >
+            <RefreshCw className="h-4 w-4 mr-1" />
+            Testar
+          </Button>
+        </div>
+
+        {/* Tutorial colapsável */}
+        <div className="space-y-2">
+          <details className="group">
+            <summary className="text-xs font-medium text-blue-600 dark:text-blue-400 cursor-pointer hover:underline flex items-center gap-1">
+              Como configurar no Meta Ads
+            </summary>
+            <ol className="mt-2 text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
+              <li>
+                Acesse o{' '}
+                <span
+                  className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer inline-flex items-center gap-0.5"
+                  onClick={() => window.open('https://developers.facebook.com/apps/', '_blank')}
+                >
+                  Meta for Developers <ExternalLink className="h-2.5 w-2.5" />
+                </span>
+                {' '}e crie/abra seu App
+              </li>
+              <li>Vá em <strong>Settings → Basic</strong> e copie o <strong>App Secret</strong></li>
+              <li>No menu lateral, vá em <strong>Webhooks → Adicionar</strong></li>
+              <li>
+                Cole a <strong>URL do Webhook</strong> (acima) no campo Callback URL
+              </li>
+              <li>
+                Cole o <strong>Token de Verificação</strong> no campo Verify Token
+              </li>
+              <li>
+                Em &quot;Subscribe to&quot;, selecione <strong>leadgen</strong> (Lead Ads)
+              </li>
+              <li>
+                No <strong>Ads Manager</strong>, crie um formulário de Lead Ads
+              </li>
+              <li>
+                Ao publicar o anúncio, os leads serão criados automaticamente no CRM com stage <strong>LEAD</strong>
+              </li>
+            </ol>
+          </details>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
@@ -323,6 +605,9 @@ export function SettingsView() {
             )}
           </CardContent>
         </Card>
+
+        {/* ==================== META ADS (Admin) ==================== */}
+        {isAdmin && <MetaAdsCard />}
 
         {/* ==================== CONFIGURAÇÕES ADMIN ==================== */}
         {isAdmin && (
