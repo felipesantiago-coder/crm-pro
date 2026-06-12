@@ -602,7 +602,7 @@ export function DashboardView() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <Badge className="text-[10px] bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
+                      <Badge className="text-[10px] bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400 hidden sm:inline-flex">
                         {client.updatePeriod}d
                       </Badge>
                       {(() => {
@@ -642,9 +642,10 @@ export function DashboardView() {
                         variant="outline"
                         className="text-xs h-7"
                         onClick={() => handleRecordInteraction(client.id)}
+                        title="Registrar interação"
                       >
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        Registrar
+                        <RefreshCw className="h-3 w-3 sm:mr-1" />
+                        <span className="hidden sm:inline">Registrar</span>
                       </Button>
                     </div>
                   </div>
