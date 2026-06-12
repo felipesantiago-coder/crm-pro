@@ -20,6 +20,7 @@ export async function GET() {
             'meta_app_secret',
             'meta_webhook_enabled',
             'meta_lead_count',
+            'meta_page_access_token',
           ],
         },
       },
@@ -34,6 +35,7 @@ export async function GET() {
       enabled: map['meta_webhook_enabled'] === 'true',
       hasVerifyToken: !!map['meta_webhook_verify_token'],
       hasAppSecret: !!map['meta_app_secret'],
+      hasPageAccessToken: !!map['meta_page_access_token'],
       leadCount: parseInt(map['meta_lead_count'] || '0', 10),
       // O frontend preenche a webhookUrl com window.location.origin
     });
@@ -49,7 +51,7 @@ export async function PUT(request: NextRequest) {
     if (error) return error;
 
     const body = await request.json();
-    const { verifyToken, appSecret, enabled } = body;
+    const { verifyToken, appSecret, pageAccessToken, enabled } = body;
 
     // Upsert cada configuração individualmente
     const upserts = [];
@@ -70,6 +72,16 @@ export async function PUT(request: NextRequest) {
           where: { key: 'meta_app_secret' },
           update: { value: String(appSecret).trim() },
           create: { key: 'meta_app_secret', value: String(appSecret).trim() },
+        })
+      );
+    }
+
+    if (pageAccessToken !== undefined) {
+      upserts.push(
+        db.userSettings.upsert({
+          where: { key: 'meta_page_access_token' },
+          update: { value: String(pageAccessToken).trim() },
+          create: { key: 'meta_page_access_token', value: String(pageAccessToken).trim() },
         })
       );
     }
