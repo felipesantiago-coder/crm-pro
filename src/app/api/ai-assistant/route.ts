@@ -71,7 +71,7 @@ async function fetchUserData(userId: string, userRole: string) {
     OR: [{ createdBy: userId }, { partners: { some: { userId } } }],
   };
 
-  const [clients, schedules, reminders] = await Promise.all([
+  const [clients, schedules, reminders, interactions] = await Promise.all([
     db.client.findMany({
       where: userFilter,
       select: {
@@ -111,9 +111,21 @@ async function fetchUserData(userId: string, userRole: string) {
       orderBy: { dueDate: 'asc' },
       take: 20,
     }),
+    db.interaction.findMany({
+      where: {
+        client: { ...userFilter },
+      },
+      select: {
+        description: true,
+        createdAt: true,
+        client: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 60,
+    }),
   ]);
 
-  return { clients, schedules, reminders };
+  return { clients, schedules, reminders, interactions };
 }
 
 // --- Base de dados de empreendimentos ---
@@ -202,6 +214,16 @@ function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): 
     data.reminders.forEach(r => {
       const d = new Date(r.dueDate).toLocaleDateString('pt-BR');
       parts.push(`- ${d} | ${r.title} | ${r.client.name}`);
+    });
+  }
+
+  parts.push('\n=== HISTORICO DE INTERACOES ===');
+  if (data.interactions.length === 0) {
+    parts.push('Nenhuma interacao registrada.');
+  } else {
+    data.interactions.forEach(i => {
+      const d = new Date(i.createdAt).toLocaleDateString('pt-BR');
+      parts.push(`- ${d} | ${i.client.name} | ${i.description}`);
     });
   }
 
