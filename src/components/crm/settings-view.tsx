@@ -27,6 +27,9 @@ function MetaAdsCard() {
   const [saving, setSaving] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<any>(null);
   const [leadCount, setLeadCount] = useState(0);
+  const [hasVerifyToken, setHasVerifyToken] = useState(false);
+  const [hasAppSecret, setHasAppSecret] = useState(false);
+  const [hasPageAccessToken, setHasPageAccessToken] = useState(false);
 
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/webhooks/meta-leads`
@@ -44,6 +47,9 @@ function MetaAdsCard() {
         const data = await res.json();
         setEnabled(data.enabled);
         setLeadCount(data.leadCount);
+        setHasVerifyToken(data.hasVerifyToken);
+        setHasAppSecret(data.hasAppSecret);
+        setHasPageAccessToken(data.hasPageAccessToken);
       }
     } catch {
       // Silencioso — pode estar offline
@@ -81,10 +87,10 @@ function MetaAdsCard() {
 
       if (res.ok) {
         toast.success('Configurações do Meta Ads salvas com sucesso');
-        // Se acabou de ativar, limpar campos sensíveis da tela
-        if (!verifyToken) setVerifyToken('');
-        if (!appSecret) setAppSecret('');
-        if (!pageAccessToken) setPageAccessToken('');
+        // Limpar campos sensíveis da tela — os valores já estão salvos no servidor
+        setVerifyToken('');
+        setAppSecret('');
+        setPageAccessToken('');
         loadConfig();
       } else {
         const data = await res.json();
@@ -185,12 +191,20 @@ function MetaAdsCard() {
 
         {/* Verify Token */}
         <div className="space-y-2">
-          <Label htmlFor="meta-verify-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Token de Verificação
-          </Label>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="meta-verify-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Token de Verificação
+            </Label>
+            {hasVerifyToken && (
+              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+                <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                Configurado
+              </Badge>
+            )}
+          </div>
           <Input
             id="meta-verify-token"
-            placeholder="Ex: meu_token_secreto_123"
+            placeholder={hasVerifyToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Ex: meu_token_secreto_123'}
             value={verifyToken}
             onChange={(e) => setVerifyToken(e.target.value)}
             type="text"
@@ -204,13 +218,21 @@ function MetaAdsCard() {
 
         {/* App Secret */}
         <div className="space-y-2">
-          <Label htmlFor="meta-app-secret" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            App Secret (segurança)
-          </Label>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="meta-app-secret" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              App Secret (segurança)
+            </Label>
+            {hasAppSecret && (
+              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+                <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                Configurado
+              </Badge>
+            )}
+          </div>
           <div className="relative">
             <Input
               id="meta-app-secret"
-              placeholder="Ex: a1b2c3d4e5f6..."
+              placeholder={hasAppSecret ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Ex: a1b2c3d4e5f6...'}
               value={appSecret}
               onChange={(e) => setAppSecret(e.target.value)}
               type={showAppSecret ? 'text' : 'password'}
@@ -234,13 +256,21 @@ function MetaAdsCard() {
 
         {/* Page Access Token */}
         <div className="space-y-2">
-          <Label htmlFor="meta-page-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Page Access Token (obrigatório)
-          </Label>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="meta-page-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Page Access Token (obrigatório)
+            </Label>
+            {hasPageAccessToken && (
+              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+                <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                Configurado
+              </Badge>
+            )}
+          </div>
           <div className="relative">
             <Input
               id="meta-page-token"
-              placeholder="EAAxxxxxxxxxxxxxxxxx..."
+              placeholder={hasPageAccessToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'EAAxxxxxxxxxxxxxxxxx...'}
               value={pageAccessToken}
               onChange={(e) => setPageAccessToken(e.target.value)}
               type={showPageToken ? 'text' : 'password'}
@@ -268,7 +298,7 @@ function MetaAdsCard() {
         <div className="flex items-center gap-2">
           <Button
             onClick={saveConfig}
-            disabled={saving || (!verifyToken && !appSecret && !pageAccessToken && !enabled)}
+            disabled={saving}
             className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
           >
             {saving ? (
