@@ -104,32 +104,83 @@ export async function GET() {
 
     // ─────────────────────────────────────────────────
     // CHECK 2 — Validar Page Access Token via Graph API
+    // Usa debug_token para obter infos reais do token
     // ─────────────────────────────────────────────────
+    let tokenAppName = '';
     if (hasPageToken) {
       try {
-        const meUrl = `https://graph.facebook.com/v25.0/me?access_token=${encodeURIComponent(pageToken)}&fields=id,name,token_type`;
-        const meRes = await fetch(meUrl, { method: 'GET' });
+        // Tenta primeiro com debug_token (precisa do app secret)
+        const appSecret = map['meta_app_secret'] || '';
+        if (appSecret) {
+          const debugUrl = `https://graph.facebook.com/v25.0/debug_token?input_token=${encodeURIComponent(pageToken)}&access_token=${encodeURIComponent(appSecret + '|')}`;
+          const debugRes = await fetch(debugUrl, { method: 'GET' });
 
-        if (meRes.ok) {
-          const meData = await meRes.json();
-          const tokenType = meData.token_type || 'desconhecido';
-          const isPageToken = tokenType === 'PAGE';
+          if (debugRes.ok) {
+            const debugData = await debugRes.json();
+            const tokenInfo = debugData.data;
 
-          checks.push({
-            name: 'Validação do Token (Graph API)',
-            status: isPageToken ? 'ok' : 'warn',
-            details: `Token válido. Tipo: ${tokenType}. Nome/ID: ${meData.name || meData.id || 'N/A'}.`,
-            fix: isPageToken ? undefined : `O token é do tipo "${tokenType}", mas deveria ser "PAGE". Gere um token de PÁGINA (não de usuário) no Graph API Explorer.`,
-          });
+            if (tokenInfo?.is_valid === false) {
+              checks.push({
+                name: 'Validação do Token (Graph API)',
+                status: 'error',
+                details: `Token INVÁLIDO ou EXPIRADO. Motivo: ${tokenInfo.error?.message || 'desconhecido'}`,
+                fix: 'Gere um novo Page Access Token no Graph API Explorer.',
+              });
+            } else {
+              tokenAppName = tokenInfo?.application || '';
+              const expiresAt = tokenInfo?.expires_at;
+              const isLongLived = expiresAt === 0 || (expiresAt && expiresAt > Math.floor(Date.now() / 1000));
+
+              checks.push({
+                name: 'Validação do Token (Graph API)',
+                status: isLongLived ? 'ok' : 'warn',
+                details: `Token válido. App: ${tokenAppName || 'N/A'}. ${expiresAt === 0 ? 'Token de longa duração (não expira).' : `Expira em: ${expiresAt ? new Date(expiresAt * 1000).toLocaleDateString('pt-BR') : 'desconhecido'}.`}`,
+                fix: isLongLived ? undefined : 'Token de curta duração pode expirar em breve. Gere um token de longa duração.',
+              });
+            }
+          } else {
+            // debug_token falhou, faz fallback simples com /me
+            const meUrl = `https://graph.facebook.com/v25.0/me?access_token=${encodeURIComponent(pageToken)}&fields=id,name`;
+            const meRes = await fetch(meUrl, { method: 'GET' });
+
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              checks.push({
+                name: 'Validação do Token (Graph API)',
+                status: 'ok',
+                details: `Token válido (verificação básica). Identidade: ${meData.name || meData.id || 'N/A'}.`,
+              });
+            } else {
+              const errData = await meRes.json().catch(() => ({}));
+              checks.push({
+                name: 'Validação do Token (Graph API)',
+                status: 'error',
+                details: `Token INVÁLIDO ou expirado. Erro: ${errData?.error?.message || `HTTP ${meRes.status}`}`,
+                fix: 'Gere um novo Page Access Token no Graph API Explorer.',
+              });
+            }
+          }
         } else {
-          const errData = await meRes.json().catch(() => ({}));
-          const errMsg = errData?.error?.message || `HTTP ${meRes.status}`;
-          checks.push({
-            name: 'Validação do Token (Graph API)',
-            status: 'error',
-            details: `Token INVÁLIDO ou expirado. Erro: ${errMsg}`,
-            fix: 'O token pode ter expirado. Gere um novo Page Access Token no Graph API Explorer.',
-          });
+          // Sem app secret, usa verificação básica com /me
+          const meUrl = `https://graph.facebook.com/v25.0/me?access_token=${encodeURIComponent(pageToken)}&fields=id,name`;
+          const meRes = await fetch(meUrl, { method: 'GET' });
+
+          if (meRes.ok) {
+            const meData = await meRes.json();
+            checks.push({
+              name: 'Validação do Token (Graph API)',
+              status: 'ok',
+              details: `Token válido (verificação básica sem App Secret). Identidade: ${meData.name || meData.id || 'N/A'}.`,
+            });
+          } else {
+            const errData = await meRes.json().catch(() => ({}));
+            checks.push({
+              name: 'Validação do Token (Graph API)',
+              status: 'error',
+              details: `Token INVÁLIDO ou expirado. Erro: ${errData?.error?.message || `HTTP ${meRes.status}`}`,
+              fix: 'Gere um novo Page Access Token no Graph API Explorer.',
+            });
+          }
         }
       } catch (fetchError: any) {
         checks.push({
@@ -201,11 +252,14 @@ export async function GET() {
     }
 
     // ─────────────────────────────────────────────────
-    // CHECK 4 — Listar páginas do token
+    // CHECK 4 — Identificar a página do token
+    // Se for um PAGE token, /me já É a página.
+    // Se for USER token, /me/accounts lista as páginas.
     // ─────────────────────────────────────────────────
     if (hasPageToken) {
       try {
-        const pagesUrl = `https://graph.facebook.com/v25.0/me/accounts?access_token=${encodeURIComponent(pageToken)}&fields=id,name`;
+        // Tenta /me/accounts (funciona com USER token)
+        const pagesUrl = `https://graph.facebook.com/v25.0/me/accounts?access_token=${encodeURIComponent(pageToken)}&fields=id,name,access_token`;
         const pagesRes = await fetch(pagesUrl, { method: 'GET' });
 
         if (pagesRes.ok) {
@@ -216,28 +270,65 @@ export async function GET() {
             checks.push({
               name: 'Páginas associadas ao token',
               status: 'ok',
-              details: `${pages.length} página(s) encontrada(s): ${pages.map((p) => `${p.name} (${p.id})`).join(', ')}.`,
+              details: `Token de USUÁRIO. ${pages.length} página(s) acessível(is): ${pages.map((p) => `${p.name} (${p.id})`).join(', ')}.`,
+              fix: 'Este é um token de usuário. Para leads, prefira gerar um token de PÁGINA no Graph API Explorer (selecione a página como Token User). Funciona, mas pode expirar.',
+            });
+          } else {
+            // /me/accounts vazio — pode ser PAGE token (a página é o próprio /me)
+            const meUrl = `https://graph.facebook.com/v25.0/me?access_token=${encodeURIComponent(pageToken)}&fields=id,name,category`;
+            const meRes = await fetch(meUrl, { method: 'GET' });
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              const category = meData.category || '';
+              const isPage = ['Página', 'Page', 'Local Business', 'Business', 'Entertainment', 'Community'].some(
+                (c) => category.toLowerCase().includes(c.toLowerCase())
+              );
+              if (isPage || category) {
+                checks.push({
+                  name: 'Páginas associadas ao token',
+                  status: 'ok',
+                  details: `Token de PÁGINA. Página: ${meData.name || 'N/A'} (${meData.id || 'N/A'}). Categoria: ${category}.`,
+                });
+              } else {
+                checks.push({
+                  name: 'Páginas associadas ao token',
+                  status: 'warn',
+                  details: `Identidade do token: ${meData.name || meData.id || 'N/A'}. Não foi possível determinar se é página ou usuário.`,
+                  fix: 'Verifique no Graph API Explorer se o token foi gerado para uma Página.',
+                });
+              }
+            } else {
+              checks.push({
+                name: 'Páginas associadas ao token',
+                status: 'error',
+                details: 'Não foi possível identificar a página do token.',
+              });
+            }
+          }
+        } else {
+          // /me/accounts falhou — tenta /me direto (pode ser PAGE token)
+          const meUrl = `https://graph.facebook.com/v25.0/me?access_token=${encodeURIComponent(pageToken)}&fields=id,name,category`;
+          const meRes = await fetch(meUrl, { method: 'GET' });
+          if (meRes.ok) {
+            const meData = await meRes.json();
+            checks.push({
+              name: 'Páginas associadas ao token',
+              status: 'ok',
+              details: `Token de PÁGINA. Página: ${meData.name || 'N/A'} (${meData.id || 'N/A'}).`,
             });
           } else {
             checks.push({
               name: 'Páginas associadas ao token',
-              status: 'warn',
-              details: 'Nenhuma página encontrada para este token.',
-              fix: 'O token precisa ser de uma PÁGINA do Facebook, não de um usuário. Gere no Graph API Explorer selecionando a Página como "Token User".',
+              status: 'error',
+              details: 'Não foi possível listar páginas nem identificar o token.',
             });
           }
-        } else {
-          checks.push({
-            name: 'Páginas associadas ao token',
-            status: 'error',
-            details: 'Não foi possível listar páginas. O token pode não ter a permissão pages_show_list.',
-          });
         }
       } catch (pagesErr: any) {
         checks.push({
           name: 'Páginas associadas ao token',
           status: 'error',
-          details: `Falha ao listar páginas: ${pagesErr.message}`,
+          details: `Falha ao verificar páginas: ${pagesErr.message}`,
         });
       }
     } else {
