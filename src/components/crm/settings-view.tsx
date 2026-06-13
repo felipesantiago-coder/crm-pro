@@ -30,6 +30,8 @@ function MetaAdsCard() {
   const [hasVerifyToken, setHasVerifyToken] = useState(false);
   const [hasAppSecret, setHasAppSecret] = useState(false);
   const [hasPageAccessToken, setHasPageAccessToken] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<any>(null);
 
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/webhooks/meta-leads`
@@ -68,6 +70,33 @@ function MetaAdsCard() {
       }
     } catch {
       toast.error('Erro ao verificar status do webhook');
+    }
+  }
+
+  async function runDiagnosis() {
+    setDiagnosing(true);
+    setDiagnosis(null);
+    try {
+      const res = await fetch('/api/webhooks/meta-leads/diagnose');
+      if (res.ok) {
+        const data = await res.json();
+        setDiagnosis(data);
+        const errCount = data.summary.errors;
+        const warnCount = data.summary.warnings;
+        if (errCount > 0) {
+          toast.error(`Diagnóstico: ${errCount} erro(s) encontrado(s)`);
+        } else if (warnCount > 0) {
+          toast.warning(`Diagnóstico: funcionando com ${warnCount} aviso(s)`);
+        } else {
+          toast.success('Diagnóstico: tudo OK!');
+        }
+      } else {
+        toast.error('Erro ao executar diagnóstico');
+      }
+    } catch {
+      toast.error('Falha de conexão ao executar diagnóstico');
+    } finally {
+      setDiagnosing(false);
     }
   }
 
@@ -315,7 +344,75 @@ function MetaAdsCard() {
             <RefreshCw className="h-4 w-4 mr-1" />
             Testar
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runDiagnosis}
+            disabled={diagnosing}
+            className="border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+          >
+            {diagnosing ? (
+              <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Aguarde...</>
+            ) : (
+              <><Zap className="h-4 w-4 mr-1" /> Diagnosticar</>
+            )}
+          </Button>
         </div>
+
+        {/* Painel de Diagnóstico */}
+        {diagnosis && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Diagnóstico
+              </span>
+              {diagnosis.status === 'healthy' && (
+                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  Tudo OK
+                </Badge>
+              )}
+              {diagnosis.status === 'degraded' && (
+                <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                  Atenção
+                </Badge>
+              )}
+              {diagnosis.status === 'broken' && (
+                <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                  Problemas
+                </Badge>
+              )}
+            </div>
+            <div className="rounded-lg border space-y-1.5 p-3 bg-muted/30">
+              {diagnosis.checks.map((check: any, i: number) => (
+                <div key={i} className="flex items-start gap-2 text-xs">
+                  {check.status === 'ok' && (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mt-0.5 flex-shrink-0" />
+                  )}
+                  {check.status === 'warn' && (
+                    <Zap className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+                  )}
+                  {check.status === 'error' && (
+                    <Circle className="h-3.5 w-3.5 text-red-500 mt-0.5 flex-shrink-0" />
+                  )}
+                  {check.status === 'skip' && (
+                    <Circle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <span className="font-medium">{check.name}: </span>
+                    <span className={check.status === 'error' ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}>
+                      {check.details}
+                    </span>
+                    {check.fix && (
+                      <p className="text-amber-600 dark:text-amber-400 mt-0.5">
+                        Solucao: {check.fix}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Tutorial colapsável */}
         <div className="space-y-2">
