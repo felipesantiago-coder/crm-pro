@@ -57,6 +57,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
+import { AIContextMemory } from './ai-context-memory';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -981,6 +982,12 @@ function DetailContent({
             </div>
           )}
         </div>
+      </div>
+
+      {/* AI Context Memory */}
+      <div className="space-y-3">
+        <Separator />
+        <AIContextMemory clientId={client.id} />
       </div>
 
       {/* Record Interaction Section */}
