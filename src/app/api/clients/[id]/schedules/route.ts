@@ -157,21 +157,27 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { scheduleId, status } = body;
+    const { scheduleId, status, scheduledDate, scheduledTime, description } = body;
 
-    if (!scheduleId || !status) {
+    if (!scheduleId) {
       return NextResponse.json(
-        { error: 'scheduleId e status são obrigatórios' },
+        { error: 'scheduleId é obrigatório' },
         { status: 400 }
       );
     }
 
-    const validStatuses = ['COMPLETED', 'CANCELLED'];
-    if (!validStatuses.includes(status)) {
-      return NextResponse.json(
-        { error: 'Status inválido. Use COMPLETED ou CANCELLED' },
-        { status: 400 }
-      );
+    const isStatusChange = !!status;
+    const isFieldEdit = scheduledDate || scheduledTime || description !== undefined;
+
+    // Validar status se fornecido
+    if (isStatusChange) {
+      const validStatuses = ['COMPLETED', 'CANCELLED'];
+      if (!validStatuses.includes(status)) {
+        return NextResponse.json(
+          { error: 'Status inválido. Use COMPLETED ou CANCELLED' },
+          { status: 400 }
+        );
+      }
     }
 
     const schedule = await db.schedule.findUnique({
@@ -182,12 +188,22 @@ export async function PATCH(
       return NextResponse.json({ error: 'Agendamento não encontrado' }, { status: 404 });
     }
 
+    // Montar dados de atualização
+    const updateData: Record<string, unknown> = {};
+    if (isStatusChange) {
+      updateData.status = status;
+      if (status === 'COMPLETED') updateData.completedAt = new Date();
+    }
+    if (scheduledDate) {
+      const [year, month, day] = scheduledDate.split('-').map(Number);
+      updateData.scheduledDate = new Date(year, month - 1, day, 12, 0, 0);
+    }
+    if (scheduledTime) updateData.scheduledTime = scheduledTime;
+    if (description !== undefined) updateData.description = description?.trim() || null;
+
     const updated = await db.schedule.update({
       where: { id: scheduleId },
-      data: {
-        status,
-        ...(status === 'COMPLETED' ? { completedAt: new Date() } : {}),
-      },
+      data: updateData,
       include: {
         creatorUser: {
           select: { id: true, name: true },
