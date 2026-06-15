@@ -22,7 +22,12 @@ import {
   Trash2,
   Check,
   Loader2,
+  LayoutDashboard,
+  Kanban,
+  BarChart3,
 } from 'lucide-react';
+import { KanbanBoard } from './kanban-board';
+import { AnalyticsDashboard } from './analytics-dashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -149,6 +154,7 @@ function getRelativeDateLabel(date: Date): string {
 }
 
 export function DashboardView() {
+  const [dashboardTab, setDashboardTab] = useState<'default' | 'kanban' | 'analytics'>('default');
   const [totalClients, setTotalClients] = useState(0);
   const [clientsThisMonth, setClientsThisMonth] = useState(0);
   const [totalReminders, setTotalReminders] = useState(0);
@@ -614,12 +620,60 @@ export function DashboardView() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
-          Visão geral do seu CRM
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">
+            Visão geral do seu CRM
+          </p>
+        </div>
+        {/* View toggle tabs */}
+        <div className="flex items-center bg-muted rounded-lg p-1 gap-0.5">
+          <button
+            onClick={() => setDashboardTab('default')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              dashboardTab === 'default'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <LayoutDashboard className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Visão Geral</span>
+          </button>
+          <button
+            onClick={() => setDashboardTab('kanban')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              dashboardTab === 'kanban'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Kanban className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Pipeline</span>
+          </button>
+          <button
+            onClick={() => setDashboardTab('analytics')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              dashboardTab === 'analytics'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Analytics</span>
+          </button>
+        </div>
       </div>
+
+      {/* Kanban view */}
+      {dashboardTab === 'kanban' && <KanbanBoard />}
+
+      {/* Analytics view */}
+      {dashboardTab === 'analytics' && <AnalyticsDashboard />}
+
+      {/* Default view */}
+      {dashboardTab === 'default' && (
+      <>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -861,7 +915,7 @@ export function DashboardView() {
       </Card>
 
       {/* Edit Schedule Dialog */}
-      <Dialog open={!!editingSchedule} onOpenChange={(open) => { if (!open) setEditingSchedule(null); }}>
+      {dashboardTab === 'default' && <Dialog open={!!editingSchedule} onOpenChange={(open) => { if (!open) setEditingSchedule(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Editar Agendamento</DialogTitle>
@@ -912,7 +966,7 @@ export function DashboardView() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
       {/* Recent Clients & Upcoming Reminders */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1038,6 +1092,8 @@ export function DashboardView() {
           </CardContent>
         </Card>
       </div>
+      </>
+      )}
     </div>
   );
 }
