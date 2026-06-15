@@ -1,0 +1,1044 @@
+     1→'use client';
+     2→
+     3→import React, { useEffect, useState, useMemo } from 'react';
+     4→import {
+     5→  Users,
+     6→  UserPlus,
+     7→  Bell,
+     8→  BellRing,
+     9→  TrendingUp,
+    10→  Calendar,
+    11→  CalendarDays,
+    12→  AlertTriangle,
+    13→  Clock,
+    14→  RefreshCw,
+    15→  MessageCircle,
+    16→  PhoneCall,
+    17→  CheckCircle2,
+    18→  XCircle,
+    19→  MapPin,
+    20→  MoreVertical,
+    21→  Pencil,
+    22→  Trash2,
+    23→  Check,
+    24→  Loader2,
+    25→} from 'lucide-react';
+    26→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    27→import { Badge } from '@/components/ui/badge';
+    28→import { Button } from '@/components/ui/button';
+    29→import {
+    30→  DropdownMenu,
+    31→  DropdownMenuContent,
+    32→  DropdownMenuItem,
+    33→  DropdownMenuSeparator,
+    34→  DropdownMenuTrigger,
+    35→} from '@/components/ui/dropdown-menu';
+    36→import {
+    37→  Dialog,
+    38→  DialogContent,
+    39→  DialogHeader,
+    40→  DialogTitle,
+    41→  DialogFooter,
+    42→} from '@/components/ui/dialog';
+    43→import { Input } from '@/components/ui/input';
+    44→import { Label } from '@/components/ui/label';
+    45→import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
+    46→import { format, differenceInDays, isToday, isTomorrow, isPast, isThisWeek } from 'date-fns';
+    47→import { ptBR } from 'date-fns/locale';
+    48→import { useCRMStore } from '@/store/crm-store';
+    49→import { toast } from 'sonner';
+    50→
+    51→interface ClientSummary {
+    52→  id: string;
+    53→  name: string;
+    54→  email: string | null;
+    55→  phone: string | null;
+    56→  createdAt: string;
+    57→  updatePeriod?: number;
+    58→  lastInteractionAt?: string | null;
+    59→}
+    60→
+    61→interface ReminderSummary {
+    62→  id: string;
+    63→  title: string;
+    64→  dueDate: string;
+    65→  notified: boolean;
+    66→  client: { name: string };
+    67→}
+    68→
+    69→interface NeedsUpdateClient {
+    70→  id: string;
+    71→  name: string;
+    72→  phone: string | null;
+    73→  updatePeriod: number;
+    74→  lastInteractionAt: string | null;
+    75→  createdAt: string;
+    76→}
+    77→
+    78→interface ScheduleItem {
+    79→  id: string;
+    80→  scheduledDate: string;
+    81→  scheduledTime: string;
+    82→  description: string | null;
+    83→  status: string;
+    84→  completedAt: string | null;
+    85→  clientId: string;
+    86→  createdBy: string;
+    87→  createdAt: string;
+    88→  client: {
+    89→    id: string;
+    90→    name: string;
+    91→    phone: string | null;
+    92→  };
+    93→  creatorUser: {
+    94→    id: string;
+    95→    name: string;
+    96→  };
+    97→}
+    98→
+    99→function getScheduleStatusConfig(status: string, scheduledDate: string) {
+   100→  const now = new Date();
+   101→  const date = new Date(scheduledDate);
+   102→  const isOverdue = isPast(date) && status === 'PENDING';
+   103→
+   104→  switch (status) {
+   105→    case 'COMPLETED':
+   106→      return {
+   107→        label: 'Concluído',
+   108→        icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+   109→        bgClass: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+   110→        borderClass: 'border-emerald-100 dark:border-emerald-800/30',
+   111→        dotClass: 'bg-emerald-500',
+   112→        rowBg: 'bg-emerald-50/30 dark:bg-emerald-950/5',
+   113→      };
+   114→    case 'CANCELLED':
+   115→      return {
+   116→        label: 'Cancelado',
+   117→        icon: <XCircle className="h-3.5 w-3.5" />,
+   118→        bgClass: 'bg-gray-100 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400',
+   119→        borderClass: 'border-gray-100 dark:border-gray-800/30',
+   120→        dotClass: 'bg-gray-400',
+   121→        rowBg: 'bg-gray-50/30 dark:bg-gray-950/5',
+   122→      };
+   123→    default: // PENDING
+   124→      if (isOverdue) {
+   125→        return {
+   126→          label: 'Atrasado',
+   127→          icon: <AlertTriangle className="h-3.5 w-3.5" />,
+   128→          bgClass: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400',
+   129→          borderClass: 'border-rose-100 dark:border-rose-800/30',
+   130→          dotClass: 'bg-rose-500',
+   131→          rowBg: 'bg-rose-50/50 dark:bg-rose-950/10',
+   132→        };
+   133→      }
+   134→      return {
+   135→        label: isToday(date) ? 'Hoje' : isTomorrow(date) ? 'Amanhã' : 'Agendado',
+   136→        icon: <CalendarDays className="h-3.5 w-3.5" />,
+   137→        bgClass: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
+   138→        borderClass: 'border-blue-100 dark:border-blue-800/30',
+   139→        dotClass: 'bg-blue-500',
+   140→        rowBg: 'bg-blue-50/30 dark:bg-blue-950/5',
+   141→      };
+   142→  }
+   143→}
+   144→
+   145→function getRelativeDateLabel(date: Date): string {
+   146→  if (isToday(date)) return 'Hoje';
+   147→  if (isTomorrow(date)) return 'Amanhã';
+   148→  return format(date, "EEE, dd 'de' MMM", { locale: ptBR });
+   149→}
+   150→
+   151→export function DashboardView() {
+   152→  const [totalClients, setTotalClients] = useState(0);
+   153→  const [clientsThisMonth, setClientsThisMonth] = useState(0);
+   154→  const [totalReminders, setTotalReminders] = useState(0);
+   155→  const [pendingReminders, setPendingReminders] = useState(0);
+   156→  const [recentClients, setRecentClients] = useState<ClientSummary[]>([]);
+   157→  const [upcomingReminders, setUpcomingReminders] = useState<ReminderSummary[]>([]);
+   158→  const [needsUpdateClients, setNeedsUpdateClients] = useState<NeedsUpdateClient[]>([]);
+   159→  const [allSchedules, setAllSchedules] = useState<ScheduleItem[]>([]);
+   160→  const [loading, setLoading] = useState(true);
+   161→  const [scheduleActionLoading, setScheduleActionLoading] = useState<string | null>(null);
+   162→  const [editingSchedule, setEditingSchedule] = useState<ScheduleItem | null>(null);
+   163→  const [editForm, setEditForm] = useState({ scheduledDate: '', scheduledTime: '', description: '' });
+   164→  const { setCurrentView, setSelectedClientId } = useCRMStore();
+   165→
+   166→  useEffect(() => {
+   167→    async function loadDashboard() {
+   168→      try {
+   169→        const [clientsRes, remindersRes, needsUpdateRes, statsRes, schedulesRes] = await Promise.all([
+   170→          fetch('/api/clients?page=1&limit=5'),
+   171→          fetch('/api/reminders?limit=50'),
+   172→          fetch('/api/clients?needsUpdate=true&limit=10'),
+   173→          fetch('/api/clients/stats'),
+   174→          fetch('/api/schedules?limit=30'),
+   175→        ]);
+   176→
+   177→        const clientsData = await clientsRes.json();
+   178→        const remindersData = await remindersRes.json();
+   179→        const needsUpdateData = await needsUpdateRes.json();
+   180→        const statsData = await statsRes.json();
+   181→        const schedulesData = await schedulesRes.json();
+   182→
+   183→        setTotalClients(statsData.total || clientsData.total || 0);
+   184→        setClientsThisMonth(statsData.thisMonth || 0);
+   185→
+   186→        setRecentClients(
+   187→          (clientsData.clients || []).slice(0, 5).map((c: ClientSummary) => ({
+   188→            id: c.id,
+   189→            name: c.name,
+   190→            email: c.email,
+   191→            phone: c.phone,
+   192→            createdAt: c.createdAt,
+   193→            updatePeriod: c.updatePeriod,
+   194→            lastInteractionAt: c.lastInteractionAt,
+   195→          }))
+   196→        );
+   197→
+   198→        setNeedsUpdateClients(Array.isArray(needsUpdateData.clients) ? needsUpdateData.clients : []);
+   199→
+   200→        const allReminders: ReminderSummary[] = Array.isArray(remindersData.reminders)
+   201→          ? remindersData.reminders
+   202→          : Array.isArray(remindersData)
+   203→            ? remindersData
+   204→            : [];
+   205→        setTotalReminders(allReminders.length);
+   206→        setPendingReminders(allReminders.filter((r) => !r.notified).length);
+   207→
+   208→        const now = new Date();
+   209→        const upcoming = allReminders
+   210→          .filter((r) => !r.notified && new Date(r.dueDate) >= now)
+   211→          .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+   212→          .slice(0, 5);
+   213→        setUpcomingReminders(upcoming);
+   214→
+   215→        const schedules = Array.isArray(schedulesData.schedules) ? schedulesData.schedules : [];
+   216→        setAllSchedules(schedules);
+   217→      } catch (err) {
+   218→        console.error('Error loading dashboard:', err);
+   219→      } finally {
+   220→        setLoading(false);
+   221→      }
+   222→    }
+   223→    loadDashboard();
+   224→  }, []);
+   225→
+   226→  // Classify schedules
+   227→  const { pastSchedules, futureSchedules, todaySchedules } = useMemo(() => {
+   228→    const now = new Date();
+   229→    const today = todaySchedules;
+   230→    const past: ScheduleItem[] = [];
+   231→    const future: ScheduleItem[] = [];
+   232→    const todayList: ScheduleItem[] = [];
+   233→
+   234→    for (const s of allSchedules) {
+   235→      const date = new Date(s.scheduledDate);
+   236→      if (isToday(date)) {
+   237→        todayList.push(s);
+   238→      } else if (isPast(date)) {
+   239→        past.push(s);
+   240→      } else {
+   241→        future.push(s);
+   242→      }
+   243→    }
+   244→
+   245→    // Sort: today by time, past newest first, future soonest first
+   246→    todayList.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+   247→    past.sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
+   248→    future.sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
+   249→
+   250→    return { pastSchedules: past.slice(0, 5), futureSchedules: future.slice(0, 10), todaySchedules: todayList };
+   251→    // eslint-disable-next-line react-hooks/exhaustive-deps
+   252→  }, [allSchedules]);
+   253→
+   254→  const pendingSchedulesCount = allSchedules.filter((s) => s.status === 'PENDING' && !isPast(new Date(s.scheduledDate))).length;
+   255→  const overdueSchedulesCount = allSchedules.filter((s) => s.status === 'PENDING' && isPast(new Date(s.scheduledDate))).length;
+   256→
+   257→  async function handleRecordInteraction(clientId: string) {
+   258→    try {
+   259→      const res = await fetch(`/api/clients/${clientId}`, { method: 'PATCH' });
+   260→      if (res.ok) {
+   261→        toast.success('Interação registrada!');
+   262→        setNeedsUpdateClients((prev) => prev.filter((c) => c.id !== clientId));
+   263→      }
+   264→    } catch {
+   265→      toast.error('Erro ao registrar interação');
+   266→    }
+   267→  }
+   268→
+   269→  function handleNavigateToClient(clientId: string) {
+   270→    setSelectedClientId(clientId);
+   271→    setCurrentView('clientDetail');
+   272→  }
+   273→
+   274→  async function handleScheduleAction(schedule: ScheduleItem, action: 'complete' | 'cancel' | 'delete') {
+   275→    const labels = { complete: 'concluir', cancel: 'cancelar', delete: 'excluir' };
+   276→    if (!confirm(`Tem certeza que deseja ${labels[action]} o agendamento de ${schedule.client.name}?`)) return;
+   277→
+   278→    setScheduleActionLoading(schedule.id);
+   279→    try {
+   280→      if (action === 'delete') {
+   281→        const res = await fetch(`/api/clients/${schedule.clientId}/schedules`, {
+   282→          method: 'DELETE',
+   283→          headers: { 'Content-Type': 'application/json' },
+   284→          body: JSON.stringify({ scheduleId: schedule.id }),
+   285→        });
+   286→        if (res.ok) {
+   287→          toast.success('Agendamento excluído');
+   288→          setAllSchedules((prev) => prev.filter((s) => s.id !== schedule.id));
+   289→        } else {
+   290→          throw new Error();
+   291→        }
+   292→      } else {
+   293→        const status = action === 'complete' ? 'COMPLETED' : 'CANCELLED';
+   294→        const res = await fetch(`/api/clients/${schedule.clientId}/schedules`, {
+   295→          method: 'PATCH',
+   296→          headers: { 'Content-Type': 'application/json' },
+   297→          body: JSON.stringify({ scheduleId: schedule.id, status }),
+   298→        });
+   299→        if (res.ok) {
+   300→          toast.success(action === 'complete' ? 'Agendamento concluído!' : 'Agendamento cancelado');
+   301→          // Update locally
+   302→          setAllSchedules((prev) =>
+   303→            prev.map((s) =>
+   304→              s.id === schedule.id
+   305→                ? { ...s, status, completedAt: action === 'complete' ? new Date().toISOString() : s.completedAt }
+   306→                : s
+   307→            )
+   308→          );
+   309→        } else {
+   310→          throw new Error();
+   311→        }
+   312→      }
+   313→    } catch {
+   314→      toast.error(`Erro ao ${labels[action]} agendamento`);
+   315→    } finally {
+   316→      setScheduleActionLoading(null);
+   317→    }
+   318→  }
+   319→
+   320→  function handleOpenEdit(schedule: ScheduleItem) {
+   321→    setEditForm({
+   322→      scheduledDate: schedule.scheduledDate.split('T')[0],
+   323→      scheduledTime: schedule.scheduledTime,
+   324→      description: schedule.description || '',
+   325→    });
+   326→    setEditingSchedule(schedule);
+   327→  }
+   328→
+   329→  async function handleSaveEdit() {
+   330→    if (!editingSchedule) return;
+   331→    setScheduleActionLoading(editingSchedule.id);
+   332→    try {
+   333→      const res = await fetch(`/api/clients/${editingSchedule.clientId}/schedules`, {
+   334→        method: 'PATCH',
+   335→        headers: { 'Content-Type': 'application/json' },
+   336→        body: JSON.stringify({
+   337→          scheduleId: editingSchedule.id,
+   338→          scheduledDate: editForm.scheduledDate,
+   339→          scheduledTime: editForm.scheduledTime,
+   340→          description: editForm.description || null,
+   341→        }),
+   342→      });
+   343→      if (!res.ok) throw new Error('Erro ao atualizar agendamento');
+   344→
+   345→      toast.success('Agendamento atualizado!');
+   346→      setEditingSchedule(null);
+   347→      // Update locally
+   348→      setAllSchedules((prev) =>
+   349→        prev.map((s) =>
+   350→          s.id === editingSchedule.id
+   351→            ? {
+   352→                ...s,
+   353→                scheduledDate: editForm.scheduledDate,
+   354→                scheduledTime: editForm.scheduledTime,
+   355→                description: editForm.description || null,
+   356→              }
+   357→            : s
+   358→        )
+   359→      );
+   360→    } catch (err: any) {
+   361→      toast.error(err.message || 'Erro ao salvar alterações');
+   362→    } finally {
+   363→      setScheduleActionLoading(null);
+   364→    }
+   365→  }
+   366→
+   367→  function getInitials(name: string) {
+   368→    return name
+   369→      .split(' ')
+   370→      .map((n) => n[0])
+   371→      .join('')
+   372→      .toUpperCase()
+   373→      .slice(0, 2);
+   374→  }
+   375→
+   376→  function getAvatarColor(name: string) {
+   377→    const colors = [
+   378→      'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+   379→      'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
+   380→      'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+   381→      'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+   382→      'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+   383→      'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
+   384→    ];
+   385→    let hash = 0;
+   386→    for (let i = 0; i < name.length; i++) {
+   387→      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+   388→    }
+   389→    return colors[Math.abs(hash) % colors.length];
+   390→  }
+   391→
+   392→  function getDaysOverdue(client: NeedsUpdateClient): number {
+   393→    const ref = client.lastInteractionAt ? new Date(client.lastInteractionAt) : new Date(client.createdAt);
+   394→    const due = new Date(ref);
+   395→    due.setDate(due.getDate() + (client.updatePeriod || 30));
+   396→    return Math.abs(differenceInDays(new Date(), due));
+   397→  }
+   398→
+   399→  function renderScheduleRow(schedule: ScheduleItem) {
+   400→    const date = new Date(schedule.scheduledDate);
+   401→    const config = getScheduleStatusConfig(schedule.status, schedule.scheduledDate);
+   402→    const relativeDate = isToday(date) || isTomorrow(date)
+   403→      ? getRelativeDateLabel(date)
+   404→      : format(date, "dd/MM/yyyy");
+   405→    const isPending = schedule.status === 'PENDING';
+   406→    const isLoading = scheduleActionLoading === schedule.id;
+   407→
+   408→    return (
+   409→      <div
+   410→        key={schedule.id}
+   411→        className={`flex items-center gap-3 p-3 rounded-lg border ${config.borderClass} ${config.rowBg} transition-all`}
+   412→      >
+   413→        {/* Date indicator - clickable to navigate */}
+   414→        <div
+   415→          className="flex-shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-800 cursor-pointer hover:shadow-md transition-shadow"
+   416→          onClick={() => handleNavigateToClient(schedule.clientId)}
+   417→          title="Ver cliente"
+   418→        >
+   419→          <span className="text-[10px] font-medium uppercase text-muted-foreground leading-none">
+   420→            {format(date, 'MMM', { locale: ptBR })}
+   421→          </span>
+   422→          <span className="text-lg font-bold leading-tight">
+   423→            {format(date, 'dd')}
+   424→          </span>
+   425→        </div>
+   426→
+   427→        {/* Info - clickable to navigate */}
+   428→        <div
+   429→          className="flex-1 min-w-0 cursor-pointer"
+   430→          onClick={() => handleNavigateToClient(schedule.clientId)}
+   431→        >
+   432→          <div className="flex items-center gap-2">
+   433→            <p className="text-sm font-semibold truncate">{schedule.client.name}</p>
+   434→            <Badge className={`text-[10px] h-5 px-1.5 ${config.bgClass}`}>
+   435→              {config.icon}
+   436→              <span className="ml-1">{config.label}</span>
+   437→            </Badge>
+   438→          </div>
+   439→          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+   440→            <Clock className="h-3 w-3" />
+   441→            <span>{schedule.scheduledTime}</span>
+   442→            <span className="text-muted-foreground/50">&bull;</span>
+   443→            <span>{relativeDate}</span>
+   444→            {schedule.creatorUser && (
+   445→              <>
+   446→                <span className="text-muted-foreground/50">&bull;</span>
+   447→                <span>por {schedule.creatorUser.name}</span>
+   448→              </>
+   449→            )}
+   450→          </div>
+   451→          {schedule.description && (
+   452→            <p className="text-xs text-muted-foreground/70 mt-1 truncate">
+   453→              {schedule.description}
+   454→            </p>
+   455→          )}
+   456→        </div>
+   457→
+   458→        {/* Actions */}
+   459→        <div className="flex items-center gap-1.5 flex-shrink-0">
+   460→          {/* Contact buttons */}
+   461→          {schedule.client.phone && isPending && (
+   462→            <>
+   463→              <Button
+   464→                size="sm"
+   465→                variant="outline"
+   466→                className="text-[10px] h-7 px-2 border-green-200 dark:border-green-800/50 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30"
+   467→                onClick={(e) => {
+   468→                  e.stopPropagation();
+   469→                  window.open(getWhatsAppUrl(schedule.client.phone), '_blank', 'noopener,noreferrer');
+   470→                }}
+   471→              >
+   472→                <MessageCircle className="h-3 w-3" />
+   473→              </Button>
+   474→              <a href={getPhoneCallUrl(schedule.client.phone)} onClick={(e) => e.stopPropagation()}>
+   475→                <Button
+   476→                  size="sm"
+   477→                  variant="outline"
+   478→                  className="text-[10px] h-7 px-2 border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+   479→                >
+   480→                  <PhoneCall className="h-3 w-3" />
+   481→                </Button>
+   482→              </a>
+   483→            </>
+   484→          )}
+   485→
+   486→          {/* Complete button (only pending) */}
+   487→          {isPending && (
+   488→            <Button
+   489→              size="sm"
+   490→              variant="outline"
+   491→              className="text-[10px] h-7 px-2 border-emerald-200 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+   492→              disabled={isLoading}
+   493→              onClick={(e) => {
+   494→                e.stopPropagation();
+   495→                handleScheduleAction(schedule, 'complete');
+   496→              }}
+   497→              title="Concluir"
+   498→            >
+   499→              {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+   500→            </Button>
+   501→          )}
+   502→
+   503→          {/* More actions menu */}
+   504→          <DropdownMenu>
+   505→            <DropdownMenuTrigger asChild>
+   506→              <Button
+   507→                size="sm"
+   508→                variant="ghost"
+   509→                className="text-[10px] h-7 w-7 p-0"
+   510→                onClick={(e) => e.stopPropagation()}
+   511→                disabled={isLoading}
+   512→              >
+   513→                <MoreVertical className="h-3.5 w-3.5" />
+   514→              </Button>
+   515→            </DropdownMenuTrigger>
+   516→            <DropdownMenuContent align="end" className="w-44">
+   517→              {isPending && (
+   518→                <DropdownMenuItem
+   519→                  className="text-emerald-600 dark:text-emerald-400"
+   520→                  onClick={(e) => {
+   521→                    e.stopPropagation();
+   522→                    handleScheduleAction(schedule, 'complete');
+   523→                  }}
+   524→                >
+   525→                  <CheckCircle2 className="h-4 w-4 mr-2" />
+   526→                  Concluir
+   527→                </DropdownMenuItem>
+   528→              )}
+   529→              {isPending && (
+   530→                <DropdownMenuItem
+   531→                  className="text-amber-600 dark:text-amber-400"
+   532→                  onClick={(e) => {
+   533→                    e.stopPropagation();
+   534→                    handleScheduleAction(schedule, 'cancel');
+   535→                  }}
+   536→                >
+   537→                  <XCircle className="h-4 w-4 mr-2" />
+   538→                  Cancelar
+   539→                </DropdownMenuItem>
+   540→              )}
+   541→              <DropdownMenuItem
+   542→                onClick={(e) => {
+   543→                  e.stopPropagation();
+   544→                  handleOpenEdit(schedule);
+   545→                }}
+   546→              >
+   547→                <Pencil className="h-4 w-4 mr-2" />
+   548→                Editar
+   549→              </DropdownMenuItem>
+   550→              <DropdownMenuSeparator />
+   551→              <DropdownMenuItem
+   552→                className="text-rose-600 dark:text-rose-400"
+   553→                onClick={(e) => {
+   554→                  e.stopPropagation();
+   555→                  handleScheduleAction(schedule, 'delete');
+   556→                }}
+   557→              >
+   558→                <Trash2 className="h-4 w-4 mr-2" />
+   559→                Excluir
+   560→              </DropdownMenuItem>
+   561→            </DropdownMenuContent>
+   562→          </DropdownMenu>
+   563→        </div>
+   564→      </div>
+   565→    );
+   566→  }
+   567→
+   568→  if (loading) {
+   569→    return (
+   570→      <div className="space-y-6">
+   571→        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+   572→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   573→          {[1, 2, 3, 4].map((i) => (
+   574→            <Card key={i}>
+   575→              <CardContent className="p-6">
+   576→                <div className="h-20 animate-pulse bg-muted rounded-lg" />
+   577→              </CardContent>
+   578→            </Card>
+   579→          ))}
+   580→        </div>
+   581→      </div>
+   582→    );
+   583→  }
+   584→
+   585→  const kpis = [
+   586→    {
+   587→      title: 'Total de Clientes',
+   588→      value: totalClients,
+   589→      icon: <Users className="h-5 w-5" />,
+   590→      accent: 'from-emerald-500 to-teal-600',
+   591→    },
+   592→    {
+   593→      title: 'Clientes este Mês',
+   594→      value: clientsThisMonth,
+   595→      icon: <UserPlus className="h-5 w-5" />,
+   596→      accent: 'from-teal-500 to-cyan-600',
+   597→    },
+   598→    {
+   599→      title: 'Visitas Agendadas',
+   600→      value: pendingSchedulesCount,
+   601→      icon: <CalendarDays className="h-5 w-5" />,
+   602→      accent: pendingSchedulesCount > 0 ? 'from-blue-500 to-indigo-600' : 'from-emerald-500 to-teal-600',
+   603→      subtitle: overdueSchedulesCount > 0 ? `${overdueSchedulesCount} atrasada${overdueSchedulesCount > 1 ? 's' : ''}` : undefined,
+   604→      highlight: overdueSchedulesCount > 0,
+   605→    },
+   606→    {
+   607→      title: 'Precisam de Atualização',
+   608→      value: needsUpdateClients.length,
+   609→      icon: <AlertTriangle className="h-5 w-5" />,
+   610→      accent: needsUpdateClients.length > 0 ? 'from-rose-500 to-pink-600' : 'from-emerald-500 to-teal-600',
+   611→      highlight: needsUpdateClients.length > 0,
+   612→    },
+   613→  ];
+   614→
+   615→  return (
+   616→    <div className="space-y-6">
+   617→      <div>
+   618→        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+   619→        <p className="text-muted-foreground mt-1">
+   620→          Visão geral do seu CRM
+   621→        </p>
+   622→      </div>
+   623→
+   624→      {/* KPI Cards */}
+   625→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   626→        {kpis.map((kpi) => (
+   627→          <Card
+   628→            key={kpi.title}
+   629→            className={`group hover:shadow-md transition-shadow duration-200 ${
+   630→              kpi.highlight ? 'border-rose-200 dark:border-rose-800/50' : ''
+   631→            }`}
+   632→          >
+   633→            <CardContent className="p-6">
+   634→              <div className="flex items-center justify-between">
+   635→                <div>
+   636→                  <p className="text-sm font-medium text-muted-foreground">
+   637→                    {kpi.title}
+   638→                  </p>
+   639→                  <p className="text-3xl font-bold mt-2">{kpi.value}</p>
+   640→                </div>
+   641→                <div
+   642→                  className={`h-12 w-12 rounded-xl bg-gradient-to-br ${kpi.accent} flex items-center justify-center shadow-lg`}
+   643→                >
+   644→                  <span className="text-white">{kpi.icon}</span>
+   645→                </div>
+   646→              </div>
+   647→              <div className="flex items-center mt-3 text-xs text-muted-foreground">
+   648→                <TrendingUp className="h-3 w-3 mr-1 text-emerald-500" />
+   649→                <span>
+   650→                  {kpi.subtitle || `Atualizado às ${format(new Date(), 'HH:mm')}`}
+   651→                </span>
+   652→              </div>
+   653→            </CardContent>
+   654→          </Card>
+   655→        ))}
+   656→      </div>
+   657→
+   658→      {/* ─── Agendamentos de Hoje ─── */}
+   659→      {todaySchedules.length > 0 && (
+   660→        <Card className="hover:shadow-md transition-shadow duration-200 border-blue-200 dark:border-blue-800/50">
+   661→          <CardHeader className="pb-3">
+   662→            <CardTitle className="text-base font-semibold flex items-center gap-2">
+   663→              <MapPin className="h-4 w-4 text-blue-500" />
+   664→              <span className="flex-1">Visitas de Hoje</span>
+   665→              <Badge className="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+   666→                {todaySchedules.length}
+   667→              </Badge>
+   668→            </CardTitle>
+   669→          </CardHeader>
+   670→          <CardContent className="px-6 pb-6">
+   671→            <div className="space-y-3">
+   672→              {todaySchedules.map((schedule) => renderScheduleRow(schedule))}
+   673→            </div>
+   674→          </CardContent>
+   675→        </Card>
+   676→      )}
+   677→
+   678→      {/* ─── Agendamentos: Próximos e Passados ─── */}
+   679→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   680→        {/* Próximas Visitas */}
+   681→        <Card className="hover:shadow-md transition-shadow duration-200">
+   682→          <CardHeader className="pb-3">
+   683→            <div className="flex items-center justify-between">
+   684→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+   685→                <Calendar className="h-4 w-4 text-blue-500" />
+   686→                Próximas Visitas
+   687→              </CardTitle>
+   688→              {futureSchedules.length > 0 && (
+   689→                <Badge className="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+   690→                  {futureSchedules.length}
+   691→                </Badge>
+   692→              )}
+   693→            </div>
+   694→          </CardHeader>
+   695→          <CardContent className="px-6 pb-6">
+   696→            {futureSchedules.length === 0 ? (
+   697→              <div className="text-center py-8">
+   698→                <div className="h-12 w-12 rounded-xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center mx-auto mb-3">
+   699→                  <Calendar className="h-6 w-6 text-blue-400" />
+   700→                </div>
+   701→                <p className="text-sm font-medium text-muted-foreground">
+   702→                  Nenhuma visita agendada
+   703→                </p>
+   704→                <p className="text-xs text-muted-foreground mt-1">
+   705→                  Os próximos agendamentos aparecerão aqui.
+   706→                </p>
+   707→              </div>
+   708→            ) : (
+   709→              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+   710→                {futureSchedules.map((schedule) => renderScheduleRow(schedule))}
+   711→              </div>
+   712→            )}
+   713→          </CardContent>
+   714→        </Card>
+   715→
+   716→        {/* Visitas Passadas */}
+   717→        <Card className="hover:shadow-md transition-shadow duration-200">
+   718→          <CardHeader className="pb-3">
+   719→            <div className="flex items-center justify-between">
+   720→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+   721→                <Clock className="h-4 w-4 text-muted-foreground" />
+   722→                Histórico de Visitas
+   723→              </CardTitle>
+   724→              {pastSchedules.length > 0 && (
+   725→                <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-400">
+   726→                  {pastSchedules.length}
+   727→                </Badge>
+   728→              )}
+   729→            </div>
+   730→          </CardHeader>
+   731→          <CardContent className="px-6 pb-6">
+   732→            {pastSchedules.length === 0 ? (
+   733→              <div className="text-center py-8">
+   734→                <div className="h-12 w-12 rounded-xl bg-gray-50 dark:bg-gray-900/30 flex items-center justify-center mx-auto mb-3">
+   735→                  <Clock className="h-6 w-6 text-gray-400" />
+   736→                </div>
+   737→                <p className="text-sm font-medium text-muted-foreground">
+   738→                  Nenhuma visita realizada ainda
+   739→                </p>
+   740→                <p className="text-xs text-muted-foreground mt-1">
+   741→                  As visitas concluídas e canceladas aparecerão aqui.
+   742→                </p>
+   743→              </div>
+   744→            ) : (
+   745→              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+   746→                {pastSchedules.map((schedule) => renderScheduleRow(schedule))}
+   747→              </div>
+   748→            )}
+   749→          </CardContent>
+   750→        </Card>
+   751→      </div>
+   752→
+   753→      {/* Clients Needing Update - Priority Section */}
+   754→      <Card className={`hover:shadow-md transition-shadow duration-200 ${needsUpdateClients.length > 0 ? 'border-rose-200 dark:border-rose-800/50' : ''}`}>
+   755→        <CardHeader className="pb-3">
+   756→          <CardTitle className="text-base font-semibold flex items-center gap-2">
+   757→            <AlertTriangle className={`h-4 w-4 ${needsUpdateClients.length > 0 ? 'text-rose-500' : 'text-emerald-500'}`} />
+   758→            <span className="flex-1">Clientes que Precisam de Atualização</span>
+   759→            {needsUpdateClients.length > 0 && (
+   760→              <Badge className="bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
+   761→                {needsUpdateClients.length}
+   762→              </Badge>
+   763→            )}
+   764→          </CardTitle>
+   765→        </CardHeader>
+   766→        <CardContent className="px-6 pb-6">
+   767→          {needsUpdateClients.length === 0 ? (
+   768→            <div className="text-center py-6">
+   769→              <div className="h-12 w-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center mx-auto mb-3">
+   770→                <Clock className="h-6 w-6 text-emerald-500" />
+   771→              </div>
+   772→              <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+   773→                Todos os clientes estão em dia!
+   774→              </p>
+   775→              <p className="text-xs text-muted-foreground mt-1">
+   776→                Nenhum cliente precisa de atualização no momento.
+   777→              </p>
+   778→            </div>
+   779→          ) : (
+   780→            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+   781→              {needsUpdateClients.map((client) => {
+   782→                const daysOverdue = getDaysOverdue(client);
+   783→                return (
+   784→                  <div
+   785→                    key={client.id}
+   786→                    className="flex items-center gap-3 p-3 rounded-lg border border-rose-100 dark:border-rose-800/30 bg-rose-50/50 dark:bg-rose-950/10 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
+   787→                  >
+   788→                    <div
+   789→                      className={`h-10 w-10 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${getAvatarColor(client.name)}`}
+   790→                    >
+   791→                      {getInitials(client.name)}
+   792→                    </div>
+   793→                    <div className="flex-1 min-w-0">
+   794→                      <p className="text-sm font-semibold truncate">{client.name}</p>
+   795→                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+   796→                        <Clock className="h-3 w-3" />
+   797→                        <span>
+   798→                          Vencido há {daysOverdue} dia{daysOverdue !== 1 ? 's' : ''}
+   799→                          {client.lastInteractionAt && (
+   800→                            <span>
+   801→                              {' '}&bull; Última:{' '}
+   802→                              {format(new Date(client.lastInteractionAt), 'dd/MM/yy')}
+   803→                            </span>
+   804→                          )}
+   805→                        </span>
+   806→                      </div>
+   807→                    </div>
+   808→                    <div className="flex items-center gap-1.5 flex-shrink-0">
+   809→                      <Badge className="text-[10px] bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400 hidden sm:inline-flex">
+   810→                        {client.updatePeriod}d
+   811→                      </Badge>
+   812→                      {(() => {
+   813→                        const waUrl = client.phone ? getWhatsAppUrl(client.phone) : null;
+   814→                        const callUrl = client.phone ? getPhoneCallUrl(client.phone) : null;
+   815→                        return (waUrl || callUrl) ? (
+   816→                          <>
+   817→                            {waUrl && (
+   818→                              <Button
+   819→                                size="sm"
+   820→                                variant="outline"
+   821→                                className="text-[10px] h-7 px-2 border-green-200 dark:border-green-800/50 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30"
+   822→                                onClick={(e) => {
+   823→                                  e.stopPropagation();
+   824→                                  window.open(waUrl, '_blank', 'noopener,noreferrer');
+   825→                                }}
+   826→                              >
+   827→                                <MessageCircle className="h-3 w-3" />
+   828→                              </Button>
+   829→                            )}
+   830→                            {callUrl && (
+   831→                              <a href={callUrl} onClick={(e) => e.stopPropagation()}>
+   832→                                <Button
+   833→                                  size="sm"
+   834→                                  variant="outline"
+   835→                                  className="text-[10px] h-7 px-2 border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+   836→                                >
+   837→                                  <PhoneCall className="h-3 w-3" />
+   838→                                </Button>
+   839→                              </a>
+   840→                            )}
+   841→                          </>
+   842→                        ) : null;
+   843→                      })()}
+   844→                      <Button
+   845→                        size="sm"
+   846→                        variant="outline"
+   847→                        className="text-xs h-7"
+   848→                        onClick={() => handleRecordInteraction(client.id)}
+   849→                        title="Registrar interação"
+   850→                      >
+   851→                        <RefreshCw className="h-3 w-3 sm:mr-1" />
+   852→                        <span className="hidden sm:inline">Registrar</span>
+   853→                      </Button>
+   854→                    </div>
+   855→                  </div>
+   856→                );
+   857→              })}
+   858→            </div>
+   859→          )}
+   860→        </CardContent>
+   861→      </Card>
+   862→
+   863→      {/* Edit Schedule Dialog */}
+   864→      <Dialog open={!!editingSchedule} onOpenChange={(open) => { if (!open) setEditingSchedule(null); }}>
+   865→        <DialogContent className="sm:max-w-md">
+   866→          <DialogHeader>
+   867→            <DialogTitle>Editar Agendamento</DialogTitle>
+   868→          </DialogHeader>
+   869→          <div className="space-y-4 py-2">
+   870→            <div className="space-y-2">
+   871→              <Label htmlFor="edit-schedule-date">Data</Label>
+   872→              <Input
+   873→                id="edit-schedule-date"
+   874→                type="date"
+   875→                value={editForm.scheduledDate}
+   876→                onChange={(e) => setEditForm((f) => ({ ...f, scheduledDate: e.target.value }))}
+   877→              />
+   878→            </div>
+   879→            <div className="space-y-2">
+   880→              <Label htmlFor="edit-schedule-time">Horário</Label>
+   881→              <Input
+   882→                id="edit-schedule-time"
+   883→                type="time"
+   884→                value={editForm.scheduledTime}
+   885→                onChange={(e) => setEditForm((f) => ({ ...f, scheduledTime: e.target.value }))}
+   886→              />
+   887→            </div>
+   888→            <div className="space-y-2">
+   889→              <Label htmlFor="edit-schedule-desc">Observações</Label>
+   890→              <Input
+   891→                id="edit-schedule-desc"
+   892→                type="text"
+   893→                placeholder="Ex: Visita ao imóvel na Rua X"
+   894→                value={editForm.description}
+   895→                onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+   896→              />
+   897→            </div>
+   898→          </div>
+   899→          <DialogFooter className="gap-2 sm:gap-0">
+   900→            <Button variant="outline" onClick={() => setEditingSchedule(null)}>
+   901→              Cancelar
+   902→            </Button>
+   903→            <Button
+   904→              onClick={handleSaveEdit}
+   905→              disabled={scheduleActionLoading === editingSchedule?.id || !editForm.scheduledDate || !editForm.scheduledTime}
+   906→            >
+   907→              {scheduleActionLoading === editingSchedule?.id ? (
+   908→                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
+   909→              ) : (
+   910→                'Salvar'
+   911→              )}
+   912→            </Button>
+   913→          </DialogFooter>
+   914→        </DialogContent>
+   915→      </Dialog>
+   916→
+   917→      {/* Recent Clients & Upcoming Reminders */}
+   918→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   919→        {/* Recent Clients */}
+   920→        <Card className="hover:shadow-md transition-shadow duration-200">
+   921→          <CardHeader className="pb-3">
+   922→            <div className="flex items-center justify-between">
+   923→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+   924→                <Users className="h-4 w-4 text-emerald-500" />
+   925→                Clientes Recentes
+   926→              </CardTitle>
+   927→              <Button
+   928→                variant="ghost"
+   929→                size="sm"
+   930→                className="text-xs"
+   931→                onClick={() => setCurrentView('clients')}
+   932→              >
+   933→                Ver todos
+   934→              </Button>
+   935→            </div>
+   936→          </CardHeader>
+   937→          <CardContent className="px-6 pb-6">
+   938→            {recentClients.length === 0 ? (
+   939→              <p className="text-sm text-muted-foreground text-center py-8">
+   940→                Nenhum cliente cadastrado ainda
+   941→              </p>
+   942→            ) : (
+   943→              <div className="space-y-3">
+   944→                {recentClients.map((client) => (
+   945→                  <div
+   946→                    key={client.id}
+   947→                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+   948→                    onClick={() => handleNavigateToClient(client.id)}
+   949→                  >
+   950→                    <div
+   951→                      className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold ${getAvatarColor(client.name)}`}
+   952→                    >
+   953→                      {getInitials(client.name)}
+   954→                    </div>
+   955→                    <div className="flex-1 min-w-0">
+   956→                      <p className="text-sm font-medium truncate">
+   957→                        {client.name}
+   958→                      </p>
+   959→                      <p className="text-xs text-muted-foreground truncate">
+   960→                        {client.email || client.phone || 'Sem contato'}
+   961→                      </p>
+   962→                    </div>
+   963→                    <p className="text-xs text-muted-foreground flex-shrink-0">
+   964→                      {format(new Date(client.createdAt), 'dd/MM/yy')}
+   965→                    </p>
+   966→                  </div>
+   967→                ))}
+   968→              </div>
+   969→            )}
+   970→          </CardContent>
+   971→        </Card>
+   972→
+   973→        {/* Upcoming Reminders */}
+   974→        <Card className="hover:shadow-md transition-shadow duration-200">
+   975→          <CardHeader className="pb-3">
+   976→            <div className="flex items-center justify-between">
+   977→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+   978→                <Calendar className="h-4 w-4 text-emerald-500" />
+   979→                Próximos Lembretes
+   980→              </CardTitle>
+   981→              <Button
+   982→                variant="ghost"
+   983→                size="sm"
+   984→                className="text-xs"
+   985→                onClick={() => setCurrentView('reminders')}
+   986→              >
+   987→                Ver todos
+   988→              </Button>
+   989→            </div>
+   990→          </CardHeader>
+   991→          <CardContent className="px-6 pb-6">
+   992→            {upcomingReminders.length === 0 ? (
+   993→              <p className="text-sm text-muted-foreground text-center py-8">
+   994→                Nenhum lembrete pendente
+   995→              </p>
+   996→            ) : (
+   997→              <div className="space-y-3">
+   998→                {upcomingReminders.map((reminder) => {
+   999→                  const isOverdue = new Date(reminder.dueDate) < new Date();
+  1000→                  return (
+  1001→                    <div
+  1002→                      key={reminder.id}
+  1003→                      className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+  1004→                    >
+  1005→                      <div
+  1006→                        className={`h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 ${
+  1007→                          isOverdue
+  1008→                            ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+  1009→                            : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+  1010→                        }`}
+  1011→                      >
+  1012→                        <Bell className="h-4 w-4" />
+  1013→                      </div>
+  1014→                      <div className="flex-1 min-w-0">
+  1015→                        <p className="text-sm font-medium truncate">
+  1016→                          {reminder.title}
+  1017→                        </p>
+  1018→                        <p className="text-xs text-muted-foreground truncate">
+  1019→                          {reminder.client.name}
+  1020→                        </p>
+  1021→                      </div>
+  1022→                      <p
+  1023→                        className={`text-xs flex-shrink-0 font-medium ${
+  1024→                          isOverdue
+  1025→                            ? 'text-rose-500'
+  1026→                            : 'text-muted-foreground'
+  1027→                        }`}
+  1028→                      >
+  1029→                        {format(new Date(reminder.dueDate), 'dd/MM/yy', {
+  1030→                          locale: ptBR,
+  1031→                        })}
+  1032→                      </p>
+  1033→                    </div>
+  1034→                  );
+  1035→                })}
+  1036→              </div>
+  1037→            )}
+  1038→          </CardContent>
+  1039→        </Card>
+  1040→      </div>
+  1041→    </div>
+  1042→  );
+  1043→}
+  1044→
