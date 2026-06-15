@@ -47,34 +47,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch schedules and interactions
-    const [schedules, interactions] = await Promise.all([
-      db.schedule.findMany({
-        where: { clientId: client.id },
-        orderBy: { scheduledDate: 'desc' },
-        take: 30,
-        select: {
-          id: true,
-          scheduledDate: true,
-          scheduledTime: true,
-          description: true,
-          status: true,
-          completedAt: true,
-          createdAt: true,
-          creatorUser: { select: { name: true } },
-        },
-      }),
-      db.interaction.findMany({
-        where: { clientId: client.id },
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-        select: {
-          id: true,
-          description: true,
-          createdAt: true,
-        },
-      }),
-    ]);
+    // Fetch schedules only — interactions are internal CRM notes, not for clients
+    const schedules = await db.schedule.findMany({
+      where: { clientId: client.id },
+      orderBy: { scheduledDate: 'desc' },
+      take: 30,
+      select: {
+        id: true,
+        scheduledDate: true,
+        scheduledTime: true,
+        description: true,
+        status: true,
+        completedAt: true,
+        createdAt: true,
+        creatorUser: { select: { name: true } },
+      },
+    });
 
     const STAGE_LABELS: Record<string, string> = {
       LEAD: 'Lead',
@@ -121,11 +109,6 @@ export async function GET(request: NextRequest) {
         status: s.status,
         completedAt: s.completedAt,
         createdBy: s.creatorUser?.name || 'Equipe',
-      })),
-      interactions: interactions.map((i) => ({
-        id: i.id,
-        description: i.description,
-        createdAt: i.createdAt,
       })),
     });
   } catch (error) {

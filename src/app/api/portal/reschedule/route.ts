@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPortalToken } from '@/lib/portal-token';
+import { updateCalendarEvent } from '@/lib/google-calendar';
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -42,6 +43,13 @@ export async function PATCH(request: NextRequest) {
         clientId: client.id,
         status: 'PENDING',
       },
+      select: {
+        id: true,
+        scheduledDate: true,
+        scheduledTime: true,
+        createdBy: true,
+        googleCalendarEventId: true,
+      },
     });
 
     if (!schedule) {
@@ -80,6 +88,20 @@ export async function PATCH(request: NextRequest) {
         description: `🔄 Cliente reagendou visita de ${oldDate} às ${oldTime} para ${newDateFormatted} às ${newTime} (via Portal do Cliente).`,
       },
     });
+
+    // Update Google Calendar event if linked (fire-and-forget, same pattern as CRM)
+    if (schedule.googleCalendarEventId) {
+      // Use waitUntil-like pattern: respond first, update calendar after
+      updateCalendarEvent({
+        userId: schedule.createdBy,
+        eventId: schedule.googleCalendarEventId,
+        date: newDate,
+        time: newTime,
+        summary: `Visita CRM Pro — ${client.name}`,
+      }).catch((err) => {
+        console.error('[PORTAL] Erro ao atualizar Google Calendar (não afeta o reagendamento):', err);
+      });
+    }
 
     return NextResponse.json({
       success: true,
