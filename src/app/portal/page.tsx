@@ -19,8 +19,6 @@ import {
   Loader2,
   CalendarDays,
   History,
-  MessageSquare,
-  ExternalLink,
   Pencil,
   Check,
   X,
@@ -63,17 +61,10 @@ interface ScheduleData {
   createdBy: string;
 }
 
-interface InteractionData {
-  id: string;
-  description: string;
-  createdAt: string;
-}
-
 interface PortalData {
   client: ClientData;
   pendingSchedules: ScheduleData[];
   pastSchedules: ScheduleData[];
-  interactions: InteractionData[];
 }
 
 function getScheduleStatusLabel(status: string, dateStr: string): {
@@ -98,7 +89,6 @@ function PortalContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [showInteractions, setShowInteractions] = useState(false);
 
   // Reschedule dialog
   const [rescheduleId, setRescheduleId] = useState<string | null>(null);
@@ -207,7 +197,7 @@ function PortalContent() {
     );
   }
 
-  const { client, pendingSchedules, pastSchedules, interactions } = data;
+  const { client, pendingSchedules, pastSchedules } = data;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
@@ -435,51 +425,6 @@ function PortalContent() {
                       </div>
                     );
                   })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Interactions (collapsible) */}
-        {interactions.length > 0 && (
-          <Card>
-            <CardContent className="p-4">
-              <button
-                onClick={() => setShowInteractions(!showInteractions)}
-                className="w-full flex items-center justify-between"
-              >
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-emerald-500" />
-                  Histórico de Atendimento
-                </h3>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-[10px]">
-                    {interactions.length}
-                  </Badge>
-                  {showInteractions ? (
-                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </div>
-              </button>
-
-              {showInteractions && (
-                <div className="mt-3 space-y-2.5">
-                  {interactions.map((interaction) => (
-                    <div
-                      key={interaction.id}
-                      className="p-3 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900/30"
-                    >
-                      <p className="text-sm leading-relaxed">{interaction.description}</p>
-                      <p className="text-[10px] text-muted-foreground mt-1.5">
-                        {format(new Date(interaction.createdAt), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", {
-                          locale: ptBR,
-                        })}
-                      </p>
-                    </div>
-                  ))}
                 </div>
               )}
             </CardContent>
