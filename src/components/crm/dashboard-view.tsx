@@ -17,10 +17,31 @@ import {
   CheckCircle2,
   XCircle,
   MapPin,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
 import { format, differenceInDays, isToday, isTomorrow, isPast, isThisWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -137,6 +158,9 @@ export function DashboardView() {
   const [needsUpdateClients, setNeedsUpdateClients] = useState<NeedsUpdateClient[]>([]);
   const [allSchedules, setAllSchedules] = useState<ScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scheduleActionLoading, setScheduleActionLoading] = useState<string | null>(null);
+  const [editingSchedule, setEditingSchedule] = useState<ScheduleItem | null>(null);
+  const [editForm, setEditForm] = useState({ scheduledDate: '', scheduledTime: '', description: '' });
   const { setCurrentView, setSelectedClientId } = useCRMStore();
 
   useEffect(() => {
@@ -247,6 +271,99 @@ export function DashboardView() {
     setCurrentView('clientDetail');
   }
 
+  async function handleScheduleAction(schedule: ScheduleItem, action: 'complete' | 'cancel' | 'delete') {
+    const labels = { complete: 'concluir', cancel: 'cancelar', delete: 'excluir' };
+    if (!confirm(`Tem certeza que deseja ${labels[action]} o agendamento de ${schedule.client.name}?`)) return;
+
+    setScheduleActionLoading(schedule.id);
+    try {
+      if (action === 'delete') {
+        const res = await fetch(`/api/clients/${schedule.clientId}/schedules`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scheduleId: schedule.id }),
+        });
+        if (res.ok) {
+          toast.success('Agendamento excluído');
+          setAllSchedules((prev) => prev.filter((s) => s.id !== schedule.id));
+        } else {
+          throw new Error();
+        }
+      } else {
+        const status = action === 'complete' ? 'COMPLETED' : 'CANCELLED';
+        const res = await fetch(`/api/clients/${schedule.clientId}/schedules`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scheduleId: schedule.id, status }),
+        });
+        if (res.ok) {
+          toast.success(action === 'complete' ? 'Agendamento concluído!' : 'Agendamento cancelado');
+          // Update locally
+          setAllSchedules((prev) =>
+            prev.map((s) =>
+              s.id === schedule.id
+                ? { ...s, status, completedAt: action === 'complete' ? new Date().toISOString() : s.completedAt }
+                : s
+            )
+          );
+        } else {
+          throw new Error();
+        }
+      }
+    } catch {
+      toast.error(`Erro ao ${labels[action]} agendamento`);
+    } finally {
+      setScheduleActionLoading(null);
+    }
+  }
+
+  function handleOpenEdit(schedule: ScheduleItem) {
+    setEditForm({
+      scheduledDate: schedule.scheduledDate.split('T')[0],
+      scheduledTime: schedule.scheduledTime,
+      description: schedule.description || '',
+    });
+    setEditingSchedule(schedule);
+  }
+
+  async function handleSaveEdit() {
+    if (!editingSchedule) return;
+    setScheduleActionLoading(editingSchedule.id);
+    try {
+      const res = await fetch(`/api/clients/${editingSchedule.clientId}/schedules`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scheduleId: editingSchedule.id,
+          scheduledDate: editForm.scheduledDate,
+          scheduledTime: editForm.scheduledTime,
+          description: editForm.description || null,
+        }),
+      });
+      if (!res.ok) throw new Error('Erro ao atualizar agendamento');
+
+      toast.success('Agendamento atualizado!');
+      setEditingSchedule(null);
+      // Update locally
+      setAllSchedules((prev) =>
+        prev.map((s) =>
+          s.id === editingSchedule.id
+            ? {
+                ...s,
+                scheduledDate: editForm.scheduledDate,
+                scheduledTime: editForm.scheduledTime,
+                description: editForm.description || null,
+              }
+            : s
+        )
+      );
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao salvar alterações');
+    } finally {
+      setScheduleActionLoading(null);
+    }
+  }
+
   function getInitials(name: string) {
     return name
       .split(' ')
@@ -285,15 +402,20 @@ export function DashboardView() {
     const relativeDate = isToday(date) || isTomorrow(date)
       ? getRelativeDateLabel(date)
       : format(date, "dd/MM/yyyy");
+    const isPending = schedule.status === 'PENDING';
+    const isLoading = scheduleActionLoading === schedule.id;
 
     return (
       <div
         key={schedule.id}
-        className={`flex items-center gap-3 p-3 rounded-lg border ${config.borderClass} ${config.rowBg} hover:opacity-80 transition-all cursor-pointer`}
-        onClick={() => handleNavigateToClient(schedule.clientId)}
+        className={`flex items-center gap-3 p-3 rounded-lg border ${config.borderClass} ${config.rowBg} transition-all`}
       >
-        {/* Date indicator */}
-        <div className="flex-shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-800">
+        {/* Date indicator - clickable to navigate */}
+        <div
+          className="flex-shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-800 cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => handleNavigateToClient(schedule.clientId)}
+          title="Ver cliente"
+        >
           <span className="text-[10px] font-medium uppercase text-muted-foreground leading-none">
             {format(date, 'MMM', { locale: ptBR })}
           </span>
@@ -302,8 +424,11 @@ export function DashboardView() {
           </span>
         </div>
 
-        {/* Info */}
-        <div className="flex-1 min-w-0">
+        {/* Info - clickable to navigate */}
+        <div
+          className="flex-1 min-w-0 cursor-pointer"
+          onClick={() => handleNavigateToClient(schedule.clientId)}
+        >
           <div className="flex items-center gap-2">
             <p className="text-sm font-semibold truncate">{schedule.client.name}</p>
             <Badge className={`text-[10px] h-5 px-1.5 ${config.bgClass}`}>
@@ -330,9 +455,10 @@ export function DashboardView() {
           )}
         </div>
 
-        {/* Quick actions */}
+        {/* Actions */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          {schedule.client.phone && (
+          {/* Contact buttons */}
+          {schedule.client.phone && isPending && (
             <>
               <Button
                 size="sm"
@@ -356,6 +482,84 @@ export function DashboardView() {
               </a>
             </>
           )}
+
+          {/* Complete button (only pending) */}
+          {isPending && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-[10px] h-7 px-2 border-emerald-200 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+              disabled={isLoading}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleScheduleAction(schedule, 'complete');
+              }}
+              title="Concluir"
+            >
+              {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+            </Button>
+          )}
+
+          {/* More actions menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-[10px] h-7 w-7 p-0"
+                onClick={(e) => e.stopPropagation()}
+                disabled={isLoading}
+              >
+                <MoreVertical className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {isPending && (
+                <DropdownMenuItem
+                  className="text-emerald-600 dark:text-emerald-400"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleScheduleAction(schedule, 'complete');
+                  }}
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Concluir
+                </DropdownMenuItem>
+              )}
+              {isPending && (
+                <DropdownMenuItem
+                  className="text-amber-600 dark:text-amber-400"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleScheduleAction(schedule, 'cancel');
+                  }}
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Cancelar
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenEdit(schedule);
+                }}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Editar
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-rose-600 dark:text-rose-400"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleScheduleAction(schedule, 'delete');
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     );
@@ -655,6 +859,60 @@ export function DashboardView() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Schedule Dialog */}
+      <Dialog open={!!editingSchedule} onOpenChange={(open) => { if (!open) setEditingSchedule(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Agendamento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-schedule-date">Data</Label>
+              <Input
+                id="edit-schedule-date"
+                type="date"
+                value={editForm.scheduledDate}
+                onChange={(e) => setEditForm((f) => ({ ...f, scheduledDate: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-schedule-time">Horário</Label>
+              <Input
+                id="edit-schedule-time"
+                type="time"
+                value={editForm.scheduledTime}
+                onChange={(e) => setEditForm((f) => ({ ...f, scheduledTime: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-schedule-desc">Observações</Label>
+              <Input
+                id="edit-schedule-desc"
+                type="text"
+                placeholder="Ex: Visita ao imóvel na Rua X"
+                value={editForm.description}
+                onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setEditingSchedule(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={scheduleActionLoading === editingSchedule?.id || !editForm.scheduledDate || !editForm.scheduledTime}
+            >
+              {scheduleActionLoading === editingSchedule?.id ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
+              ) : (
+                'Salvar'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Recent Clients & Upcoming Reminders */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
