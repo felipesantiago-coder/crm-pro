@@ -1,0 +1,47 @@
+import { db } from '@/lib/db';
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth-options';
+import { generatePortalToken } from '@/lib/portal-token';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
+    const { id } = await params;
+
+    const client = await db.client.findUnique({
+      where: { id },
+      select: { id: true, createdAt: true },
+    });
+
+    if (!client) {
+      return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
+    }
+
+    // Build base URL from: env var > request headers > fallback
+    const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+    let baseUrl = '';
+    if (envUrl) {
+      baseUrl = envUrl.replace(/\/$/, '');
+    } else {
+      const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
+      const proto = request.headers.get('x-forwarded-proto') || 'https';
+      baseUrl = `${proto}://${host}`;
+    }
+
+    const token = generatePortalToken(client.id, client.createdAt.toISOString());
+    const url = `${baseUrl}/portal?t=${token}&c=${client.id}`;
+
+    return NextResponse.json({ url });
+  } catch (error) {
+    console.error('Erro ao gerar link do portal:', error);
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+  }
+}

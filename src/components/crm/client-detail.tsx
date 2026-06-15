@@ -55,6 +55,9 @@ import {
   FileText,
   Handshake,
   Eye,
+  Link,
+  Copy,
+  CheckCheck,
 } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
 import { AIContextMemory } from './ai-context-memory';
@@ -247,6 +250,7 @@ function DetailContent({
   const [creatingSchedule, setCreatingSchedule] = useState(false);
   const [updatingScheduleStatus, setUpdatingScheduleStatus] = useState<string | null>(null);
   const [deletingSchedule, setDeletingSchedule] = useState<string | null>(null);
+  const [portalLinkCopied, setPortalLinkCopied] = useState(false);
   const period = client.updatePeriod || 30;
   const isOverdue = needsUpdate(client.lastInteractionAt, client.createdAt, period);
   const daysLeft = daysUntilUpdate(client.lastInteractionAt, client.createdAt, period);
@@ -574,6 +578,33 @@ function DetailContent({
                 </Button>
               </a>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 text-xs font-semibold border-white/30 dark:border-white/20"
+              onClick={async () => {
+                try {
+                  const res = await fetch(`/api/clients/${client.id}/portal-link`);
+                  if (res.ok) {
+                    const { url } = await res.json();
+                    await navigator.clipboard.writeText(url);
+                    setPortalLinkCopied(true);
+                    toast.success('Link do Portal copiado!');
+                    setTimeout(() => setPortalLinkCopied(false), 2500);
+                  }
+                } catch {
+                  toast.error('Erro ao copiar link');
+                }
+              }}
+              title="Copiar link do Portal do Cliente"
+            >
+              {portalLinkCopied ? (
+                <CheckCheck className="h-3.5 w-3.5 mr-1.5 text-emerald-500" />
+              ) : (
+                <Link className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              {portalLinkCopied ? 'Copiado!' : 'Portal'}
+            </Button>
           </div>
         </div>
       </div>
