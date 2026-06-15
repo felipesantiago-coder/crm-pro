@@ -1,0 +1,825 @@
+     1→'use client';
+     2→
+     3→import React, { useEffect, useState } from 'react';
+     4→import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save, CalendarDays, Link2, Unlink, Megaphone, Eye, EyeOff, RefreshCw, Zap } from 'lucide-react';
+     5→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+     6→import { Button } from '@/components/ui/button';
+     7→import { Input } from '@/components/ui/input';
+     8→import { Label } from '@/components/ui/label';
+     9→import { Switch } from '@/components/ui/switch';
+    10→import { Separator } from '@/components/ui/separator';
+    11→import { Badge } from '@/components/ui/badge';
+    12→import { useTheme } from 'next-themes';
+    13→import { useSession } from 'next-auth/react';
+    14→import { toast } from 'sonner';
+    15→
+    16→// ============================================================
+    17→// Meta Ads Integration Card (Admin only)
+    18→// ============================================================
+    19→function MetaAdsCard() {
+    20→  const [enabled, setEnabled] = useState(false);
+    21→  const [verifyToken, setVerifyToken] = useState('');
+    22→  const [appSecret, setAppSecret] = useState('');
+    23→  const [showAppSecret, setShowAppSecret] = useState(false);
+    24→  const [pageAccessToken, setPageAccessToken] = useState('');
+    25→  const [showPageToken, setShowPageToken] = useState(false);
+    26→  const [loading, setLoading] = useState(true);
+    27→  const [saving, setSaving] = useState(false);
+    28→  const [webhookStatus, setWebhookStatus] = useState<any>(null);
+    29→  const [leadCount, setLeadCount] = useState(0);
+    30→
+    31→  const webhookUrl = typeof window !== 'undefined'
+    32→    ? `${window.location.origin}/api/webhooks/meta-leads`
+    33→    : '';
+    34→
+    35→  useEffect(() => {
+    36→    loadConfig();
+    37→  }, []);
+    38→
+    39→  async function loadConfig() {
+    40→    setLoading(true);
+    41→    try {
+    42→      const res = await fetch('/api/webhooks/meta-leads/config');
+    43→      if (res.ok) {
+    44→        const data = await res.json();
+    45→        setEnabled(data.enabled);
+    46→        setLeadCount(data.leadCount);
+    47→      }
+    48→    } catch {
+    49→      // Silencioso — pode estar offline
+    50→    } finally {
+    51→      setLoading(false);
+    52→    }
+    53→  }
+    54→
+    55→  async function checkWebhookStatus() {
+    56→    try {
+    57→      const res = await fetch('/api/webhooks/meta-leads');
+    58→      if (res.ok) {
+    59→        const data = await res.json();
+    60→        setWebhookStatus(data);
+    61→        toast.success(data.enabled ? 'Webhook ativo e pronto' : 'Webhook configurado mas desativado');
+    62→      }
+    63→    } catch {
+    64→      toast.error('Erro ao verificar status do webhook');
+    65→    }
+    66→  }
+    67→
+    68→  async function saveConfig() {
+    69→    setSaving(true);
+    70→    try {
+    71→      const res = await fetch('/api/webhooks/meta-leads/config', {
+    72→        method: 'PUT',
+    73→        headers: { 'Content-Type': 'application/json' },
+    74→        body: JSON.stringify({
+    75→          verifyToken: verifyToken || null,
+    76→          appSecret: appSecret || null,
+    77→          pageAccessToken: pageAccessToken || null,
+    78→          enabled,
+    79→        }),
+    80→      });
+    81→
+    82→      if (res.ok) {
+    83→        toast.success('Configurações do Meta Ads salvas com sucesso');
+    84→        // Se acabou de ativar, limpar campos sensíveis da tela
+    85→        if (!verifyToken) setVerifyToken('');
+    86→        if (!appSecret) setAppSecret('');
+    87→        if (!pageAccessToken) setPageAccessToken('');
+    88→        loadConfig();
+    89→      } else {
+    90→        const data = await res.json();
+    91→        throw new Error(data.error || 'Erro ao salvar');
+    92→      }
+    93→    } catch (err: any) {
+    94→      toast.error(err.message || 'Erro ao salvar configurações');
+    95→    } finally {
+    96→      setSaving(false);
+    97→    }
+    98→  }
+    99→
+   100→  function copyToClipboard(text: string, label: string) {
+   101→    navigator.clipboard.writeText(text);
+   102→    toast.success(`${label} copiado!`);
+   103→  }
+   104→
+   105→  if (loading) {
+   106→    return (
+   107→      <Card className="hover:shadow-md transition-shadow duration-200">
+   108→        <CardContent className="flex items-center justify-center py-8">
+   109→          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+   110→        </CardContent>
+   111→      </Card>
+   112→    );
+   113→  }
+   114→
+   115→  return (
+   116→    <Card className={`hover:shadow-md transition-shadow duration-200 ${
+   117→      enabled
+   118→        ? 'border-blue-200 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-950/20'
+   119→        : ''
+   120→    }`}>
+   121→      <CardHeader className="pb-3">
+   122→        <CardTitle className="text-base font-semibold flex items-center gap-2">
+   123→          <div className="h-7 w-7 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+   124→            <Megaphone className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+   125→          </div>
+   126→          Meta Ads — Lead Ads
+   127→        </CardTitle>
+   128→        <CardDescription>
+   129→          Receba clientes gerados por anúncios do Facebook e Instagram diretamente no CRM
+   130→        </CardDescription>
+   131→      </CardHeader>
+   132→      <CardContent className="space-y-4">
+   133→        {/* Status */}
+   134→        <div className="flex items-center justify-between">
+   135→          <div className="flex items-center gap-3">
+   136→            {enabled ? (
+   137→              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 gap-1">
+   138→                <Zap className="h-3 w-3" />
+   139→                Ativo
+   140→              </Badge>
+   141→            ) : (
+   142→              <Badge className="bg-muted text-muted-foreground gap-1">
+   143→                <Circle className="h-3 w-3" />
+   144→                Inativo
+   145→              </Badge>
+   146→            )}
+   147→            {leadCount > 0 && (
+   148→              <span className="text-xs text-muted-foreground">
+   149→                {leadCount} lead{leadCount !== 1 ? 's' : ''} recebido{leadCount !== 1 ? 's' : ''}
+   150→              </span>
+   151→            )}
+   152→          </div>
+   153→          <div className="flex items-center gap-2">
+   154→            <Switch id="meta-enabled" checked={enabled} onCheckedChange={setEnabled} />
+   155→            <Label htmlFor="meta-enabled" className="text-xs cursor-pointer">
+   156→              {enabled ? 'Ativado' : 'Desativado'}
+   157→            </Label>
+   158→          </div>
+   159→        </div>
+   160→
+   161→        <Separator />
+   162→
+   163→        {/* Webhook URL */}
+   164→        <div className="space-y-2">
+   165→          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   166→            URL do Webhook
+   167→          </Label>
+   168→          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border">
+   169→            <code className="flex-1 text-xs font-mono truncate text-foreground">
+   170→              {webhookUrl}
+   171→            </code>
+   172→            <Button
+   173→              variant="ghost"
+   174→              size="sm"
+   175→              className="h-7 w-7 p-0 flex-shrink-0"
+   176→              onClick={() => copyToClipboard(webhookUrl, 'URL do Webhook')}
+   177→            >
+   178→              <Copy className="h-3.5 w-3.5" />
+   179→            </Button>
+   180→          </div>
+   181→          <p className="text-[11px] text-muted-foreground">
+   182→            Cole esta URL no campo &quot;Callback URL&quot; ao configurar o webhook no Meta for Developers ou Ads Manager
+   183→          </p>
+   184→        </div>
+   185→
+   186→        {/* Verify Token */}
+   187→        <div className="space-y-2">
+   188→          <Label htmlFor="meta-verify-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   189→            Token de Verificação
+   190→          </Label>
+   191→          <Input
+   192→            id="meta-verify-token"
+   193→            placeholder="Ex: meu_token_secreto_123"
+   194→            value={verifyToken}
+   195→            onChange={(e) => setVerifyToken(e.target.value)}
+   196→            type="text"
+   197→            className="font-mono text-sm"
+   198→          />
+   199→          <p className="text-[11px] text-muted-foreground">
+   200→            Crie uma string aleatória segura (ex: <code className="bg-muted px-1 rounded">openssl rand -hex 16</code>).
+   201→            Use o mesmo valor no campo &quot;Verify Token&quot; do Meta.
+   202→          </p>
+   203→        </div>
+   204→
+   205→        {/* App Secret */}
+   206→        <div className="space-y-2">
+   207→          <Label htmlFor="meta-app-secret" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   208→            App Secret (segurança)
+   209→          </Label>
+   210→          <div className="relative">
+   211→            <Input
+   212→              id="meta-app-secret"
+   213→              placeholder="Ex: a1b2c3d4e5f6..."
+   214→              value={appSecret}
+   215→              onChange={(e) => setAppSecret(e.target.value)}
+   216→              type={showAppSecret ? 'text' : 'password'}
+   217→              className="font-mono text-sm pr-10"
+   218→            />
+   219→            <Button
+   220→              type="button"
+   221→              variant="ghost"
+   222→              size="sm"
+   223→              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+   224→              onClick={() => setShowAppSecret(!showAppSecret)}
+   225→            >
+   226→              {showAppSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+   227→            </Button>
+   228→          </div>
+   229→          <p className="text-[11px] text-muted-foreground">
+   230→            Encontrado em Meta for Developers → Seu App → Settings → Basic → App Secret.
+   231→            Obrigatório para validar que os leads vieram realmente do Meta (HMAC-SHA256).
+   232→          </p>
+   233→        </div>
+   234→
+   235→        {/* Page Access Token */}
+   236→        <div className="space-y-2">
+   237→          <Label htmlFor="meta-page-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   238→            Page Access Token (obrigatório)
+   239→          </Label>
+   240→          <div className="relative">
+   241→            <Input
+   242→              id="meta-page-token"
+   243→              placeholder="EAAxxxxxxxxxxxxxxxxx..."
+   244→              value={pageAccessToken}
+   245→              onChange={(e) => setPageAccessToken(e.target.value)}
+   246→              type={showPageToken ? 'text' : 'password'}
+   247→              className="font-mono text-sm pr-10"
+   248→            />
+   249→            <Button
+   250→              type="button"
+   251→              variant="ghost"
+   252→              size="sm"
+   253→              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+   254→              onClick={() => setShowPageToken(!showPageToken)}
+   255→            >
+   256→              {showPageToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+   257→            </Button>
+   258→          </div>
+   259→          <p className="text-[11px] text-muted-foreground">
+   260→            Necessário para buscar dados do lead (o Meta envia apenas o ID no webhook).
+   261→            Para obter: acesse o <span className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer" onClick={() => window.open('https://developers.facebook.com/tools/explorer/', '_blank')}>Graph API Explorer</span>, selecione sua Página como Token User, marque a permissão <code className="bg-muted px-1 rounded">pages_read_engagement</code> e copie o token gerado.
+   262→          </p>
+   263→        </div>
+   264→
+   265→        <Separator />
+   266→
+   267→        {/* Botões */}
+   268→        <div className="flex items-center gap-2">
+   269→          <Button
+   270→            onClick={saveConfig}
+   271→            disabled={saving || (!verifyToken && !appSecret && !pageAccessToken && !enabled)}
+   272→            className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
+   273→          >
+   274→            {saving ? (
+   275→              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
+   276→            ) : (
+   277→              <><Save className="h-4 w-4 mr-2" /> Salvar Configurações</>
+   278→            )}
+   279→          </Button>
+   280→          <Button
+   281→            variant="outline"
+   282→            size="sm"
+   283→            onClick={checkWebhookStatus}
+   284→          >
+   285→            <RefreshCw className="h-4 w-4 mr-1" />
+   286→            Testar
+   287→          </Button>
+   288→        </div>
+   289→
+   290→        {/* Tutorial colapsável */}
+   291→        <div className="space-y-2">
+   292→          <details className="group">
+   293→            <summary className="text-xs font-medium text-blue-600 dark:text-blue-400 cursor-pointer hover:underline flex items-center gap-1">
+   294→              Como configurar no Meta Ads
+   295→            </summary>
+   296→            <ol className="mt-2 text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
+   297→              <li>
+   298→                Acesse o{' '}
+   299→                <span
+   300→                  className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer inline-flex items-center gap-0.5"
+   301→                  onClick={() => window.open('https://developers.facebook.com/apps/', '_blank')}
+   302→                >
+   303→                  Meta for Developers <ExternalLink className="h-2.5 w-2.5" />
+   304→                </span>
+   305→                {' '}e crie/abra seu App
+   306→              </li>
+   307→              <li>Vá em <strong>Settings → Basic</strong> e copie o <strong>App Secret</strong></li>
+   308→              <li>No menu lateral, vá em <strong>Webhooks → Adicionar</strong></li>
+   309→              <li>
+   310→                Cole a <strong>URL do Webhook</strong> (acima) no campo Callback URL
+   311→              </li>
+   312→              <li>
+   313→                Cole o <strong>Token de Verificação</strong> no campo Verify Token
+   314→              </li>
+   315→              <li>
+   316→                Em &quot;Subscribe to&quot;, selecione <strong>leadgen</strong> (Lead Ads)
+   317→              </li>
+   318→              <li>
+   319→                No <strong>Ads Manager</strong>, crie um formulário de Lead Ads
+   320→              </li>
+   321→              <li>
+   322→                Ao publicar o anúncio, os leads serão criados automaticamente no CRM com stage <strong>LEAD</strong>
+   323→              </li>
+   324→            </ol>
+   325→          </details>
+   326→        </div>
+   327→      </CardContent>
+   328→    </Card>
+   329→  );
+   330→}
+   331→
+   332→export function SettingsView() {
+   333→  const { theme, setTheme } = useTheme();
+   334→  const { data: session, update: updateSession } = useSession();
+   335→  const userRole = (session?.user as { role?: string })?.role;
+   336→  const isAdmin = userRole === 'ADMIN';
+   337→
+   338→  // Perfil do usuário
+   339→  const [userName, setUserName] = useState('');
+   340→  const [userEmail, setUserEmail] = useState('');
+   341→  const [savingProfile, setSavingProfile] = useState(false);
+   342→
+   343→  // Google Calendar
+   344→  const [gcConnected, setGcConnected] = useState(false);
+   345→  const [gcLoading, setGcLoading] = useState(true);
+   346→  const [gcConnecting, setGcConnecting] = useState(false);
+   347→  const [gcDisconnecting, setGcDisconnecting] = useState(false);
+   348→
+   349→  useEffect(() => {
+   350→    // Verificar status da conexão Google Calendar
+   351→    fetch('/api/google-calendar/status')
+   352→      .then((r) => r.json())
+   353→      .then((data) => setGcConnected(data.connected === true))
+   354→      .catch(() => {})
+   355→      .finally(() => setGcLoading(false));
+   356→
+   357→    // Verificar feedback de conexão via URL params
+   358→    const params = new URLSearchParams(window.location.search);
+   359→    if (params.get('google_calendar') === 'connected') {
+   360→ setGcConnected(true);
+   361→      toast.success('Google Calendar conectado com sucesso!');
+   362→      window.history.replaceState({}, '', window.location.pathname);
+   363→    }
+   364→    if (params.get('google_calendar_error')) {
+   365→      const errorMsg = params.get('google_calendar_error');
+   366→      toast.error(`Erro ao conectar Google Calendar: ${errorMsg}`);
+   367→      window.history.replaceState({}, '', window.location.pathname);
+   368→    }
+   369→  }, []);
+   370→
+   371→  const isSupabaseConfigured = !!(
+   372→    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+   373→    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+   374→  );
+   375→
+   376→  useEffect(() => {
+   377→    // Carregar perfil do usuário logado
+   378→    if (session?.user) {
+   379→      setUserName(session.user.name || '');
+   380→      setUserEmail(session.user.email || '');
+   381→    }
+   382→  }, [session]);
+   383→
+   384→  // Salvar perfil do usuário
+   385→  async function saveProfile() {
+   386→    if (!userName.trim()) {
+   387→      toast.error('Nome é obrigatório');
+   388→      return;
+   389→    }
+   390→
+   391→    setSavingProfile(true);
+   392→    try {
+   393→      const res = await fetch('/api/profile', {
+   394→        method: 'PUT',
+   395→        headers: { 'Content-Type': 'application/json' },
+   396→        body: JSON.stringify({ name: userName.trim() }),
+   397→      });
+   398→
+   399→      if (res.ok) {
+   400→        toast.success('Nome atualizado com sucesso!');
+   401→        // Atualizar a sessão para refletir o novo nome na sidebar
+   402→        await updateSession({ name: userName.trim() });
+   403→      } else {
+   404→        const data = await res.json();
+   405→        throw new Error(data.error || 'Erro ao salvar');
+   406→      }
+   407→    } catch {
+   408→      toast.error('Erro ao atualizar nome');
+   409→    } finally {
+   410→      setSavingProfile(false);
+   411→    }
+   412→  }
+   413→
+   414→  function copyToClipboard(text: string, label: string) {
+   415→    navigator.clipboard.writeText(text);
+   416→    toast.success(`${label} copiado!`);
+   417→  }
+   418→
+   419→  async function connectGoogleCalendar() {
+   420→    setGcConnecting(true);
+   421→    try {
+   422→      window.location.href = '/api/google-calendar/auth';
+   423→    } catch {
+   424→      toast.error('Erro ao iniciar conexão com Google Calendar');
+   425→      setGcConnecting(false);
+   426→    }
+   427→  }
+   428→
+   429→  async function disconnectGoogleCalendar() {
+   430→    setGcDisconnecting(true);
+   431→    try {
+   432→      const res = await fetch('/api/google-calendar/disconnect', { method: 'POST' });
+   433→      if (res.ok) {
+   434→        setGcConnected(false);
+   435→        toast.success('Google Calendar desconectado');
+   436→      } else {
+   437→        throw new Error();
+   438→      }
+   439→    } catch {
+   440→      toast.error('Erro ao desconectar Google Calendar');
+   441→    } finally {
+   442→      setGcDisconnecting(false);
+   443→    }
+   444→  }
+   445→
+   446→  return (
+   447→    <div className="space-y-6">
+   448→      <div>
+   449→        <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
+   450→        <p className="text-muted-foreground mt-1">
+   451→          {isAdmin ? 'Gerencie as configurações do sistema e seu perfil' : 'Gerencie seu perfil e preferências'}
+   452→        </p>
+   453→      </div>
+   454→
+   455→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   456→        {/* ==================== PERFIL DO USUÁRIO ==================== */}
+   457→        <Card className="hover:shadow-md transition-shadow duration-200">
+   458→          <CardHeader className="pb-3">
+   459→            <CardTitle className="text-base font-semibold flex items-center gap-2">
+   460→              <User className="h-4 w-4 text-emerald-500" />
+   461→              Meu Perfil
+   462→            </CardTitle>
+   463→            <CardDescription>
+   464→              Altere o nome exibido na barra lateral
+   465→            </CardDescription>
+   466→          </CardHeader>
+   467→          <CardContent className="space-y-4">
+   468→            <div className="space-y-2">
+   469→              <Label htmlFor="user-name">Nome</Label>
+   470→              <Input
+   471→                id="user-name"
+   472→                placeholder="Seu nome"
+   473→                value={userName}
+   474→                onChange={(e) => setUserName(e.target.value)}
+   475→              />
+   476→            </div>
+   477→            <div className="space-y-2">
+   478→              <Label htmlFor="user-email">Email</Label>
+   479→              <Input
+   480→                id="user-email"
+   481→                value={userEmail}
+   482→                disabled
+   483→                className="bg-muted/50"
+   484→              />
+   485→              <p className="text-xs text-muted-foreground">O email não pode ser alterado</p>
+   486→            </div>
+   487→            <Button onClick={saveProfile} disabled={savingProfile}>
+   488→              {savingProfile ? (
+   489→                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
+   490→              ) : (
+   491→                <><Save className="h-4 w-4 mr-2" /> Salvar Nome</>
+   492→              )}
+   493→            </Button>
+   494→          </CardContent>
+   495→        </Card>
+   496→
+   497→        {/* ==================== TEMA ==================== */}
+   498→        <Card className="hover:shadow-md transition-shadow duration-200">
+   499→          <CardHeader className="pb-3">
+   500→            <CardTitle className="text-base font-semibold flex items-center gap-2">
+   501→              <Sun className="h-4 w-4 text-emerald-500" />
+   502→              Tema
+   503→            </CardTitle>
+   504→            <CardDescription>
+   505→              Escolha entre tema claro ou escuro
+   506→            </CardDescription>
+   507→          </CardHeader>
+   508→          <CardContent className="space-y-4">
+   509→            <div className="flex items-center gap-3">
+   510→              <Button
+   511→                variant={theme === 'light' ? 'default' : 'outline'}
+   512→                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+   513→                onClick={() => setTheme('light')}
+   514→              >
+   515→                <Sun className="h-4 w-4 mr-2" />
+   516→                Claro
+   517→              </Button>
+   518→              <Button
+   519→                variant={theme === 'dark' ? 'default' : 'outline'}
+   520→                className="flex-1"
+   521→                onClick={() => setTheme('dark')}
+   522→              >
+   523→                <Moon className="h-4 w-4 mr-2" />
+   524→                Escuro
+   525→              </Button>
+   526→            </div>
+   527→            <div className="flex items-center gap-3">
+   528→              <Switch
+   529→                id="system-theme"
+   530→                checked={theme === 'system'}
+   531→                onCheckedChange={(checked) => setTheme(checked ? 'system' : 'light')}
+   532→              />
+   533→              <Label htmlFor="system-theme" className="text-sm cursor-pointer">
+   534→                Usar tema do sistema
+   535→              </Label>
+   536→            </div>
+   537→          </CardContent>
+   538→        </Card>
+   539→
+   540→        {/* ==================== GOOGLE CALENDAR ==================== */}
+   541→        <Card className={`hover:shadow-md transition-shadow duration-200 ${
+   542→          gcConnected
+   543→            ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-950/20'
+   544→            : ''
+   545→        }`}>
+   546→          <CardHeader className="pb-3">
+   547→            <CardTitle className="text-base font-semibold flex items-center gap-2">
+   548→              <CalendarDays className="h-4 w-4 text-emerald-500" />
+   549→              Google Calendar
+   550→            </CardTitle>
+   551→            <CardDescription>
+   552→              Sincronize agendamentos de visita com seu Google Calendar
+   553→            </CardDescription>
+   554→          </CardHeader>
+   555→          <CardContent className="space-y-4">
+   556→            {gcLoading ? (
+   557→              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+   558→                <Loader2 className="h-4 w-4 animate-spin" />
+   559→                Verificando conexão...
+   560→              </div>
+   561→            ) : gcConnected ? (
+   562→              <>
+   563→                <div className="flex items-center gap-3">
+   564→                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1">
+   565→                    <Link2 className="h-3 w-3" />
+   566→                    Conectado
+   567→                  </Badge>
+   568→                </div>
+   569→                <div className="space-y-2">
+   570→                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   571→                    Funcionalidades ativas
+   572→                  </h4>
+   573→                  <ul className="text-xs text-muted-foreground space-y-2">
+   574→                    <li className="flex items-start gap-2">
+   575→                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   576→                      <span><strong>Criação automática</strong> — Novos agendamentos criam eventos no seu Calendar</span>
+   577→                    </li>
+   578→                    <li className="flex items-start gap-2">
+   579→                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   580→                      <span><strong>Lembretes duplos</strong> — Notificação 24 horas e 2 horas antes (popup + e-mail)</span>
+   581→                    </li>
+   582→                    <li className="flex items-start gap-2">
+   583→                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   584→                      <span><strong>Atualização de status</strong> — Cancelar ou concluir visita atualiza o evento no Calendar</span>
+   585→                    </li>
+   586→                    <li className="flex items-start gap-2">
+   587→                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   588→                      <span><strong>Exclusão sincronizada</strong> — Excluir agendamento remove o evento do Calendar</span>
+   589→                    </li>
+   590→                  </ul>
+   591→                </div>
+   592→                <Separator />
+   593→                <Button
+   594→                  variant="outline"
+   595→                  size="sm"
+   596→                  onClick={disconnectGoogleCalendar}
+   597→                  disabled={gcDisconnecting}
+   598→                  className="text-destructive hover:text-destructive"
+   599→                >
+   600→                  {gcDisconnecting ? (
+   601→                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Desconectando...</>
+   602→                  ) : (
+   603→                    <><Unlink className="h-4 w-4 mr-2" /> Desconectar Google Calendar</>
+   604→                  )}
+   605→                </Button>
+   606→              </>
+   607→            ) : (
+   608→              <>
+   609→                <div className="flex items-center gap-3">
+   610→                  <Badge className="bg-muted text-muted-foreground gap-1">
+   611→                    <Unlink className="h-3 w-3" />
+   612→                    Não conectado
+   613→                  </Badge>
+   614→                </div>
+   615→                <p className="text-xs text-muted-foreground">
+   616→                  Conecte sua conta Google para que os agendamentos de visita sejam automaticamente
+   617→                  criados no seu Google Calendar com lembretes configurados.
+   618→                </p>
+   619→                <Button
+   620→                  onClick={connectGoogleCalendar}
+   621→                  disabled={gcConnecting}
+   622→                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   623→                >
+   624→                  {gcConnecting ? (
+   625→                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Conectando...</>
+   626→                  ) : (
+   627→                    <><Link2 className="h-4 w-4 mr-2" /> Conectar Google Calendar</>
+   628→                  )}
+   629→                </Button>
+   630→                {!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && (
+   631→                  <div className="p-3 rounded-lg bg-amber-100/50 dark:bg-amber-900/20">
+   632→                    <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+   633→                      As variáveis de ambiente do Google Calendar não estão configuradas.
+   634→                      Consulte o tutorial para configurar as credenciais OAuth 2.0.
+   635→                    </p>
+   636→                  </div>
+   637→                )}
+   638→              </>
+   639→            )}
+   640→          </CardContent>
+   641→        </Card>
+   642→
+   643→        {/* ==================== META ADS (Admin) ==================== */}
+   644→        {isAdmin && <MetaAdsCard />}
+   645→
+   646→        {/* ==================== CONFIGURAÇÕES ADMIN ==================== */}
+   647→        {isAdmin && (
+   648→          <>
+   649→            {/* Supabase Integration Status */}
+   650→            <Card className={`hover:shadow-md transition-shadow duration-200 ${
+   651→              isSupabaseConfigured
+   652→                ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-950/20'
+   653→                : 'border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20'
+   654→            }`}>
+   655→              <CardHeader className="pb-3">
+   656→                <CardTitle className="text-base font-semibold flex items-center gap-2">
+   657→                  <Database className="h-4 w-4 text-emerald-500" />
+   658→                  Integração Supabase
+   659→                </CardTitle>
+   660→                <CardDescription>
+   661→                  Status da conexão com o banco de dados em nuvem
+   662→                </CardDescription>
+   663→              </CardHeader>
+   664→              <CardContent className="space-y-4">
+   665→                <div className="flex items-center gap-3">
+   666→                  {isSupabaseConfigured ? (
+   667→                    <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1">
+   668→                      <Wifi className="h-3 w-3" />
+   669→                      Conectado ao Supabase
+   670→                    </Badge>
+   671→                  ) : (
+   672→                    <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 gap-1">
+   673→                      <WifiOff className="h-3 w-3" />
+   674→                      Modo Local (SQLite)
+   675→                    </Badge>
+   676→                  )}
+   677→                </div>
+   678→
+   679→                <Separator />
+   680→
+   681→                <div className="space-y-2">
+   682→                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   683→                    Recursos do Supabase
+   684→                  </h4>
+   685→                  <ul className="text-xs text-muted-foreground space-y-2">
+   686→                    <li className="flex items-start gap-2">
+   687→                      {isSupabaseConfigured ? (
+   688→                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   689→                      ) : (
+   690→                        <Circle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+   691→                      )}
+   692→                      <span><strong>PostgreSQL na nuvem</strong> — Banco de dados relacional robusto e escalável</span>
+   693→                    </li>
+   694→                    <li className="flex items-start gap-2">
+   695→                      {isSupabaseConfigured ? (
+   696→                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   697→                      ) : (
+   698→                        <Circle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+   699→                      )}
+   700→                      <span><strong>Real-time subscriptions</strong> — Alterações refletidas instantaneamente</span>
+   701→                    </li>
+   702→                    <li className="flex items-start gap-2">
+   703→                      {isSupabaseConfigured ? (
+   704→                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   705→                      ) : (
+   706→                        <Circle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+   707→                      )}
+   708→                      <span><strong>Connection Pooling</strong> — Conexões otimizadas para serverless (Vercel)</span>
+   709→                    </li>
+   710→                    <li className="flex items-start gap-2">
+   711→                      {isSupabaseConfigured ? (
+   712→                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   713→                      ) : (
+   714→                        <Circle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+   715→                      )}
+   716→                      <span><strong>Prisma ORM</strong> — Type-safe queries para PostgreSQL</span>
+   717→                    </li>
+   718→                  </ul>
+   719→                </div>
+   720→
+   721→                <Separator />
+   722→
+   723→                {!isSupabaseConfigured && (
+   724→                  <div className="space-y-3">
+   725→                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   726→                      Como configurar o Supabase
+   727→                    </h4>
+   728→                    <ol className="text-xs text-muted-foreground space-y-2 list-decimal list-inside">
+   729→                      <li>Crie um projeto em{' '}
+   730→                        <span className="text-emerald-600 dark:text-emerald-400 font-medium cursor-pointer inline-flex items-center gap-1" onClick={() => window.open('https://supabase.com', '_blank')}>
+   731→                          supabase.com <ExternalLink className="h-2.5 w-2.5" />
+   732→                        </span>
+   733→                      </li>
+   734→                      <li>Acesse <strong>Settings → API</strong> e copie a URL e a chave anônima</li>
+   735→                      <li>Acesse <strong>Settings → Database</strong> e copie a string de conexão (use Session mode - porta 5432)</li>
+   736→                      <li>
+   737→                        No Vercel, adicione as variáveis:
+   738→                        <div className="mt-2 space-y-1.5">
+   739→                          <div className="flex items-center gap-2 p-2 rounded bg-muted/50 font-mono text-[10px]">
+   740→                            <code className="flex-1">DATABASE_URL</code>
+   741→                            <button onClick={() => copyToClipboard('DATABASE_URL', 'Variável')} className="text-muted-foreground hover:text-foreground"><Copy className="h-3 w-3" /></button>
+   742→                          </div>
+   743→                          <div className="flex items-center gap-2 p-2 rounded bg-muted/50 font-mono text-[10px]">
+   744→                            <code className="flex-1">NEXT_PUBLIC_SUPABASE_URL</code>
+   745→                            <button onClick={() => copyToClipboard('NEXT_PUBLIC_SUPABASE_URL', 'Variável')} className="text-muted-foreground hover:text-foreground"><Copy className="h-3 w-3" /></button>
+   746→                          </div>
+   747→                          <div className="flex items-center gap-2 p-2 rounded bg-muted/50 font-mono text-[10px]">
+   748→                            <code className="flex-1">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
+   749→                            <button onClick={() => copyToClipboard('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'Variável')} className="text-muted-foreground hover:text-foreground"><Copy className="h-3 w-3" /></button>
+   750→                          </div>
+   751→                        </div>
+   752→                      </li>
+   753→                    </ol>
+   754→                  </div>
+   755→                )}
+   756→
+   757→                {isSupabaseConfigured && (
+   758→                  <div className="p-3 rounded-lg bg-emerald-100/50 dark:bg-emerald-900/20">
+   759→                    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+   760→                      Seu CRM está conectado ao Supabase com atualizações em tempo real.
+   761→                      Todas as alterações serão refletidas automaticamente.
+   762→                    </p>
+   763→                  </div>
+   764→                )}
+   765→              </CardContent>
+   766→            </Card>
+   767→
+   768→            {/* Architecture Diagram */}
+   769→            <Card className="hover:shadow-md transition-shadow duration-200">
+   770→              <CardHeader className="pb-3">
+   771→                <CardTitle className="text-base font-semibold flex items-center gap-2">
+   772→                  <Wifi className="h-4 w-4 text-emerald-500" />
+   773→                  Arquitetura de Tempo Real
+   774→                </CardTitle>
+   775→                <CardDescription>
+   776→                  Como os dados são sincronizados entre dispositivos
+   777→                </CardDescription>
+   778→              </CardHeader>
+   779→              <CardContent className="space-y-3">
+   780→                <div className="text-xs text-muted-foreground space-y-3">
+   781→                  <div className="flex items-center gap-3 p-3 rounded-lg border">
+   782→                    <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+   783→                      <span className="text-sm">📱</span>
+   784→                    </div>
+   785→                    <div className="flex-1">
+   786→                      <p className="font-medium">Dispositivo A (Vercel)</p>
+   787→                      <p className="text-[10px]">Faz alteração no cliente — POST/PUT/DELETE</p>
+   788→                    </div>
+   789→                    <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+   790→                      <span className="text-xs">API</span>
+   791→                    </div>
+   792→                  </div>
+   793→                  <div className="flex justify-center"><div className="h-6 w-px bg-border" /></div>
+   794→                  <div className="flex items-center gap-3 p-3 rounded-lg border">
+   795→                    <div className="h-8 w-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
+   796→                      <span className="text-sm">⚡</span>
+   797→                    </div>
+   798→                    <div className="flex-1">
+   799→                      <p className="font-medium">Supabase Realtime</p>
+   800→                      <p className="text-[10px]">Detecta mudança e broadcasts via WebSocket</p>
+   801→                    </div>
+   802→                  </div>
+   803→                  <div className="flex justify-center"><div className="h-6 w-px bg-border" /></div>
+   804→                  <div className="flex items-center gap-3 p-3 rounded-lg border">
+   805→                    <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+   806→                      <span className="text-sm">💻</span>
+   807→                    </div>
+   808→                    <div className="flex-1">
+   809→                      <p className="font-medium">Dispositivo B (Qualquer sessão)</p>
+   810→                      <p className="text-[10px]">Recebe notificação e atualiza a UI automaticamente</p>
+   811→                    </div>
+   812→                    <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+   813→                      <span className="text-xs">UI</span>
+   814→                    </div>
+   815→                  </div>
+   816→                </div>
+   817→              </CardContent>
+   818→            </Card>
+   819→          </>
+   820→        )}
+   821→      </div>
+   822→    </div>
+   823→  );
+   824→}
+   825→
