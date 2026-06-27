@@ -1,0 +1,1554 @@
+     1→'use client';
+     2→
+     3→import React, { useEffect, useState, useRef, useMemo } from 'react';
+     4→import {
+     5→  Sheet,
+     6→  SheetContent,
+     7→  SheetHeader,
+     8→  SheetTitle,
+     9→  SheetDescription,
+    10→} from '@/components/ui/sheet';
+    11→import { Button } from '@/components/ui/button';
+    12→import { Badge } from '@/components/ui/badge';
+    13→import { Separator } from '@/components/ui/separator';
+    14→import { Textarea } from '@/components/ui/textarea';
+    15→import { Input } from '@/components/ui/input';
+    16→import { Label } from '@/components/ui/label';
+    17→import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+    18→import { Calendar } from '@/components/ui/calendar';
+    19→import { toast } from 'sonner';
+    20→import { format, differenceInDays, isToday, isYesterday, isThisYear, parseISO } from 'date-fns';
+    21→import { ptBR } from 'date-fns/locale';
+    22→import {
+    23→  Phone,
+    24→  Mail,
+    25→  MapPin,
+    26→  Building2,
+    27→  Pencil,
+    28→  Trash2,
+    29→  Bell,
+    30→  Check,
+    31→  AlertTriangle,
+    32→  Clock,
+    33→  Send,
+    34→  MessageCircle,
+    35→  PhoneCall,
+    36→  CalendarDays,
+    37→  CalendarPlus,
+    38→  CalendarCheck,
+    39→  CalendarX,
+    40→  User,
+    41→  StickyNote,
+    42→  MessageSquare,
+    43→  History,
+    44→  Loader2,
+    45→  X,
+    46→  Users,
+    47→  UserPlus,
+    48→  Search,
+    49→  Crown,
+    50→  ShieldCheck,
+    51→  ChevronRight,
+    52→  Trophy,
+    53→  Ban,
+    54→  Target,
+    55→  FileText,
+    56→  Handshake,
+    57→  Eye,
+    58→  Link,
+    59→  Copy,
+    60→  CheckCheck,
+    61→} from 'lucide-react';
+    62→import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
+    63→import { AIContextMemory } from './ai-context-memory';
+    64→import {
+    65→  AlertDialog,
+    66→  AlertDialogAction,
+    67→  AlertDialogCancel,
+    68→  AlertDialogContent,
+    69→  AlertDialogDescription,
+    70→  AlertDialogFooter,
+    71→  AlertDialogHeader,
+    72→  AlertDialogTitle,
+    73→} from '@/components/ui/alert-dialog';
+    74→import {
+    75→  Dialog,
+    76→  DialogContent,
+    77→  DialogFooter,
+    78→  DialogHeader,
+    79→  DialogTitle,
+    80→  DialogDescription,
+    81→} from '@/components/ui/dialog';
+    82→import {
+    83→  Select,
+    84→  SelectContent,
+    85→  SelectItem,
+    86→  SelectTrigger,
+    87→  SelectValue,
+    88→} from '@/components/ui/select';
+    89→import { useSession } from 'next-auth/react';
+    90→
+    91→interface Interaction {
+    92→  id: string;
+    93→  description: string;
+    94→  createdAt: string;
+    95→}
+    96→
+    97→interface Schedule {
+    98→  id: string;
+    99→  scheduledDate: string;
+   100→  scheduledTime: string;
+   101→  description: string | null;
+   102→  status: string;
+   103→  completedAt: string | null;
+   104→  createdBy: string;
+   105→  createdAt: string;
+   106→  creator?: { id: string; name: string } | null;
+   107→}
+   108→
+   109→interface Partner {
+   110→  id: string;
+   111→  clientId: string;
+   112→  userId: string;
+   113→  addedBy: string;
+   114→  createdAt: string;
+   115→  user: { id: string; name: string; email: string };
+   116→  addedByUser: { id: string; name: string; email: string };
+   117→}
+   118→
+   119→interface ClientDetail {
+   120→  id: string;
+   121→  name: string;
+   122→  phone: string | null;
+   123→  email: string | null;
+   124→  region: string | null;
+   125→  enterprise: string | null;
+   126→  enterpriseId?: string | null;
+   127→  linkedEnterprise?: {
+   128→    id: string;
+   129→    name: string;
+   130→    region: string | null;
+   131→    imageUrl: string | null;
+   132→  } | null;
+   133→  notes: string | null;
+   134→  updatePeriod: number;
+   135→  stage: string;
+   136→  lastInteractionAt: string | null;
+   137→  createdBy: string;
+   138→  createdAt: string;
+   139→  updatedAt: string;
+   140→  creator?: { id: string; name: string; email: string } | null;
+   141→  tags: Array<{ tagId: string; tag: { id: string; name: string; color: string } }>;
+   142→  interactions: Interaction[];
+   143→  schedules: Schedule[];
+   144→  partners: Partner[];
+   145→  reminders: Array<{
+   146→    id: string;
+   147→    title: string;
+   148→    description: string | null;
+   149→    dueDate: string;
+   150→    notified: boolean;
+   151→    createdAt: string;
+   152→  }>;
+   153→}
+   154→
+   155→interface ClientDetailProps {
+   156→  clientId: string | null;
+   157→  open: boolean;
+   158→  onOpenChange: (open: boolean) => void;
+   159→  onEdit: (clientId: string) => void;
+   160→  onRefresh: () => void;
+   161→}
+   162→
+   163→interface UserOption {
+   164→  id: string;
+   165→  name: string;
+   166→  email: string;
+   167→}
+   168→
+   169→function needsUpdate(lastInteractionAt: string | null, createdAt: string, updatePeriod: number): boolean {
+   170→  const referenceDate = lastInteractionAt ? new Date(lastInteractionAt) : new Date(createdAt);
+   171→  const dueDate = new Date(referenceDate);
+   172→  dueDate.setDate(dueDate.getDate() + updatePeriod);
+   173→  return dueDate <= new Date();
+   174→}
+   175→
+   176→function daysUntilUpdate(lastInteractionAt: string | null, createdAt: string, updatePeriod: number): number {
+   177→  const referenceDate = lastInteractionAt ? new Date(lastInteractionAt) : new Date(createdAt);
+   178→  const dueDate = new Date(referenceDate);
+   179→  dueDate.setDate(dueDate.getDate() + updatePeriod);
+   180→  return differenceInDays(dueDate, new Date());
+   181→}
+   182→
+   183→function formatInteractionDate(dateStr: string): string {
+   184→  const date = new Date(dateStr);
+   185→  const time = format(date, 'HH:mm');
+   186→
+   187→  if (isToday(date)) {
+   188→    return `Hoje, ${time}`;
+   189→  }
+   190→  if (isYesterday(date)) {
+   191→    return `Ontem, ${time}`;
+   192→  }
+   193→  if (isThisYear(date)) {
+   194→    return format(date, "dd 'de' MMMM, HH:mm", { locale: ptBR });
+   195→  }
+   196→  return format(date, "dd 'de' MMMM 'de' yyyy, HH:mm", { locale: ptBR });
+   197→}
+   198→
+   199→function formatTimelineDate(dateStr: string): string {
+   200→  const date = new Date(dateStr);
+   201→  if (isToday(date)) return 'Hoje';
+   202→  if (isYesterday(date)) return 'Ontem';
+   203→  if (isThisYear(date)) return format(date, "dd 'de' MMMM", { locale: ptBR });
+   204→  return format(date, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+   205→}
+   206→
+   207→const STAGES = [
+   208→  { value: 'LEAD', label: 'Lead', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300', icon: Target, borderColor: 'border-slate-200 dark:border-slate-700/50' },
+   209→  { value: 'PROSPECT', label: 'Prospect', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300', icon: Eye, borderColor: 'border-blue-200 dark:border-blue-800/50' },
+   210→  { value: 'VISITA_AGENDADA', label: 'Visita Agendada', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300', icon: CalendarDays, borderColor: 'border-amber-200 dark:border-amber-800/50' },
+   211→  { value: 'VISITA_REALIZADA', label: 'Visita Realizada', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300', icon: CalendarCheck, borderColor: 'border-emerald-200 dark:border-emerald-800/50' },
+   212→  { value: 'CARTA_PROPOSTA', label: 'Carta Proposta', color: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300', icon: FileText, borderColor: 'border-violet-200 dark:border-violet-800/50' },
+   213→  { value: 'CONTRATO_GERADO', label: 'Contrato Gerado', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300', icon: Handshake, borderColor: 'border-indigo-200 dark:border-indigo-800/50' },
+   214→  { value: 'FECHADO_GANHO', label: 'Fechado e Ganho', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300', icon: Trophy, borderColor: 'border-green-200 dark:border-green-800/50' },
+   215→  { value: 'FECHADO_PERDIDO', label: 'Fechado e Perdido', color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300', icon: Ban, borderColor: 'border-rose-200 dark:border-rose-800/50' },
+   216→];
+   217→
+   218→function getStageInfo(stageValue: string) {
+   219→  return STAGES.find((s) => s.value === stageValue) || STAGES[0];
+   220→}
+   221→
+   222→function DetailContent({
+   223→  client,
+   224→  onEdit,
+   225→  onDelete,
+   226→  onSubmitInteraction,
+   227→  onDeleteInteraction,
+   228→  submitting,
+   229→  onRefresh,
+   230→}: {
+   231→  client: ClientDetail;
+   232→  onEdit: () => void;
+   233→  onDelete: () => void;
+   234→  onSubmitInteraction: (description: string) => void;
+   235→  onDeleteInteraction: (interactionId: string) => void;
+   236→  submitting: boolean;
+   237→  onRefresh: () => void;
+   238→}) {
+   239→  const { data: session } = useSession();
+   240→  const [interactionText, setInteractionText] = useState('');
+   241→  const [partners, setPartners] = useState<Partner[]>(client.partners || []);
+   242→  const [partnerDialogOpen, setPartnerDialogOpen] = useState(false);
+   243→  const [searchQuery, setSearchQuery] = useState('');
+   244→  const [searchResults, setSearchResults] = useState<UserOption[]>([]);
+   245→  const [searching, setSearching] = useState(false);
+   246→  const [addingPartner, setAddingPartner] = useState<string | null>(null);
+   247→  const [removingPartner, setRemovingPartner] = useState<string | null>(null);
+   248→  const [currentStage, setCurrentStage] = useState(client.stage || 'LEAD');
+   249→  const [updatingStage, setUpdatingStage] = useState(false);
+   250→
+   251→  // Schedule state
+   252→  const [schedules, setSchedules] = useState<Schedule[]>(client.schedules || []);
+   253→  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+   254→  const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
+   255→  const [scheduleTime, setScheduleTime] = useState('10:00');
+   256→  const [scheduleDescription, setScheduleDescription] = useState('');
+   257→  const [creatingSchedule, setCreatingSchedule] = useState(false);
+   258→  const [updatingScheduleStatus, setUpdatingScheduleStatus] = useState<string | null>(null);
+   259→  const [deletingSchedule, setDeletingSchedule] = useState<string | null>(null);
+   260→  const [portalLinkCopied, setPortalLinkCopied] = useState(false);
+   261→  const period = client.updatePeriod || 30;
+   262→  const isOverdue = needsUpdate(client.lastInteractionAt, client.createdAt, period);
+   263→  const daysLeft = daysUntilUpdate(client.lastInteractionAt, client.createdAt, period);
+   264→
+   265→  const whatsappUrl = client.phone ? getWhatsAppUrl(client.phone) : null;
+   266→  const phoneUrl = client.phone ? getPhoneCallUrl(client.phone) : null;
+   267→  const currentUserId = (session?.user as { id?: string })?.id;
+   268→  const isCreator = currentUserId === client.createdBy;
+   269→
+   270→  // Sync stage from client prop
+   271→  useEffect(() => {
+   272→    setCurrentStage(client.stage || 'LEAD');
+   273→  }, [client.stage]);
+   274→
+   275→  // Sync schedules from client prop
+   276→  useEffect(() => {
+   277→    setSchedules(client.schedules || []);
+   278→  }, [client.schedules]);
+   279→
+   280→  const handleSubmit = () => {
+   281→    const trimmed = interactionText.trim();
+   282→    if (!trimmed) {
+   283→      toast.error('Escreva uma descrição da interação antes de registrar');
+   284→      return;
+   285→    }
+   286→    onSubmitInteraction(trimmed);
+   287→    setInteractionText('');
+   288→  };
+   289→
+   290→  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+   291→    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+   292→      e.preventDefault();
+   293→      handleSubmit();
+   294→    }
+   295→  };
+   296→
+   297→  // Group interactions by date
+   298→  const groupedInteractions = useMemo(() => {
+   299→    const groups: { date: string; items: Interaction[] }[] = [];
+   300→    let currentGroup: { date: string; items: Interaction[] } | null = null;
+   301→
+   302→    client.interactions.forEach((interaction) => {
+   303→      const dateKey = formatTimelineDate(interaction.createdAt);
+   304→      if (!currentGroup || currentGroup.date !== dateKey) {
+   305→        currentGroup = { date: dateKey, items: [] };
+   306→        groups.push(currentGroup);
+   307→      }
+   308→      currentGroup.items.push(interaction);
+   309→    });
+   310→
+   311→    return groups;
+   312→  }, [client.interactions]);
+   313→
+   314→  const pendingSchedulesCount = useMemo(
+   315→    () => schedules.filter((s) => s.status === 'PENDING').length,
+   316→    [schedules]
+   317→  );
+   318→
+   319→  // --- Stage Management ---
+   320→  async function updateStage(newStage: string) {
+   321→    setUpdatingStage(true);
+   322→    try {
+   323→      const res = await fetch(`/api/clients/${client.id}/stage`, {
+   324→        method: 'PATCH',
+   325→        headers: { 'Content-Type': 'application/json' },
+   326→        body: JSON.stringify({ stage: newStage }),
+   327→      });
+   328→      if (res.ok) {
+   329→        setCurrentStage(newStage);
+   330→        toast.success(`Etapa atualizada para: ${getStageInfo(newStage).label}`);
+   331→        onRefresh();
+   332→      } else {
+   333→        const data = await res.json();
+   334→        toast.error(data.error || 'Erro ao atualizar etapa');
+   335→      }
+   336→    } catch {
+   337→      toast.error('Erro ao atualizar etapa');
+   338→    } finally {
+   339→      setUpdatingStage(false);
+   340→    }
+   341→  }
+   342→
+   343→  // --- Schedule Management ---
+   344→  async function fetchSchedules() {
+   345→    try {
+   346→      const res = await fetch(`/api/clients/${client.id}/schedules`);
+   347→      if (res.ok) {
+   348→        const data = await res.json();
+   349→        setSchedules(data);
+   350→      }
+   351→    } catch {
+   352→      // silently fail
+   353→    }
+   354→  }
+   355→
+   356→  async function createSchedule() {
+   357→    if (!scheduleDate || !scheduleTime) {
+   358→      toast.error('Selecione uma data e horário para o agendamento');
+   359→      return;
+   360→    }
+   361→    setCreatingSchedule(true);
+   362→    try {
+   363→      const dateStr = format(scheduleDate, 'yyyy-MM-dd');
+   364→      const res = await fetch(`/api/clients/${client.id}/schedules`, {
+   365→        method: 'POST',
+   366→        headers: { 'Content-Type': 'application/json' },
+   367→        body: JSON.stringify({ scheduledDate: dateStr, scheduledTime: scheduleTime, description: scheduleDescription.trim() || null }),
+   368→      });
+   369→      if (res.ok) {
+   370→        toast.success('Visita agendada com sucesso!');
+   371→        setScheduleDialogOpen(false);
+   372→        setScheduleDate(undefined);
+   373→        setScheduleTime('10:00');
+   374→        setScheduleDescription('');
+   375→        fetchSchedules();
+   376→        onRefresh();
+   377→      } else {
+   378→        const data = await res.json();
+   379→        toast.error(data.error || 'Erro ao criar agendamento');
+   380→      }
+   381→    } catch {
+   382→      toast.error('Erro ao criar agendamento');
+   383→    } finally {
+   384→      setCreatingSchedule(false);
+   385→    }
+   386→  }
+   387→
+   388→  async function confirmSchedule(scheduleId: string) {
+   389→    setUpdatingScheduleStatus(scheduleId);
+   390→    try {
+   391→      const res = await fetch(`/api/clients/${client.id}/schedules`, {
+   392→        method: 'PATCH',
+   393→        headers: { 'Content-Type': 'application/json' },
+   394→        body: JSON.stringify({ scheduleId, status: 'COMPLETED' }),
+   395→      });
+   396→      if (res.ok) {
+   397→        toast.success('Visita confirmada como realizada!');
+   398→        fetchSchedules();
+   399→        onRefresh();
+   400→      } else {
+   401→        toast.error('Erro ao confirmar visita');
+   402→      }
+   403→    } catch {
+   404→      toast.error('Erro ao confirmar visita');
+   405→    } finally {
+   406→      setUpdatingScheduleStatus(null);
+   407→    }
+   408→  }
+   409→
+   410→  async function cancelSchedule(scheduleId: string) {
+   411→    setUpdatingScheduleStatus(scheduleId);
+   412→    try {
+   413→      const res = await fetch(`/api/clients/${client.id}/schedules`, {
+   414→        method: 'PATCH',
+   415→        headers: { 'Content-Type': 'application/json' },
+   416→        body: JSON.stringify({ scheduleId, status: 'CANCELLED' }),
+   417→      });
+   418→      if (res.ok) {
+   419→        toast.success('Agendamento cancelado');
+   420→        fetchSchedules();
+   421→        onRefresh();
+   422→      } else {
+   423→        toast.error('Erro ao cancelar agendamento');
+   424→      }
+   425→    } catch {
+   426→      toast.error('Erro ao cancelar agendamento');
+   427→    } finally {
+   428→      setUpdatingScheduleStatus(null);
+   429→    }
+   430→  }
+   431→
+   432→  async function deleteSchedule(scheduleId: string) {
+   433→    setDeletingSchedule(scheduleId);
+   434→    try {
+   435→      const res = await fetch(`/api/clients/${client.id}/schedules`, {
+   436→        method: 'DELETE',
+   437→        headers: { 'Content-Type': 'application/json' },
+   438→        body: JSON.stringify({ scheduleId }),
+   439→      });
+   440→      if (res.ok) {
+   441→        toast.success('Agendamento removido');
+   442→        fetchSchedules();
+   443→        onRefresh();
+   444→      } else {
+   445→        toast.error('Erro ao remover agendamento');
+   446→      }
+   447→    } catch {
+   448→      toast.error('Erro ao remover agendamento');
+   449→    } finally {
+   450→      setDeletingSchedule(null);
+   451→    }
+   452→  }
+   453→
+   454→  // --- Partner Management ---
+   455→
+   456→  async function fetchPartners() {
+   457→    try {
+   458→      const res = await fetch(`/api/clients/${client.id}/partners`);
+   459→      if (res.ok) {
+   460→        const data = await res.json();
+   461→        setPartners(data);
+   462→      }
+   463→    } catch {
+   464→      // Silently fail — partners might not exist in DB yet
+   465→    }
+   466→  }
+   467→
+   468→  async function searchUsers(query: string) {
+   469→    if (!query.trim()) {
+   470→      setSearchResults([]);
+   471→      return;
+   472→    }
+   473→    setSearching(true);
+   474→    try {
+   475→      const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+   476→      if (res.ok) {
+   477→        const data = await res.json();
+   478→        // Filter out users who are already partners or the creator
+   479→        const partnerIds = partners.map((p) => p.userId);
+   480→        const filtered = data.filter(
+   481→          (u: UserOption) => u.id !== client.createdBy && !partnerIds.includes(u.id)
+   482→        );
+   483→        setSearchResults(filtered);
+   484→      }
+   485→    } catch {
+   486→      toast.error('Erro ao buscar usuários');
+   487→    } finally {
+   488→      setSearching(false);
+   489→    }
+   490→  }
+   491→
+   492→  async function addPartner(userId: string) {
+   493→    setAddingPartner(userId);
+   494→    try {
+   495→      const res = await fetch(`/api/clients/${client.id}/partners`, {
+   496→        method: 'POST',
+   497→        headers: { 'Content-Type': 'application/json' },
+   498→        body: JSON.stringify({ userId }),
+   499→      });
+   500→      if (res.ok) {
+   501→        toast.success('Parceiro adicionado com sucesso!');
+   502→        fetchPartners();
+   503→        onRefresh();
+   504→        setSearchResults((prev) => prev.filter((u) => u.id !== userId));
+   505→      } else {
+   506→        const data = await res.json();
+   507→        toast.error(data.error || 'Erro ao adicionar parceiro');
+   508→      }
+   509→    } catch {
+   510→      toast.error('Erro ao adicionar parceiro');
+   511→    } finally {
+   512→      setAddingPartner(null);
+   513→    }
+   514→  }
+   515→
+   516→  async function removePartner(userId: string) {
+   517→    setRemovingPartner(userId);
+   518→    try {
+   519→      const res = await fetch(`/api/clients/${client.id}/partners`, {
+   520→        method: 'DELETE',
+   521→        headers: { 'Content-Type': 'application/json' },
+   522→        body: JSON.stringify({ userId }),
+   523→      });
+   524→      if (res.ok) {
+   525→        toast.success('Parceiro removido');
+   526→        fetchPartners();
+   527→        onRefresh();
+   528→      } else {
+   529→        toast.error('Erro ao remover parceiro');
+   530→      }
+   531→    } catch {
+   532→      toast.error('Erro ao remover parceiro');
+   533→    } finally {
+   534→      setRemovingPartner(null);
+   535→    }
+   536→  }
+   537→
+   538→  return (
+   539→    <div className="space-y-6">
+   540→      {/* Header with gradient */}
+   541→      <div className="bg-gradient-to-br from-emerald-500 to-teal-600 -mx-6 -mt-2 first:-mt-2 px-5 pt-4 pb-5 rounded-b-2xl">
+   542→        <div className="flex items-start justify-between">
+   543→          <div className="flex-1 min-w-0">
+   544→            <div className="flex items-center gap-3">
+   545→              <div className="h-12 w-12 rounded-xl bg-white/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 ring-2 ring-white/20 dark:bg-white/15 dark:ring-white/10">
+   546→                <User className="h-6 w-6 text-white" />
+   547→              </div>
+   548→              <div className="min-w-0">
+   549→                <h2 className="text-lg font-bold text-white truncate drop-shadow-sm">{client.name}</h2>
+   550→                <div className="flex items-center gap-1.5 mt-0.5">
+   551→                  <CalendarDays className="h-3 w-3 text-white/90" />
+   552→                  <p className="text-xs text-white/90">
+   553→                    Cliente desde {format(new Date(client.createdAt), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+   554→                  </p>
+   555→                </div>
+   556→              </div>
+   557→            </div>
+   558→          </div>
+   559→        </div>
+   560→
+   561→        {/* Action buttons */}
+   562→        <div className="flex items-center gap-2 mt-4 flex-wrap">
+   563→          <Button size="sm" onClick={onEdit} className="bg-white text-emerald-700 hover:bg-emerald-50 border-0 shadow-sm h-9 text-xs font-semibold dark:bg-white/15 dark:text-white dark:hover:bg-white/25 dark:backdrop-blur-sm dark:border dark:border-white/20 dark:shadow-none">
+   564→            <Pencil className="h-3.5 w-3.5 mr-1.5" />
+   565→            Editar
+   566→          </Button>
+   567→          <Button size="sm" onClick={onDelete} variant="destructive" className="bg-white text-rose-600 hover:bg-rose-50 border-0 shadow-sm h-9 text-xs font-semibold dark:bg-rose-500/25 dark:text-rose-100 dark:hover:bg-rose-500/40 dark:backdrop-blur-sm dark:border dark:border-rose-400/30 dark:shadow-none">
+   568→            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+   569→            Excluir
+   570→          </Button>
+   571→          <div className="flex items-center gap-2 sm:ml-auto">
+   572→            {whatsappUrl && (
+   573→              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-flex">
+   574→                <Button size="sm" className="bg-[#25D366] hover:bg-[#1ebe5a] text-white border-0 shadow-sm h-9 text-xs font-semibold dark:shadow-none">
+   575→                  <MessageCircle className="h-3.5 w-3.5 mr-1.5" />
+   576→                  WhatsApp
+   577→                </Button>
+   578→              </a>
+   579→            )}
+   580→            {phoneUrl && (
+   581→              <a href={phoneUrl} className="inline-flex">
+   582→                <Button size="sm" className="bg-white text-teal-700 hover:bg-teal-50 border-0 shadow-sm h-9 text-xs font-semibold dark:bg-white/15 dark:text-white dark:hover:bg-white/25 dark:backdrop-blur-sm dark:border dark:border-white/20 dark:shadow-none">
+   583→                  <PhoneCall className="h-3.5 w-3.5 mr-1.5" />
+   584→                  Ligar
+   585→                </Button>
+   586→              </a>
+   587→            )}
+   588→            <Button
+   589→              size="sm"
+   590→              variant="outline"
+   591→              className="h-9 text-xs font-semibold border-white/30 dark:border-white/20"
+   592→              onClick={async () => {
+   593→                try {
+   594→                  const res = await fetch(`/api/clients/${client.id}/portal-link`);
+   595→                  if (res.ok) {
+   596→                    const { url } = await res.json();
+   597→                    await navigator.clipboard.writeText(url);
+   598→                    setPortalLinkCopied(true);
+   599→                    toast.success('Link do Portal copiado!');
+   600→                    setTimeout(() => setPortalLinkCopied(false), 2500);
+   601→                  }
+   602→                } catch {
+   603→                  toast.error('Erro ao copiar link');
+   604→                }
+   605→              }}
+   606→              title="Copiar link do Portal do Cliente"
+   607→            >
+   608→              {portalLinkCopied ? (
+   609→                <CheckCheck className="h-3.5 w-3.5 mr-1.5 text-emerald-500" />
+   610→              ) : (
+   611→                <Link className="h-3.5 w-3.5 mr-1.5" />
+   612→              )}
+   613→              {portalLinkCopied ? 'Copiado!' : 'Portal'}
+   614→            </Button>
+   615→          </div>
+   616→        </div>
+   617→      </div>
+   618→
+   619→      {/* Update Status Card */}
+   620→      <div className={`p-4 rounded-xl border ${
+   621→        isOverdue
+   622→          ? 'border-rose-200 bg-rose-50 dark:border-rose-800/50 dark:bg-rose-950/20'
+   623→          : daysLeft <= 5
+   624→            ? 'border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/20'
+   625→            : 'border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-950/20'
+   626→      }`}>
+   627→        <div className="flex items-center justify-between gap-3 flex-wrap">
+   628→          <div className="flex items-center gap-3">
+   629→            <div className={`h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+   630→              isOverdue ? 'bg-rose-100 dark:bg-rose-900/30' : daysLeft <= 5 ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-emerald-100 dark:bg-emerald-900/30'
+   631→            }`}>
+   632→              <Clock className={`h-5 w-5 ${isOverdue ? 'text-rose-500' : daysLeft <= 5 ? 'text-amber-500' : 'text-emerald-500'}`} />
+   633→            </div>
+   634→            <div>
+   635→              <p className="text-sm font-semibold">
+   636→                {isOverdue
+   637→                  ? 'Acompanhamento Vencido!'
+   638→                  : daysLeft <= 5
+   639→                    ? `Atualização em ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}`
+   640→                    : `Próxima atualização em ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}`}
+   641→              </p>
+   642→              <p className="text-xs text-muted-foreground">
+   643→                Período: {period} dias
+   644→                {client.lastInteractionAt && (
+   645→                  <span> &bull; Última: {format(new Date(client.lastInteractionAt), "dd 'de' MMM", { locale: ptBR })}</span>
+   646→                )}
+   647→              </p>
+   648→            </div>
+   649→          </div>
+   650→        </div>
+   651→      </div>
+   652→
+   653→      {/* Pipeline Stage */}
+   654→      <div className="space-y-3">
+   655→        <Separator />
+   656→        <div className="flex items-center justify-between">
+   657→          <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+   658→            <Target className="h-3.5 w-3.5 text-emerald-500" />
+   659→            Etapa de Atendimento
+   660→          </h3>
+   661→        </div>
+   662→        <div className="p-4 rounded-xl border bg-card space-y-3">
+   663→          {/* Current stage badge */}
+   664→          <div className="flex items-center gap-3">
+   665→            {(() => {
+   666→              const stageInfo = getStageInfo(currentStage);
+   667→              const StageIcon = stageInfo.icon;
+   668→              return (
+   669→                <div className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg ${stageInfo.color} ${stageInfo.borderColor} border`}>
+   670→                  <StageIcon className="h-4.5 w-4.5" />
+   671→                  <span className="text-sm font-semibold">{stageInfo.label}</span>
+   672→                  {updatingStage && <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" />}
+   673→                </div>
+   674→              );
+   675→            })()}
+   676→          </div>
+   677→
+   678→          {/* Stage pipeline — mobile dropdown */}
+   679→          <div className="sm:hidden">
+   680→            <Select
+   681→              value={currentStage}
+   682→              onValueChange={(val) => updateStage(val)}
+   683→              disabled={updatingStage}
+   684→            >
+   685→              <SelectTrigger className="w-full">
+   686→                <SelectValue />
+   687→              </SelectTrigger>
+   688→              <SelectContent>
+   689→                {STAGES.map((stage) => {
+   690→                  const StageIcon = stage.icon;
+   691→                  return (
+   692→                    <SelectItem key={stage.value} value={stage.value}>
+   693→                      <span className="flex items-center gap-2">
+   694→                        <StageIcon className="h-4 w-4" />
+   695→                        {stage.label}
+   696→                      </span>
+   697→                    </SelectItem>
+   698→                  );
+   699→                })}
+   700→              </SelectContent>
+   701→            </Select>
+   702→            <p className="text-[10px] text-muted-foreground mt-1.5">Selecione a etapa do cliente</p>
+   703→          </div>
+   704→          {/* Stage pipeline — desktop buttons */}
+   705→          <div className="hidden sm:flex flex-wrap gap-1.5">
+   706→            {STAGES.map((stage) => {
+   707→              const isActive = currentStage === stage.value;
+   708→              const StageIcon = stage.icon;
+   709→              const currentIndex = STAGES.findIndex((s) => s.value === currentStage);
+   710→              const stageIndex = STAGES.findIndex((s) => s.value === stage.value);
+   711→              const isPast = stageIndex < currentIndex;
+   712→
+   713→              return (
+   714→                <button
+   715→                  key={stage.value}
+   716→                  onClick={() => updateStage(stage.value)}
+   717→                  disabled={updatingStage || isActive}
+   718→                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${
+   719→                    isActive
+   720→                      ? `${stage.color} ${stage.borderColor} ring-2 ring-offset-1 ring-emerald-500/30 dark:ring-offset-background`
+   721→                      : isPast
+   722→                        ? `${stage.color} ${stage.borderColor} opacity-60 hover:opacity-100`
+   723→                        : `bg-card border-border hover:border-emerald-300 dark:hover:border-emerald-700 text-muted-foreground hover:text-foreground`
+   724→                  }`}
+   725→                  title={stage.label}
+   726→                >
+   727→                  <StageIcon className="h-3 w-3 flex-shrink-0" />
+   728→                  {stage.label}
+   729→                </button>
+   730→              );
+   731→            })}
+   732→          </div>
+   733→          <p className="text-[10px] text-muted-foreground mt-1 hidden sm:block">Clique em uma etapa para alterar o status do cliente</p>
+   734→        </div>
+   735→      </div>
+   736→
+   737→      {/* Schedules Section */}
+   738→      <div className="space-y-3">
+   739→        <Separator />
+   740→        <div className="flex items-center justify-between">
+   741→          <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+   742→            <CalendarDays className="h-3.5 w-3.5 text-emerald-500" />
+   743→            Agendamentos ({pendingSchedulesCount} pendente{pendingSchedulesCount !== 1 ? 's' : ''})
+   744→          </h3>
+   745→          <Button
+   746→            size="sm"
+   747→            variant="outline"
+   748→            onClick={() => {
+   749→              setScheduleDialogOpen(true);
+   750→              setScheduleDate(undefined);
+   751→              setScheduleTime('10:00');
+   752→              setScheduleDescription('');
+   753→            }}
+   754→            className="h-7 text-xs gap-1"
+   755→          >
+   756→            <CalendarPlus className="h-3 w-3" />
+   757→            Agendar Visita
+   758→          </Button>
+   759→        </div>
+   760→
+   761→        {schedules.length === 0 ? (
+   762→          <div className="text-center py-8 bg-muted/40 rounded-xl border border-dashed">
+   763→            <CalendarDays className="h-7 w-7 text-muted-foreground/40 mx-auto mb-1.5" />
+   764→            <p className="text-xs text-muted-foreground">Nenhum agendamento</p>
+   765→            <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+   766→              Clique em "Agendar Visita" para criar um novo agendamento
+   767→            </p>
+   768→          </div>
+   769→        ) : (
+   770→          <div className="space-y-2">
+   771→            {schedules.map((schedule) => {
+   772→              const scheduleDate = parseISO(schedule.scheduledDate);
+   773→              const isPending = schedule.status === 'PENDING';
+   774→              const isCompleted = schedule.status === 'COMPLETED';
+   775→              const isCancelled = schedule.status === 'CANCELLED';
+   776→              const isPast = isPending && scheduleDate < new Date();
+   777→
+   778→              return (
+   779→                <div
+   780→                  key={schedule.id}
+   781→                  className={`p-3.5 rounded-xl border group ${
+   782→                    isCompleted
+   783→                      ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800/50 dark:bg-emerald-950/20'
+   784→                      : isCancelled
+   785→                        ? 'border-gray-200 bg-gray-50/50 dark:border-gray-800/50 dark:bg-gray-950/20 opacity-60'
+   786→                        : isPast
+   787→                          ? 'border-rose-200 bg-rose-50/50 dark:border-rose-800/50 dark:bg-rose-950/20'
+   788→                          : 'border-amber-200 bg-amber-50/50 dark:border-amber-800/50 dark:bg-amber-950/20'
+   789→                  }`}
+   790→                >
+   791→                  <div className="flex items-start justify-between gap-3">
+   792→                    <div className="flex-1 min-w-0">
+   793→                      <div className="flex items-center gap-2">
+   794→                        {isCompleted ? (
+   795→                          <CalendarCheck className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+   796→                        ) : isCancelled ? (
+   797→                          <CalendarX className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+   798→                        ) : isPast ? (
+   799→                          <AlertTriangle className="h-3.5 w-3.5 text-rose-500 flex-shrink-0" />
+   800→                        ) : (
+   801→                          <CalendarDays className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+   802→                        )}
+   803→                        <p className="text-sm font-medium truncate">
+   804→                          {format(scheduleDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+   805→                        </p>
+   806→                        <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 flex-shrink-0 ${
+   807→                          isCompleted
+   808→                            ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+   809→                            : isCancelled
+   810→                              ? 'bg-gray-100 text-gray-600 dark:bg-gray-900/30 dark:text-gray-400'
+   811→                              : isPast
+   812→                                ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+   813→                                : 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
+   814→                        }`}>
+   815→                          {schedule.scheduledTime}
+   816→                        </Badge>
+   817→                      </div>
+   818→                      {schedule.description && (
+   819→                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">{schedule.description}</p>
+   820→                      )}
+   821→                      <div className="flex items-center gap-2 mt-1.5">
+   822→                        <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${
+   823→                          isCompleted
+   824→                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+   825→                            : isCancelled
+   826→                              ? 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+   827→                              : isPast
+   828→                                ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+   829→                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+   830→                        }`}>
+   831→                          {isCompleted ? 'Realizada' : isCancelled ? 'Cancelada' : isPast ? 'Atrasada' : 'Pendente'}
+   832→                        </Badge>
+   833→                        {schedule.creatorUser && (
+   834→                          <span className="text-[10px] text-muted-foreground">por {schedule.creatorUser.name}</span>
+   835→                        )}
+   836→                      </div>
+   837→                    </div>
+   838→
+   839→                    {/* Action buttons */}
+   840→                    <div className="flex items-center gap-1 flex-shrink-0">
+   841→                      {isPending && (
+   842→                        <button
+   843→                          onClick={() => confirmSchedule(schedule.id)}
+   844→                          disabled={updatingScheduleStatus === schedule.id}
+   845→                          className="p-2 h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-emerald-600 hover:bg-emerald-100 dark:hover:text-emerald-400 dark:hover:bg-emerald-900/30 transition-colors"
+   846→                          title="Confirmar visita realizada"
+   847→                        >
+   848→                          {updatingScheduleStatus === schedule.id ? (
+   849→                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   850→                          ) : (
+   851→                            <Check className="h-3.5 w-3.5" />
+   852→                          )}
+   853→                        </button>
+   854→                      )}
+   855→                      {isPending && (
+   856→                        <button
+   857→                          onClick={() => cancelSchedule(schedule.id)}
+   858→                          disabled={updatingScheduleStatus === schedule.id}
+   859→                          className="p-2 h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-amber-600 hover:bg-amber-100 dark:hover:text-amber-400 dark:hover:bg-amber-900/30 transition-colors"
+   860→                          title="Cancelar agendamento"
+   861→                        >
+   862→                          <CalendarX className="h-3.5 w-3.5" />
+   863→                        </button>
+   864→                      )}
+   865→                      <button
+   866→                        onClick={() => deleteSchedule(schedule.id)}
+   867→                        disabled={deletingSchedule === schedule.id}
+   868→                        className="p-2 h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
+   869→                        title="Remover agendamento"
+   870→                      >
+   871→                        {deletingSchedule === schedule.id ? (
+   872→                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   873→                        ) : (
+   874→                          <X className="h-3.5 w-3.5" />
+   875→                        )}
+   876→                      </button>
+   877→                    </div>
+   878→                  </div>
+   879→                </div>
+   880→              );
+   881→            })}
+   882→          </div>
+   883→        )}
+   884→      </div>
+   885→
+   886→      {/* Schedule Dialog (Calendar) */}
+   887→      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+   888→        <DialogContent className="sm:max-w-[420px]">
+   889→          <DialogHeader>
+   890→            <DialogTitle className="flex items-center gap-2">
+   891→              <CalendarPlus className="h-5 w-5 text-emerald-500" />
+   892→              Agendar Visita
+   893→            </DialogTitle>
+   894→            <DialogDescription>
+   895→              Selecione a data e horário para o agendamento da visita ao cliente.
+   896→            </DialogDescription>
+   897→          </DialogHeader>
+   898→          <div className="space-y-4 mt-2">
+   899→            <div className="space-y-2">
+   900→              <Label className="text-sm font-medium">Data *</Label>
+   901→              <Popover>
+   902→                <PopoverTrigger asChild>
+   903→                  <Button
+   904→                    variant="outline"
+   905→                    className={`w-full justify-start text-left font-normal ${!scheduleDate && 'text-muted-foreground'}`}
+   906→                  >
+   907→                    <CalendarDays className="mr-2 h-4 w-4" />
+   908→                    {scheduleDate ? format(scheduleDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : 'Selecionar data'}
+   909→                  </Button>
+   910→                </PopoverTrigger>
+   911→                <PopoverContent className="w-auto p-0" align="start">
+   912→                  <Calendar
+   913→                    mode="single"
+   914→                    selected={scheduleDate}
+   915→                    onSelect={setScheduleDate}
+   916→                    locale={ptBR}
+   917→                    disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+   918→                  />
+   919→                </PopoverContent>
+   920→              </Popover>
+   921→            </div>
+   922→            <div className="space-y-2">
+   923→              <Label className="text-sm font-medium">Horário *</Label>
+   924→              <Input
+   925→                type="time"
+   926→                value={scheduleTime}
+   927→                onChange={(e) => setScheduleTime(e.target.value)}
+   928→              />
+   929→            </div>
+   930→            <div className="space-y-2">
+   931→              <Label className="text-sm font-medium">Observações</Label>
+   932→              <Textarea
+   933→                placeholder="Observações sobre a visita (opcional)..."
+   934→                value={scheduleDescription}
+   935→                onChange={(e) => setScheduleDescription(e.target.value)}
+   936→                className="min-h-[80px] resize-y text-sm"
+   937→              />
+   938→            </div>
+   939→          </div>
+   940→          <DialogFooter>
+   941→            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)} disabled={creatingSchedule}>
+   942→              Cancelar
+   943→            </Button>
+   944→            <Button
+   945→              onClick={createSchedule}
+   946→              disabled={!scheduleDate || !scheduleTime || creatingSchedule}
+   947→              className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+   948→            >
+   949→              {creatingSchedule ? (
+   950→                <>
+   951→                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+   952→                  Agendando...
+   953→                </>
+   954→              ) : (
+   955→                <>
+   956→                  <CalendarPlus className="h-4 w-4 mr-2" />
+   957→                  Agendar
+   958→                </>
+   959→              )}
+   960→            </Button>
+   961→          </DialogFooter>
+   962→        </DialogContent>
+   963→      </Dialog>
+   964→
+   965→      {/* Partners Section */}
+   966→      <div className="space-y-3">
+   967→        <Separator />
+   968→        <div className="flex items-center justify-between">
+   969→          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+   970→            <Users className="h-3.5 w-3.5 text-emerald-500" />
+   971→            Equipe ({1 + partners.length})
+   972→          </h3>
+   973→          <Button
+   974→            size="sm"
+   975→            variant="outline"
+   976→            onClick={() => {
+   977→              setPartnerDialogOpen(true);
+   978→              setSearchQuery('');
+   979→              setSearchResults([]);
+   980→            }}
+   981→            className="h-7 text-xs gap-1"
+   982→          >
+   983→            <UserPlus className="h-3 w-3" />
+   984→            Adicionar Parceiro
+   985→          </Button>
+   986→        </div>
+   987→
+   988→        <div className="space-y-2">
+   989→          {/* Creator */}
+   990→          <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+   991→            <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+   992→              <Crown className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+   993→            </div>
+   994→            <div className="min-w-0 flex-1">
+   995→              <div className="flex items-center gap-1.5">
+   996→                <p className="text-sm font-medium truncate">
+   997→                  {client.creator?.name || 'Desconhecido'}
+   998→                </p>
+   999→                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+  1000→                  Criador
+  1001→                </Badge>
+  1002→              </div>
+  1003→              <p className="text-xs text-muted-foreground truncate">{client.creator?.email || ''}</p>
+  1004→            </div>
+  1005→          </div>
+  1006→
+  1007→          {/* Partners */}
+  1008→          {partners.length === 0 ? (
+  1009→            <div className="text-center py-6 bg-muted/40 rounded-xl border border-dashed">
+  1010→              <Users className="h-7 w-7 text-muted-foreground/40 mx-auto mb-1.5" />
+  1011→              <p className="text-xs text-muted-foreground">Nenhum parceiro vinculado</p>
+  1012→              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+  1013→                Adicione parceiros para compartilhar o acompanhamento deste cliente
+  1014→              </p>
+  1015→            </div>
+  1016→          ) : (
+  1017→            <div className="space-y-2">
+  1018→              {partners.map((partner) => (
+  1019→                <div key={partner.id} className="flex items-center gap-3 p-3 rounded-xl border bg-card group">
+  1020→                  <div className="h-9 w-9 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center flex-shrink-0">
+  1021→                    <ShieldCheck className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+  1022→                  </div>
+  1023→                  <div className="min-w-0 flex-1">
+  1024→                    <div className="flex items-center gap-1.5">
+  1025→                      <p className="text-sm font-medium truncate">{partner.user.name}</p>
+  1026→                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400">
+  1027→                        Parceiro
+  1028→                      </Badge>
+  1029→                    </div>
+  1030→                    <p className="text-xs text-muted-foreground truncate">{partner.user.email}</p>
+  1031→                  </div>
+  1032→                  <button
+  1033→                    onClick={() => removePartner(partner.userId)}
+  1034→                    disabled={removingPartner === partner.userId}
+  1035→                    className="p-2 h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
+  1036→                    title="Remover parceiro"
+  1037→                  >
+  1038→                    {removingPartner === partner.userId ? (
+  1039→                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+  1040→                    ) : (
+  1041→                      <X className="h-3.5 w-3.5" />
+  1042→                    )}
+  1043→                  </button>
+  1044→                </div>
+  1045→              ))}
+  1046→            </div>
+  1047→          )}
+  1048→        </div>
+  1049→      </div>
+  1050→
+  1051→      {/* AI Context Memory */}
+  1052→      <div className="space-y-3">
+  1053→        <Separator />
+  1054→        <AIContextMemory clientId={client.id} />
+  1055→      </div>
+  1056→
+  1057→      {/* Record Interaction Section */}
+  1058→      <div className="space-y-3">
+  1059→        <Separator />
+  1060→        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+  1061→          <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />
+  1062→          Registrar Interação
+  1063→        </h3>
+  1064→        <div className="rounded-xl border bg-card p-4 space-y-3">
+  1065→          <Textarea
+  1066→            placeholder="Descreva o acompanhamento realizado com o cliente (ex: Ligação feita, cliente demonstrou interesse no empreendimento X, agendou visita para o dia Y...)"
+  1067→            value={interactionText}
+  1068→            onChange={(e) => setInteractionText(e.target.value)}
+  1069→            onKeyDown={handleKeyDown}
+  1070→            className="min-h-[100px] resize-y text-sm leading-relaxed"
+  1071→          />
+  1072→          <div className="flex items-center justify-between">
+  1073→            <p className="text-xs text-muted-foreground">
+  1074→              Ctrl+Enter para enviar rapidamente
+  1075→            </p>
+  1076→            <Button
+  1077→              size="sm"
+  1078→              onClick={handleSubmit}
+  1079→              disabled={submitting || !interactionText.trim()}
+  1080→              className={
+  1081→                isOverdue
+  1082→                  ? 'bg-rose-600 hover:bg-rose-700 text-white'
+  1083→                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+  1084→              }
+  1085→            >
+  1086→              {submitting ? (
+  1087→                <>
+  1088→                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+  1089→                  Registrando...
+  1090→                </>
+  1091→              ) : (
+  1092→                <>
+  1093→                  <Send className="h-3.5 w-3.5 mr-1.5" />
+  1094→                  Registrar Interação
+  1095→                </>
+  1096→              )}
+  1097→            </Button>
+  1098→          </div>
+  1099→        </div>
+  1100→      </div>
+  1101→
+  1102→      {/* Interaction Timeline */}
+  1103→      <div className="space-y-3">
+  1104→        <Separator />
+  1105→        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+  1106→          <History className="h-3.5 w-3.5 text-emerald-500" />
+  1107→          Histórico de Interações ({client.interactions.length})
+  1108→        </h3>
+  1109→
+  1110→        {groupedInteractions.length === 0 ? (
+  1111→          <div className="text-center py-10 bg-muted/40 rounded-xl border border-dashed">
+  1112→            <History className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+  1113→            <p className="text-sm text-muted-foreground">Nenhuma interação registrada</p>
+  1114→            <p className="text-xs text-muted-foreground/70 mt-1">
+  1115→              Use o campo acima para registrar o primeiro acompanhamento
+  1116→            </p>
+  1117→          </div>
+  1118→        ) : (
+  1119→          <div className="space-y-4">
+  1120→            {groupedInteractions.map((group) => (
+  1121→              <div key={group.date}>
+  1122→                {/* Date header */}
+  1123→                <div className="flex items-center gap-3 mb-2.5">
+  1124→                  <div className="h-6 w-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+  1125→                    <CalendarDays className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+  1126→                  </div>
+  1127→                  <p className="text-xs font-semibold text-muted-foreground">{group.date}</p>
+  1128→                  <div className="flex-1 h-px bg-border" />
+  1129→                </div>
+  1130→
+  1131→                {/* Timeline items */}
+  1132→                <div className="relative ml-3 border-l-2 border-emerald-200 dark:border-emerald-800/50 pl-5 space-y-3">
+  1133→                  {group.items.map((interaction, idx) => {
+  1134→                    const interactionDate = new Date(interaction.createdAt);
+  1135→                    return (
+  1136→                      <div key={interaction.id} className="relative group">
+  1137→                        {/* Timeline dot */}
+  1138→                        <div className="absolute -left-[22px] top-3 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background ring-2 ring-emerald-200 dark:ring-emerald-800/50" />
+  1139→
+  1140→                        <div className="bg-card rounded-xl border p-3.5 hover:shadow-sm transition-shadow">
+  1141→                          <div className="flex items-start justify-between gap-2">
+  1142→                            <div className="flex items-center gap-2 mb-1.5">
+  1143→                              <MessageSquare className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+  1144→                              <span className="text-xs font-medium text-muted-foreground">
+  1145→                                {format(interactionDate, 'HH:mm')}
+  1146→                              </span>
+  1147→                            </div>
+  1148→                            <button
+  1149→                              onClick={() => onDeleteInteraction(interaction.id)}
+  1150→                              className="p-2 h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
+  1151→                              title="Excluir interação"
+  1152→                            >
+  1153→                              <X className="h-3.5 w-3.5" />
+  1154→                            </button>
+  1155→                          </div>
+  1156→                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{interaction.description}</p>
+  1157→                        </div>
+  1158→                      </div>
+  1159→                    );
+  1160→                  })}
+  1161→                </div>
+  1162→              </div>
+  1163→            ))}
+  1164→          </div>
+  1165→        )}
+  1166→      </div>
+  1167→
+  1168→      {/* Contact Info */}
+  1169→      <div className="space-y-3">
+  1170→        <Separator />
+  1171→        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Informações de Contato</h3>
+  1172→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  1173→          {client.phone && (
+  1174→            <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+  1175→              <div className="h-10 w-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center flex-shrink-0">
+  1176→                <Phone className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+  1177→              </div>
+  1178→              <div className="min-w-0">
+  1179→                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Telefone</p>
+  1180→                <p className="text-sm font-medium truncate">{client.phone}</p>
+  1181→              </div>
+  1182→            </div>
+  1183→          )}
+  1184→          {client.email && (
+  1185→            <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+  1186→              <div className="h-10 w-10 rounded-lg bg-teal-50 dark:bg-teal-950/30 flex items-center justify-center flex-shrink-0">
+  1187→                <Mail className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+  1188→              </div>
+  1189→              <div className="min-w-0">
+  1190→                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Email</p>
+  1191→                <p className="text-sm font-medium truncate">{client.email}</p>
+  1192→              </div>
+  1193→            </div>
+  1194→          )}
+  1195→          {client.region && (
+  1196→            <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+  1197→              <div className="h-10 w-10 rounded-lg bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center flex-shrink-0">
+  1198→                <MapPin className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1199→              </div>
+  1200→              <div className="min-w-0">
+  1201→                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Região</p>
+  1202→                <p className="text-sm font-medium truncate">{client.region}</p>
+  1203→              </div>
+  1204→            </div>
+  1205→          )}
+  1206→          {(client.enterprise || client.linkedEnterprise) && (
+  1207→            <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+  1208→              <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0 bg-cyan-50 dark:bg-cyan-950/30">
+  1209→                {client.linkedEnterprise?.imageUrl ? (
+  1210→                  <img src={client.linkedEnterprise.imageUrl} alt={client.linkedEnterprise.name} className="h-full w-full object-cover" />
+  1211→                ) : (
+  1212→                  <div className="h-full w-full flex items-center justify-center">
+  1213→                    <Building2 className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+  1214→                  </div>
+  1215→                )}
+  1216→              </div>
+  1217→              <div className="min-w-0">
+  1218→                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Empreendimento</p>
+  1219→                <p className="text-sm font-medium truncate">{client.linkedEnterprise?.name || client.enterprise}</p>
+  1220→                {client.linkedEnterprise?.region && (
+  1221→                  <p className="text-xs text-muted-foreground">{client.linkedEnterprise.region}</p>
+  1222→                )}
+  1223→              </div>
+  1224→            </div>
+  1225→          )}
+  1226→        </div>
+  1227→      </div>
+  1228→
+  1229→      {/* Tags */}
+  1230→      {client.tags.length > 0 && (
+  1231→        <div className="space-y-2">
+  1232→          <Separator />
+  1233→          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tags</h3>
+  1234→          <div className="flex flex-wrap gap-1.5">
+  1235→            {client.tags.map((ct) => (
+  1236→              <Badge key={ct.tag.id} variant="secondary" className="text-xs px-2.5 py-1"
+  1237→                style={{ backgroundColor: ct.tag.color + '20', color: ct.tag.color, borderColor: ct.tag.color + '40' }}>
+  1238→                {ct.tag.name}
+  1239→              </Badge>
+  1240→            ))}
+  1241→          </div>
+  1242→        </div>
+  1243→      )}
+  1244→
+  1245→      {/* Notes */}
+  1246→      {client.notes && (
+  1247→        <div className="space-y-2">
+  1248→          <Separator />
+  1249→          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+  1250→            <StickyNote className="h-3 w-3" />
+  1251→            Observações Gerais
+  1252→          </h3>
+  1253→          <div className="bg-muted/60 rounded-xl p-4 border">
+  1254→            <p className="text-sm whitespace-pre-wrap leading-relaxed">{client.notes}</p>
+  1255→          </div>
+  1256→        </div>
+  1257→      )}
+  1258→
+  1259→      {/* Reminders */}
+  1260→      <div className="space-y-3">
+  1261→        <Separator />
+  1262→        <div className="flex items-center justify-between">
+  1263→          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+  1264→            <Bell className="h-3.5 w-3.5 text-emerald-500" />
+  1265→            Lembretes ({client.reminders.length})
+  1266→          </h3>
+  1267→        </div>
+  1268→        {client.reminders.length === 0 ? (
+  1269→          <div className="text-center py-8 bg-muted/40 rounded-xl border border-dashed">
+  1270→            <Bell className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+  1271→            <p className="text-sm text-muted-foreground">Nenhum lembrete cadastrado</p>
+  1272→          </div>
+  1273→        ) : (
+  1274→          <div className="space-y-2">
+  1275→            {client.reminders.map((reminder) => {
+  1276→              const isRemOverdue = new Date(reminder.dueDate) < new Date() && !reminder.notified;
+  1277→              return (
+  1278→                <div key={reminder.id} className={`p-3.5 rounded-xl border ${
+  1279→                  isRemOverdue
+  1280→                    ? 'border-rose-200 bg-rose-50/50 dark:border-rose-800/50 dark:bg-rose-950/20'
+  1281→                    : reminder.notified
+  1282→                      ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800/50 dark:bg-emerald-950/20'
+  1283→                      : 'border-border bg-card'
+  1284→                }`}>
+  1285→                  <div className="flex items-start justify-between gap-3">
+  1286→                    <div className="flex-1 min-w-0">
+  1287→                      <div className="flex items-center gap-2">
+  1288→                        {isRemOverdue ? (
+  1289→                          <AlertTriangle className="h-3.5 w-3.5 text-rose-500 flex-shrink-0" />
+  1290→                        ) : reminder.notified ? (
+  1291→                          <Check className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+  1292→                        ) : (
+  1293→                          <Bell className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+  1294→                        )}
+  1295→                        <p className="text-sm font-medium truncate">{reminder.title}</p>
+  1296→                      </div>
+  1297→                      {reminder.description && (
+  1298→                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">{reminder.description}</p>
+  1299→                      )}
+  1300→                    </div>
+  1301→                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+  1302→                      <span className={`text-xs font-medium ${isRemOverdue ? 'text-rose-500' : 'text-muted-foreground'}`}>
+  1303→                        {format(new Date(reminder.dueDate), 'dd/MM/yy')}
+  1304→                      </span>
+  1305→                      <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${
+  1306→                        isRemOverdue
+  1307→                          ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+  1308→                          : reminder.notified
+  1309→                            ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+  1310→                            : ''
+  1311→                      }`}>
+  1312→                        {isRemOverdue ? 'Atrasado' : reminder.notified ? 'Concluído' : 'Pendente'}
+  1313→                      </Badge>
+  1314→                    </div>
+  1315→                  </div>
+  1316→                </div>
+  1317→              );
+  1318→            })}
+  1319→          </div>
+  1320→        )}
+  1321→      </div>
+  1322→
+  1323→      {/* Add Partner Dialog */}
+  1324→      <Dialog open={partnerDialogOpen} onOpenChange={setPartnerDialogOpen}>
+  1325→        <DialogContent className="sm:max-w-[420px]">
+  1326→          <DialogHeader>
+  1327→            <DialogTitle className="flex items-center gap-2">
+  1328→              <UserPlus className="h-5 w-5 text-emerald-500" />
+  1329→              Adicionar Parceiro
+  1330→            </DialogTitle>
+  1331→            <DialogDescription>
+  1332→              Busque um usuário cadastrado para adicionar como parceiro de acompanhamento deste cliente.
+  1333→            </DialogDescription>
+  1334→          </DialogHeader>
+  1335→          <div className="space-y-4 mt-2">
+  1336→            <div className="relative">
+  1337→              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+  1338→              <Input
+  1339→                placeholder="Buscar por nome ou email..."
+  1340→                value={searchQuery}
+  1341→                onChange={(e) => {
+  1342→                  setSearchQuery(e.target.value);
+  1343→                  searchUsers(e.target.value);
+  1344→                }}
+  1345→                className="pl-9"
+  1346→              />
+  1347→            </div>
+  1348→
+  1349→            {searching && (
+  1350→              <div className="flex items-center justify-center py-6">
+  1351→                <Loader2 className="h-5 w-5 animate-spin text-emerald-500" />
+  1352→              </div>
+  1353→            )}
+  1354→
+  1355→            {!searching && searchQuery && searchResults.length === 0 && (
+  1356→              <div className="text-center py-6">
+  1357→                <p className="text-sm text-muted-foreground">Nenhum usuário encontrado</p>
+  1358→              </div>
+  1359→            )}
+  1360→
+  1361→            {!searching && searchResults.length > 0 && (
+  1362→              <div className="space-y-2 max-h-[240px] overflow-y-auto">
+  1363→                {searchResults.map((user) => (
+  1364→                  <div key={user.id} className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-muted/50 transition-colors">
+  1365→                    <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+  1366→                      <User className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+  1367→                    </div>
+  1368→                    <div className="min-w-0 flex-1">
+  1369→                      <p className="text-sm font-medium truncate">{user.name}</p>
+  1370→                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+  1371→                    </div>
+  1372→                    <Button
+  1373→                      size="sm"
+  1374→                      onClick={() => addPartner(user.id)}
+  1375→                      disabled={addingPartner === user.id}
+  1376→                      className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+  1377→                    >
+  1378→                      {addingPartner === user.id ? (
+  1379→                        <Loader2 className="h-3 w-3 animate-spin" />
+  1380→                      ) : (
+  1381→                        'Adicionar'
+  1382→                      )}
+  1383→                    </Button>
+  1384→                  </div>
+  1385→                ))}
+  1386→              </div>
+  1387→            )}
+  1388→
+  1389→            {!searching && !searchQuery && (
+  1390→              <div className="text-center py-6">
+  1391→                <p className="text-sm text-muted-foreground">Digite para buscar usuários cadastrados</p>
+  1392→              </div>
+  1393→            )}
+  1394→          </div>
+  1395→        </DialogContent>
+  1396→      </Dialog>
+  1397→    </div>
+  1398→  );
+  1399→}
+  1400→
+  1401→export function ClientDetail({
+  1402→  clientId,
+  1403→  open,
+  1404→  onOpenChange,
+  1405→  onEdit,
+  1406→  onRefresh,
+  1407→}: ClientDetailProps) {
+  1408→  const [client, setClient] = useState<ClientDetail | null>(null);
+  1409→  const [loading, setLoading] = useState(false);
+  1410→  const [deleteOpen, setDeleteOpen] = useState(false);
+  1411→  const [submitting, setSubmitting] = useState(false);
+  1412→  const scrollRef = useRef<HTMLDivElement>(null);
+  1413→
+  1414→  useEffect(() => {
+  1415→    if (clientId && open) {
+  1416→      fetchClient();
+  1417→    } else {
+  1418→      setClient(null);
+  1419→    }
+  1420→  }, [clientId, open]);
+  1421→
+  1422→  async function fetchClient() {
+  1423→    if (!clientId) return;
+  1424→    setLoading(true);
+  1425→    try {
+  1426→      const res = await fetch(`/api/clients/${clientId}`);
+  1427→      if (res.ok) {
+  1428→        const data = await res.json();
+  1429→        setClient(data);
+  1430→      }
+  1431→    } catch (err) {
+  1432→      console.error('Error fetching client:', err);
+  1433→    } finally {
+  1434→      setLoading(false);
+  1435→    }
+  1436→  }
+  1437→
+  1438→  async function handleSubmitInteraction(description: string) {
+  1439→    if (!clientId) return;
+  1440→    setSubmitting(true);
+  1441→    try {
+  1442→      const res = await fetch(`/api/clients/${clientId}/interactions`, {
+  1443→        method: 'POST',
+  1444→        headers: { 'Content-Type': 'application/json' },
+  1445→        body: JSON.stringify({ description }),
+  1446→      });
+  1447→      if (res.ok) {
+  1448→        toast.success('Interação registrada com sucesso!');
+  1449→        fetchClient();
+  1450→        onRefresh();
+  1451→      } else {
+  1452→        const data = await res.json();
+  1453→        toast.error(data.error || 'Erro ao registrar interação');
+  1454→      }
+  1455→    } catch {
+  1456→      toast.error('Erro ao registrar interação');
+  1457→    } finally {
+  1458→      setSubmitting(false);
+  1459→    }
+  1460→  }
+  1461→
+  1462→  async function handleDeleteInteraction(interactionId: string) {
+  1463→    if (!clientId) return;
+  1464→    try {
+  1465→      const res = await fetch(`/api/clients/${clientId}/interactions`, {
+  1466→        method: 'DELETE',
+  1467→        headers: { 'Content-Type': 'application/json' },
+  1468→        body: JSON.stringify({ interactionId }),
+  1469→      });
+  1470→      if (res.ok) {
+  1471→        toast.success('Interação excluída');
+  1472→        fetchClient();
+  1473→      } else {
+  1474→        toast.error('Erro ao excluir interação');
+  1475→      }
+  1476→    } catch {
+  1477→      toast.error('Erro ao excluir interação');
+  1478→    }
+  1479→  }
+  1480→
+  1481→  async function handleDelete() {
+  1482→    if (!clientId) return;
+  1483→    try {
+  1484→      const res = await fetch(`/api/clients/${clientId}`, { method: 'DELETE' });
+  1485→      if (res.ok) {
+  1486→        toast.success('Cliente excluído com sucesso!');
+  1487→        setDeleteOpen(false);
+  1488→        onOpenChange(false);
+  1489→        onRefresh();
+  1490→      } else {
+  1491→        throw new Error('Erro ao excluir cliente');
+  1492→      }
+  1493→    } catch {
+  1494→      toast.error('Erro ao excluir cliente');
+  1495→    }
+  1496→  }
+  1497→
+  1498→  const content = loading ? (
+  1499→    <div className="flex items-center justify-center py-20">
+  1500→      <div className="flex flex-col items-center gap-3">
+  1501→        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+  1502→        <p className="text-sm text-muted-foreground">Carregando...</p>
+  1503→      </div>
+  1504→    </div>
+  1505→  ) : client ? (
+  1506→    <DetailContent
+  1507→      client={client}
+  1508→      onEdit={() => { onOpenChange(false); onEdit(client.id); }}
+  1509→      onDelete={() => setDeleteOpen(true)}
+  1510→      onSubmitInteraction={handleSubmitInteraction}
+  1511→      onDeleteInteraction={handleDeleteInteraction}
+  1512→      submitting={submitting}
+  1513→      onRefresh={onRefresh}
+  1514→    />
+  1515→  ) : null;
+  1516→
+  1517→  return (
+  1518→    <>
+  1519→      <Sheet open={open} onOpenChange={onOpenChange}>
+  1520→        <SheetContent
+  1521→          side="right"
+  1522→          className="w-full sm:max-w-[560px] lg:max-w-[620px] p-0 flex flex-col"
+  1523→        >
+  1524→          <SheetHeader className="px-6 pt-5 pb-3 flex-shrink-0">
+  1525→            <SheetTitle>Detalhes do Cliente</SheetTitle>
+  1526→            <SheetDescription>Visualize e gerencie as informações do cliente</SheetDescription>
+  1527→          </SheetHeader>
+  1528→          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pb-8">
+  1529→            {content}
+  1530→          </div>
+  1531→        </SheetContent>
+  1532→      </Sheet>
+  1533→
+  1534→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+  1535→        <AlertDialogContent>
+  1536→          <AlertDialogHeader>
+  1537→            <AlertDialogTitle>Excluir Cliente</AlertDialogTitle>
+  1538→            <AlertDialogDescription>
+  1539→              Tem certeza que deseja excluir <strong>{client?.name}</strong>? Esta ação
+  1540→              não pode ser desfeita. Todos os lembretes e interações associados também serão excluídos.
+  1541→            </AlertDialogDescription>
+  1542→          </AlertDialogHeader>
+  1543→          <AlertDialogFooter>
+  1544→            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+  1545→            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+  1546→              Excluir
+  1547→            </AlertDialogAction>
+  1548→          </AlertDialogFooter>
+  1549→        </AlertDialogContent>
+  1550→      </AlertDialog>
+  1551→    </>
+  1552→  );
+  1553→}
+  1554→
