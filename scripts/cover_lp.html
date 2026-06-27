@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&display=swap" rel="stylesheet">
+<style>
+@page { size: 794px 1123px; margin: 0; }
+html, body { margin: 0; padding: 0; width: 794px; height: 1123px; background: #1a1814; font-family: 'Inter', sans-serif; }
+.cover-page { position: relative; width: 794px; height: 1123px; overflow: hidden; border: none; outline: none; box-shadow: none; }
+.cover-layer-1 { position: absolute; inset: 0; overflow: hidden; z-index: 1; }
+.cover-layer-2 { position: absolute; inset: 0; z-index: 2; }
+.cover-layer-3 { position: absolute; inset: 0; z-index: 3; }
+.bg-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px); background-size: 50px 50px; }
+.bg-accent-block { position: absolute; right: 0; top: 0; width: 42%; height: 100%; background: linear-gradient(135deg, rgba(114,103,67,0.25) 0%, rgba(99,89,60,0.15) 100%); }
+.anchor-line { position: absolute; left: 8%; top: 10%; width: 5px; height: 80%; background: linear-gradient(to bottom, rgba(142,115,35,0.9), rgba(142,115,35,0.2)); border-radius: 3px; }
+.kicker { position: absolute; left: 14%; top: 15%; font-size: 13pt; font-weight: 500; letter-spacing: 4pt; text-transform: uppercase; color: rgba(142,115,35,0.7); }
+.hero-title { position: absolute; left: 14%; top: 28%; max-width: 72%; font-family: 'Playfair Display', serif; font-size: 42pt; font-weight: 900; line-height: 1.15; color: #f5f3ee; }
+.summary { position: absolute; left: 14%; top: 50%; max-width: 60%; font-size: 15pt; font-weight: 400; line-height: 1.6; color: rgba(245,243,238,0.65); }
+.meta { position: absolute; left: 14%; top: 74%; font-size: 14pt; font-weight: 400; color: rgba(245,243,238,0.5); }
+.footer-line { position: absolute; left: 14%; bottom: 8%; font-size: 11pt; font-weight: 400; letter-spacing: 2pt; text-transform: uppercase; color: rgba(245,243,238,0.3); }
+</style>
+</head>
+<body>
+<div class="cover-page">
+  <div class="cover-layer-1">
+    <div class="bg-grid"></div>
+    <div class="bg-accent-block"></div>
+  </div>
+  <div class="cover-layer-2">
+    <div class="anchor-line"></div>
+  </div>
+  <div class="cover-layer-3">
+    <div class="kicker">Relatorio de Analise</div>
+    <div class="hero-title">Landing Pages de Empreendimentos de Alto Padrao</div>
+    <div class="summary">Analise comparativa entre as melhores praticas do mercado imobiliario de luxo e a implementacao atual do CRM Pro, com recomendacoes estrategicas para maximizar a taxa de conversao de leads.</div>
+    <div class="meta">Junho 2026 | CRM Pro | Pesquisa de Mercado</div>
+    <div class="footer-line">Documento Confidencial</div>
+  </div>
+</div>
+</body>
+</html>

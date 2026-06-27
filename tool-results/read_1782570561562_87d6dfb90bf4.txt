@@ -1,0 +1,1147 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useState, useEffect, useCallback, useRef } from 'react';
+     4→     4→import { useSession } from 'next-auth/react';
+     5→     5→import { toast } from 'sonner';
+     6→     6→import {
+     7→     7→  Building2,
+     8→     8→  Plus,
+     9→     9→  Trash2,
+    10→    10→  Pencil,
+    11→    11→  Loader2,
+    12→    12→  Search,
+    13→    13→  ImagePlus,
+    14→    14→  MapPin,
+    15→    15→  X,
+    16→    16→  Users,
+    17→    17→  Upload,
+    18→    18→  FileSpreadsheet,
+    19→    19→  CheckCircle2,
+    20→    20→  AlertCircle,
+    21→    21→  Ban,
+    22→    22→  Download,
+    23→    23→  FileText,
+    24→    24→} from 'lucide-react';
+    25→    25→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    26→    26→import { Button } from '@/components/ui/button';
+    27→    27→import { Input } from '@/components/ui/input';
+    28→    28→import { Label } from '@/components/ui/label';
+    29→    29→import { Badge } from '@/components/ui/badge';
+    30→    30→import { Separator } from '@/components/ui/separator';
+    31→    31→import {
+    32→    32→  Dialog,
+    33→    33→  DialogContent,
+    34→    34→  DialogDescription,
+    35→    35→  DialogFooter,
+    36→    36→  DialogHeader,
+    37→    37→  DialogTitle,
+    38→    38→  DialogTrigger,
+    39→    39→} from '@/components/ui/dialog';
+    40→    40→import {
+    41→    41→  AlertDialog,
+    42→    42→  AlertDialogAction,
+    43→    43→  AlertDialogCancel,
+    44→    44→  AlertDialogContent,
+    45→    45→  AlertDialogDescription,
+    46→    46→  AlertDialogFooter,
+    47→    47→  AlertDialogHeader,
+    48→    48→  AlertDialogTitle,
+    49→    49→  AlertDialogTrigger,
+    50→    50→} from '@/components/ui/alert-dialog';
+    51→    51→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+    52→    52→import { format } from 'date-fns';
+    53→    53→import { ptBR } from 'date-fns/locale';
+    54→    54→import Image from 'next/image';
+    55→    55→
+    56→    56→interface EnterpriseItem {
+    57→    57→  id: string;
+    58→    58→  name: string;
+    59→    59→  region: string | null;
+    60→    60→  imageUrl: string | null;
+    61→    61→  pdfContent: string | null;
+    62→    62→  createdAt: string;
+    63→    63→  updatedAt: string;
+    64→    64→  _count: { clients: number };
+    65→    65→}
+    66→    66→
+    67→    67→interface EnterpriseFormData {
+    68→    68→  name: string;
+    69→    69→  region: string;
+    70→    70→}
+    71→    71→
+    72→    72→export function EnterpriseManagement() {
+    73→    73→  const { data: session } = useSession();
+    74→    74→  const [enterprises, setEnterprises] = useState<EnterpriseItem[]>([]);
+    75→    75→  const [loading, setLoading] = useState(true);
+    76→    76→  const [search, setSearch] = useState('');
+    77→    77→
+    78→    78→  // Create dialog
+    79→    79→  const [createOpen, setCreateOpen] = useState(false);
+    80→    80→  const [createName, setCreateName] = useState('');
+    81→    81→  const [createRegion, setCreateRegion] = useState('');
+    82→    82→  const [creating, setCreating] = useState(false);
+    83→    83→
+    84→    84→  // Edit dialog
+    85→    85→  const [editingEnterprise, setEditingEnterprise] = useState<EnterpriseItem | null>(null);
+    86→    86→  const [editName, setEditName] = useState('');
+    87→    87→  const [editRegion, setEditRegion] = useState('');
+    88→    88→  const [saving, setSaving] = useState(false);
+    89→    89→
+    90→    90→  // Delete dialog
+    91→    91→  const [deletingEnterprise, setDeletingEnterprise] = useState<EnterpriseItem | null>(null);
+    92→    92→  const [deleting, setDeleting] = useState(false);
+    93→    93→
+    94→    94→  // Image upload
+    95→    95→  const [uploadingId, setUploadingId] = useState<string | null>(null);
+    96→    96→  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+    97→    97→
+    98→    98→  // PDF upload
+    99→    99→  const [pdfUploadingId, setPdfUploadingId] = useState<string | null>(null);
+   100→   100→  const pdfInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+   101→   101→
+   102→   102→  // Batch import
+   103→   103→  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+   104→   104→  const [batchFile, setBatchFile] = useState<File | null>(null);
+   105→   105→  const [batchImporting, setBatchImporting] = useState(false);
+   106→   106→  const [batchResults, setBatchResults] = useState<{
+   107→   107→    created: { name: string; region: string | null }[];
+   108→   108→    duplicates: { name: string; reason: string }[];
+   109→   109→    invalid: { row: number; reason: string }[];
+   110→   110→    total: number;
+   111→   111→  } | null>(null);
+   112→   112→  const batchFileInputRef = useRef<HTMLInputElement | null>(null);
+   113→   113→
+   114→   114→  const fetchEnterprises = useCallback(async () => {
+   115→   115→    try {
+   116→   116→      const res = await fetch('/api/enterprises');
+   117→   117→      if (res.ok) {
+   118→   118→        const data = await res.json();
+   119→   119→        setEnterprises(data);
+   120→   120→      } else {
+   121→   121→        toast.error('Erro ao carregar empreendimentos');
+   122→   122→      }
+   123→   123→    } catch {
+   124→   124→      toast.error('Erro ao carregar empreendimentos');
+   125→   125→    } finally {
+   126→   126→      setLoading(false);
+   127→   127→    }
+   128→   128→  }, []);
+   129→   129→
+   130→   130→  useEffect(() => {
+   131→   131→    fetchEnterprises();
+   132→   132→  }, [fetchEnterprises]);
+   133→   133→
+   134→   134→  const filteredEnterprises = enterprises.filter(
+   135→   135→    (e) =>
+   136→   136→      e.name.toLowerCase().includes(search.toLowerCase()) ||
+   137→   137→      (e.region && e.region.toLowerCase().includes(search.toLowerCase()))
+   138→   138→  );
+   139→   139→
+   140→   140→  async function handleCreate() {
+   141→   141→    if (!createName.trim()) {
+   142→   142→      toast.error('Nome é obrigatório');
+   143→   143→      return;
+   144→   144→    }
+   145→   145→
+   146→   146→    setCreating(true);
+   147→   147→    try {
+   148→   148→      const res = await fetch('/api/enterprises', {
+   149→   149→        method: 'POST',
+   150→   150→        headers: { 'Content-Type': 'application/json' },
+   151→   151→        body: JSON.stringify({
+   152→   152→          name: createName.trim(),
+   153→   153→          region: createRegion.trim() || null,
+   154→   154→        }),
+   155→   155→      });
+   156→   156→
+   157→   157→      if (!res.ok) {
+   158→   158→        const data = await res.json();
+   159→   159→        toast.error(data.error || 'Erro ao criar empreendimento');
+   160→   160→        return;
+   161→   161→      }
+   162→   162→
+   163→   163→      toast.success('Empreendimento criado com sucesso!');
+   164→   164→      setCreateOpen(false);
+   165→   165→      setCreateName('');
+   166→   166→      setCreateRegion('');
+   167→   167→      fetchEnterprises();
+   168→   168→    } catch {
+   169→   169→      toast.error('Erro ao criar empreendimento');
+   170→   170→    } finally {
+   171→   171→      setCreating(false);
+   172→   172→    }
+   173→   173→  }
+   174→   174→
+   175→   175→  function openEditDialog(enterprise: EnterpriseItem) {
+   176→   176→    setEditingEnterprise(enterprise);
+   177→   177→    setEditName(enterprise.name);
+   178→   178→    setEditRegion(enterprise.region || '');
+   179→   179→  }
+   180→   180→
+   181→   181→  async function handleEditSave() {
+   182→   182→    if (!editingEnterprise || !editName.trim()) return;
+   183→   183→
+   184→   184→    setSaving(true);
+   185→   185→    try {
+   186→   186→      const res = await fetch(`/api/enterprises/${editingEnterprise.id}`, {
+   187→   187→        method: 'PUT',
+   188→   188→        headers: { 'Content-Type': 'application/json' },
+   189→   189→        body: JSON.stringify({
+   190→   190→          name: editName.trim(),
+   191→   191→          region: editRegion.trim() || null,
+   192→   192→        }),
+   193→   193→      });
+   194→   194→
+   195→   195→      if (!res.ok) {
+   196→   196→        const data = await res.json();
+   197→   197→        toast.error(data.error || 'Erro ao atualizar');
+   198→   198→        return;
+   199→   199→      }
+   200→   200→
+   201→   201→      toast.success('Empreendimento atualizado com sucesso!');
+   202→   202→      setEditingEnterprise(null);
+   203→   203→      fetchEnterprises();
+   204→   204→    } catch {
+   205→   205→      toast.error('Erro ao atualizar empreendimento');
+   206→   206→    } finally {
+   207→   207→      setSaving(false);
+   208→   208→    }
+   209→   209→  }
+   210→   210→
+   211→   211→  async function handleDelete() {
+   212→   212→    if (!deletingEnterprise) return;
+   213→   213→
+   214→   214→    setDeleting(true);
+   215→   215→    try {
+   216→   216→      const res = await fetch(`/api/enterprises/${deletingEnterprise.id}`, {
+   217→   217→        method: 'DELETE',
+   218→   218→      });
+   219→   219→
+   220→   220→      if (!res.ok) {
+   221→   221→        const data = await res.json();
+   222→   222→        toast.error(data.error || 'Erro ao excluir');
+   223→   223→        return;
+   224→   224→      }
+   225→   225→
+   226→   226→      toast.success('Empreendimento excluído com sucesso!');
+   227→   227→      setDeletingEnterprise(null);
+   228→   228→      fetchEnterprises();
+   229→   229→    } catch {
+   230→   230→      toast.error('Erro ao excluir empreendimento');
+   231→   231→    } finally {
+   232→   232→      setDeleting(false);
+   233→   233→    }
+   234→   234→  }
+   235→   235→
+   236→   236→  async function handleImageUpload(enterpriseId: string, file: File) {
+   237→   237→    if (!file.type.includes('webp') && !file.type.includes('image')) {
+   238→   238→      toast.error('Apenas imagens WebP são aceitas');
+   239→   239→      return;
+   240→   240→    }
+   241→   241→
+   242→   242→    if (file.size > 5 * 1024 * 1024) {
+   243→   243→      toast.error('Imagem muito grande. Máximo 5MB.');
+   244→   244→      return;
+   245→   245→    }
+   246→   246→
+   247→   247→    setUploadingId(enterpriseId);
+   248→   248→    try {
+   249→   249→      const formData = new FormData();
+   250→   250→      formData.append('file', file);
+   251→   251→      formData.append('enterpriseId', enterpriseId);
+   252→   252→
+   253→   253→      const res = await fetch('/api/enterprises/upload', {
+   254→   254→        method: 'POST',
+   255→   255→        body: formData,
+   256→   256→      });
+   257→   257→
+   258→   258→      if (!res.ok) {
+   259→   259→        const data = await res.json();
+   260→   260→        toast.error(data.error || 'Erro ao enviar imagem');
+   261→   261→        return;
+   262→   262→      }
+   263→   263→
+   264→   264→      toast.success('Imagem enviada com sucesso!');
+   265→   265→      fetchEnterprises();
+   266→   266→    } catch {
+   267→   267→      toast.error('Erro ao enviar imagem');
+   268→   268→    } finally {
+   269→   269→      setUploadingId(null);
+   270→   270→    }
+   271→   271→  }
+   272→   272→
+   273→   273→  async function handlePdfUpload(enterpriseId: string, file: File) {
+   274→   274→    const validTypes = ['application/pdf', 'text/plain', 'text/markdown', ''];
+   275→   275→    const validExts = ['.pdf', '.txt', '.md', '.markdown'];
+   276→   276→    const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+   277→   277→    if (!validTypes.includes(file.type) || !validExts.includes(ext)) {
+   278→   278→      toast.error('Formato inválido. Envie um arquivo PDF, Markdown (.md) ou texto (.txt).');
+   279→   279→      return;
+   280→   280→    }
+   281→   281→    if (file.size > 10 * 1024 * 1024) {
+   282→   282→      toast.error('Arquivo muito grande. Máximo 10MB.');
+   283→   283→      return;
+   284→   284→    }
+   285→   285→
+   286→   286→    setPdfUploadingId(enterpriseId);
+   287→   287→    try {
+   288→   288→      const formData = new FormData();
+   289→   289→      formData.append('file', file);
+   290→   290→
+   291→   291→      const res = await fetch(`/api/enterprises/${enterpriseId}/pdf`, {
+   292→   292→        method: 'POST',
+   293→   293→        body: formData,
+   294→   294→      });
+   295→   295→
+   296→   296→      if (!res.ok) {
+   297→   297→        const data = await res.json();
+   298→   298→        toast.error(data.error || 'Erro ao processar o PDF');
+   299→   299→        return;
+   300→   300→      }
+   301→   301→
+   302→   302→      const data = await res.json();
+   303→   303→      toast.success(`PDF processado! ${data.extractedChars.toLocaleString('pt-BR')} caracteres extraídos de "${data.fileName}"`);
+   304→   304→      fetchEnterprises();
+   305→   305→    } catch {
+   306→   306→      toast.error('Erro ao enviar PDF');
+   307→   307→    } finally {
+   308→   308→      setPdfUploadingId(null);
+   309→   309→    }
+   310→   310→  }
+   311→   311→
+   312→   312→  async function handlePdfRemove(enterpriseId: string, enterpriseName: string) {
+   313→   313→    setPdfUploadingId(enterpriseId);
+   314→   314→    try {
+   315→   315→      const res = await fetch(`/api/enterprises/${enterpriseId}/pdf`, {
+   316→   316→        method: 'DELETE',
+   317→   317→      });
+   318→   318→
+   319→   319→      if (!res.ok) {
+   320→   320→        const data = await res.json();
+   321→   321→        toast.error(data.error || 'Erro ao remover PDF');
+   322→   322→        return;
+   323→   323→      }
+   324→   324→
+   325→   325→      toast.success(`Base de dados removida de "${enterpriseName}"`);
+   326→   326→      fetchEnterprises();
+   327→   327→    } catch {
+   328→   328→      toast.error('Erro ao remover PDF');
+   329→   329→    } finally {
+   330→   330→      setPdfUploadingId(null);
+   331→   331→    }
+   332→   332→  }
+   333→   333→
+   334→   334→  function resetBatchDialog() {
+   335→   335→    setBatchFile(null);
+   336→   336→    setBatchResults(null);
+   337→   337→    setBatchImporting(false);
+   338→   338→  }
+   339→   339→
+   340→   340→  async function handleBatchImport() {
+   341→   341→    if (!batchFile) return;
+   342→   342→    setBatchImporting(true);
+   343→   343→    setBatchResults(null);
+   344→   344→    try {
+   345→   345→      const formData = new FormData();
+   346→   346→      formData.append('file', batchFile);
+   347→   347→
+   348→   348→      const res = await fetch('/api/enterprises/batch', {
+   349→   349→        method: 'POST',
+   350→   350→        body: formData,
+   351→   351→      });
+   352→   352→
+   353→   353→      if (!res.ok) {
+   354→   354→        const data = await res.json();
+   355→   355→        toast.error(data.error || 'Erro ao importar empreendimentos');
+   356→   356→        return;
+   357→   357→      }
+   358→   358→
+   359→   359→      const data = await res.json();
+   360→   360→      setBatchResults(data);
+   361→   361→
+   362→   362→      const totalCreated = data.created.length;
+   363→   363→      const totalDupes = data.duplicates.length;
+   364→   364→      const totalInvalid = data.invalid.length;
+   365→   365→
+   366→   366→      if (totalCreated > 0) {
+   367→   367→        toast.success(`${totalCreated} empreendimento${totalCreated > 1 ? 's' : ''} importado${totalCreated > 1 ? 's' : ''} com sucesso!`);
+   368→   368→      }
+   369→   369→      if (totalDupes > 0) {
+   370→   370→        toast.warning(`${totalDupes} duplicata${totalDupes > 1 ? 's' : ''} ignorada${totalDupes > 1 ? 's' : ''}`);
+   371→   371→      }
+   372→   372→      if (totalInvalid > 0) {
+   373→   373→        toast.error(`${totalInvalid} registro${totalInvalid > 1 ? 's' : ''} inválido${totalInvalid > 1 ? 's' : ''}`);
+   374→   374→      }
+   375→   375→
+   376→   376→      fetchEnterprises();
+   377→   377→    } catch {
+   378→   378→      toast.error('Erro ao importar empreendimentos');
+   379→   379→    } finally {
+   380→   380→      setBatchImporting(false);
+   381→   381→    }
+   382→   382→  }
+   383→   383→
+   384→   384→  if ((session?.user as { role?: string })?.role !== 'ADMIN') {
+   385→   385→    return (
+   386→   386→      <div className="flex items-center justify-center h-64">
+   387→   387→        <Card className="p-6 text-center">
+   388→   388→          <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+   389→   389→          <p className="text-muted-foreground">Acesso restrito a administradores.</p>
+   390→   390→        </Card>
+   391→   391→      </div>
+   392→   392→    );
+   393→   393→  }
+   394→   394→
+   395→   395→  return (
+   396→   396→    <div className="space-y-6">
+   397→   397→      {/* Header */}
+   398→   398→      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+   399→   399→        <div>
+   400→   400→          <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
+   401→   401→            <Building2 className="h-5 w-5 text-emerald-600" />
+   402→   402→            Gestão de Empreendimentos
+   403→   403→          </h2>
+   404→   404→          <p className="text-muted-foreground mt-1">
+   405→   405→            Cadastre empreendimentos, envie bases de dados em PDF e vincule aos clientes
+   406→   406→          </p>
+   407→   407→        </div>
+   408→   408→        <div className="flex items-center gap-2">
+   409→   409→          <Dialog open={batchDialogOpen} onOpenChange={(open) => { if (!open) resetBatchDialog(); setBatchDialogOpen(open); }}>
+   410→   410→            <DialogTrigger asChild>
+   411→   411→              <Button variant="outline" className="font-semibold">
+   412→   412→                <FileSpreadsheet className="h-4 w-4 mr-2" />
+   413→   413→                Importar em Lote
+   414→   414→              </Button>
+   415→   415→            </DialogTrigger>
+   416→   416→            <DialogContent className="sm:max-w-[520px]">
+   417→   417→              <DialogHeader>
+   418→   418→                <DialogTitle className="flex items-center gap-2">
+   419→   419→                  <FileSpreadsheet className="h-5 w-5 text-emerald-500" />
+   420→   420→                  Importar Empreendimentos em Lote
+   421→   421→                </DialogTitle>
+   422→   422→                <DialogDescription>
+   423→   423→                  Faça upload de um arquivo Excel (.xlsx ou .xls) ou CSV contendo os empreendimentos.
+   424→   424→                </DialogDescription>
+   425→   425→              </DialogHeader>
+   426→   426→
+   427→   427→              <div className="space-y-4 py-2">
+   428→   428→                {/* Template info */}
+   429→   429→                <div className="rounded-xl border bg-muted/50 p-4 space-y-3">
+   430→   430→                  <p className="text-sm font-medium">Formato esperado do arquivo:</p>
+   431→   431→                  <div className="rounded-lg border bg-background overflow-hidden">
+   432→   432→                    <table className="w-full text-sm">
+   433→   433→                      <thead>
+   434→   434→                        <tr className="bg-emerald-50 dark:bg-emerald-950/30">
+   435→   435→                          <th className="px-3 py-2 text-left font-semibold text-emerald-700 dark:text-emerald-400">Nome *</th>
+   436→   436→                          <th className="px-3 py-2 text-left font-semibold text-emerald-700 dark:text-emerald-400">Região</th>
+   437→   437→                        </tr>
+   438→   438→                      </thead>
+   439→   439→                      <tbody>
+   440→   440→                        <tr className="border-t">
+   441→   441→                          <td className="px-3 py-2">Residencial Parque das Flores</td>
+   442→   442→                          <td className="px-3 py-2">Zona Sul</td>
+   443→   443→                        </tr>
+   444→   444→                        <tr className="border-t">
+   445→   445→                          <td className="px-3 py-2">Empreendimento Central</td>
+   446→   446→                          <td className="px-3 py-2">Centro</td>
+   447→   447→                        </tr>
+   448→   448→                      </tbody>
+   449→   449→                    </table>
+   450→   450→                  </div>
+   451→   451→                  <p className="text-xs text-muted-foreground">
+   452→   452→                    A coluna <strong>Nome</strong> é obrigatória. A coluna <strong>Região</strong> é opcional.
+   453→   453→                    Empreendimentos com nome duplicado serão ignorados.
+   454→   454→                  </p>
+   455→   455→                </div>
+   456→   456→
+   457→   457→                {/* File upload area */}
+   458→   458→                <div className="space-y-2">
+   459→   459→                  <label className="text-sm font-medium">Arquivo</label>
+   460→   460→                  <div
+   461→   461→                    className={`relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 cursor-pointer transition-colors ${
+   462→   462→                      batchFile
+   463→   463→                        ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20'
+   464→   464→                        : 'border-muted-foreground/25 hover:border-emerald-500/50 hover:bg-muted/50'
+   465→   465→                    }`}
+   466→   466→                    onClick={() => batchFileInputRef.current?.click()}
+   467→   467→                  >
+   468→   468→                    <input
+   469→   469→                      ref={batchFileInputRef}
+   470→   470→                      type="file"
+   471→   471→                      accept=".xlsx,.xls,.csv"
+   472→   472→                      className="hidden"
+   473→   473→                      onChange={(e) => {
+   474→   474→                        const file = e.target.files?.[0];
+   475→   475→                        if (file) {
+   476→   476→                          setBatchFile(file);
+   477→   477→                          setBatchResults(null);
+   478→   478→                        }
+   479→   479→                        e.target.value = '';
+   480→   480→                      }}
+   481→   481→                    />
+   482→   482→                    {batchFile ? (
+   483→   483→                      <>
+   484→   484→                        <div className="h-12 w-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-2">
+   485→   485→                          <FileSpreadsheet className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+   486→   486→                        </div>
+   487→   487→                        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">{batchFile.name}</p>
+   488→   488→                        <p className="text-xs text-muted-foreground mt-1">{(batchFile.size / 1024).toFixed(1)} KB</p>
+   489→   489→                        <button
+   490→   490→                          type="button"
+   491→   491→                          onClick={(e) => { e.stopPropagation(); setBatchFile(null); setBatchResults(null); }}
+   492→   492→                          className="absolute top-2 right-2 p-1 rounded-md hover:bg-destructive/10 hover:text-destructive transition-colors"
+   493→   493→                        >
+   494→   494→                          <X className="h-4 w-4" />
+   495→   495→                        </button>
+   496→   496→                      </>
+   497→   497→                    ) : (
+   498→   498→                      <>
+   499→   499→                        <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center mb-2">
+   500→   500→                          <Upload className="h-6 w-6 text-muted-foreground" />
+   501→   501→                        </div>
+   502→   502→                        <p className="text-sm font-medium">Clique para selecionar o arquivo</p>
+   503→   503→                        <p className="text-xs text-muted-foreground mt-1">.xlsx, .xls ou .csv — máximo 5MB</p>
+   504→   504→                      </>
+   505→   505→                    )}
+   506→   506→                  </div>
+   507→   507→                </div>
+   508→   508→
+   509→   509→                {/* Results */}
+   510→   510→                {batchResults && (
+   511→   511→                  <div className="space-y-3">
+   512→   512→                    <Separator />
+   513→   513→                    <div className="flex items-center gap-2">
+   514→   514→                      <p className="text-sm font-semibold">Resultado da Importação</p>
+   515→   515→                      <Badge variant="secondary" className="text-xs">
+   516→   516→                        {batchResults.created.length + batchResults.duplicates.length + batchResults.invalid.length} / {batchResults.total}
+   517→   517→                      </Badge>
+   518→   518→                    </div>
+   519→   519→
+   520→   520→                    <div className="grid grid-cols-3 gap-2">
+   521→   521→                      <div className={`rounded-lg border p-2.5 text-center ${
+   522→   522→                        batchResults.created.length > 0
+   523→   523→                          ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-950/20'
+   524→   524→                          : 'border-border bg-muted/30'
+   525→   525→                      }`}>
+   526→   526→                        <CheckCircle2 className={`h-4 w-4 mx-auto mb-1 ${batchResults.created.length > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`} />
+   527→   527→                        <p className={`text-lg font-bold ${batchResults.created.length > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>{batchResults.created.length}</p>
+   528→   528→                        <p className="text-[10px] text-muted-foreground">Criados</p>
+   529→   529→                      </div>
+   530→   530→                      <div className={`rounded-lg border p-2.5 text-center ${
+   531→   531→                        batchResults.duplicates.length > 0
+   532→   532→                          ? 'border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/20'
+   533→   533→                          : 'border-border bg-muted/30'
+   534→   534→                      }`}>
+   535→   535→                        <Ban className={`h-4 w-4 mx-auto mb-1 ${batchResults.duplicates.length > 0 ? 'text-amber-600' : 'text-muted-foreground'}`} />
+   536→   536→                        <p className={`text-lg font-bold ${batchResults.duplicates.length > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>{batchResults.duplicates.length}</p>
+   537→   537→                        <p className="text-[10px] text-muted-foreground">Duplicatas</p>
+   538→   538→                      </div>
+   539→   539→                      <div className={`rounded-lg border p-2.5 text-center ${
+   540→   540→                        batchResults.invalid.length > 0
+   541→   541→                          ? 'border-rose-200 bg-rose-50 dark:border-rose-800/50 dark:bg-rose-950/20'
+   542→   542→                          : 'border-border bg-muted/30'
+   543→   543→                      }`}>
+   544→   544→                        <AlertCircle className={`h-4 w-4 mx-auto mb-1 ${batchResults.invalid.length > 0 ? 'text-rose-600' : 'text-muted-foreground'}`} />
+   545→   545→                        <p className={`text-lg font-bold ${batchResults.invalid.length > 0 ? 'text-rose-700 dark:text-rose-400' : 'text-muted-foreground'}`}>{batchResults.invalid.length}</p>
+   546→   546→                        <p className="text-[10px] text-muted-foreground">Inválidos</p>
+   547→   547→                      </div>
+   548→   548→                    </div>
+   549→   549→
+   550→   550→                    {/* Created items list */}
+   551→   551→                    {batchResults.created.length > 0 && (
+   552→   552→                      <div className="rounded-lg border max-h-[150px] overflow-y-auto">
+   553→   553→                        <div className="p-2 space-y-1">
+   554→   554→                          {batchResults.created.map((item, i) => (
+   555→   555→                            <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-emerald-50/50 dark:bg-emerald-950/10 text-xs">
+   556→   556→                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+   557→   557→                              <span className="truncate font-medium">{item.name}</span>
+   558→   558→                              {item.region && (
+   559→   559→                                <span className="text-muted-foreground ml-auto flex-shrink-0">{item.region}</span>
+   560→   560→                              )}
+   561→   561→                            </div>
+   562→   562→                          ))}
+   563→   563→                        </div>
+   564→   564→                      </div>
+   565→   565→                    )}
+   566→   566→
+   567→   567→                    {/* Duplicates list */}
+   568→   568→                    {batchResults.duplicates.length > 0 && (
+   569→   569→                      <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 max-h-[100px] overflow-y-auto">
+   570→   570→                        <div className="p-2 space-y-1">
+   571→   571→                          {batchResults.duplicates.map((item, i) => (
+   572→   572→                            <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-50/50 dark:bg-amber-950/10 text-xs">
+   573→   573→                              <Ban className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+   574→   574→                              <span className="truncate font-medium">{item.name}</span>
+   575→   575→                              <span className="text-amber-600 dark:text-amber-400 ml-auto flex-shrink-0">Duplicata</span>
+   576→   576→                            </div>
+   577→   577→                          ))}
+   578→   578→                        </div>
+   579→   579→                      </div>
+   580→   580→                    )}
+   581→   581→                  </div>
+   582→   582→                )}
+   583→   583→              </div>
+   584→   584→
+   585→   585→              <DialogFooter>
+   586→   586→                <Button variant="outline" onClick={() => { resetBatchDialog(); setBatchDialogOpen(false); }}>
+   587→   587→                  {batchResults ? 'Fechar' : 'Cancelar'}
+   588→   588→                </Button>
+   589→   589→                {!batchResults && (
+   590→   590→                  <Button
+   591→   591→                    onClick={handleBatchImport}
+   592→   592→                    disabled={!batchFile || batchImporting}
+   593→   593→                    className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+   594→   594→                  >
+   595→   595→                    {batchImporting ? (
+   596→   596→                      <>
+   597→   597→                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+   598→   598→                        Importando...
+   599→   599→                      </>
+   600→   600→                    ) : (
+   601→   601→                      <>
+   602→   602→                        <Upload className="h-4 w-4 mr-2" />
+   603→   603→                        Importar
+   604→   604→                      </>
+   605→   605→                    )}
+   606→   606→                  </Button>
+   607→   607→                )}
+   608→   608→              </DialogFooter>
+   609→   609→            </DialogContent>
+   610→   610→          </Dialog>
+   611→   611→
+   612→   612→          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   613→   613→          <DialogTrigger asChild>
+   614→   614→            <Button className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold">
+   615→   615→              <Plus className="h-4 w-4 mr-2" />
+   616→   616→              Novo Empreendimento
+   617→   617→            </Button>
+   618→   618→          </DialogTrigger>
+   619→   619→          <DialogContent>
+   620→   620→            <DialogHeader>
+   621→   621→              <DialogTitle>Novo Empreendimento</DialogTitle>
+   622→   622→              <DialogDescription>
+   623→   623→                Cadastre um novo empreendimento. Você poderá adicionar uma imagem e base de dados para a IA depois.
+   624→   624→              </DialogDescription>
+   625→   625→            </DialogHeader>
+   626→   626→            <div className="space-y-4 py-4">
+   627→   627→              <div className="space-y-2">
+   628→   628→                <Label htmlFor="create-name">Nome *</Label>
+   629→   629→                <Input
+   630→   630→                  id="create-name"
+   631→   631→                  placeholder="Nome do empreendimento"
+   632→   632→                  value={createName}
+   633→   633→                  onChange={(e) => setCreateName(e.target.value)}
+   634→   634→                  disabled={creating}
+   635→   635→                />
+   636→   636→              </div>
+   637→   637→              <div className="space-y-2">
+   638→   638→                <Label htmlFor="create-region">Região</Label>
+   639→   639→                <Input
+   640→   640→                  id="create-region"
+   641→   641→                  placeholder="Ex: Centro, Zona Sul..."
+   642→   642→                  value={createRegion}
+   643→   643→                  onChange={(e) => setCreateRegion(e.target.value)}
+   644→   644→                  disabled={creating}
+   645→   645→                />
+   646→   646→              </div>
+   647→   647→            </div>
+   648→   648→            <DialogFooter>
+   649→   649→              <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
+   650→   650→                Cancelar
+   651→   651→              </Button>
+   652→   652→              <Button
+   653→   653→                onClick={handleCreate}
+   654→   654→                disabled={creating || !createName.trim()}
+   655→   655→                className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+   656→   656→              >
+   657→   657→                {creating ? (
+   658→   658→                  <>
+   659→   659→                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+   660→   660→                    Criando...
+   661→   661→                  </>
+   662→   662→                ) : (
+   663→   663→                  'Criar'
+   664→   664→                )}
+   665→   665→              </Button>
+   666→   666→            </DialogFooter>
+   667→   667→          </DialogContent>
+   668→   668→        </Dialog>
+   669→   669→        </div>
+   670→   670→      </div>
+   671→   671→
+   672→   672→      {/* Stats */}
+   673→   673→      <div className="grid gap-4 sm:grid-cols-3">
+   674→   674→        <Card>
+   675→   675→          <CardContent className="p-4 flex items-center gap-4">
+   676→   676→            <div className="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+   677→   677→              <Building2 className="h-5 w-5 text-emerald-600" />
+   678→   678→            </div>
+   679→   679→            <div>
+   680→   680→              <p className="text-sm text-muted-foreground">Total de Empreendimentos</p>
+   681→   681→              <p className="text-2xl font-bold">{enterprises.length}</p>
+   682→   682→            </div>
+   683→   683→          </CardContent>
+   684→   684→        </Card>
+   685→   685→        <Card>
+   686→   686→          <CardContent className="p-4 flex items-center gap-4">
+   687→   687→            <div className="h-10 w-10 rounded-lg bg-teal-500/10 flex items-center justify-center">
+   688→   688→              <Users className="h-5 w-5 text-teal-600" />
+   689→   689→            </div>
+   690→   690→            <div>
+   691→   691→              <p className="text-sm text-muted-foreground">Clientes Vinculados</p>
+   692→   692→              <p className="text-2xl font-bold">
+   693→   693→                {enterprises.reduce((acc, e) => acc + e._count.clients, 0)}
+   694→   694→              </p>
+   695→   695→            </div>
+   696→   696→          </CardContent>
+   697→   697→        </Card>
+   698→   698→        <Card>
+   699→   699→          <CardContent className="p-4 flex items-center gap-4">
+   700→   700→            <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+   701→   701→              <FileText className="h-5 w-5 text-blue-600" />
+   702→   702→            </div>
+   703→   703→            <div>
+   704→   704→              <p className="text-sm text-muted-foreground">Bases de Dados (PDF)</p>
+   705→   705→              <p className="text-2xl font-bold">
+   706→   706→                {enterprises.filter(e => e.pdfContent).length}
+   707→   707→              </p>
+   708→   708→            </div>
+   709→   709→          </CardContent>
+   710→   710→        </Card>
+   711→   711→      </div>
+   712→   712→
+   713→   713→      {/* Search */}
+   714→   714→      <div className="relative max-w-sm">
+   715→   715→        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   716→   716→        <Input
+   717→   717→          placeholder="Buscar por nome ou região..."
+   718→   718→          value={search}
+   719→   719→          onChange={(e) => setSearch(e.target.value)}
+   720→   720→          className="pl-10"
+   721→   721→        />
+   722→   722→      </div>
+   723→   723→
+   724→   724→      {/* Enterprise Grid */}
+   725→   725→      {loading ? (
+   726→   726→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   727→   727→          {[1, 2, 3].map((i) => (
+   728→   728→            <div key={i} className="h-52 rounded-xl border bg-muted animate-pulse" />
+   729→   729→          ))}
+   730→   730→        </div>
+   731→   731→      ) : filteredEnterprises.length === 0 ? (
+   732→   732→        <Card className="p-8 text-center">
+   733→   733→          <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+   734→   734→          <p className="text-muted-foreground">
+   735→   735→            {search ? 'Nenhum empreendimento encontrado.' : 'Nenhum empreendimento cadastrado ainda.'}
+   736→   736→          </p>
+   737→   737→          {!search && (
+   738→   738→            <Button className="mt-4" onClick={() => setCreateOpen(true)}>
+   739→   739→              <Plus className="h-4 w-4 mr-2" />
+   740→   740→              Cadastrar Primeiro
+   741→   741→            </Button>
+   742→   742→          )}
+   743→   743→        </Card>
+   744→   744→      ) : (
+   745→   745→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   746→   746→          {filteredEnterprises.map((enterprise) => (
+   747→   747→            <Card
+   748→   748→              key={enterprise.id}
+   749→   749→              className="group hover:shadow-lg transition-all duration-200 overflow-hidden"
+   750→   750→            >
+   751→   751→              {/* Image Area */}
+   752→   752→              <div className="relative h-32 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center overflow-hidden">
+   753→   753→                {enterprise.imageUrl ? (
+   754→   754→                  <>
+   755→   755→                    <Image
+   756→   756→                      src={enterprise.imageUrl}
+   757→   757→                      alt={enterprise.name}
+   758→   758→                      fill
+   759→   759→                      className="object-cover group-hover:scale-105 transition-transform duration-300"
+   760→   760→                      unoptimized
+   761→   761→                    />
+   762→   762→                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+   763→   763→                    <div className="absolute bottom-2 left-3 right-3">
+   764→   764→                      <h3 className="text-white font-semibold text-sm truncate drop-shadow-md">
+   765→   765→                        {enterprise.name}
+   766→   766→                      </h3>
+   767→   767→                    </div>
+   768→   768→                  </>
+   769→   769→                ) : (
+   770→   770→                  <div className="flex flex-col items-center gap-2">
+   771→   771→                    <Building2 className="h-10 w-10 text-emerald-300 dark:text-emerald-600" />
+   772→   772→                    <span className="text-emerald-500 dark:text-emerald-400 font-medium text-sm">
+   773→   773→                      {enterprise.name}
+   774→   774→                    </span>
+   775→   775→                  </div>
+   776→   776→                )}
+   777→   777→
+   778→   778→                {/* Upload image overlay */}
+   779→   779→                <label className="absolute top-2 right-2 cursor-pointer">
+   780→   780→                  <input
+   781→   781→                    ref={(el) => { fileInputRefs.current[enterprise.id] = el; }}
+   782→   782→                    type="file"
+   783→   783→                    accept=".webp,image/webp,image/*"
+   784→   784→                    className="hidden"
+   785→   785→                    onChange={(e) => {
+   786→   786→                      const file = e.target.files?.[0];
+   787→   787→                      if (file) handleImageUpload(enterprise.id, file);
+   788→   788→                      e.target.value = '';
+   789→   789→                    }}
+   790→   790→                  />
+   791→   791→                  <Button
+   792→   792→                    size="sm"
+   793→   793→                    variant="secondary"
+   794→   794→                    className="h-7 w-7 p-0 bg-black/50 hover:bg-black/70 text-white border-0 backdrop-blur-sm"
+   795→   795→                    asChild
+   796→   796→                  >
+   797→   797→                    <span>
+   798→   798→                      {uploadingId === enterprise.id ? (
+   799→   799→                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   800→   800→                      ) : (
+   801→   801→                        <ImagePlus className="h-3.5 w-3.5" />
+   802→   802→                      )}
+   803→   803→                    </span>
+   804→   804→                  </Button>
+   805→   805→                </label>
+   806→   806→              </div>
+   807→   807→
+   808→   808→              <CardContent className="p-3">
+   809→   809→                {/* PDF indicator */}
+   810→   810→                {enterprise.pdfContent && (
+   811→   811→                  <div className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 mb-2 px-2 py-1.5 bg-blue-50 dark:bg-blue-950/30 rounded-md">
+   812→   812→                    <FileText className="h-3 w-3 flex-shrink-0" />
+   813→   813→                    <span className="truncate font-medium">Base de dados vinculada</span>
+   814→   814→                    <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">
+   815→   815→                      {(enterprise.pdfContent.length / 1024).toFixed(0)} KB
+   816→   816→                    </span>
+   817→   817→                  </div>
+   818→   818→                )}
+   819→   819→
+   820→   820→                {/* Info */}
+   821→   821→                <div className="space-y-2">
+   822→   822→                  {enterprise.region && (
+   823→   823→                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   824→   824→                      <MapPin className="h-3 w-3 flex-shrink-0" />
+   825→   825→                      <span className="truncate">{enterprise.region}</span>
+   826→   826→                    </div>
+   827→   827→                  )}
+   828→   828→
+   829→   829→                  <div className="flex items-center justify-between">
+   830→   830→                    <Badge variant="secondary" className="text-[10px]">
+   831→   831→                      <Users className="h-3 w-3 mr-1" />
+   832→   832→                      {enterprise._count.clients} cliente{enterprise._count.clients !== 1 ? 's' : ''}
+   833→   833→                    </Badge>
+   834→   834→
+   835→   835→                    <div className="flex items-center gap-1">
+   836→   836→                      {/* PDF upload button */}
+   837→   837→                      <label className="cursor-pointer">
+   838→   838→                        <input
+   839→   839→                          ref={(el) => { pdfInputRefs.current[enterprise.id] = el; }}
+   840→   840→                          type="file"
+   841→   841→                          accept=".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/markdown"
+   842→   842→                          className="hidden"
+   843→   843→                          onChange={(e) => {
+   844→   844→                            const file = e.target.files?.[0];
+   845→   845→                            if (file) handlePdfUpload(enterprise.id, file);
+   846→   846→                            e.target.value = '';
+   847→   847→                          }}
+   848→   848→                        />
+   849→   849→                        <Button
+   850→   850→                          size="sm"
+   851→   851→                          variant="ghost"
+   852→   852→                          className={`h-8 w-8 p-2 ${enterprise.pdfContent ? 'text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30' : 'text-muted-foreground hover:text-amber-600'}`}
+   853→   853→                          title={enterprise.pdfContent ? 'Substituir base de dados (PDF/MD/TXT)' : 'Enviar base de dados (PDF/MD/TXT)'}
+   854→   854→                          disabled={pdfUploadingId === enterprise.id}
+   855→   855→                          asChild
+   856→   856→                        >
+   857→   857→                          <span>
+   858→   858→                            {pdfUploadingId === enterprise.id ? (
+   859→   859→                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   860→   860→                            ) : (
+   861→   861→                              <FileText className="h-3.5 w-3.5" />
+   862→   862→                            )}
+   863→   863→                          </span>
+   864→   864→                        </Button>
+   865→   865→                      </label>
+   866→   866→                      {/* PDF remove button */}
+   867→   867→                      {enterprise.pdfContent && (
+   868→   868→                        <AlertDialog>
+   869→   869→                          <AlertDialogTrigger asChild>
+   870→   870→                            <Button
+   871→   871→                              size="sm"
+   872→   872→                              variant="ghost"
+   873→   873→                              className="h-8 w-8 p-2 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+   874→   874→                              title="Remover base de dados"
+   875→   875→                              disabled={pdfUploadingId === enterprise.id}
+   876→   876→                            >
+   877→   877→                              <X className="h-3.5 w-3.5" />
+   878→   878→                            </Button>
+   879→   879→                          </AlertDialogTrigger>
+   880→   880→                          <AlertDialogContent>
+   881→   881→                            <AlertDialogHeader>
+   882→   882→                              <AlertDialogTitle>Remover Base de Dados</AlertDialogTitle>
+   883→   883→                              <AlertDialogDescription>
+   884→   884→                                Remover a base de dados de &quot;{enterprise.name}&quot;? O assistente de IA não poderá mais responder perguntas sobre este empreendimento.
+   885→   885→                              </AlertDialogDescription>
+   886→   886→                            </AlertDialogHeader>
+   887→   887→                            <AlertDialogFooter>
+   888→   888→                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+   889→   889→                              <AlertDialogAction
+   890→   890→                                onClick={() => handlePdfRemove(enterprise.id, enterprise.name)}
+   891→   891→                                disabled={pdfUploadingId === enterprise.id}
+   892→   892→                                className="bg-red-600 hover:bg-red-700 text-white"
+   893→   893→                              >
+   894→   894→                                {pdfUploadingId === enterprise.id ? 'Removendo...' : 'Remover'}
+   895→   895→                              </AlertDialogAction>
+   896→   896→                            </AlertDialogFooter>
+   897→   897→                          </AlertDialogContent>
+   898→   898→                        </AlertDialog>
+   899→   899→                      )}
+   900→   900→                      <Button
+   901→   901→                        size="sm"
+   902→   902→                        variant="ghost"
+   903→   903→                        className="h-8 w-8 p-2"
+   904→   904→                        onClick={() => openEditDialog(enterprise)}
+   905→   905→                        title="Editar"
+   906→   906→                      >
+   907→   907→                        <Pencil className="h-3.5 w-3.5" />
+   908→   908→                      </Button>
+   909→   909→                      <AlertDialog
+   910→   910→                        open={deletingEnterprise?.id === enterprise.id}
+   911→   911→                        onOpenChange={(open) => !open && setDeletingEnterprise(null)}
+   912→   912→                      >
+   913→   913→                        <AlertDialogTrigger asChild>
+   914→   914→                          <Button
+   915→   915→                            size="sm"
+   916→   916→                            variant="ghost"
+   917→   917→                            className="h-8 w-8 p-2 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+   918→   918→                            onClick={() => setDeletingEnterprise(enterprise)}
+   919→   919→                            title="Excluir"
+   920→   920→                          >
+   921→   921→                            <Trash2 className="h-3.5 w-3.5" />
+   922→   922→                          </Button>
+   923→   923→                        </AlertDialogTrigger>
+   924→   924→                        <AlertDialogContent>
+   925→   925→                          <AlertDialogHeader>
+   926→   926→                            <AlertDialogTitle>Excluir Empreendimento</AlertDialogTitle>
+   927→   927→                            <AlertDialogDescription>
+   928→   928→                              Tem certeza que deseja excluir &quot;{enterprise.name}&quot;?
+   929→   929→                              Os clientes vinculados não serão excluídos, mas perderão o vínculo com este empreendimento.
+   930→   930→                              {enterprise.pdfContent && ' A base de dados do PDF também será removida permanentemente.'}
+   931→   931→                            </AlertDialogDescription>
+   932→   932→                          </AlertDialogHeader>
+   933→   933→                          <AlertDialogFooter>
+   934→   934→                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+   935→   935→                            <AlertDialogAction
+   936→   936→                              onClick={handleDelete}
+   937→   937→                              disabled={deleting}
+   938→   938→                              className="bg-red-600 hover:bg-red-700 text-white"
+   939→   939→                            >
+   940→   940→                              {deleting ? (
+   941→   941→                                <>
+   942→   942→                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+   943→   943→                                  Excluindo...
+   944→   944→                                </>
+   945→   945→                              ) : (
+   946→   946→                                'Excluir'
+   947→   947→                              )}
+   948→   948→                            </AlertDialogAction>
+   949→   949→                          </AlertDialogFooter>
+   950→   950→                        </AlertDialogContent>
+   951→   951→                      </AlertDialog>
+   952→   952→                    </div>
+   953→   953→                  </div>
+   954→   954→                </div>
+   955→   955→              </CardContent>
+   956→   956→            </Card>
+   957→   957→          ))}
+   958→   958→        </div>
+   959→   959→      )}
+   960→   960→
+   961→   961→      {/* Edit Dialog */}
+   962→   962→      <Dialog
+   963→   963→        open={!!editingEnterprise}
+   964→   964→        onOpenChange={(open) => !open && setEditingEnterprise(null)}
+   965→   965→      >
+   966→   966→        <DialogContent className="sm:max-w-[520px]">
+   967→   967→          <DialogHeader>
+   968→   968→            <DialogTitle>Editar Empreendimento</DialogTitle>
+   969→   969→            <DialogDescription>
+   970→   970→              Atualize as informações do empreendimento.
+   971→   971→            </DialogDescription>
+   972→   972→          </DialogHeader>
+   973→   973→          <div className="space-y-4 py-4">
+   974→   974→            <div className="space-y-2">
+   975→   975→              <Label htmlFor="edit-name">Nome *</Label>
+   976→   976→              <Input
+   977→   977→                id="edit-name"
+   978→   978→                value={editName}
+   979→   979→                onChange={(e) => setEditName(e.target.value)}
+   980→   980→                disabled={saving}
+   981→   981→              />
+   982→   982→            </div>
+   983→   983→            <div className="space-y-2">
+   984→   984→              <Label htmlFor="edit-region">Região</Label>
+   985→   985→              <Input
+   986→   986→                id="edit-region"
+   987→   987→                value={editRegion}
+   988→   988→                onChange={(e) => setEditRegion(e.target.value)}
+   989→   989→                disabled={saving}
+   990→   990→              />
+   991→   991→            </div>
+   992→   992→
+   993→   993→            {/* PDF section in edit dialog */}
+   994→   994→            <div className="space-y-2">
+   995→   995→              <Label className="flex items-center gap-1.5">
+   996→   996→                <FileText className="h-4 w-4" />
+   997→   997→                Base de Dados para a IA (PDF, Markdown ou TXT)
+   998→   998→              </Label>
+   999→   999→              {editingEnterprise?.pdfContent ? (
+  1000→  1000→                <div className="flex items-center gap-3 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20">
+  1001→  1001→                  <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+  1002→  1002→                  <div className="flex-1 min-w-0">
+  1003→  1003→                    <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Base de dados vinculada</p>
+  1004→  1004→                    <p className="text-xs text-muted-foreground">
+  1005→  1005→                      {(editingEnterprise.pdfContent.length / 1024).toFixed(0)} KB de texto extraído — disponível para o assistente de IA
+  1006→  1006→                    </p>
+  1007→  1007→                  </div>
+  1008→  1008→                  <Button
+  1009→  1009→                    size="sm"
+  1010→  1010→                    variant="outline"
+  1011→  1011→                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 flex-shrink-0"
+  1012→  1012→                    onClick={async () => {
+  1013→  1013→                      if (editingEnterprise) {
+  1014→  1014→                        await handlePdfRemove(editingEnterprise.id, editingEnterprise.name);
+  1015→  1015→                        setEditingEnterprise({ ...editingEnterprise, pdfContent: null });
+  1016→  1016→                      }
+  1017→  1017→                    }}
+  1018→  1018→                    disabled={pdfUploadingId === editingEnterprise?.id}
+  1019→  1019→                  >
+  1020→  1020→                    {pdfUploadingId === editingEnterprise?.id ? (
+  1021→  1021→                      <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Removendo...</>
+  1022→  1022→                    ) : (
+  1023→  1023→                      'Remover'
+  1024→  1024→                    )}
+  1025→  1025→                  </Button>
+  1026→  1026→                </div>
+  1027→  1027→              ) : (
+  1028→  1028→                <p className="text-xs text-muted-foreground py-1">
+  1029→  1029→                  Nenhuma base de dados vinculada. O assistente de IA não poderá responder perguntas específicas sobre este empreendimento.
+  1030→  1030→                </p>
+  1031→  1031→              )}
+  1032→  1032→              <label className="cursor-pointer">
+  1033→  1033→                <input
+  1034→  1034→                  type="file"
+  1035→  1035→                  accept=".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/markdown"
+  1036→  1036→                  className="hidden"
+  1037→  1037→                  onChange={(e) => {
+  1038→  1038→                    const file = e.target.files?.[0];
+  1039→  1039→                    if (file && editingEnterprise) {
+  1040→  1040→                      handlePdfUpload(editingEnterprise.id, file).then(() => {
+  1041→  1041→                        // Refresh the editing enterprise data
+  1042→  1042→                        fetch(`/api/enterprises/${editingEnterprise.id}`)
+  1043→  1043→                          .then(r => r.json())
+  1044→  1044→                          .then(data => {
+  1045→  1045→                            if (editingEnterprise) {
+  1046→  1046→                              setEditingEnterprise({ ...editingEnterprise, pdfContent: data.pdfContent });
+  1047→  1047→                            }
+  1048→  1048→                          })
+  1049→  1049→                          .catch(() => {});
+  1050→  1050→                      });
+  1051→  1051→                    }
+  1052→  1052→                    e.target.value = '';
+  1053→  1053→                  }}
+  1054→  1054→                />
+  1055→  1055→                <Button
+  1056→  1056→                  type="button"
+  1057→  1057→                  variant="outline"
+  1058→  1058→                  className="w-full"
+  1059→  1059→                  disabled={pdfUploadingId === editingEnterprise?.id}
+  1060→  1060→                  asChild
+  1061→  1061→                >
+  1062→  1062→                  <span>
+  1063→  1063→                    {pdfUploadingId === editingEnterprise?.id ? (
+  1064→  1064→                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processando arquivo...</>
+  1065→  1065→                    ) : (
+  1066→  1066→                      <><Upload className="h-4 w-4 mr-2" />{editingEnterprise?.pdfContent ? 'Substituir Base de Dados (PDF/MD/TXT)' : 'Enviar Base de Dados (PDF/MD/TXT)'}</>
+  1067→  1067→                    )}
+  1068→  1068→                  </span>
+  1069→  1069→                </Button>
+  1070→  1070→              </label>
+  1071→  1071→            </div>
+  1072→  1072→
+  1073→  1073→            {/* Image upload in edit dialog */}
+  1074→  1074→            <div className="space-y-2">
+  1075→  1075→              <Label>Imagem do Empreendimento</Label>
+  1076→  1076→              {editingEnterprise?.imageUrl && (
+  1077→  1077→                <div className="relative h-24 rounded-lg overflow-hidden border">
+  1078→  1078→                  <Image
+  1079→  1079→                    src={editingEnterprise.imageUrl}
+  1080→  1080→                    alt={editingEnterprise.name}
+  1081→  1081→                    fill
+  1082→  1082→                    className="object-cover"
+  1083→  1083→                    unoptimized
+  1084→  1084→                  />
+  1085→  1085→                </div>
+  1086→  1086→              )}
+  1087→  1087→              <label className="cursor-pointer">
+  1088→  1088→                <input
+  1089→  1089→                  type="file"
+  1090→  1090→                  accept=".webp,image/webp,image/*"
+  1091→  1091→                  className="hidden"
+  1092→  1092→                  onChange={(e) => {
+  1093→  1093→                    const file = e.target.files?.[0];
+  1094→  1094→                    if (file && editingEnterprise) {
+  1095→  1095→                      handleImageUpload(editingEnterprise.id, file);
+  1096→  1096→                    }
+  1097→  1097→                    e.target.value = '';
+  1098→  1098→                  }}
+  1099→  1099→                />
+  1100→  1100→                <Button
+  1101→  1101→                  type="button"
+  1102→  1102→                  variant="outline"
+  1103→  1103→                  className="w-full"
+  1104→  1104→                  disabled={uploadingId === editingEnterprise?.id}
+  1105→  1105→                  asChild
+  1106→  1106→                >
+  1107→  1107→                  <span>
+  1108→  1108→                    {uploadingId === editingEnterprise?.id ? (
+  1109→  1109→                      <>
+  1110→  1110→                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+  1111→  1111→                        Enviando...
+  1112→  1112→                      </>
+  1113→  1113→                    ) : (
+  1114→  1114→                      <>
+  1115→  1115→                        <Upload className="h-4 w-4 mr-2" />
+  1116→  1116→                        {editingEnterprise?.imageUrl ? 'Alterar Imagem (WebP)' : 'Enviar Imagem (WebP)'}
+  1117→  1117→                      </>
+  1118→  1118→                    )}
+  1119→  1119→                  </span>
+  1120→  1120→                </Button>
+  1121→  1121→              </label>
+  1122→  1122→            </div>
+  1123→  1123→          </div>
+  1124→  1124→          <DialogFooter>
+  1125→  1125→            <Button variant="outline" onClick={() => setEditingEnterprise(null)} disabled={saving}>
+  1126→  1126→              Cancelar
+  1127→  1127→            </Button>
+  1128→  1128→            <Button
+  1129→  1129→              onClick={handleEditSave}
+  1130→  1130→              disabled={saving || !editName.trim()}
+  1131→  1131→              className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+  1132→  1132→            >
+  1133→  1133→              {saving ? (
+  1134→  1134→                <>
+  1135→  1135→                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+  1136→  1136→                  Salvando...
+  1137→  1137→                </>
+  1138→  1138→              ) : (
+  1139→  1139→                'Salvar'
+  1140→  1140→              )}
+  1141→  1141→            </Button>
+  1142→  1142→          </DialogFooter>
+  1143→  1143→        </DialogContent>
+  1144→  1144→      </Dialog>
+  1145→  1145→    </div>
+  1146→  1146→  );
+  1147→  1147→}
