@@ -1,0 +1,1032 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import React, { useState, useEffect, useCallback } from 'react';
+     4→     4→import {
+     5→     5→  Building2, MapPin, ArrowLeft, ChevronLeft, ChevronRight,
+     6→     6→  X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
+     7→     7→  CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
+     8→     8→  Loader2, ZoomIn, Share2, Copy, Check, User, Send, AlertCircle,
+     9→     9→} from 'lucide-react';
+    10→    10→
+    11→    11→/* ================================================================
+    12→    12→   Types
+    13→    13→   ================================================================ */
+    14→    14→interface EnterpriseImage {
+    15→    15→  id: string;
+    16→    16→  url: string;
+    17→    17→  altText: string | null;
+    18→    18→  sortOrder: number;
+    19→    19→}
+    20→    20→
+    21→    21→interface FormField {
+    22→    22→  id: string;
+    23→    23→  label: string;
+    24→    24→  fieldType: string;
+    25→    25→  placeholder: string | null;
+    26→    26→  options: string | null;
+    27→    27→  required: boolean;
+    28→    28→  sortOrder: number;
+    29→    29→}
+    30→    30→
+    31→    31→interface ExtractedInfo {
+    32→    32→  location: {
+    33→    33→    address: string | null;
+    34→    34→    neighborhood: string | null;
+    35→    35→    city: string | null;
+    36→    36→    state: string | null;
+    37→    37→    region: string | null;
+    38→    38→    additionalInfo: string | null;
+    39→    39→  };
+    40→    40→  builder: string | null;
+    41→    41→  architecture: string | null;
+    42→    42→  landscaping: string | null;
+    43→    43→  differentials: string[];
+    44→    44→  apartmentTypes: Array<{
+    45→    45→    name: string;
+    46→    46→    area: string | null;
+    47→    47→    bedrooms: string | null;
+    48→    48→    description: string | null;
+    49→    49→  }>;
+    50→    50→  summary: string | null;
+    51→    51→}
+    52→    52→
+    53→    53→interface Enterprise {
+    54→    54→  id: string;
+    55→    55→  name: string;
+    56→    56→  slug: string | null;
+    57→    57→  region: string | null;
+    58→    58→  imageUrl: string | null;
+    59→    59→  landingTitle: string | null;
+    60→    60→  landingSubtitle: string | null;
+    61→    61→  landingDescription: string | null;
+    62→    62→  cachedInfo: ExtractedInfo | null;
+    63→    63→  images: EnterpriseImage[];
+    64→    64→  formFields: FormField[];
+    65→    65→}
+    66→    66→
+    67→    67→/* ================================================================
+    68→    68→   Page
+    69→    69→   ================================================================ */
+    70→    70→export default function LandingPage({ params }: { params: Promise<{ slug: string }> }) {
+    71→    71→  const [slug, setSlug] = useState<string | null>(null);
+    72→    72→  const [enterprise, setEnterprise] = useState<Enterprise | null>(null);
+    73→    73→  const [loading, setLoading] = useState(true);
+    74→    74→  const [error, setError] = useState<string | null>(null);
+    75→    75→  const [activeImgIdx, setActiveImgIdx] = useState(0);
+    76→    76→  const [lightboxOpen, setLightboxOpen] = useState(false);
+    77→    77→  const [copiedLink, setCopiedLink] = useState(false);
+    78→    78→  const [scrolled, setScrolled] = useState(false);
+    79→    79→  const [queueUser, setQueueUser] = useState<{ userId: string; userName: string; userPhone: string | null } | null>(null);
+    80→    80→
+    81→    81→  // Form state
+    82→    82→  const [formName, setFormName] = useState('');
+    83→    83→  const [formPhone, setFormPhone] = useState('');
+    84→    84→  const [formEmail, setFormEmail] = useState('');
+    85→    85→  const [formSubmitting, setFormSubmitting] = useState(false);
+    86→    86→  const [formError, setFormError] = useState('');
+    87→    87→  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+    88→    88→
+    89→    89→  useEffect(() => {
+    90→    90→    params.then((p) => setSlug(p.slug));
+    91→    91→  }, [params]);
+    92→    92→
+    93→    93→  const fetchEnterprise = useCallback(async () => {
+    94→    94→    if (!slug) return;
+    95→    95→    try {
+    96→    96→      const res = await fetch(`/api/enterprises/public/${slug}`);
+    97→    97→      if (res.ok) {
+    98→    98→        const data = await res.json();
+    99→    99→        setEnterprise(data);
+   100→   100→        // Dynamic browser title
+   101→   101→        document.title = `${data.landingTitle || data.name} | Empreendimentos`;
+   102→   102→      } else {
+   103→   103→        setError('Empreendimento não encontrado.');
+   104→   104→      }
+   105→   105→    } catch {
+   106→   106→      setError('Erro de conexão.');
+   107→   107→    } finally {
+   108→   108→      setLoading(false);
+   109→   109→    }
+   110→   110→  }, [slug]);
+   111→   111→
+   112→   112→  useEffect(() => { fetchEnterprise(); }, [fetchEnterprise]);
+   113→   113→
+   114→   114→  useEffect(() => {
+   115→   115→    const onScroll = () => setScrolled(window.scrollY > 60);
+   116→   116→    window.addEventListener('scroll', onScroll, { passive: true });
+   117→   117→    return () => window.removeEventListener('scroll', onScroll);
+   118→   118→  }, []);
+   119→   119→
+   120→   120→  // Fetch queue user for dynamic WhatsApp
+   121→   121→  useEffect(() => {
+   122→   122→    if (!slug) return;
+   123→   123→    fetch(`/api/lead-queues/next-user?slug=${encodeURIComponent(slug)}`)
+   124→   124→      .then((r) => r.json())
+   125→   125→      .then((data) => {
+   126→   126→        if (data.hasQueue && data.userPhone) {
+   127→   127→          setQueueUser({ userId: data.userId, userName: data.userName, userPhone: data.userPhone });
+   128→   128→        }
+   129→   129→      })
+   130→   130→      .catch(() => { /* silent — fallback to generic WhatsApp */ });
+   131→   131→  }, [slug]);
+   132→   132→
+   133→   133→  const whatsappNumber = queueUser?.userPhone
+   134→   134→    ? queueUser.userPhone.replace(/\D/g, '')
+   135→   135→    : null;
+   136→   136→  const whatsappUrl = whatsappNumber
+   137→   137→    ? `https://wa.me/${whatsappNumber.startsWith('55') ? whatsappNumber : '55' + whatsappNumber}?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`
+   138→   138→    : `https://wa.me/?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`;
+   139→   139→
+   140→   140→  const handleCopyLink = async () => {
+   141→   141→    try {
+   142→   142→      await navigator.clipboard.writeText(window.location.href);
+   143→   143→      setCopiedLink(true);
+   144→   144→      setTimeout(() => setCopiedLink(false), 2000);
+   145→   145→    } catch { /* silent */ }
+   146→   146→  };
+   147→   147→
+   148→   148→  /* ── Form handler ─────────────────────────────────────── */
+   149→   149→  const handleFormSubmit = async (ev: React.FormEvent) => {
+   150→   150→    ev.preventDefault();
+   151→   151→    setFormError('');
+   152→   152→
+   153→   153→    if (!formName.trim() || formName.trim().length < 2) {
+   154→   154→      setFormError('Informe seu nome completo.');
+   155→   155→      return;
+   156→   156→    }
+   157→   157→    const cleanPhone = formPhone.replace(/\D/g, '');
+   158→   158→    if (cleanPhone.length < 10) {
+   159→   159→      setFormError('Informe um telefone válido com DDD.');
+   160→   160→      return;
+   161→   161→    }
+   162→   162→    const cleanEmail = formEmail.trim().toLowerCase();
+   163→   163→    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+   164→   164→      setFormError('Informe um e-mail válido.');
+   165→   165→      return;
+   166→   166→    }
+   167→   167→
+   168→   168→    // Validate required custom fields
+   169→   169→    if (enterprise?.formFields) {
+   170→   170→      for (const field of enterprise.formFields) {
+   171→   171→        if (field.required && field.fieldType !== 'checkbox') {
+   172→   172→          const val = customAnswers[field.id];
+   173→   173→          if (!val || val.trim() === '') {
+   174→   174→            setFormError(`O campo "${field.label}" é obrigatório.`);
+   175→   175→            return;
+   176→   176→          }
+   177→   177→        }
+   178→   178→      }
+   179→   179→    }
+   180→   180→
+   181→   181→    setFormSubmitting(true);
+   182→   182→    try {
+   183→   183→      // Build clean custom answers (label -> value)
+   184→   184→      const answersData: Record<string, string> = {};
+   185→   185→      if (enterprise?.formFields) {
+   186→   186→        for (const field of enterprise.formFields) {
+   187→   187→          const val = customAnswers[field.id];
+   188→   188→          if (val !== undefined && val !== null && String(val).trim() !== '') {
+   189→   189→            answersData[field.label] = String(val).trim();
+   190→   190→          }
+   191→   191→        }
+   192→   192→      }
+   193→   193→
+   194→   194→      const res = await fetch('/api/enterprises/public-lead', {
+   195→   195→        method: 'POST',
+   196→   196→        headers: { 'Content-Type': 'application/json' },
+   197→   197→        body: JSON.stringify({
+   198→   198→          name: formName.trim(),
+   199→   199→          phone: cleanPhone,
+   200→   200→          email: cleanEmail,
+   201→   201→          slug: slug || undefined,
+   202→   202→          customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined,
+   203→   203→        }),
+   204→   204→      });
+   205→   205→
+   206→   206→      const data = await res.json();
+   207→   207→
+   208→   208→      if (res.ok && data.success) {
+   209→   209→        // Track pixel event
+   210→   210→        if (typeof window !== 'undefined' && window.CRMPIXEL) {
+   211→   211→          window.CRMPIXEL.track('lead_form_submit', { enterprise: enterprise?.name });
+   212→   212→        }
+   213→   213→
+   214→   214→        // Redirect to success page
+   215→   215→        const params = new URLSearchParams();
+   216→   216→        params.set('empreendimento', enterprise?.name || '');
+   217→   217→        params.set('nome', formName.trim());
+   218→   218→        if (data.assignedUser?.userName) params.set('atendente', data.assignedUser.userName);
+   219→   219→        if (data.assignedUser?.userPhone) params.set('telefone', data.assignedUser.userPhone);
+   220→   220→
+   221→   221→        window.location.href = `/empreendimentos/${slug}/cadastro-sucesso?${params.toString()}`;
+   222→   222→      } else {
+   223→   223→        setFormError(data.error || 'Erro ao enviar. Tente novamente.');
+   224→   224→      }
+   225→   225→    } catch {
+   226→   226→      setFormError('Erro de conexão. Verifique sua internet e tente novamente.');
+   227→   227→    } finally {
+   228→   228→      setFormSubmitting(false);
+   229→   229→    }
+   230→   230→  };
+   231→   231→
+   232→   232→  /* ─── Phone mask ──────────────────────────────────────── */
+   233→   233→  const handlePhoneChange = (value: string) => {
+   234→   234→    const digits = value.replace(/\D/g, '').slice(0, 11);
+   235→   235→    let masked = '';
+   236→   236→    if (digits.length > 0) masked += `(${digits.slice(0, 2)}`;
+   237→   237→    if (digits.length > 2) masked += `) ${digits.slice(2, 7)}`;
+   238→   238→    if (digits.length > 7) masked += `-${digits.slice(7)}`;
+   239→   239→    setFormPhone(masked);
+   240→   240→  };
+   241→   241→
+   242→   242→  /* ─── Loading ─────────────────────────────────────────── */
+   243→   243→  if (loading) {
+   244→   244→    return (
+   245→   245→      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
+   246→   246→        <Loader2 className="h-8 w-8 text-[#C9A96E] animate-spin" />
+   247→   247→      </div>
+   248→   248→    );
+   249→   249→  }
+   250→   250→
+   251→   251→  /* ─── Error ───────────────────────────────────────────── */
+   252→   252→  if (error || !enterprise) {
+   253→   253→    return (
+   254→   254→      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center p-4">
+   255→   255→        <div className="text-center max-w-md">
+   256→   256→          <Building2 className="h-16 w-16 text-white/10 mx-auto mb-6" />
+   257→   257→          <h1 className="text-2xl font-bold text-white mb-2">Não encontrado</h1>
+   258→   258→          <p className="text-white/40 mb-8">{error || 'Este empreendimento não existe ou foi removido.'}</p>
+   259→   259→          <a
+   260→   260→            href="/empreendimentos"
+   261→   261→            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-sm hover:bg-[#D4B87E] transition-colors"
+   262→   262→          >
+   263→   263→            <ArrowLeft className="h-4 w-4" />
+   264→   264→            Ver todos os empreendimentos
+   265→   265→          </a>
+   266→   266→        </div>
+   267→   267→      </div>
+   268→   268→    );
+   269→   269→  }
+   270→   270→
+   271→   271→  /* ─── Derived ─────────────────────────────────────────── */
+   272→   272→  const e = enterprise;
+   273→   273→  const images = e.images.length > 0 ? e.images : [];
+   274→   274→  const heroImage = e.imageUrl || images[0]?.url || null;
+   275→   275→  const info = e.cachedInfo;
+   276→   276→
+   277→   277→  const hasInfo = info && (
+   278→   278→    info.location?.address || info.location?.neighborhood || info.location?.city ||
+   279→   279→    info.builder || info.architecture || info.landscaping ||
+   280→   280→    (info.differentials && info.differentials.length > 0) ||
+   281→   281→    (info.apartmentTypes && info.apartmentTypes.length > 0) || info.summary
+   282→   282→  );
+   283→   283→
+   284→   284→  const allText = [info?.summary, ...(info?.differentials || [])].filter(Boolean).join(' ');
+   285→   285→  let status: string | null = null;
+   286→   286→  if (/entregue|pronto para morar|habite-se/i.test(allText)) status = 'Entregue';
+   287→   287→  else if (/em construção|construção/i.test(allText)) status = 'Em Construção';
+   288→   288→  else if (/lançamento|pré-lançamento/i.test(allText)) status = 'Lançamento';
+   289→   289→
+   290→   290→  const priceMatch = info?.summary?.match(/a partir de\s*R\$\s*[\d.]+/i) ||
+   291→   291→    info?.apartmentTypes?.[0]?.description?.match(/a partir de\s*R\$\s*[\d.]+/i);
+   292→   292→  const deliveryMatch = allText.match(/entrega.*?(\d{1,2}\/[\d]{4}|outubro \d{4}|dezembro \d{4})/i);
+   293→   293→
+   294→   294→  const goNext = () => setActiveImgIdx((p) => (p + 1) % Math.max(images.length, 1));
+   295→   295→  const goPrev = () => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1));
+   296→   296→
+   297→   297→  const displayTitle = e.landingTitle || e.name;
+   298→   298→  const displaySubtitle = e.landingSubtitle || info?.summary?.slice(0, 120) || null;
+   299→   299→
+   300→   300→  /* ================================================================
+   301→   301→     Render
+   302→   302→     ================================================================ */
+   303→   303→  return (
+   304→   304→    <div className="min-h-screen bg-[#0A0A0A] text-white overflow-x-hidden">
+   305→   305→      {/* ── Navigation ─────────────────────────────────── */}
+   306→   306→      <nav
+   307→   307→        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
+   308→   308→          scrolled
+   309→   309→            ? 'bg-[#0A0A0A]/90 backdrop-blur-xl border-b border-white/[0.06] shadow-2xl'
+   310→   310→            : 'bg-transparent'
+   311→   311→        }`}
+   312→   312→      >
+   313→   313→        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-20 flex items-center justify-between">
+   314→   314→          <a href="/empreendimentos" className="flex items-center gap-3 group">
+   315→   315→            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/20 group-hover:shadow-[#C9A96E]/40 transition-shadow">
+   316→   316→              <Building2 className="h-4 w-4 text-white" />
+   317→   317→            </div>
+   318→   318→            <span className="text-base font-bold tracking-tight hidden sm:block">Empreendimentos</span>
+   319→   319→          </a>
+   320→   320→
+   321→   321→          <div className="flex items-center gap-3">
+   322→   322→            <button
+   323→   323→              onClick={handleCopyLink}
+   324→   324→              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+   325→   325→            >
+   326→   326→              {copiedLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+   327→   327→              <span className="hidden sm:inline">{copiedLink ? 'Copiado!' : 'Compartilhar'}</span>
+   328→   328→            </button>
+   329→   329→            <a
+   330→   330→              href="#cadastro"
+   331→   331→              className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-semibold hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20"
+   332→   332→            >
+   333→   333→              Cadastre-se
+   334→   334→            </a>
+   335→   335→          </div>
+   336→   336→        </div>
+   337→   337→      </nav>
+   338→   338→
+   339→   339→      {/* ── Hero Section ───────────────────────────────── */}
+   340→   340→      <section className="relative min-h-[75dvh] sm:min-h-[100dvh] flex items-end">
+   341→   341→        {/* Background image */}
+   342→   342→        {heroImage && (
+   343→   343→          <div className="absolute inset-0">
+   344→   344→            <img
+   345→   345→              src={heroImage}
+   346→   346→              alt={e.name}
+   347→   347→              className="w-full h-full object-cover"
+   348→   348→            />
+   349→   349→            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/50 to-[#0A0A0A]/20" />
+   350→   350→            <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/30 to-transparent" />
+   351→   351→          </div>
+   352→   352→        )}
+   353→   353→
+   354→   354→        {/* Decorative gold line */}
+   355→   355→        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-32 bg-gradient-to-b from-[#C9A96E]/40 to-transparent" />
+   356→   356→
+   357→   357→        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pb-10 sm:pb-24 pt-24 sm:pt-32 w-full">
+   358→   358→          {/* Breadcrumb */}
+   359→   359→          <a
+   360→   360→            href="/empreendimentos"
+   361→   361→            className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-[#C9A96E] transition-colors mb-4 sm:mb-6 group"
+   362→   362→          >
+   363→   363→            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+   364→   364→            Empreendimentos
+   365→   365→          </a>
+   366→   366→
+   367→   367→          {/* Status + Region badges */}
+   368→   368→          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
+   369→   369→            {status && (
+   370→   370→              <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border backdrop-blur-sm ${
+   371→   371→                status === 'Entregue' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+   372→   372→                status === 'Em Construção' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
+   373→   373→                'bg-blue-500/20 text-blue-300 border-blue-500/30'
+   374→   374→              }`}>
+   375→   375→                <CheckCircle2 className="h-3 w-3" />
+   376→   376→                {status}
+   377→   377→              </span>
+   378→   378→            )}
+   379→   379→            {priceMatch && (
+   380→   380→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+   381→   381→                <DollarSign className="h-3 w-3" />
+   382→   382→                {priceMatch[0]}
+   383→   383→              </span>
+   384→   384→            )}
+   385→   385→            {deliveryMatch && (
+   386→   386→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25">
+   387→   387→                <Clock className="h-3 w-3" />
+   388→   388→                Previsão: {deliveryMatch[1]}
+   389→   389→              </span>
+   390→   390→            )}
+   391→   391→            {e.region && (
+   392→   392→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white/70 border border-white/10">
+   393→   393→                <MapPin className="h-3 w-3" />
+   394→   394→                {e.region}
+   395→   395→              </span>
+   396→   396→            )}
+   397→   397→          </div>
+   398→   398→
+   399→   399→          {/* Title */}
+   400→   400→          <h1 className="text-3xl sm:text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1] max-w-4xl">
+   401→   401→            {displayTitle}
+   402→   402→          </h1>
+   403→   403→
+   404→   404→          {/* Subtitle */}
+   405→   405→          {displaySubtitle && (
+   406→   406→            <p className="mt-3 sm:mt-6 text-base sm:text-xl text-white/60 max-w-2xl leading-relaxed">
+   407→   407→              {displaySubtitle}
+   408→   408→            </p>
+   409→   409→          )}
+   410→   410→        </div>
+   411→   411→
+   412→   412→        {/* Scroll indicator */}
+   413→   413→        <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce hidden sm:flex">
+   414→   414→          <span className="text-[10px] text-white/30 uppercase tracking-widest">Scroll</span>
+   415→   415→          <div className="w-px h-8 bg-gradient-to-b from-white/30 to-transparent" />
+   416→   416→        </div>
+   417→   417→      </section>
+   418→   418→
+   419→   419→      {/* ── Gallery Section ────────────────────────────── */}
+   420→   420→      {images.length > 0 && (
+   421→   421→        <section id="galeria" className="py-12 sm:py-28 border-t border-white/[0.04]">
+   422→   422→          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   423→   423→            <div className="flex items-center justify-between mb-6 sm:mb-10">
+   424→   424→              <div>
+   425→   425→                <h2 className="text-2xl sm:text-3xl font-bold">Galeria</h2>
+   426→   426→                <p className="text-sm text-white/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''} disponíve{images.length !== 1 ? 'is' : 'l'}</p>
+   427→   427→              </div>
+   428→   428→              {images.length > 1 && (
+   429→   429→                <div className="flex items-center gap-2">
+   430→   430→                  <button onClick={goPrev} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+   431→   431→                    <ChevronLeft className="h-5 w-5" />
+   432→   432→                  </button>
+   433→   433→                  <button onClick={goNext} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+   434→   434→                    <ChevronRight className="h-5 w-5" />
+   435→   435→                  </button>
+   436→   436→                </div>
+   437→   437→              )}
+   438→   438→            </div>
+   439→   439→
+   440→   440→            {/* Main image */}
+   441→   441→            <div
+   442→   442→              className="relative aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
+   443→   443→              onClick={() => setLightboxOpen(true)}
+   444→   444→            >
+   445→   445→              <img
+   446→   446→                src={images[activeImgIdx]?.url || heroImage || ''}
+   447→   447→                alt={images[activeImgIdx]?.altText || e.name}
+   448→   448→                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+   449→   449→              />
+   450→   450→              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+   451→   451→              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+   452→   452→                <div className="bg-black/50 backdrop-blur-sm rounded-full p-4">
+   453→   453→                  <ZoomIn className="h-6 w-6 text-white" />
+   454→   454→                </div>
+   455→   455→              </div>
+   456→   456→              {images.length > 1 && (
+   457→   457→                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full">
+   458→   458→                  {activeImgIdx + 1} / {images.length}
+   459→   459→                </div>
+   460→   460→              )}
+   461→   461→            </div>
+   462→   462→
+   463→   463→            {/* Thumbnails */}
+   464→   464→            {images.length > 1 && (
+   465→   465→              <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
+   466→   466→                {images.map((img, idx) => (
+   467→   467→                  <button
+   468→   468→                    key={img.id}
+   469→   469→                    onClick={() => setActiveImgIdx(idx)}
+   470→   470→                    className={`flex-shrink-0 w-20 h-14 sm:w-28 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${
+   471→   471→                      idx === activeImgIdx
+   472→   472→                        ? 'border-[#C9A96E] ring-2 ring-[#C9A96E]/20'
+   473→   473→                        : 'border-transparent opacity-50 hover:opacity-80'
+   474→   474→                    }`}
+   475→   475→                  >
+   476→   476→                    <img src={img.url} alt={img.altText || ''} className="w-full h-full object-cover" />
+   477→   477→                  </button>
+   478→   478→                ))}
+   479→   479→              </div>
+   480→   480→            )}
+   481→   481→          </div>
+   482→   482→        </section>
+   483→   483→      )}
+   484→   484→
+   485→   485→      {/* ── Details Section ────────────────────────────── */}
+   486→   486→      {hasInfo && info! && (
+   487→   487→        <section className="py-12 sm:py-28 border-t border-white/[0.04]">
+   488→   488→          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   489→   489→            {/* Section header */}
+   490→   490→            <div className="flex items-center gap-4 mb-8 sm:mb-12">
+   491→   491→              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+   492→   492→              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight whitespace-nowrap">Detalhes do Empreendimento</h2>
+   493→   493→              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+   494→   494→            </div>
+   495→   495→
+   496→   496→            {/* Summary — Sobre o Empreendimento */}
+   497→   497→            {info.summary && (
+   498→   498→              <div className="mb-8 sm:mb-12">
+   499→   499→                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.08] via-[#C9A96E]/[0.03] to-transparent border border-[#C9A96E]/15 p-6 sm:p-8 lg:p-10">
+   500→   500→                  <div className="absolute top-0 right-0 w-48 h-48 bg-[#C9A96E]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+   501→   501→                  <div className="relative">
+   502→   502→                    <div className="flex items-center gap-2.5 mb-4">
+   503→   503→                      <div className="h-1.5 w-8 rounded-full bg-[#C9A96E]" />
+   504→   504→                      <span className="text-xs font-semibold text-[#C9A96E] uppercase tracking-widest">Sobre o empreendimento</span>
+   505→   505→                    </div>
+   506→   506→                    <p className="text-sm sm:text-[15px] text-white/75 leading-[1.8] max-w-4xl">{info.summary}</p>
+   507→   507→                  </div>
+   508→   508→                </div>
+   509→   509→              </div>
+   510→   510→            )}
+   511→   511→
+   512→   512→            {/* Info blocks — stacked, full-width, each with clear visual identity */}
+   513→   513→            <div className="space-y-4 sm:space-y-5">
+   514→   514→
+   515→   515→              {/* Location */}
+   516→   516→              {(info.location.address || info.location.neighborhood || info.location.city) && (
+   517→   517→                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+   518→   518→                  <div className="flex items-stretch">
+   519→   519→                    {/* Icon strip */}
+   520→   520→                    <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-blue-500/15 to-blue-500/5 flex items-center justify-center">
+   521→   521→                      <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
+   522→   522→                        <Navigation className="h-4 w-4 text-blue-400" />
+   523→   523→                      </div>
+   524→   524→                    </div>
+   525→   525→                    {/* Content */}
+   526→   526→                    <div className="flex-1 p-5 sm:p-6">
+   527→   527→                      <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Localização</h3>
+   528→   528→                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+   529→   529→                        {info.location.address && (
+   530→   530→                          <div>
+   531→   531→                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Endereço</p>
+   532→   532→                            <p className="text-sm text-white/70 leading-relaxed">{info.location.address}</p>
+   533→   533→                          </div>
+   534→   534→                        )}
+   535→   535→                        {(info.location.neighborhood || info.location.city) && (
+   536→   536→                          <div>
+   537→   537→                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Região</p>
+   538→   538→                            <p className="text-sm text-white/70 leading-relaxed">
+   539→   539→                              {[info.location.neighborhood, info.location.city, info.location.state].filter(Boolean).join(', ')}
+   540→   540→                            </p>
+   541→   541→                          </div>
+   542→   542→                        )}
+   543→   543→                        {info.location.additionalInfo && (
+   544→   544→                          <div className="sm:col-span-2">
+   545→   545→                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Referências</p>
+   546→   546→                            <p className="text-sm text-white/50 leading-relaxed">{info.location.additionalInfo}</p>
+   547→   547→                          </div>
+   548→   548→                        )}
+   549→   549→                      </div>
+   550→   550→                    </div>
+   551→   551→                  </div>
+   552→   552→                </div>
+   553→   553→              )}
+   554→   554→
+   555→   555→              {/* Builder */}
+   556→   556→              {info.builder && (
+   557→   557→                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+   558→   558→                  <div className="flex items-stretch">
+   559→   559→                    <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-orange-500/15 to-orange-500/5 flex items-center justify-center">
+   560→   560→                      <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
+   561→   561→                        <HardHat className="h-4 w-4 text-orange-400" />
+   562→   562→                      </div>
+   563→   563→                    </div>
+   564→   564→                    <div className="flex-1 p-5 sm:p-6">
+   565→   565→                      <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Construtora</h3>
+   566→   566→                      <p className="text-sm sm:text-[15px] text-white/70 leading-relaxed max-w-3xl">{info.builder}</p>
+   567→   567→                    </div>
+   568→   568→                  </div>
+   569→   569→                </div>
+   570→   570→              )}
+   571→   571→
+   572→   572→              {/* Architecture / Landscaping */}
+   573→   573→              {(info.architecture || info.landscaping) && (
+   574→   574→                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+   575→   575→                  <div className="flex items-stretch">
+   576→   576→                    <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-violet-500/15 to-violet-500/5 flex items-center justify-center">
+   577→   577→                      <div className="h-9 w-9 rounded-xl bg-violet-500/20 flex items-center justify-center">
+   578→   578→                        <Palette className="h-4 w-4 text-violet-400" />
+   579→   579→                      </div>
+   580→   580→                    </div>
+   581→   581→                    <div className="flex-1 p-5 sm:p-6">
+   582→   582→                      <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Projeto</h3>
+   583→   583→                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+   584→   584→                        {info.architecture && (
+   585→   585→                          <div>
+   586→   586→                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Arquitetura</p>
+   587→   587→                            <p className="text-sm text-white/70 leading-relaxed">{info.architecture}</p>
+   588→   588→                          </div>
+   589→   589→                        )}
+   590→   590→                        {info.landscaping && (
+   591→   591→                          <div>
+   592→   592→                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Paisagismo</p>
+   593→   593→                            <p className="text-sm text-white/70 leading-relaxed">{info.landscaping}</p>
+   594→   594→                          </div>
+   595→   595→                        )}
+   596→   596→                      </div>
+   597→   597→                    </div>
+   598→   598→                  </div>
+   599→   599→                </div>
+   600→   600→              )}
+   601→   601→            </div>
+   602→   602→
+   603→   603→            {/* Apartment Types */}
+   604→   604→            {info.apartmentTypes && info.apartmentTypes.length > 0 && (
+   605→   605→              <div className="mt-10 sm:mt-14">
+   606→   606→                <div className="flex items-center gap-3 mb-6 sm:mb-8">
+   607→   607→                  <div className="h-9 w-9 rounded-xl bg-emerald-500/15 flex items-center justify-center">
+   608→   608→                    <Building2 className="h-4 w-4 text-emerald-400" />
+   609→   609→                  </div>
+   610→   610→                  <h3 className="text-lg sm:text-xl font-semibold">Tipos de Unidades</h3>
+   611→   611→                  <span className="text-xs text-white/25 font-medium ml-auto">{info.apartmentTypes.length} tipo{info.apartmentTypes.length !== 1 ? 's' : ''} disponíve{info.apartmentTypes.length !== 1 ? 'is' : 'l'}</span>
+   612→   612→                </div>
+   613→   613→                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   614→   614→                  {info.apartmentTypes.map((apt, idx) => {
+   615→   615→                    const priceInDesc = apt.description?.match(/R\$[\d.,]+/);
+   616→   616→                    return (
+   617→   617→                      <div
+   618→   618→                        key={idx}
+   619→   619→                        className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-emerald-500/20 hover:bg-white/[0.03] transition-all duration-300 overflow-hidden"
+   620→   620→                      >
+   621→   621→                        {/* Top accent bar */}
+   622→   622→                        <div className="h-0.5 bg-gradient-to-r from-emerald-500/40 to-transparent" />
+   623→   623→                        <div className="p-5 sm:p-6">
+   624→   624→                          <div className="flex items-start justify-between gap-3 mb-4">
+   625→   625→                            <h4 className="text-sm font-semibold text-white/90 leading-tight">{apt.name}</h4>
+   626→   626→                            {priceInDesc && (
+   627→   627→                              <span className="text-xs font-bold text-[#C9A96E] whitespace-nowrap flex-shrink-0 bg-[#C9A96E]/10 px-2.5 py-1 rounded-lg">
+   628→   628→                                {priceInDesc[0]}
+   629→   629→                              </span>
+   630→   630→                            )}
+   631→   631→                          </div>
+   632→   632→                          <div className="flex items-center gap-5 text-xs text-white/50 mb-2">
+   633→   633→                            {apt.area && (
+   634→   634→                              <span className="flex items-center gap-1.5">
+   635→   635→                                <Ruler className="h-3.5 w-3.5 text-white/30" />{apt.area}
+   636→   636→                              </span>
+   637→   637→                            )}
+   638→   638→                            {apt.bedrooms && (
+   639→   639→                              <span className="flex items-center gap-1.5">
+   640→   640→                                <BedDouble className="h-3.5 w-3.5 text-white/30" />{apt.bedrooms}
+   641→   641→                              </span>
+   642→   642→                            )}
+   643→   643→                          </div>
+   644→   644→                          {apt.description && (
+   645→   645→                            <p className="text-xs text-white/40 mt-3 leading-relaxed">{apt.description}</p>
+   646→   646→                          )}
+   647→   647→                        </div>
+   648→   648→                      </div>
+   649→   649→                    );
+   650→   650→                  })}
+   651→   651→                </div>
+   652→   652→              </div>
+   653→   653→            )}
+   654→   654→
+   655→   655→            {/* Differentials */}
+   656→   656→            {info.differentials && info.differentials.length > 0 && (
+   657→   657→              <div className="mt-10 sm:mt-14">
+   658→   658→                <div className="flex items-center gap-3 mb-6 sm:mb-8">
+   659→   659→                  <div className="h-9 w-9 rounded-xl bg-[#C9A96E]/15 flex items-center justify-center">
+   660→   660→                    <Sparkles className="h-4 w-4 text-[#C9A96E]" />
+   661→   661→                  </div>
+   662→   662→                  <h3 className="text-lg sm:text-xl font-semibold">Diferenciais</h3>
+   663→   663→                </div>
+   664→   664→                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   665→   665→                  {info.differentials.map((d, i) => (
+   666→   666→                    <div
+   667→   667→                      key={i}
+   668→   668→                      className="flex items-center gap-3 px-4 sm:px-5 py-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:border-[#C9A96E]/20 transition-colors"
+   669→   669→                    >
+   670→   670→                      <CheckCircle2 className="h-4 w-4 text-[#C9A96E] flex-shrink-0" />
+   671→   671→                      <span className="text-sm text-white/70">{d}</span>
+   672→   672→                    </div>
+   673→   673→                  ))}
+   674→   674→                </div>
+   675→   675→              </div>
+   676→   676→            )}
+   677→   677→          </div>
+   678→   678→        </section>
+   679→   679→      )}
+   680→   680→
+   681→   681→      {/* ── Fallback: Landing Description ──────────────── */}
+   682→   682→      {!hasInfo && e.landingDescription && (
+   683→   683→        <section className="py-12 sm:py-28 border-t border-white/[0.04]">
+   684→   684→          <div className="max-w-3xl mx-auto px-4 sm:px-6">
+   685→   685→            {e.landingTitle && (
+   686→   686→              <h2 className="text-2xl sm:text-3xl font-bold mb-4">{e.landingTitle}</h2>
+   687→   687→            )}
+   688→   688→            {e.landingSubtitle && (
+   689→   689→              <p className="text-lg text-[#C9A96E] mb-6">{e.landingSubtitle}</p>
+   690→   690→            )}
+   691→   691→            <p className="text-base text-white/60 leading-relaxed whitespace-pre-wrap">
+   692→   692→              {e.landingDescription}
+   693→   693→            </p>
+   694→   694→          </div>
+   695→   695→        </section>
+   696→   696→      )}
+   697→   697→
+   698→   698→      {/* ── Registration Form Section ───────────────────── */}
+   699→   699→      <section id="cadastro" className="py-12 sm:py-28 border-t border-white/[0.04]">
+   700→   700→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   701→   701→          <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-start">
+   702→   702→            {/* Left side — CTA text */}
+   703→   703→            <div className="order-2 lg:order-1">
+   704→   704→              <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-2xl bg-[#C9A96E]/20 flex items-center justify-center mb-4 sm:mb-6">
+   705→   705→                <MessageSquare className="h-5 w-5 sm:h-7 sm:w-7 text-[#C9A96E]" />
+   706→   706→              </div>
+   707→   707→              <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">
+   708→   708→                Interessado em <span className="text-[#C9A96E]">{e.name}</span>?
+   709→   709→              </h2>
+   710→   710→              <p className="text-white/50 max-w-lg text-sm sm:text-base leading-relaxed mb-6 sm:mb-8">
+   711→   711→                Preencha o formulário ao lado e receba atendimento personalizado sobre este empreendimento. Nossa equipe entrará em contato com você em breve para agendar uma visita ou tirar todas as suas dúvidas.
+   712→   712→              </p>
+   713→   713→
+   714→   714→              {/* Quick WhatsApp */}
+   715→   715→              <a
+   716→   716→                href={whatsappUrl}
+   717→   717→                target="_blank"
+   718→   718→                rel="noopener noreferrer"
+   719→   719→                onClick={() => {
+   720→   720→                  if (typeof window !== 'undefined' && window.CRMPIXEL) {
+   721→   721→                    window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
+   722→   722→                  }
+   723→   723→                }}
+   724→   724→                className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
+   725→   725→              >
+   726→   726→                <Phone className="h-4 w-4" />
+   727→   727→                Prefere o WhatsApp? Fale agora
+   728→   728→              </a>
+   729→   729→            </div>
+   730→   730→
+   731→   731→            {/* Right side — Form */}
+   732→   732→            <div className="relative order-1 lg:order-2">
+   733→   733→              <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/10 via-transparent to-[#C9A96E]/5 rounded-3xl blur-xl" />
+   734→   734→              <form
+   735→   735→                onSubmit={handleFormSubmit}
+   736→   736→                className="relative z-10 rounded-2xl bg-white/[0.03] border border-white/[0.08] p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
+   737→   737→              >
+   738→   738→                <div className="mb-2">
+   739→   739→                  <h3 className="text-xl font-bold">Cadastro</h3>
+   740→   740→                  <p className="text-sm text-white/40 mt-1">Preencha seus dados para receber atendimento</p>
+   741→   741→                </div>
+   742→   742→
+   743→   743→                {/* Error */}
+   744→   744→                {formError && (
+   745→   745→                  <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+   746→   746→                    <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+   747→   747→                    <p className="text-sm text-red-300">{formError}</p>
+   748→   748→                  </div>
+   749→   749→                )}
+   750→   750→
+   751→   751→                {/* Name */}
+   752→   752→                <div>
+   753→   753→                  <label htmlFor="form-name" className="block text-sm font-medium text-white/70 mb-2">
+   754→   754→                    Nome Completo <span className="text-red-400">*</span>
+   755→   755→                  </label>
+   756→   756→                  <div className="relative">
+   757→   757→                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+   758→   758→                    <input
+   759→   759→                      id="form-name"
+   760→   760→                      type="text"
+   761→   761→                      value={formName}
+   762→   762→                      onChange={(ev) => setFormName(ev.target.value)}
+   763→   763→                      placeholder="Seu nome completo"
+   764→   764→                      required
+   765→   765→                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+   766→   766→                    />
+   767→   767→                  </div>
+   768→   768→                </div>
+   769→   769→
+   770→   770→                {/* Phone */}
+   771→   771→                <div>
+   772→   772→                  <label htmlFor="form-phone" className="block text-sm font-medium text-white/70 mb-2">
+   773→   773→                    Telefone <span className="text-red-400">*</span>
+   774→   774→                  </label>
+   775→   775→                  <div className="relative">
+   776→   776→                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+   777→   777→                    <input
+   778→   778→                      id="form-phone"
+   779→   779→                      type="tel"
+   780→   780→                      value={formPhone}
+   781→   781→                      onChange={(ev) => handlePhoneChange(ev.target.value)}
+   782→   782→                      placeholder="(11) 99999-9999"
+   783→   783→                      required
+   784→   784→                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+   785→   785→                    />
+   786→   786→                  </div>
+   787→   787→                </div>
+   788→   788→
+   789→   789→                {/* Email */}
+   790→   790→                <div>
+   791→   791→                  <label htmlFor="form-email" className="block text-sm font-medium text-white/70 mb-2">
+   792→   792→                    E-mail <span className="text-red-400">*</span>
+   793→   793→                  </label>
+   794→   794→                  <div className="relative">
+   795→   795→                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+   796→   796→                    <input
+   797→   797→                      id="form-email"
+   798→   798→                      type="email"
+   799→   799→                      value={formEmail}
+   800→   800→                      onChange={(ev) => setFormEmail(ev.target.value)}
+   801→   801→                      placeholder="seuemail@exemplo.com"
+   802→   802→                      required
+   803→   803→                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+   804→   804→                    />
+   805→   805→                  </div>
+   806→   806→                </div>
+   807→   807→
+   808→   808→                {/* Dynamic custom fields */}
+   809→   809→                {e.formFields && e.formFields.length > 0 && (
+   810→   810→                  <div className="space-y-4 pt-2">
+   811→   811→                    <div className="h-px bg-white/[0.06]" />
+   812→   812→                    {e.formFields.map((field) => {
+   813→   813→                      const val = customAnswers[field.id] || '';
+   814→   814→                      const parsedOptions = field.options ? (() => { try { return JSON.parse(field.options); } catch { return []; } })() : [];
+   815→   815→
+   816→   816→                      return (
+   817→   817→                        <div key={field.id}>
+   818→   818→                          <label htmlFor={`field-${field.id}`} className="block text-sm font-medium text-white/70 mb-2">
+   819→   819→                            {field.label}
+   820→   820→                            {field.required && <span className="text-red-400"> *</span>}
+   821→   821→                          </label>
+   822→   822→
+   823→   823→                          {field.fieldType === 'text' && (
+   824→   824→                            <input
+   825→   825→                              id={`field-${field.id}`}
+   826→   826→                              type="text"
+   827→   827→                              value={val}
+   828→   828→                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+   829→   829→                              placeholder={field.placeholder || undefined}
+   830→   830→                              required={field.required}
+   831→   831→                              className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+   832→   832→                            />
+   833→   833→                          )}
+   834→   834→
+   835→   835→                          {field.fieldType === 'number' && (
+   836→   836→                            <input
+   837→   837→                              id={`field-${field.id}`}
+   838→   838→                              type="number"
+   839→   839→                              value={val}
+   840→   840→                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+   841→   841→                              placeholder={field.placeholder || undefined}
+   842→   842→                              required={field.required}
+   843→   843→                              className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+   844→   844→                            />
+   845→   845→                          )}
+   846→   846→
+   847→   847→                          {field.fieldType === 'textarea' && (
+   848→   848→                            <textarea
+   849→   849→                              id={`field-${field.id}`}
+   850→   850→                              value={val}
+   851→   851→                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+   852→   852→                              placeholder={field.placeholder || undefined}
+   853→   853→                              required={field.required}
+   854→   854→                              rows={3}
+   855→   855→                              className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all resize-none"
+   856→   856→                            />
+   857→   857→                          )}
+   858→   858→
+   859→   859→                          {field.fieldType === 'select' && parsedOptions.length > 0 && (
+   860→   860→                            <select
+   861→   861→                              id={`field-${field.id}`}
+   862→   862→                              value={val}
+   863→   863→                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+   864→   864→                              required={field.required}
+   865→   865→                              className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all appearance-none cursor-pointer"
+   866→   866→                              style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+   867→   867→                            >
+   868→   868→                              <option value="" disabled className="bg-[#1a1a1a]">{field.placeholder || 'Selecione uma opção...'}</option>
+   869→   869→                              {parsedOptions.map((opt: string, i: number) => (
+   870→   870→                                <option key={i} value={opt} className="bg-[#1a1a1a]">{opt}</option>
+   871→   871→                              ))}
+   872→   872→                            </select>
+   873→   873→                          )}
+   874→   874→
+   875→   875→                          {field.fieldType === 'checkbox' && (
+   876→   876→                            <label htmlFor={`field-${field.id}`} className="flex items-center gap-3 cursor-pointer group py-1">
+   877→   877→                              <input
+   878→   878→                                id={`field-${field.id}`}
+   879→   879→                                type="checkbox"
+   880→   880→                                checked={val === 'Sim'}
+   881→   881→                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.checked ? 'Sim' : 'Não' }))}
+   882→   882→                                className="h-4 w-4 rounded border-white/20 bg-white/[0.04] text-[#C9A96E] focus:ring-[#C9A96E]/20 cursor-pointer accent-[#C9A96E]"
+   883→   883→                              />
+   884→   884→                              <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">
+   885→   885→                                {field.placeholder || field.label}
+   886→   886→                              </span>
+   887→   887→                            </label>
+   888→   888→                          )}
+   889→   889→                        </div>
+   890→   890→                      );
+   891→   891→                    })}
+   892→   892→                  </div>
+   893→   893→                )}
+   894→   894→
+   895→   895→                {/* Submit */}
+   896→   896→                <button
+   897→   897→                  type="submit"
+   898→   898→                  disabled={formSubmitting}
+   899→   899→                  className="w-full flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-base hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+   900→   900→                >
+   901→   901→                  {formSubmitting ? (
+   902→   902→                    <>
+   903→   903→                      <Loader2 className="h-5 w-5 animate-spin" />
+   904→   904→                      Enviando...
+   905→   905→                    </>
+   906→   906→                  ) : (
+   907→   907→                    <>
+   908→   908→                      <Send className="h-4 w-4" />
+   909→   909→                      Cadastrar e Receber Atendimento
+   910→   910→                    </>
+   911→   911→                  )}
+   912→   912→                </button>
+   913→   913→
+   914→   914→                <p className="text-xs text-white/25 text-center">
+   915→   915→                  Ao se cadastrar, você concorda em receber informações sobre este empreendimento.
+   916→   916→                </p>
+   917→   917→              </form>
+   918→   918→            </div>
+   919→   919→          </div>
+   920→   920→        </div>
+   921→   921→      </section>
+   922→   922→
+   923→   923→      {/* ── Footer ─────────────────────────────────────── */}
+   924→   924→      <footer className="border-t border-white/[0.06]">
+   925→   925→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   926→   926→          {/* Top row */}
+   927→   927→          <div className="py-8 sm:py-12 grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-10">
+   928→   928→            {/* Brand */}
+   929→   929→            <div>
+   930→   930→              <a href="/empreendimentos" className="flex items-center gap-3 mb-4 group">
+   931→   931→                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/15">
+   932→   932→                  <Building2 className="h-5 w-5 text-white" />
+   933→   933→                </div>
+   934→   934→                <span className="text-base font-bold tracking-tight">Empreendimentos</span>
+   935→   935→              </a>
+   936→   936→              <p className="text-sm text-white/30 leading-relaxed max-w-xs">
+   937→   937→                Encontre o imóvel ideal para você e sua família. Qualidade, confiança e atendimento personalizado.
+   938→   938→              </p>
+   939→   939→            </div>
+   940→   940→
+   941→   941→            {/* Quick links */}
+   942→   942→            <div>
+   943→   943→              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Navegação</h4>
+   944→   944→              <ul className="space-y-2.5">
+   945→   945→                <li>
+   946→   946→                  <a href="/empreendimentos" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+   947→   947→                    Todos os Empreendimentos
+   948→   948→                  </a>
+   949→   949→                </li>
+   950→   950→                <li>
+   951→   951→                  <a href="#galeria" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+   952→   952→                    Galeria
+   953→   953→                  </a>
+   954→   954→                </li>
+   955→   955→                <li>
+   956→   956→                  <a href="#cadastro" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+   957→   957→                    Cadastre-se
+   958→   958→                  </a>
+   959→   959→                </li>
+   960→   960→              </ul>
+   961→   961→            </div>
+   962→   962→
+   963→   963→            {/* Contact */}
+   964→   964→            <div>
+   965→   965→              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Contato</h4>
+   966→   966→              <div className="space-y-3">
+   967→   967→                <a
+   968→   968→                  href={whatsappUrl}
+   969→   969→                  target="_blank"
+   970→   970→                  rel="noopener noreferrer"
+   971→   971→                  className="flex items-center gap-2.5 text-sm text-white/30 hover:text-[#C9A96E] transition-colors"
+   972→   972→                >
+   973→   973→                  <div className="h-8 w-8 rounded-lg bg-[#25D366]/10 flex items-center justify-center flex-shrink-0">
+   974→   974→                    <Phone className="h-3.5 w-3.5 text-[#25D366]" />
+   975→   975→                  </div>
+   976→   976→                  WhatsApp
+   977→   977→                </a>
+   978→   978→              </div>
+   979→   979→            </div>
+   980→   980→          </div>
+   981→   981→
+   982→   982→          {/* Bottom bar */}
+   983→   983→          <div className="border-t border-white/[0.04] py-5 sm:py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+   984→   984→            <p className="text-xs text-white/20">
+   985→   985→              &copy; {new Date().getFullYear()} Todos os direitos reservados.
+   986→   986→            </p>
+   987→   987→            <p className="text-xs text-white/15">
+   988→   988→              Todos os valores e informações são sujeitos a alteração sem aviso prévio.
+   989→   989→            </p>
+   990→   990→          </div>
+   991→   991→        </div>
+   992→   992→      </footer>
+   993→   993→
+   994→   994→      {/* ── Lightbox ───────────────────────────────────── */}
+   995→   995→      {lightboxOpen && (
+   996→   996→        <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-2 sm:p-0" onClick={() => setLightboxOpen(false)}>
+   997→   997→          <button
+   998→   998→            onClick={() => setLightboxOpen(false)}
+   999→   999→            className="absolute top-3 right-3 sm:top-5 sm:right-5 text-white/60 hover:text-white z-10 bg-white/10 backdrop-blur-sm rounded-full p-2 sm:p-2.5 transition-colors"
+  1000→  1000→          >
+  1001→  1001→            <X className="h-6 w-6" />
+  1002→  1002→          </button>
+  1003→  1003→          <div className="absolute top-3 left-3 sm:top-5 sm:left-5 text-white/60 text-xs sm:text-sm bg-white/10 backdrop-blur-sm px-3 py-1.5 sm:px-4 sm:py-2 rounded-full">
+  1004→  1004→            {activeImgIdx + 1} / {images.length}
+  1005→  1005→          </div>
+  1006→  1006→          <img
+  1007→  1007→            src={images[activeImgIdx]?.url}
+  1008→  1008→            alt={images[activeImgIdx]?.altText || ''}
+  1009→  1009→            className="max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] sm:max-h-[85vh] object-contain rounded-xl"
+  1010→  1010→            onClick={(ev) => ev.stopPropagation()}
+  1011→  1011→          />
+  1012→  1012→          {images.length > 1 && (
+  1013→  1013→            <>
+  1014→  1014→              <button
+  1015→  1015→                onClick={(ev) => { ev.stopPropagation(); goPrev(); }}
+  1016→  1016→                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"
+  1017→  1017→              >
+  1018→  1018→                <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
+  1019→  1019→              </button>
+  1020→  1020→              <button
+  1021→  1021→                onClick={(ev) => { ev.stopPropagation(); goNext(); }}
+  1022→  1022→                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"
+  1023→  1023→              >
+  1024→  1024→                <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
+  1025→  1025→              </button>
+  1026→  1026→            </>
+  1027→  1027→          )}
+  1028→  1028→        </div>
+  1029→  1029→      )}
+  1030→  1030→    </div>
+  1031→  1031→  );
+  1032→  1032→}

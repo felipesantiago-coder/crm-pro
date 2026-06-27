@@ -1,0 +1,502 @@
+     1→     1→     1→'use client';
+     2→     2→     2→
+     3→     3→     3→import React, { useState, useEffect, useCallback } from 'react';
+     4→     4→     4→import {
+     5→     5→     5→  Building2, MapPin, ArrowLeft, ChevronLeft, ChevronRight,
+     6→     6→     6→  X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
+     7→     7→     7→  CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
+     8→     8→     8→  Loader2, ZoomIn, Share2, Copy, Check, User, Send, AlertCircle,
+     9→     9→     9→} from 'lucide-react';
+    10→    10→    10→
+    11→    11→    11→/* ================================================================
+    12→    12→    12→   Types
+    13→    13→    13→   ================================================================ */
+    14→    14→    14→interface EnterpriseImage {
+    15→    15→    15→  id: string;
+    16→    16→    16→  url: string;
+    17→    17→    17→  altText: string | null;
+    18→    18→    18→  sortOrder: number;
+    19→    19→    19→}
+    20→    20→    20→
+    21→    21→    21→interface FormField {
+    22→    22→    22→  id: string;
+    23→    23→    23→  label: string;
+    24→    24→    24→  fieldType: string;
+    25→    25→    25→  placeholder: string | null;
+    26→    26→    26→  options: string | null;
+    27→    27→    27→  required: boolean;
+    28→    28→    28→  sortOrder: number;
+    29→    29→    29→}
+    30→    30→    30→
+    31→    31→    31→interface ExtractedInfo {
+    32→    32→    32→  location: {
+    33→    33→    33→    address: string | null;
+    34→    34→    34→    neighborhood: string | null;
+    35→    35→    35→    city: string | null;
+    36→    36→    36→    state: string | null;
+    37→    37→    37→    region: string | null;
+    38→    38→    38→    additionalInfo: string | null;
+    39→    39→    39→  };
+    40→    40→    40→  builder: string | null;
+    41→    41→    41→  architecture: string | null;
+    42→    42→    42→  landscaping: string | null;
+    43→    43→    43→  differentials: string[];
+    44→    44→    44→  apartmentTypes: Array<{
+    45→    45→    45→    name: string;
+    46→    46→    46→    area: string | null;
+    47→    47→    47→    bedrooms: string | null;
+    48→    48→    48→    description: string | null;
+    49→    49→    49→  }>;
+    50→    50→    50→  summary: string | null;
+    51→    51→    51→}
+    52→    52→    52→
+    53→    53→    53→interface Enterprise {
+    54→    54→    54→  id: string;
+    55→    55→    55→  name: string;
+    56→    56→    56→  slug: string | null;
+    57→    57→    57→  region: string | null;
+    58→    58→    58→  imageUrl: string | null;
+    59→    59→    59→  landingTitle: string | null;
+    60→    60→    60→  landingSubtitle: string | null;
+    61→    61→    61→  landingDescription: string | null;
+    62→    62→    62→  cachedInfo: ExtractedInfo | null;
+    63→    63→    63→  images: EnterpriseImage[];
+    64→    64→    64→  formFields: FormField[];
+    65→    65→    65→}
+    66→    66→    66→
+    67→    67→    67→/* ================================================================
+    68→    68→    68→   Page
+    69→    69→    69→   ================================================================ */
+    70→    70→    70→export default function LandingPage({ params }: { params: Promise<{ slug: string }> }) {
+    71→    71→    71→  const [slug, setSlug] = useState<string | null>(null);
+    72→    72→    72→  const [enterprise, setEnterprise] = useState<Enterprise | null>(null);
+    73→    73→    73→  const [loading, setLoading] = useState(true);
+    74→    74→    74→  const [error, setError] = useState<string | null>(null);
+    75→    75→    75→  const [activeImgIdx, setActiveImgIdx] = useState(0);
+    76→    76→    76→  const [lightboxOpen, setLightboxOpen] = useState(false);
+    77→    77→    77→  const [copiedLink, setCopiedLink] = useState(false);
+    78→    78→    78→  const [scrolled, setScrolled] = useState(false);
+    79→    79→    79→  const [queueUser, setQueueUser] = useState<{ userId: string; userName: string; userPhone: string | null } | null>(null);
+    80→    80→    80→
+    81→    81→    81→  // Form state
+    82→    82→    82→  const [formName, setFormName] = useState('');
+    83→    83→    83→  const [formPhone, setFormPhone] = useState('');
+    84→    84→    84→  const [formEmail, setFormEmail] = useState('');
+    85→    85→    85→  const [formSubmitting, setFormSubmitting] = useState(false);
+    86→    86→    86→  const [formError, setFormError] = useState('');
+    87→    87→    87→  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+    88→    88→    88→
+    89→    89→    89→  useEffect(() => {
+    90→    90→    90→    params.then((p) => setSlug(p.slug));
+    91→    91→    91→  }, [params]);
+    92→    92→    92→
+    93→    93→    93→  const fetchEnterprise = useCallback(async () => {
+    94→    94→    94→    if (!slug) return;
+    95→    95→    95→    try {
+    96→    96→    96→      const res = await fetch(`/api/enterprises/public/${slug}`);
+    97→    97→    97→      if (res.ok) {
+    98→    98→    98→        const data = await res.json();
+    99→    99→    99→        setEnterprise(data);
+   100→   100→   100→        // Dynamic browser title
+   101→   101→   101→        document.title = `${data.landingTitle || data.name} | Empreendimentos`;
+   102→   102→   102→      } else {
+   103→   103→   103→        setError('Empreendimento não encontrado.');
+   104→   104→   104→      }
+   105→   105→   105→    } catch {
+   106→   106→   106→      setError('Erro de conexão.');
+   107→   107→   107→    } finally {
+   108→   108→   108→      setLoading(false);
+   109→   109→   109→    }
+   110→   110→   110→  }, [slug]);
+   111→   111→   111→
+   112→   112→   112→  useEffect(() => { fetchEnterprise(); }, [fetchEnterprise]);
+   113→   113→   113→
+   114→   114→   114→  useEffect(() => {
+   115→   115→   115→    const onScroll = () => setScrolled(window.scrollY > 60);
+   116→   116→   116→    window.addEventListener('scroll', onScroll, { passive: true });
+   117→   117→   117→    return () => window.removeEventListener('scroll', onScroll);
+   118→   118→   118→  }, []);
+   119→   119→   119→
+   120→   120→   120→  // Fetch queue user for dynamic WhatsApp
+   121→   121→   121→  useEffect(() => {
+   122→   122→   122→    if (!slug) return;
+   123→   123→   123→    fetch(`/api/lead-queues/next-user?slug=${encodeURIComponent(slug)}`)
+   124→   124→   124→      .then((r) => r.json())
+   125→   125→   125→      .then((data) => {
+   126→   126→   126→        if (data.hasQueue && data.userPhone) {
+   127→   127→   127→          setQueueUser({ userId: data.userId, userName: data.userName, userPhone: data.userPhone });
+   128→   128→   128→        }
+   129→   129→   129→      })
+   130→   130→   130→      .catch(() => { /* silent — fallback to generic WhatsApp */ });
+   131→   131→   131→  }, [slug]);
+   132→   132→   132→
+   133→   133→   133→  const whatsappNumber = queueUser?.userPhone
+   134→   134→   134→    ? queueUser.userPhone.replace(/\D/g, '')
+   135→   135→   135→    : null;
+   136→   136→   136→  const whatsappUrl = whatsappNumber
+   137→   137→   137→    ? `https://wa.me/${whatsappNumber.startsWith('55') ? whatsappNumber : '55' + whatsappNumber}?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`
+   138→   138→   138→    : `https://wa.me/?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`;
+   139→   139→   139→
+   140→   140→   140→  const handleCopyLink = async () => {
+   141→   141→   141→    try {
+   142→   142→   142→      await navigator.clipboard.writeText(window.location.href);
+   143→   143→   143→      setCopiedLink(true);
+   144→   144→   144→      setTimeout(() => setCopiedLink(false), 2000);
+   145→   145→   145→    } catch { /* silent */ }
+   146→   146→   146→  };
+   147→   147→   147→
+   148→   148→   148→  /* ── Form handler ─────────────────────────────────────── */
+   149→   149→   149→  const handleFormSubmit = async (ev: React.FormEvent) => {
+   150→   150→   150→    ev.preventDefault();
+   151→   151→   151→    setFormError('');
+   152→   152→   152→
+   153→   153→   153→    if (!formName.trim() || formName.trim().length < 2) {
+   154→   154→   154→      setFormError('Informe seu nome completo.');
+   155→   155→   155→      return;
+   156→   156→   156→    }
+   157→   157→   157→    const cleanPhone = formPhone.replace(/\D/g, '');
+   158→   158→   158→    if (cleanPhone.length < 10) {
+   159→   159→   159→      setFormError('Informe um telefone válido com DDD.');
+   160→   160→   160→      return;
+   161→   161→   161→    }
+   162→   162→   162→    const cleanEmail = formEmail.trim().toLowerCase();
+   163→   163→   163→    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+   164→   164→   164→      setFormError('Informe um e-mail válido.');
+   165→   165→   165→      return;
+   166→   166→   166→    }
+   167→   167→   167→
+   168→   168→   168→    // Validate required custom fields
+   169→   169→   169→    if (enterprise?.formFields) {
+   170→   170→   170→      for (const field of enterprise.formFields) {
+   171→   171→   171→        if (field.required && field.fieldType !== 'checkbox') {
+   172→   172→   172→          const val = customAnswers[field.id];
+   173→   173→   173→          if (!val || val.trim() === '') {
+   174→   174→   174→            setFormError(`O campo "${field.label}" é obrigatório.`);
+   175→   175→   175→            return;
+   176→   176→   176→          }
+   177→   177→   177→        }
+   178→   178→   178→      }
+   179→   179→   179→    }
+   180→   180→   180→
+   181→   181→   181→    setFormSubmitting(true);
+   182→   182→   182→    try {
+   183→   183→   183→      // Build clean custom answers (label -> value)
+   184→   184→   184→      const answersData: Record<string, string> = {};
+   185→   185→   185→      if (enterprise?.formFields) {
+   186→   186→   186→        for (const field of enterprise.formFields) {
+   187→   187→   187→          const val = customAnswers[field.id];
+   188→   188→   188→          if (val !== undefined && val !== null && String(val).trim() !== '') {
+   189→   189→   189→            answersData[field.label] = String(val).trim();
+   190→   190→   190→          }
+   191→   191→   191→        }
+   192→   192→   192→      }
+   193→   193→   193→
+   194→   194→   194→      const res = await fetch('/api/enterprises/public-lead', {
+   195→   195→   195→        method: 'POST',
+   196→   196→   196→        headers: { 'Content-Type': 'application/json' },
+   197→   197→   197→        body: JSON.stringify({
+   198→   198→   198→          name: formName.trim(),
+   199→   199→   199→          phone: cleanPhone,
+   200→   200→   200→          email: cleanEmail,
+   201→   201→   201→          slug: slug || undefined,
+   202→   202→   202→          customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined,
+   203→   203→   203→        }),
+   204→   204→   204→      });
+   205→   205→   205→
+   206→   206→   206→      const data = await res.json();
+   207→   207→   207→
+   208→   208→   208→      if (res.ok && data.success) {
+   209→   209→   209→        // Track pixel event
+   210→   210→   210→        if (typeof window !== 'undefined' && window.CRMPIXEL) {
+   211→   211→   211→          window.CRMPIXEL.track('lead_form_submit', { enterprise: enterprise?.name });
+   212→   212→   212→        }
+   213→   213→   213→
+   214→   214→   214→        // Redirect to success page
+   215→   215→   215→        const params = new URLSearchParams();
+   216→   216→   216→        params.set('empreendimento', enterprise?.name || '');
+   217→   217→   217→        params.set('nome', formName.trim());
+   218→   218→   218→        if (data.assignedUser?.userName) params.set('atendente', data.assignedUser.userName);
+   219→   219→   219→        if (data.assignedUser?.userPhone) params.set('telefone', data.assignedUser.userPhone);
+   220→   220→   220→
+   221→   221→   221→        window.location.href = `/empreendimentos/${slug}/cadastro-sucesso?${params.toString()}`;
+   222→   222→   222→      } else {
+   223→   223→   223→        setFormError(data.error || 'Erro ao enviar. Tente novamente.');
+   224→   224→   224→      }
+   225→   225→   225→    } catch {
+   226→   226→   226→      setFormError('Erro de conexão. Verifique sua internet e tente novamente.');
+   227→   227→   227→    } finally {
+   228→   228→   228→      setFormSubmitting(false);
+   229→   229→   229→    }
+   230→   230→   230→  };
+   231→   231→   231→
+   232→   232→   232→  /* ─── Phone mask ──────────────────────────────────────── */
+   233→   233→   233→  const handlePhoneChange = (value: string) => {
+   234→   234→   234→    const digits = value.replace(/\D/g, '').slice(0, 11);
+   235→   235→   235→    let masked = '';
+   236→   236→   236→    if (digits.length > 0) masked += `(${digits.slice(0, 2)}`;
+   237→   237→   237→    if (digits.length > 2) masked += `) ${digits.slice(2, 7)}`;
+   238→   238→   238→    if (digits.length > 7) masked += `-${digits.slice(7)}`;
+   239→   239→   239→    setFormPhone(masked);
+   240→   240→   240→  };
+   241→   241→   241→
+   242→   242→   242→  /* ─── Loading ─────────────────────────────────────────── */
+   243→   243→   243→  if (loading) {
+   244→   244→   244→    return (
+   245→   245→   245→      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
+   246→   246→   246→        <Loader2 className="h-8 w-8 text-[#C9A96E] animate-spin" />
+   247→   247→   247→      </div>
+   248→   248→   248→    );
+   249→   249→   249→  }
+   250→   250→   250→
+   251→   251→   251→  /* ─── Error ───────────────────────────────────────────── */
+   252→   252→   252→  if (error || !enterprise) {
+   253→   253→   253→    return (
+   254→   254→   254→      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center p-4">
+   255→   255→   255→        <div className="text-center max-w-md">
+   256→   256→   256→          <Building2 className="h-16 w-16 text-white/10 mx-auto mb-6" />
+   257→   257→   257→          <h1 className="text-2xl font-bold text-white mb-2">Não encontrado</h1>
+   258→   258→   258→          <p className="text-white/40 mb-8">{error || 'Este empreendimento não existe ou foi removido.'}</p>
+   259→   259→   259→          <a
+   260→   260→   260→            href="/empreendimentos"
+   261→   261→   261→            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-sm hover:bg-[#D4B87E] transition-colors"
+   262→   262→   262→          >
+   263→   263→   263→            <ArrowLeft className="h-4 w-4" />
+   264→   264→   264→            Ver todos os empreendimentos
+   265→   265→   265→          </a>
+   266→   266→   266→        </div>
+   267→   267→   267→      </div>
+   268→   268→   268→    );
+   269→   269→   269→  }
+   270→   270→   270→
+   271→   271→   271→  /* ─── Derived ─────────────────────────────────────────── */
+   272→   272→   272→  const e = enterprise;
+   273→   273→   273→  const images = e.images.length > 0 ? e.images : [];
+   274→   274→   274→  const heroImage = e.imageUrl || images[0]?.url || null;
+   275→   275→   275→  const info = e.cachedInfo;
+   276→   276→   276→
+   277→   277→   277→  const hasInfo = info && (
+   278→   278→   278→    info.location?.address || info.location?.neighborhood || info.location?.city ||
+   279→   279→   279→    info.builder || info.architecture || info.landscaping ||
+   280→   280→   280→    (info.differentials && info.differentials.length > 0) ||
+   281→   281→   281→    (info.apartmentTypes && info.apartmentTypes.length > 0) || info.summary
+   282→   282→   282→  );
+   283→   283→   283→
+   284→   284→   284→  const allText = [info?.summary, ...(info?.differentials || [])].filter(Boolean).join(' ');
+   285→   285→   285→  let status: string | null = null;
+   286→   286→   286→  if (/entregue|pronto para morar|habite-se/i.test(allText)) status = 'Entregue';
+   287→   287→   287→  else if (/em construção|construção/i.test(allText)) status = 'Em Construção';
+   288→   288→   288→  else if (/lançamento|pré-lançamento/i.test(allText)) status = 'Lançamento';
+   289→   289→   289→
+   290→   290→   290→  const priceMatch = info?.summary?.match(/a partir de\s*R\$\s*[\d.]+/i) ||
+   291→   291→   291→    info?.apartmentTypes?.[0]?.description?.match(/a partir de\s*R\$\s*[\d.]+/i);
+   292→   292→   292→  const deliveryMatch = allText.match(/entrega.*?(\d{1,2}\/[\d]{4}|outubro \d{4}|dezembro \d{4})/i);
+   293→   293→   293→
+   294→   294→   294→  const goNext = () => setActiveImgIdx((p) => (p + 1) % Math.max(images.length, 1));
+   295→   295→   295→  const goPrev = () => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1));
+   296→   296→   296→
+   297→   297→   297→  const displayTitle = e.landingTitle || e.name;
+   298→   298→   298→  const displaySubtitle = e.landingSubtitle || info?.summary?.slice(0, 120) || null;
+   299→   299→   299→
+   300→   300→   300→  /* ================================================================
+   301→   301→   301→     Render
+   302→   302→   302→     ================================================================ */
+   303→   303→   303→  return (
+   304→   304→   304→    <div className="min-h-screen bg-[#0A0A0A] text-white overflow-x-hidden">
+   305→   305→   305→      {/* ── Navigation ─────────────────────────────────── */}
+   306→   306→   306→      <nav
+   307→   307→   307→        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
+   308→   308→   308→          scrolled
+   309→   309→   309→            ? 'bg-[#0A0A0A]/90 backdrop-blur-xl border-b border-white/[0.06] shadow-2xl'
+   310→   310→   310→            : 'bg-transparent'
+   311→   311→   311→        }`}
+   312→   312→   312→      >
+   313→   313→   313→        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-20 flex items-center justify-between">
+   314→   314→   314→          <a href="/empreendimentos" className="flex items-center gap-3 group">
+   315→   315→   315→            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/20 group-hover:shadow-[#C9A96E]/40 transition-shadow">
+   316→   316→   316→              <Building2 className="h-4 w-4 text-white" />
+   317→   317→   317→            </div>
+   318→   318→   318→            <span className="text-base font-bold tracking-tight hidden sm:block">Empreendimentos</span>
+   319→   319→   319→          </a>
+   320→   320→   320→
+   321→   321→   321→          <div className="flex items-center gap-3">
+   322→   322→   322→            <button
+   323→   323→   323→              onClick={handleCopyLink}
+   324→   324→   324→              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+   325→   325→   325→            >
+   326→   326→   326→              {copiedLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+   327→   327→   327→              <span className="hidden sm:inline">{copiedLink ? 'Copiado!' : 'Compartilhar'}</span>
+   328→   328→   328→            </button>
+   329→   329→   329→            <a
+   330→   330→   330→              href="#cadastro"
+   331→   331→   331→              className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-semibold hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20"
+   332→   332→   332→            >
+   333→   333→   333→              Cadastre-se
+   334→   334→   334→            </a>
+   335→   335→   335→          </div>
+   336→   336→   336→        </div>
+   337→   337→   337→      </nav>
+   338→   338→   338→
+   339→   339→   339→      {/* ── Hero Section ───────────────────────────────── */}
+   340→   340→   340→      <section className="relative min-h-[75dvh] sm:min-h-[100dvh] flex items-end">
+   341→   341→   341→        {/* Background image */}
+   342→   342→   342→        {heroImage && (
+   343→   343→   343→          <div className="absolute inset-0">
+   344→   344→   344→            <img
+   345→   345→   345→              src={heroImage}
+   346→   346→   346→              alt={e.name}
+   347→   347→   347→              className="w-full h-full object-cover"
+   348→   348→   348→            />
+   349→   349→   349→            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/50 to-[#0A0A0A]/20" />
+   350→   350→   350→            <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/30 to-transparent" />
+   351→   351→   351→          </div>
+   352→   352→   352→        )}
+   353→   353→   353→
+   354→   354→   354→        {/* Decorative gold line */}
+   355→   355→   355→        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-32 bg-gradient-to-b from-[#C9A96E]/40 to-transparent" />
+   356→   356→   356→
+   357→   357→   357→        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pb-10 sm:pb-24 pt-24 sm:pt-32 w-full">
+   358→   358→   358→          {/* Breadcrumb */}
+   359→   359→   359→          <a
+   360→   360→   360→            href="/empreendimentos"
+   361→   361→   361→            className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-[#C9A96E] transition-colors mb-4 sm:mb-6 group"
+   362→   362→   362→          >
+   363→   363→   363→            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+   364→   364→   364→            Empreendimentos
+   365→   365→   365→          </a>
+   366→   366→   366→
+   367→   367→   367→          {/* Status + Region badges */}
+   368→   368→   368→          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
+   369→   369→   369→            {status && (
+   370→   370→   370→              <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border backdrop-blur-sm ${
+   371→   371→   371→                status === 'Entregue' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+   372→   372→   372→                status === 'Em Construção' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
+   373→   373→   373→                'bg-blue-500/20 text-blue-300 border-blue-500/30'
+   374→   374→   374→              }`}>
+   375→   375→   375→                <CheckCircle2 className="h-3 w-3" />
+   376→   376→   376→                {status}
+   377→   377→   377→              </span>
+   378→   378→   378→            )}
+   379→   379→   379→            {priceMatch && (
+   380→   380→   380→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+   381→   381→   381→                <DollarSign className="h-3 w-3" />
+   382→   382→   382→                {priceMatch[0]}
+   383→   383→   383→              </span>
+   384→   384→   384→            )}
+   385→   385→   385→            {deliveryMatch && (
+   386→   386→   386→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25">
+   387→   387→   387→                <Clock className="h-3 w-3" />
+   388→   388→   388→                Previsão: {deliveryMatch[1]}
+   389→   389→   389→              </span>
+   390→   390→   390→            )}
+   391→   391→   391→            {e.region && (
+   392→   392→   392→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white/70 border border-white/10">
+   393→   393→   393→                <MapPin className="h-3 w-3" />
+   394→   394→   394→                {e.region}
+   395→   395→   395→              </span>
+   396→   396→   396→            )}
+   397→   397→   397→          </div>
+   398→   398→   398→
+   399→   399→   399→          {/* Title */}
+   400→   400→   400→          <h1 className="text-3xl sm:text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1] max-w-4xl">
+   401→   401→   401→            {displayTitle}
+   402→   402→   402→          </h1>
+   403→   403→   403→
+   404→   404→   404→          {/* Subtitle */}
+   405→   405→   405→          {displaySubtitle && (
+   406→   406→   406→            <p className="mt-3 sm:mt-6 text-base sm:text-xl text-white/60 max-w-2xl leading-relaxed">
+   407→   407→   407→              {displaySubtitle}
+   408→   408→   408→            </p>
+   409→   409→   409→          )}
+   410→   410→   410→        </div>
+   411→   411→   411→
+   412→   412→   412→        {/* Scroll indicator */}
+   413→   413→   413→        <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce hidden sm:flex">
+   414→   414→   414→          <span className="text-[10px] text-white/30 uppercase tracking-widest">Scroll</span>
+   415→   415→   415→          <div className="w-px h-8 bg-gradient-to-b from-white/30 to-transparent" />
+   416→   416→   416→        </div>
+   417→   417→   417→      </section>
+   418→   418→   418→
+   419→   419→   419→      {/* ── Gallery Section ────────────────────────────── */}
+   420→   420→   420→      {images.length > 0 && (
+   421→   421→   421→        <section id="galeria" className="py-12 sm:py-28 border-t border-white/[0.04]">
+   422→   422→   422→          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   423→   423→   423→            <div className="flex items-center justify-between mb-6 sm:mb-10">
+   424→   424→   424→              <div>
+   425→   425→   425→                <h2 className="text-2xl sm:text-3xl font-bold">Galeria</h2>
+   426→   426→   426→                <p className="text-sm text-white/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''} disponíve{images.length !== 1 ? 'is' : 'l'}</p>
+   427→   427→   427→              </div>
+   428→   428→   428→              {images.length > 1 && (
+   429→   429→   429→                <div className="flex items-center gap-2">
+   430→   430→   430→                  <button onClick={goPrev} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+   431→   431→   431→                    <ChevronLeft className="h-5 w-5" />
+   432→   432→   432→                  </button>
+   433→   433→   433→                  <button onClick={goNext} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+   434→   434→   434→                    <ChevronRight className="h-5 w-5" />
+   435→   435→   435→                  </button>
+   436→   436→   436→                </div>
+   437→   437→   437→              )}
+   438→   438→   438→            </div>
+   439→   439→   439→
+   440→   440→   440→            {/* Main image */}
+   441→   441→   441→            <div
+   442→   442→   442→              className="relative aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
+   443→   443→   443→              onClick={() => setLightboxOpen(true)}
+   444→   444→   444→            >
+   445→   445→   445→              <img
+   446→   446→   446→                src={images[activeImgIdx]?.url || heroImage || ''}
+   447→   447→   447→                alt={images[activeImgIdx]?.altText || e.name}
+   448→   448→   448→                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+   449→   449→   449→              />
+   450→   450→   450→              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+   451→   451→   451→              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+   452→   452→   452→                <div className="bg-black/50 backdrop-blur-sm rounded-full p-4">
+   453→   453→   453→                  <ZoomIn className="h-6 w-6 text-white" />
+   454→   454→   454→                </div>
+   455→   455→   455→              </div>
+   456→   456→   456→              {images.length > 1 && (
+   457→   457→   457→                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full">
+   458→   458→   458→                  {activeImgIdx + 1} / {images.length}
+   459→   459→   459→                </div>
+   460→   460→   460→              )}
+   461→   461→   461→            </div>
+   462→   462→   462→
+   463→   463→   463→            {/* Thumbnails */}
+   464→   464→   464→            {images.length > 1 && (
+   465→   465→   465→              <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
+   466→   466→   466→                {images.map((img, idx) => (
+   467→   467→   467→                  <button
+   468→   468→   468→                    key={img.id}
+   469→   469→   469→                    onClick={() => setActiveImgIdx(idx)}
+   470→   470→   470→                    className={`flex-shrink-0 w-20 h-14 sm:w-28 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${
+   471→   471→   471→                      idx === activeImgIdx
+   472→   472→   472→                        ? 'border-[#C9A96E] ring-2 ring-[#C9A96E]/20'
+   473→   473→   473→                        : 'border-transparent opacity-50 hover:opacity-80'
+   474→   474→   474→                    }`}
+   475→   475→   475→                  >
+   476→   476→   476→                    <img src={img.url} alt={img.altText || ''} className="w-full h-full object-cover" />
+   477→   477→   477→                  </button>
+   478→   478→   478→                ))}
+   479→   479→   479→              </div>
+   480→   480→   480→            )}
+   481→   481→   481→          </div>
+   482→   482→   482→        </section>
+   483→   483→   483→      )}
+   484→   484→   484→
+   485→   485→   485→      {/* ── Details Section ────────────────────────────── */}
+   486→   486→   486→      {hasInfo && info! && (
+   487→   487→   487→        <section className="py-12 sm:py-28 border-t border-white/[0.04]">
+   488→   488→   488→          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   489→   489→   489→            {/* Section header */}
+   490→   490→   490→            <div className="flex items-center gap-4 mb-8 sm:mb-12">
+   491→   491→   491→              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+   492→   492→   492→              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight whitespace-nowrap">Detalhes do Empreendimento</h2>
+   493→   493→   493→              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+   494→   494→   494→            </div>
+   495→   495→   495→
+   496→   496→   496→            {/* Summary — Sobre o Empreendimento */}
+   497→   497→   497→            {info.summary && (
+   498→   498→   498→              <div className="mb-8 sm:mb-12">
+   499→   499→   499→                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.08] via-[#C9A96E]/[0.03] to-transparent border border-[#C9A96E]/15 p-6 sm:p-8 lg:p-10">
+   500→   500→   500→                  <div className="absolute top-0 right-0 w-48 h-48 bg-[#C9A96E]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+
+[showing lines 1-500 of 1032; use offset=501 with limit to continue reading]

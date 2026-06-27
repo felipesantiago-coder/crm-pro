@@ -1,0 +1,940 @@
+     1→'use client';
+     2→
+     3→import React, { useEffect, useState, useCallback } from 'react';
+     4→import {
+     5→  Users,
+     6→  Eye,
+     7→  Zap,
+     8→  Target,
+     9→  TrendingUp,
+    10→  ArrowDownRight,
+    11→  Copy,
+    12→  Check,
+    13→  ChevronDown,
+    14→  ChevronUp,
+    15→  ShieldCheck,
+    16→  ShieldAlert,
+    17→  ShieldX,
+    18→  MousePointerClick,
+    19→  Globe,
+    20→  FileCode,
+    21→  AlertTriangle,
+    22→  BarChart3,
+    23→  Activity,
+    24→  Trophy,
+    25→} from 'lucide-react';
+    26→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    27→import { Button } from '@/components/ui/button';
+    28→import { Badge } from '@/components/ui/badge';
+    29→import {
+    30→  Select,
+    31→  SelectContent,
+    32→  SelectItem,
+    33→  SelectTrigger,
+    34→  SelectValue,
+    35→} from '@/components/ui/select';
+    36→import { toast } from 'sonner';
+    37→import { format, parseISO } from 'date-fns';
+    38→import { ptBR } from 'date-fns/locale';
+    39→import { cn } from '@/lib/utils';
+    40→
+    41→// ============================================================
+    42→// Types
+    43→// ============================================================
+    44→interface TrackingMetrics {
+    45→  totalVisitors: number;
+    46→  totalPageviews: number;
+    47→  totalEvents: number;
+    48→  uniqueLeads: number;
+    49→  conversionRate: number;
+    50→  avgEventsPerVisitor: number;
+    51→  bounceRate: number;
+    52→}
+    53→
+    54→interface ChartPoint {
+    55→  date: string;
+    56→  visitors: number;
+    57→  pageviews: number;
+    58→  leads: number;
+    59→  events: number;
+    60→}
+    61→
+    62→interface FunnelStage {
+    63→  stage: string;
+    64→  count: number;
+    65→  rate: number;
+    66→}
+    67→
+    68→interface CampaignRow {
+    69→  campaign: string;
+    70→  visitors: number;
+    71→  leads: number;
+    72→  conversionRate: number;
+    73→}
+    74→
+    75→interface SourceRow {
+    76→  source: string;
+    77→  visitors: number;
+    78→  leads: number;
+    79→}
+    80→
+    81→interface ContentRow {
+    82→  content: string;
+    83→  visitors: number;
+    84→  leads: number;
+    85→  conversionRate: number;
+    86→}
+    87→
+    88→interface EventTypeRow {
+    89→  eventType: string;
+    90→  count: number;
+    91→}
+    92→
+    93→interface TopPage {
+    94→  url: string;
+    95→  views: number;
+    96→  leads: number;
+    97→}
+    98→
+    99→interface MetaDiscrepancy {
+   100→  pixelLeads: number;
+   101→  crmMetaLeads: number;
+   102→  matchRate: number;
+   103→}
+   104→
+   105→interface TrackingDashboard {
+   106→  metrics: TrackingMetrics;
+   107→  chartData: ChartPoint[];
+   108→  funnel: FunnelStage[];
+   109→  byCampaign: CampaignRow[];
+   110→  bySource: SourceRow[];
+   111→  byContent: ContentRow[];
+   112→  byEventType: EventTypeRow[];
+   113→  topPages: TopPage[];
+   114→  metaDiscrepancy: MetaDiscrepancy;
+   115→}
+   116→
+   117→// ============================================================
+   118→// Helpers
+   119→// ============================================================
+   120→const fmt = new Intl.NumberFormat('pt-BR');
+   121→const fmtPct = (n: number) => `${n.toFixed(1)}%`;
+   122→
+   123→const GOLD = '#C9A96E';
+   124→const GOLD_LIGHT = 'rgba(201, 169, 110, 0.15)';
+   125→const GOLD_MID = 'rgba(201, 169, 110, 0.4)';
+   126→const EMERALD = '#10B981';
+   127→
+   128→const FUNNEL_LABELS: Record<string, string> = {
+   129→  Pageview: 'Pageview',
+   130→  Engagement: 'Engajamento',
+   131→  Lead: 'Lead',
+   132→};
+   133→
+   134→const FUNNEL_GRADIENTS: Record<string, string> = {
+   135→  Pageview: 'from-[#C9A96E] to-[#B8944F]',
+   136→  Engagement: 'from-[#D4A843] to-[#C99530]',
+   137→  Lead: 'from-[#E5A820] to-[#D4941A]',
+   138→};
+   139→
+   140→const PERIOD_OPTIONS = [
+   141→  { value: '7d', label: '7 dias' },
+   142→  { value: '30d', label: '30 dias' },
+   143→  { value: '90d', label: '90 dias' },
+   144→];
+   145→
+   146→// ============================================================
+   147→// Sub-components
+   148→// ============================================================
+   149→function SkeletonCard() {
+   150→  return (
+   151→    <Card>
+   152→      <CardContent className="p-5">
+   153→        <div className="flex items-center justify-between">
+   154→          <div className="space-y-2 flex-1">
+   155→            <div className="h-3 w-24 animate-pulse bg-white/5 rounded" />
+   156→            <div className="h-7 w-16 animate-pulse bg-white/5 rounded" />
+   157→          </div>
+   158→          <div className="h-11 w-11 animate-pulse bg-white/5 rounded-xl" />
+   159→        </div>
+   160→        <div className="mt-3 h-2 w-20 animate-pulse bg-white/5 rounded" />
+   161→      </CardContent>
+   162→    </Card>
+   163→  );
+   164→}
+   165→
+   166→function SkeletonBlock({ className }: { className?: string }) {
+   167→  return <div className={cn('animate-pulse bg-white/5 rounded-xl', className)} />;
+   168→}
+   169→
+   170→function CopyButton({ text, label }: { text: string; label?: string }) {
+   171→  const [copied, setCopied] = useState(false);
+   172→
+   173→  const handleCopy = useCallback(async () => {
+   174→    try {
+   175→      await navigator.clipboard.writeText(text);
+   176→      setCopied(true);
+   177→      toast.success(`${label ?? 'Código'} copiado!`);
+   178→      setTimeout(() => setCopied(false), 2000);
+   179→    } catch {
+   180→      toast.error('Erro ao copiar');
+   181→    }
+   182→  }, [text, label]);
+   183→
+   184→  return (
+   185→    <Button
+   186→      variant="ghost"
+   187→      size="sm"
+   188→      onClick={handleCopy}
+   189→      className="h-7 px-2 text-xs text-[#C9A96E] hover:text-[#C9A96E] hover:bg-[#C9A96E]/10 shrink-0"
+   190→    >
+   191→      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+   192→      <span className="ml-1">{copied ? 'Copiado' : 'Copiar'}</span>
+   193→    </Button>
+   194→  );
+   195→}
+   196→
+   197→function CodeBlock({ code, language }: { code: string; language?: string }) {
+   198→  return (
+   199→    <div className="relative group rounded-lg bg-black/40 border border-white/5 overflow-hidden">
+   200→      <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/5">
+   201→        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+   202→          {language ?? 'code'}
+   203→        </span>
+   204→        <CopyButton text={code} label="Código" />
+   205→      </div>
+   206→      <pre className="p-3 text-xs leading-relaxed text-zinc-300 overflow-x-auto">
+   207→        <code>{code}</code>
+   208→      </pre>
+   209→    </div>
+   210→  );
+   211→}
+   212→
+   213→// ============================================================
+   214→// Main Component
+   215→// ============================================================
+   216→export function TrackingTab() {
+   217→  const [period, setPeriod] = useState('30d');
+   218→  const [data, setData] = useState<TrackingDashboard | null>(null);
+   219→  const [loading, setLoading] = useState(true);
+   220→  const [setupOpen, setSetupOpen] = useState(false);
+   221→
+   222→  const fetchData = useCallback(async (p: string) => {
+   223→    setLoading(true);
+   224→    try {
+   225→      const res = await fetch(`/api/tracking/dashboard?period=${p}`);
+   226→      if (res.ok) {
+   227→        const json = await res.json();
+   228→        setData(json);
+   229→      } else {
+   230→        toast.error('Erro ao carregar dados de tracking');
+   231→      }
+   232→    } catch {
+   233→      toast.error('Erro de conexão ao carregar tracking');
+   234→    } finally {
+   235→      setLoading(false);
+   236→    }
+   237→  }, []);
+   238→
+   239→  useEffect(() => {
+   240→    fetchData(period);
+   241→  }, [period, fetchData]);
+   242→
+   243→  // ── Loading State ──
+   244→  if (loading && !data) {
+   245→    return (
+   246→      <div className="space-y-6" style={{ backgroundColor: '#0A0A0A' }}>
+   247→        <div className="flex items-center justify-between">
+   248→          <div className="h-6 w-48 animate-pulse bg-white/5 rounded" />
+   249→          <div className="h-9 w-32 animate-pulse bg-white/5 rounded" />
+   250→        </div>
+   251→        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+   252→          {Array.from({ length: 6 }).map((_, i) => (
+   253→            <SkeletonCard key={i} />
+   254→          ))}
+   255→        </div>
+   256→        <SkeletonBlock className="h-64" />
+   257→        <SkeletonBlock className="h-56" />
+   258→        <SkeletonBlock className="h-72" />
+   259→      </div>
+   260→    );
+   261→  }
+   262→
+   263→  // ── Empty State ──
+   264→  if (data && data.metrics.totalVisitors === 0) {
+   265→    return (
+   266→      <div className="space-y-6" style={{ backgroundColor: '#0A0A0A' }}>
+   267→        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+   268→          <div />
+   269→          <Select value={period} onValueChange={setPeriod}>
+   270→            <SelectTrigger className="w-32 h-9 text-xs bg-white/5 border-white/10">
+   271→              <SelectValue />
+   272→            </SelectTrigger>
+   273→            <SelectContent>
+   274→              {PERIOD_OPTIONS.map((opt) => (
+   275→                <SelectItem key={opt.value} value={opt.value} className="text-xs">
+   276→                  {opt.label}
+   277→                </SelectItem>
+   278→              ))}
+   279→            </SelectContent>
+   280→          </Select>
+   281→        </div>
+   282→
+   283→        <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+   284→          <CardContent className="py-16 px-6 text-center">
+   285→            <div className="mx-auto mb-4 h-16 w-16 rounded-2xl bg-[#C9A96E]/10 flex items-center justify-center">
+   286→              <MousePointerClick className="h-8 w-8 text-[#C9A96E]" />
+   287→            </div>
+   288→            <h3 className="text-lg font-semibold text-zinc-100 mb-2">
+   289→              Nenhum dado de tracking ainda
+   290→            </h3>
+   291→            <p className="text-sm text-muted-foreground max-w-lg mx-auto mb-6 leading-relaxed">
+   292→              Para começar a rastrear visitantes e conversões do Meta Ads, siga os 3 passos abaixo:
+   293→            </p>
+   294→
+   295→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto text-left">
+   296→              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+   297→                <div className="flex items-center gap-2 mb-2">
+   298→                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#C9A96E]/20 text-xs font-bold text-[#C9A96E]">
+   299→                    1
+   300→                  </span>
+   301→                  <span className="text-sm font-medium text-zinc-200">Migration</span>
+   302→                </div>
+   303→                <p className="text-xs text-muted-foreground leading-relaxed">
+   304→                  Execute a SQL migration para criar as tabelas{' '}
+   305→                  <code className="text-[#C9A96E] bg-[#C9A96E]/10 px-1 py-0.5 rounded text-[11px]">
+   306→                    tracking_visitors
+   307→                  </code>{' '}
+   308→                  e{' '}
+   309→                  <code className="text-[#C9A96E] bg-[#C9A96E]/10 px-1 py-0.5 rounded text-[11px]">
+   310→                    tracking_events
+   311→                  </code>
+   312→                  .
+   313→                </p>
+   314→              </div>
+   315→
+   316→              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+   317→                <div className="flex items-center gap-2 mb-2">
+   318→                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#C9A96E]/20 text-xs font-bold text-[#C9A96E]">
+   319→                    2
+   320→                  </span>
+   321→                  <span className="text-sm font-medium text-zinc-200">Pixel Script</span>
+   322→                </div>
+   323→                <p className="text-xs text-muted-foreground leading-relaxed">
+   324→                  Adicione o script do pixel no{' '}
+   325→                  <code className="text-[#C9A96E] bg-[#C9A96E]/10 px-1 py-0.5 rounded text-[11px]">
+   326→                    &lt;head&gt;
+   327→                  </code>{' '}
+   328→                  da sua landing page.
+   329→                </p>
+   330→              </div>
+   331→
+   332→              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+   333→                <div className="flex items-center gap-2 mb-2">
+   334→                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#C9A96E]/20 text-xs font-bold text-[#C9A96E]">
+   335→                    3
+   336→                  </span>
+   337→                  <span className="text-sm font-medium text-zinc-200">UTM Params</span>
+   338→                </div>
+   339→                <p className="text-xs text-muted-foreground leading-relaxed">
+   340→                  Adicione parâmetros UTM nas URLs dos seus anúncios:{' '}
+   341→                  <code className="text-[#C9A96E] bg-[#C9A96E]/10 px-1 py-0.5 rounded text-[11px]">
+   342→                    utm_source
+   343→                  </code>
+   344→                  ,{' '}
+   345→                  <code className="text-[#C9A96E] bg-[#C9A96E]/10 px-1 py-0.5 rounded text-[11px]">
+   346→                    utm_campaign
+   347→                  </code>
+   348→                  ,{' '}
+   349→                  <code className="text-[#C9A96E] bg-[#C9A96E]/10 px-1 py-0.5 rounded text-[11px]">
+   350→                    utm_content
+   351→                  </code>
+   352→                  .
+   353→                </p>
+   354→              </div>
+   355→            </div>
+   356→          </CardContent>
+   357→        </Card>
+   358→      </div>
+   359→    );
+   360→  }
+   361→
+   362→  if (!data) return null;
+   363→
+   364→  // ── Derived data ──
+   365→  const last14 = data.chartData.slice(-14);
+   366→  const maxVisitors = Math.max(...last14.map((d) => d.visitors), 1);
+   367→  const maxLeads = Math.max(...last14.map((d) => d.leads), 1);
+   368→  const maxChart = Math.max(maxVisitors, maxLeads);
+   369→  const sortedCampaigns = [...data.byCampaign].sort((a, b) => b.leads - a.leads);
+   370→
+   371→  const kpis: {
+   372→    label: string;
+   373→    value: string;
+   374→    icon: React.ReactNode;
+   375→    iconBg: string;
+   376→    subtitle: string;
+   377→  }[] = [
+   378→    {
+   379→      label: 'Visitantes Únicos',
+   380→      value: fmt.format(data.metrics.totalVisitors),
+   381→      icon: <Users className="h-5 w-5 text-white" />,
+   382→      iconBg: 'bg-gradient-to-br from-[#C9A96E] to-[#A8894F]',
+   383→      subtitle: `${fmt.format(data.metrics.avgEventsPerVisitor)} eventos/visitante`,
+   384→    },
+   385→    {
+   386→      label: 'Pageviews',
+   387→      value: fmt.format(data.metrics.totalPageviews),
+   388→      icon: <Eye className="h-5 w-5 text-white" />,
+   389→      iconBg: 'bg-gradient-to-br from-blue-500 to-blue-700',
+   390→      subtitle: `de ${fmt.format(data.metrics.totalVisitors)} visitantes`,
+   391→    },
+   392→    {
+   393→      label: 'Eventos',
+   394→      value: fmt.format(data.metrics.totalEvents),
+   395→      icon: <Zap className="h-5 w-5 text-white" />,
+   396→      iconBg: 'bg-gradient-to-br from-amber-500 to-orange-600',
+   397→      subtitle: `${data.byEventType.length} tipos registrados`,
+   398→    },
+   399→    {
+   400→      label: 'Leads Rastreados',
+   401→      value: fmt.format(data.metrics.uniqueLeads),
+   402→      icon: <Target className="h-5 w-5 text-white" />,
+   403→      iconBg: 'bg-gradient-to-br from-emerald-500 to-teal-600',
+   404→      subtitle: 'visitantes vinculados ao CRM',
+   405→    },
+   406→    {
+   407→      label: 'Taxa de Conversão',
+   408→      value: fmtPct(data.metrics.conversionRate),
+   409→      icon: <TrendingUp className="h-5 w-5 text-white" />,
+   410→      iconBg: 'bg-gradient-to-br from-violet-500 to-purple-700',
+   411→      subtitle: 'visitante → lead',
+   412→    },
+   413→    {
+   414→      label: 'Taxa de Rejeição',
+   415→      value: fmtPct(data.metrics.bounceRate),
+   416→      icon: <ArrowDownRight className="h-5 w-5 text-white" />,
+   417→      iconBg: 'bg-gradient-to-br from-rose-500 to-pink-700',
+   418→      subtitle: 'só 1 pageview, sem interação',
+   419→    },
+   420→  ];
+   421→
+   422→  // ── Main render ──
+   423→  return (
+   424→    <div className="space-y-6" style={{ backgroundColor: '#0A0A0A' }}>
+   425→      {/* ── Header ── */}
+   426→      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+   427→        <div className="flex items-center gap-2">
+   428→          <Activity className="h-5 w-5 text-[#C9A96E]" />
+   429→          <h2 className="text-lg font-semibold text-zinc-100">Tracking de Visitantes</h2>
+   430→        </div>
+   431→        <Select value={period} onValueChange={setPeriod}>
+   432→          <SelectTrigger className="w-32 h-9 text-xs bg-white/5 border-white/10 text-zinc-300">
+   433→            <SelectValue />
+   434→          </SelectTrigger>
+   435→          <SelectContent>
+   436→            {PERIOD_OPTIONS.map((opt) => (
+   437→              <SelectItem key={opt.value} value={opt.value} className="text-xs">
+   438→                {opt.label}
+   439→              </SelectItem>
+   440→            ))}
+   441→          </SelectContent>
+   442→        </Select>
+   443→      </div>
+   444→
+   445→      {/* ── KPI Cards ── */}
+   446→      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+   447→        {kpis.map((kpi) => (
+   448→          <Card
+   449→            key={kpi.label}
+   450→            className="border-white/5 hover:border-[#C9A96E]/20 transition-colors"
+   451→            style={{ backgroundColor: '#0A0A0A' }}
+   452→          >
+   453→            <CardContent className="p-5">
+   454→              <div className="flex items-center justify-between">
+   455→                <div className="space-y-1 flex-1 min-w-0">
+   456→                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+   457→                    {kpi.label}
+   458→                  </p>
+   459→                  <p className="text-2xl font-bold text-zinc-100 tracking-tight">{kpi.value}</p>
+   460→                </div>
+   461→                <div className={cn('h-11 w-11 rounded-xl flex items-center justify-center shrink-0', kpi.iconBg)}>
+   462→                  {kpi.icon}
+   463→                </div>
+   464→              </div>
+   465→              <p className="mt-2 text-[11px] text-muted-foreground truncate">{kpi.subtitle}</p>
+   466→            </CardContent>
+   467→          </Card>
+   468→        ))}
+   469→      </div>
+   470→
+   471→      {/* ── Section 1: Funil de Conversão ── */}
+   472→      <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+   473→        <CardHeader className="pb-3">
+   474→          <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
+   475→            <BarChart3 className="h-4 w-4 text-[#C9A96E]" />
+   476→            Funil de Conversão
+   477→          </CardTitle>
+   478→        </CardHeader>
+   479→        <CardContent className="px-6 pb-6">
+   480→          <div className="flex flex-col items-center gap-1">
+   481→            {data.funnel.map((stage, idx) => {
+   482→              const widthPercent = Math.max(stage.rate, 10);
+   483→              const isFirst = idx === 0;
+   484→
+   485→              return (
+   486→                <React.Fragment key={stage.stage}>
+   487→                  <div className="w-full max-w-2xl">
+   488→                    {/* Label row */}
+   489→                    <div className="flex items-center justify-between mb-1.5">
+   490→                      <div className="flex items-center gap-2">
+   491→                        <span
+   492→                          className={cn(
+   493→                            'h-2.5 w-2.5 rounded-full',
+   494→                            idx === 0 ? 'bg-[#C9A96E]' : idx === 1 ? 'bg-[#D4A843]' : 'bg-[#E5A820]'
+   495→                          )}
+   496→                        />
+   497→                        <span className="text-sm font-medium text-zinc-200">
+   498→                          {FUNNEL_LABELS[stage.stage] ?? stage.stage}
+   499→                        </span>
+   500→                      </div>
+   501→                      <div className="flex items-center gap-2">
+   502→                        {!isFirst && (
+   503→                          <Badge
+   504→                            variant="secondary"
+   505→                            className="h-5 px-1.5 text-[10px] font-medium bg-white/5 text-muted-foreground"
+   506→                          >
+   507→                            {fmtPct(stage.rate)}
+   508→                          </Badge>
+   509→                        )}
+   510→                        <Badge
+   511→                          variant="secondary"
+   512→                          className="h-5 px-2 text-[10px] font-bold"
+   513→                          style={{ backgroundColor: GOLD_LIGHT, color: GOLD }}
+   514→                        >
+   515→                          {fmt.format(stage.count)}
+   516→                        </Badge>
+   517→                      </div>
+   518→                    </div>
+   519→
+   520→                    {/* Funnel bar — centered, tapered */}
+   521→                    <div className="flex justify-center">
+   522→                      <div
+   523→                        className={cn(
+   524→                          'h-10 rounded-lg bg-gradient-to-r transition-all duration-700 ease-out flex items-center justify-center overflow-hidden',
+   525→                          FUNNEL_GRADIENTS[stage.stage] ?? 'from-[#C9A96E] to-[#A8894F]'
+   526→                        )}
+   527→                        style={{ width: `${widthPercent}%`, minWidth: '80px' }}
+   528→                      >
+   529→                        <span className="text-xs font-bold text-black/60 drop-shadow-sm">
+   530→                          {isFirst ? '100%' : fmtPct(stage.rate)}
+   531→                        </span>
+   532→                      </div>
+   533→                    </div>
+   534→                  </div>
+   535→
+   536→                  {/* Arrow between stages */}
+   537→                  {idx < data.funnel.length - 1 && (
+   538→                    <div className="flex justify-center py-0.5">
+   539→                      <svg width="12" height="16" viewBox="0 0 12 16" fill="none" className="text-white/15">
+   540→                        <path d="M6 0L11 6H1L6 0Z" fill="currentColor" />
+   541→                        <path d="M6 16L1 10H11L6 16Z" fill="currentColor" />
+   542→                      </svg>
+   543→                    </div>
+   544→                  )}
+   545→                </React.Fragment>
+   546→              );
+   547→            })}
+   548→          </div>
+   549→
+   550→          {/* Funnel conversion summary */}
+   551→          <div className="mt-5 pt-4 border-t border-white/5 flex flex-wrap items-center justify-center gap-6 text-center">
+   552→            {data.funnel.length >= 3 && (
+   553→              <>
+   554→                <div>
+   555→                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
+   556→                    Pageview → Engajamento
+   557→                  </p>
+   558→                  <p className="text-sm font-bold text-[#C9A96E]">
+   559→                    {fmtPct(data.funnel[1].rate)}
+   560→                  </p>
+   561→                </div>
+   562→                <div className="h-6 w-px bg-white/10" />
+   563→                <div>
+   564→                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
+   565→                    Engajamento → Lead
+   566→                  </p>
+   567→                  <p className="text-sm font-bold text-[#E5A820]">
+   568→                    {data.funnel[1].count > 0
+   569→                      ? fmtPct((data.funnel[2].count / data.funnel[1].count) * 100)
+   570→                      : '0.0%'}
+   571→                  </p>
+   572→                </div>
+   573→                <div className="h-6 w-px bg-white/10" />
+   574→                <div>
+   575→                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
+   576→                    Conversão Total
+   577→                  </p>
+   578→                  <p className="text-sm font-bold text-emerald-400">
+   579→                    {fmtPct(data.metrics.conversionRate)}
+   580→                  </p>
+   581→                </div>
+   582→              </>
+   583→            )}
+   584→          </div>
+   585→        </CardContent>
+   586→      </Card>
+   587→
+   588→      {/* ── Section 2: Tendência Diária (Mini Bar Chart) ── */}
+   589→      {last14.length > 0 && (
+   590→        <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+   591→          <CardHeader className="pb-3">
+   592→            <div className="flex items-center justify-between">
+   593→              <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
+   594→                <TrendingUp className="h-4 w-4 text-[#C9A96E]" />
+   595→                Tendência Diária
+   596→              </CardTitle>
+   597→              <div className="flex items-center gap-3 text-[10px]">
+   598→                <span className="flex items-center gap-1">
+   599→                  <span className="h-2 w-2 rounded-full bg-[#C9A96E]" />
+   600→                  <span className="text-muted-foreground">Visitantes</span>
+   601→                </span>
+   602→                <span className="flex items-center gap-1">
+   603→                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+   604→                  <span className="text-muted-foreground">Leads</span>
+   605→                </span>
+   606→              </div>
+   607→            </div>
+   608→          </CardHeader>
+   609→          <CardContent className="px-6 pb-6">
+   610→            <div className="flex items-end gap-1 sm:gap-1.5" style={{ height: '200px' }}>
+   611→              {last14.map((d) => {
+   612→                const vHeight = maxChart > 0 ? (d.visitors / maxChart) * 100 : 0;
+   613→                const lHeight = maxChart > 0 ? (d.leads / maxChart) * 100 : 0;
+   614→                const dayLabel = (() => {
+   615→                  try {
+   616→                    return format(parseISO(d.date), 'dd MMM', { locale: ptBR });
+   617→                  } catch {
+   618→                    return d.date.slice(5);
+   619→                  }
+   620→                })();
+   621→
+   622→                return (
+   623→                  <div
+   624→                    key={d.date}
+   625→                    className="flex-1 flex flex-col items-center gap-0.5 min-w-0"
+   626→                  >
+   627→                    <div className="flex-1 w-full flex items-end justify-center gap-px">
+   628→                      {/* Visitors bar */}
+   629→                      <div
+   630→                        className="w-[45%] max-w-[14px] rounded-t-sm transition-all duration-500 ease-out"
+   631→                        style={{
+   632→                          height: `${Math.max(vHeight, 1)}%`,
+   633→                          background: `linear-gradient(to top, ${GOLD}, rgba(201,169,110,0.5))`,
+   634→                        }}
+   635→                        title={`${d.visitors} visitantes`}
+   636→                      />
+   637→                      {/* Leads bar */}
+   638→                      <div
+   639→                        className="w-[45%] max-w-[14px] rounded-t-sm transition-all duration-500 ease-out"
+   640→                        style={{
+   641→                          height: `${Math.max(lHeight, 1)}%`,
+   642→                          background: `linear-gradient(to top, ${EMERALD}, rgba(16,185,129,0.4))`,
+   643→                        }}
+   644→                        title={`${d.leads} leads`}
+   645→                      />
+   646→                    </div>
+   647→                    <span className="text-[9px] text-muted-foreground leading-none truncate w-full text-center">
+   648→                      {dayLabel}
+   649→                    </span>
+   650→                  </div>
+   651→                );
+   652→              })}
+   653→            </div>
+   654→          </CardContent>
+   655→        </Card>
+   656→      )}
+   657→
+   658→      {/* ── Section 3: Performance por Campanha ── */}
+   659→      {sortedCampaigns.length > 0 && sortedCampaigns.some((c) => c.campaign !== '(none)') && (
+   660→        <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+   661→          <CardHeader className="pb-3">
+   662→            <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
+   663→              <Trophy className="h-4 w-4 text-[#C9A96E]" />
+   664→              Performance por Campanha
+   665→            </CardTitle>
+   666→          </CardHeader>
+   667→          <CardContent className="px-4 sm:px-6 pb-6">
+   668→            <div className="overflow-x-auto -mx-4 sm:mx-0">
+   669→              <table className="w-full text-sm">
+   670→                <thead>
+   671→                  <tr className="border-b border-white/5">
+   672→                    <th className="text-left py-2 px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+   673→                      Campanha
+   674→                    </th>
+   675→                    <th className="text-right py-2 px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+   676→                      Visitantes
+   677→                    </th>
+   678→                    <th className="text-right py-2 px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+   679→                      Leads
+   680→                    </th>
+   681→                    <th className="text-right py-2 px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+   682→                      Conv.
+   683→                    </th>
+   684→                  </tr>
+   685→                </thead>
+   686→                <tbody>
+   687→                  {sortedCampaigns
+   688→                    .filter((c) => c.campaign !== '(none)')
+   689→                    .slice(0, 10)
+   690→                    .map((row, idx) => (
+   691→                      <tr
+   692→                        key={row.campaign}
+   693→                        className={cn(
+   694→                          'border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors',
+   695→                          idx < 3 && 'bg-[#C9A96E]/[0.03]'
+   696→                        )}
+   697→                      >
+   698→                        <td className="py-2.5 px-3">
+   699→                          <div className="flex items-center gap-2">
+   700→                            {idx < 3 && (
+   701→                              <span
+   702→                                className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold shrink-0"
+   703→                                style={{
+   704→                                  backgroundColor: idx === 0 ? GOLD : idx === 1 ? '#A0A0A0' : '#CD7F32',
+   705→                                  color: '#000',
+   706→                                }}
+   707→                              >
+   708→                                {idx + 1}
+   709→                              </span>
+   710→                            )}
+   711→                            <span className="text-zinc-200 font-medium truncate max-w-[200px]">
+   712→                              {row.campaign}
+   713→                            </span>
+   714→                          </div>
+   715→                        </td>
+   716→                        <td className="py-2.5 px-3 text-right text-zinc-400 tabular-nums">
+   717→                          {fmt.format(row.visitors)}
+   718→                        </td>
+   719→                        <td className="py-2.5 px-3 text-right font-medium text-zinc-100 tabular-nums">
+   720→                          {fmt.format(row.leads)}
+   721→                        </td>
+   722→                        <td className="py-2.5 px-3 text-right tabular-nums">
+   723→                          <Badge
+   724→                            variant="secondary"
+   725→                            className={cn(
+   726→                              'h-5 px-1.5 text-[10px] font-bold',
+   727→                              row.conversionRate >= 5
+   728→                                ? 'bg-emerald-500/10 text-emerald-400'
+   729→                                : row.conversionRate >= 2
+   730→                                  ? 'bg-amber-500/10 text-amber-400'
+   731→                                  : 'bg-white/5 text-muted-foreground'
+   732→                            )}
+   733→                          >
+   734→                            {fmtPct(row.conversionRate)}
+   735→                          </Badge>
+   736→                        </td>
+   737→                      </tr>
+   738→                    ))}
+   739→                </tbody>
+   740→              </table>
+   741→            </div>
+   742→          </CardContent>
+   743→        </Card>
+   744→      )}
+   745→
+   746→      {/* ── Section 4: Discrepância Meta Pixel vs CRM ── */}
+   747→      <Card
+   748→        className={cn(
+   749→          'border',
+   750→          data.metaDiscrepancy.matchRate >= 80
+   751→            ? 'border-emerald-500/20'
+   752→            : data.metaDiscrepancy.matchRate >= 50
+   753→              ? 'border-amber-500/20'
+   754→              : 'border-rose-500/20'
+   755→        )}
+   756→        style={{ backgroundColor: '#0A0A0A' }}
+   757→      >
+   758→        <CardHeader className="pb-3">
+   759→          <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
+   760→            {data.metaDiscrepancy.matchRate >= 80 ? (
+   761→              <ShieldCheck className="h-4 w-4 text-emerald-400" />
+   762→            ) : data.metaDiscrepancy.matchRate >= 50 ? (
+   763→              <ShieldAlert className="h-4 w-4 text-amber-400" />
+   764→            ) : (
+   765→              <ShieldX className="h-4 w-4 text-rose-400" />
+   766→            )}
+   767→            Discrepância Meta Pixel vs CRM
+   768→          </CardTitle>
+   769→        </CardHeader>
+   770→        <CardContent className="px-6 pb-6">
+   771→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   772→            {/* Pixel Leads */}
+   773→            <div className="rounded-xl bg-white/[0.02] border border-white/5 p-4 text-center">
+   774→              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
+   775→                Pixel Leads
+   776→              </p>
+   777→              <p className="text-2xl font-bold text-zinc-100 tabular-nums">
+   778→                {fmt.format(data.metaDiscrepancy.pixelLeads)}
+   779→              </p>
+   780→              <p className="text-[10px] text-muted-foreground mt-1">
+   781→                Detectados pelo tracking
+   782→              </p>
+   783→            </div>
+   784→
+   785→            {/* CRM Meta Leads */}
+   786→            <div className="rounded-xl bg-white/[0.02] border border-white/5 p-4 text-center">
+   787→              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
+   788→                CRM Meta Leads
+   789→              </p>
+   790→              <p className="text-2xl font-bold text-zinc-100 tabular-nums">
+   791→                {fmt.format(data.metaDiscrepancy.crmMetaLeads)}
+   792→              </p>
+   793→              <p className="text-[10px] text-muted-foreground mt-1">
+   794→                Registrados no CRM
+   795→              </p>
+   796→            </div>
+   797→
+   798→            {/* Match Rate */}
+   799→            <div
+   800→              className={cn(
+   801→                'rounded-xl border p-4 text-center',
+   802→                data.metaDiscrepancy.matchRate >= 80
+   803→                  ? 'bg-emerald-500/5 border-emerald-500/20'
+   804→                  : data.metaDiscrepancy.matchRate >= 50
+   805→                    ? 'bg-amber-500/5 border-amber-500/20'
+   806→                    : 'bg-rose-500/5 border-rose-500/20'
+   807→              )}
+   808→            >
+   809→              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
+   810→                Match Rate
+   811→              </p>
+   812→              <p
+   813→                className={cn(
+   814→                  'text-2xl font-bold tabular-nums',
+   815→                  data.metaDiscrepancy.matchRate >= 80
+   816→                    ? 'text-emerald-400'
+   817→                    : data.metaDiscrepancy.matchRate >= 50
+   818→                      ? 'text-amber-400'
+   819→                      : 'text-rose-400'
+   820→                )}
+   821→              >
+   822→                {fmtPct(data.metaDiscrepancy.matchRate)}
+   823→              </p>
+   824→              <div className="mt-2 h-1.5 bg-white/5 rounded-full overflow-hidden">
+   825→                <div
+   826→                  className={cn(
+   827→                    'h-full rounded-full transition-all duration-700',
+   828→                    data.metaDiscrepancy.matchRate >= 80
+   829→                      ? 'bg-emerald-500'
+   830→                      : data.metaDiscrepancy.matchRate >= 50
+   831→                        ? 'bg-amber-500'
+   832→                        : 'bg-rose-500'
+   833→                  )}
+   834→                  style={{ width: `${Math.max(data.metaDiscrepancy.matchRate, 2)}%` }}
+   835→                />
+   836→              </div>
+   837→              <p className="text-[10px] text-muted-foreground mt-1.5">
+   838→                {data.metaDiscrepancy.matchRate >= 80
+   839→                  ? 'Boa concordância entre pixel e CRM'
+   840→                  : data.metaDiscrepancy.matchRate >= 50
+   841→                    ? 'Concordância parcial — verifique UTM params'
+   842→                    : 'Baixa concordância — leads podem não estar vinculados'}
+   843→              </p>
+   844→            </div>
+   845→          </div>
+   846→        </CardContent>
+   847→      </Card>
+   848→
+   849→      {/* ── Section 5: Pixel Setup Instructions ── */}
+   850→      <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+   851→        <CardContent className="p-0">
+   852→          <button
+   853→            onClick={() => setSetupOpen(!setupOpen)}
+   854→            className="w-full flex items-center justify-between p-5 hover:bg-white/[0.02] transition-colors rounded-t-xl"
+   855→          >
+   856→            <div className="flex items-center gap-2">
+   857→              <FileCode className="h-4 w-4 text-[#C9A96E]" />
+   858→              <span className="text-sm font-semibold text-zinc-100">Instruções de Setup do Pixel</span>
+   859→            </div>
+   860→            {setupOpen ? (
+   861→              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+   862→            ) : (
+   863→              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+   864→            )}
+   865→          </button>
+   866→
+   867→          {setupOpen && (
+   868→            <div className="px-5 pb-5 space-y-5 border-t border-white/5 pt-5">
+   869→              {/* Client-side pixel */}
+   870→              <div>
+   871→                <div className="flex items-center gap-2 mb-2">
+   872→                  <Globe className="h-3.5 w-3.5 text-[#C9A96E]" />
+   873→                  <h4 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">
+   874→                    1. Client-side — Embed no &lt;head&gt;
+   875→                  </h4>
+   876→                </div>
+   877→                <p className="text-xs text-muted-foreground mb-2">
+   878→                  Adicione o script abaixo antes do fechamento da tag{' '}
+   879→                  <code className="text-[#C9A96E] bg-[#C9A96E]/10 px-1 py-0.5 rounded text-[11px]">
+   880→                    &lt;/head&gt;
+   881→                  </code>{' '}
+   882→                  da sua landing page:
+   883→                </p>
+   884→                <CodeBlock
+   885→                  language="html"
+   886→                  code={`<script src="https://SEU-DOMINIO/pixel.js" data-site-id="default"></script>`}
+   887→                />
+   888→              </div>
+   889→
+   890→              {/* Server-side tracking */}
+   891→              <div>
+   892→                <div className="flex items-center gap-2 mb-2">
+   893→                  <Zap className="h-3.5 w-3.5 text-[#C9A96E]" />
+   894→                  <h4 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">
+   895→                    2. Server-side — Evento de lead
+   896→                  </h4>
+   897→                </div>
+   898→                <p className="text-xs text-muted-foreground mb-2">
+   899→                  Quando um lead for capturado no backend, envie um evento via API:
+   900→                </p>
+   901→                <CodeBlock
+   902→                  language="bash"
+   903→                  code={`curl -X POST https://SEU-DOMINIO/api/track/server \\
+   904→  -H "Content-Type: application/json" \\
+   905→  -H "x-tracking-key: crm-tracking-2024" \\
+   906→  -d '{
+   907→    "eventType": "lead",
+   908→    "visitorId": "VISITOR_ID_DO_PIXEL",
+   909→    "pageUrl": "https://seu-site.com/obrigado",
+   910→    "utmSource": "meta",
+   911→    "utmCampaign": "NOME_DA_CAMPANHA",
+   912→    "utmContent": "NOME_DO_CRIATIVO",
+   913→    "utmMedium": "cpc"
+   914→  }'`}
+   915→                />
+   916→              </div>
+   917→
+   918→              {/* UTM Parameters reference */}
+   919→              <div>
+   920→                <div className="flex items-center gap-2 mb-2">
+   921→                  <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+   922→                  <h4 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">
+   923→                    3. UTM Parameters nas URLs dos Anúncios
+   924→                  </h4>
+   925→                </div>
+   926→                <p className="text-xs text-muted-foreground mb-2">
+   927→                  Configure as URLs de destino dos anúncios com UTM params para rastreamento:
+   928→                </p>
+   929→                <CodeBlock
+   930→                  language="url"
+   931→                  code={`https://seu-site.com/landing?\n  utm_source=meta\n  &utm_medium=cpc\n  &utm_campaign=NOME_DA_CAMPANHA\n  &utm_content=NOME_DO_CRIATIVO`}
+   932→                />
+   933→              </div>
+   934→            </div>
+   935→          )}
+   936→        </CardContent>
+   937→      </Card>
+   938→    </div>
+   939→  );
+   940→}
