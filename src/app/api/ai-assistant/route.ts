@@ -476,6 +476,30 @@ async function askAI(dataContext: string, enterpriseContext: string, messages: M
   throw new Error('Nenhum provedor de IA disponível. Configure GEMINI_API_KEY ou GROQ_API_KEY.');
 }
 
+// --- Sanitização de input do usuário contra prompt injection ---
+function sanitizeUserInput(content: string): string {
+  // Limitar tamanho (max 2000 chars por mensagem)
+  let sanitized = content.substring(0, 2000);
+  
+  // Remover tentativas comuns de prompt injection
+  const injectionPatterns = [
+    /ignore\s+(all\s+)?(previous\s+)?(instructions?|rules?|prompts?)/gi,
+    /esque[cç]a\s+(todas\s+)?(as\s+)?(instru[cç][oõ]es|regras)/gi,
+    /você\s+é\s+agora/gi,
+    /you\s+are\s+now/gi,
+    /act\s+as\s+(a|an)\s+/gi,
+    /system\s*:/gi,
+    /<\|im_start\|>/g,
+    /<\|im_end\|>/g,
+  ];
+
+  for (const pattern of injectionPatterns) {
+    sanitized = sanitized.replace(pattern, '[filtrado]');
+  }
+
+  return sanitized;
+}
+
 // --- Handler principal ---
 export async function POST(req: NextRequest) {
   let dbError = false;
@@ -492,6 +516,15 @@ export async function POST(req: NextRequest) {
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Mensagens inválidas' }, { status: 400 });
     }
+
+    // Limitar número de mensagens no histórico (max 20)
+    const limitedMessages = messages.slice(-20);
+
+    // Sanitizar mensagens do usuário contra prompt injection
+    const sanitizedMessages = limitedMessages.map((m) => ({
+      ...m,
+      content: m.role === 'user' ? sanitizeUserInput(m.content) : m.content,
+    }));
 
     // Buscar dados do CRM
     let dataContext = '(Dados indisponíveis no momento)';
@@ -515,7 +548,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Enviar para IA com fallback automático
-    const { reply, provider } = await askAI(dataContext, enterpriseContext, messages);
+    const { reply, provider } = await askAI(dataContext, enterpriseContext, sanitizedMessages);
     console.log(`[AI ASSISTANT] Resposta gerada via ${provider}`);
 
     // Pós-processamento de segurança: detectar e remover possíveis vazamentos de dados

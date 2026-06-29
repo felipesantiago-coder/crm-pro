@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
-import { getAuthUrl } from '@/lib/google-calendar';
-import { randomUUID } from 'crypto';
+import crypto from 'crypto';
 
-// GET /api/google-calendar/auth — Redirect to Google OAuth
+// GET /api/google-calendar/auth — Inicia o fluxo OAuth do Google Calendar
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -12,15 +11,36 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const state = randomUUID();
-    const authUrl = getAuthUrl(state);
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const redirectUri = `${process.env.NEXTAUTH_URL || ''}/api/google-calendar/callback`;
 
-    // Redirect to Google
-    return NextResponse.redirect(authUrl);
+    if (!clientId) {
+      return NextResponse.json(
+        { error: 'Google Calendar não configurado. Contate o administrador.' },
+        { status: 500 }
+      );
+    }
+
+    // Gerar state com userId + random hex para proteção CSRF
+    const state = `${session.user.id}:${crypto.randomBytes(16).toString('hex')}`;
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+      access_type: 'offline',
+      prompt: 'consent',
+      state,
+    });
+
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+
+    return NextResponse.json({ url: authUrl });
   } catch (error) {
     console.error('[Google Calendar] Auth error:', error);
     return NextResponse.json(
-      { error: 'Erro ao iniciar conexão com Google Calendar. Verifique se as variáveis de ambiente estão configuradas.' },
+      { error: 'Erro ao iniciar conexão com Google Calendar' },
       { status: 500 }
     );
   }

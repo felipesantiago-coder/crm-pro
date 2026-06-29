@@ -14,15 +14,30 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const code = searchParams.get('code');
-    const error = searchParams.get('error');
+    const oauthError = searchParams.get('error');
+    const returnedState = searchParams.get('state');
 
-    if (error) {
-      console.error('[Google Calendar] OAuth error:', error);
-      return NextResponse.redirect(`${process.env.NEXTAUTH_URL || ''}/?google_calendar_error=${error}`);
+    if (oauthError) {
+      console.error('[Google Calendar] OAuth error:', oauthError);
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL || ''}/?google_calendar_error=${oauthError}`);
     }
 
     if (!code) {
       return NextResponse.redirect(`${process.env.NEXTAUTH_URL || ''}/?google_calendar_error=no_code`);
+    }
+
+    // Validar state parameter (CSRF protection)
+    if (!returnedState) {
+      console.error('[Google Calendar] OAuth state ausente — possível ataque CSRF');
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL || ''}/?google_calendar_error=invalid_state`);
+    }
+
+    // Verificar se o state contém o userId do usuário autenticado
+    // Formato esperado: userId:randomHex (ex: "abc123:def456...")
+    const [stateUserId] = returnedState.split(':');
+    if (stateUserId !== session.user.id) {
+      console.error('[Google Calendar] OAuth state userId não corresponde ao usuário autenticado');
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL || ''}/?google_calendar_error=invalid_state`);
     }
 
     // Exchange code for tokens

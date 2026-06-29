@@ -2,6 +2,39 @@ import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { ensureDbConnection } from '@/lib/db';
 import { verifyPassword } from '@/lib/auth';
+import { loginRateLimit } from '@/lib/rate-limit';
+import { NextRequest } from 'next/server';
+
+// Contador de tentativas de login (in-memory, por IP+email)
+const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutos
+
+function checkLoginLockout(identifier: string): boolean {
+  const entry = loginAttempts.get(identifier);
+  if (!entry) return false;
+  if (Date.now() >= entry.lockedUntil) {
+    loginAttempts.delete(identifier);
+    return false;
+  }
+  return entry.count >= MAX_LOGIN_ATTEMPTS;
+}
+
+function recordFailedLogin(identifier: string) {
+  const entry = loginAttempts.get(identifier);
+  if (entry && Date.now() < entry.lockedUntil) {
+    entry.count++;
+  } else {
+    loginAttempts.set(identifier, {
+      count: 1,
+      lockedUntil: Date.now() + LOCKOUT_DURATION_MS,
+    });
+  }
+}
+
+function resetLoginAttempts(identifier: string) {
+  loginAttempts.delete(identifier);
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -11,13 +44,33 @@ export const authOptions: NextAuthOptions = {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Senha', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
 
         const email = credentials.email.trim().toLowerCase();
         const password = credentials.password;
+
+        // Brute-force protection: 5 tentativas por minuto por email+IP
+        const req = new NextRequest(request?.url || '/', { headers: request?.headers as HeadersInit });
+        const rateLimitHit = loginRateLimit(req, email);
+        if (rateLimitHit) {
+          console.warn(`[AUTH] Rate limit atingido para: ${email}`);
+          return null;
+        }
+        const loginId = email; // Identificador para lockout
+
+        // Verificar lockout por tentativas excessivas
+        if (checkLoginLockout(loginId)) {
+          console.warn(`[AUTH] Login bloqueado por excesso de tentativas: ${email}`);
+          return null;
+        }
+
+        // Validação de tamanho mínimo da senha (rejeitar antes de consultar DB)
+        if (password.length < 6) {
+          return null;
+        }
 
         let user: {
           id: string;
@@ -33,7 +86,6 @@ export const authOptions: NextAuthOptions = {
         // The DB can take 5-10 seconds to wake up after being paused.
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
-            console.log(`[AUTH] DB attempt ${attempt}/3 for:`, email);
             const client = await ensureDbConnection(3);
             user = await client.user.findUnique({
               where: { email },
@@ -61,15 +113,20 @@ export const authOptions: NextAuthOptions = {
         }
 
         if (!user || !user.passwordHash) {
-          console.log('[AUTH] User not found after all retries:', email);
-          if (lastError) console.error('[AUTH] Last DB error:', lastError);
+          // Log genérico sem expor se o usuário existe ou não
+          console.log('[AUTH] Falha na autenticação');
+          recordFailedLogin(loginId);
           return null;
         }
 
         const isValid = await verifyPassword(password, user.passwordHash);
         if (!isValid) {
+          recordFailedLogin(loginId);
           return null;
         }
+
+        // Login bem-sucedido — resetar contagem
+        resetLoginAttempts(loginId);
 
         return {
           id: user.id,

@@ -174,8 +174,10 @@ CREATE INDEX idx_clients_created_by ON clients ("createdBy");
 
 
 -- =============================================================
--- 3. HABILITAR REALTIME PARA TODAS AS TABELAS
+-- 3. HABILITAR REALTIME (APENAS tabelas seguras)
 -- =============================================================
+-- IMPORTANTE: users NÃO é adicionada ao Realtime pois contém passwordHash.
+-- user_settings contém dados internos do sistema.
 
 ALTER PUBLICATION supabase_realtime ADD TABLE clients;
 ALTER PUBLICATION supabase_realtime ADD TABLE tags;
@@ -183,8 +185,6 @@ ALTER PUBLICATION supabase_realtime ADD TABLE client_tags;
 ALTER PUBLICATION supabase_realtime ADD TABLE reminders;
 ALTER PUBLICATION supabase_realtime ADD TABLE enterprises;
 ALTER PUBLICATION supabase_realtime ADD TABLE interactions;
-ALTER PUBLICATION supabase_realtime ADD TABLE users;
-ALTER PUBLICATION supabase_realtime ADD TABLE user_settings;
 ALTER PUBLICATION supabase_realtime ADD TABLE client_partners;
 
 
@@ -224,15 +224,15 @@ CREATE TRIGGER trg_user_settings_updated_at
 -- =============================================================
 -- 5. INSERIR USUÁRIO ADMINISTRADOR PADRÃO
 -- =============================================================
--- Email: felipesantiagoquadra@gmail.com
--- Senha: admincrmquadra@!
--- Hash gerado com bcryptjs (12 rounds) — compatível com NextAuth
+-- ATENÇÃO: Este INSERT usa um hash PLACEHOLDER.
+-- Após executar este script, use a API /api/auth/change-password
+-- para definir a senha real do administrador.
 
 INSERT INTO users (name, email, "passwordHash", role, "mustChangePassword")
 VALUES (
   'Administrador',
-  'felipesantiagoquadra@gmail.com',
-  '$2b$12$CvOHZh0/QwurtsEB.x6bdep4chbE0naUnZEOIMNqsiWQqm4v4Nbd6',
+  'admin@crm-pro.local',
+  '$2b$12$PLACEHOLDER_REPLACE_WITH_YOUR_OWN_BCRYPT_HASH',
   'ADMIN',
   true
 );
@@ -247,16 +247,6 @@ VALUES ('crmName', 'CRM Pro');
 
 INSERT INTO user_settings (key, value)
 VALUES ('defaultRegion', '');
-
-
--- =============================================================
--- 7. VERIFICAR INSERÇÃO DO ADMIN
--- =============================================================
-
--- Este SELECT deve retornar o usuário admin com o hash da senha
-SELECT id, name, email, role, "mustChangePassword",
-       LEFT("passwordHash", 20) AS "hashPreview"
-FROM users WHERE email = 'felipesantiagoquadra@gmail.com';
 
 
 -- =============================================================
