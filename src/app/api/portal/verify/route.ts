@@ -44,10 +44,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify token
-    const isValid = verifyPortalToken(token, client.id, client.createdAt.toISOString());
-    if (!isValid) {
+    const result = verifyPortalToken(token, client.id, client.createdAt.toISOString());
+    if (!result.valid) {
       return NextResponse.json(
-        { error: 'Link inválido ou expirado.' },
+        { error: result.reason === 'expired' ? 'Link expirado. Solicite um novo acesso.' : 'Link inválido.' },
         { status: 403 }
       );
     }

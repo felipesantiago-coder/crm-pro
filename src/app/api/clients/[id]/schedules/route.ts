@@ -170,7 +170,7 @@ export async function POST(
           where: { id: schedule.id },
           data: { googleCalendarEventId: eventId },
         });
-        console.log('[GOOGLE CALENDAR] Evento criado com sucesso:', eventId);
+
       } catch (err) {
         console.error('[GOOGLE CALENDAR] Erro ao criar evento (não afeta o agendamento):', err);
       }
@@ -276,7 +276,6 @@ export async function PATCH(
             summary: `Visita CRM Pro — ${clientName}`,
             status: status as 'COMPLETED' | 'CANCELLED',
           });
-          console.log('[GOOGLE CALENDAR] Evento atualizado com sucesso');
         } catch (err) {
           console.error('[GOOGLE CALENDAR] Erro ao atualizar evento (não afeta o agendamento):', err);
         }
@@ -340,7 +339,6 @@ export async function DELETE(
       after(async () => {
         try {
           await deleteCalendarEvent(schedule.createdBy, schedule.googleCalendarEventId);
-          console.log('[GOOGLE CALENDAR] Evento excluído com sucesso');
         } catch (err) {
           console.error('[GOOGLE CALENDAR] Erro ao excluir evento (não afeta o agendamento):', err);
         }

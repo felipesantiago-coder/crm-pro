@@ -16,6 +16,31 @@ export async function GET(
 
     const { id } = await params;
 
+    // Verificar se o usuário tem acesso ao cliente
+    const user = await db.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true, role: true },
+    });
+    if (!user) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    if (user.role !== 'ADMIN') {
+      const accessible = await db.client.findFirst({
+        where: {
+          id,
+          OR: [
+            { createdBy: user.id },
+            { partners: { some: { userId: user.id } } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!accessible) {
+        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+      }
+    }
+
     const client = await db.client.findUnique({
       where: { id },
       select: { id: true, createdAt: true },
@@ -41,7 +66,6 @@ export async function GET(
 
     return NextResponse.json({ url });
   } catch (error) {
-    console.error('Erro ao gerar link do portal:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }

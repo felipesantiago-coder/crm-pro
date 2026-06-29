@@ -283,7 +283,7 @@ function buildGroqSystemText(dataContext: string, enterpriseContext: string): st
       systemText += `\n\n---\n${enterpriseContext.slice(0, cutIndex)}\n\n[...] Conteúdo truncado pelo limite de tokens do provedor fallback.`;
     }
   } else if (enterpriseContext) {
-    console.log('[AI ASSISTANT] Contexto da empresa omitido no fallback por limite de tokens');
+
   }
 
   return systemText;
@@ -465,7 +465,7 @@ async function askAI(dataContext: string, enterpriseContext: string, messages: M
       console.warn('[AI ASSISTANT] Gemini falhou, tentando Groq como fallback:', err instanceof Error ? err.message : err);
     }
   } else {
-    console.log('[AI ASSISTANT] GEMINI_API_KEY não configurada, usando Groq diretamente');
+
   }
 
   // 2) Fallback para Groq — construir system text com limites estritos (6000 TPM)
@@ -552,7 +552,6 @@ export async function POST(req: NextRequest) {
 
     // Enviar para IA com fallback automático
     const { reply, provider } = await askAI(dataContext, enterpriseContext, sanitizedMessages);
-    console.log(`[AI ASSISTANT] Resposta gerada via ${provider}`);
 
     // Pós-processamento de segurança: detectar e remover possíveis vazamentos de dados
     const safeReply = sanitizeReply(reply);

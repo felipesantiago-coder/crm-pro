@@ -4,16 +4,27 @@ import { requireAuth } from '@/lib/api-auth';
 
 export async function GET() {
   try {
-    const { error } = await requireAuth();
+    const { error, session } = await requireAuth();
     if (error) return error;
+
+    const user = await db.user.findUnique({
+      where: { email: session!.user!.email },
+      select: { id: true, role: true },
+    });
+    if (!user) return NextResponse.json([]);
 
     const now = new Date();
 
+    const whereClause = user.role === 'ADMIN'
+      ? { dueDate: { lte: now }, notified: false }
+      : {
+          dueDate: { lte: now },
+          notified: false,
+          userId: user.id,
+        };
+
     const dueReminders = await db.reminder.findMany({
-      where: {
-        dueDate: { lte: now },
-        notified: false,
-      },
+      where: whereClause,
       include: {
         client: {
           select: { id: true, name: true },
@@ -31,8 +42,7 @@ export async function GET() {
     }
 
     return NextResponse.json(dueReminders);
-  } catch (error) {
-    console.error('Error checking reminders:', error);
-    return NextResponse.json({ error: 'Failed to check reminders' }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: 'Erro ao verificar lembretes' }, { status: 500 });
   }
 }
