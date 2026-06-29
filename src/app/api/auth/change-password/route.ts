@@ -3,6 +3,17 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { verifyPassword, hashPassword } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { z } from 'zod';
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Senha atual é obrigatória'),
+  newPassword: z
+    .string()
+    .min(8, 'A nova senha deve ter no mínimo 8 caracteres')
+    .regex(/[A-Z]/, 'A nova senha deve conter pelo menos uma letra maiúscula')
+    .regex(/[a-z]/, 'A nova senha deve conter pelo menos uma letra minúscula')
+    .regex(/[0-9]/, 'A nova senha deve conter pelo menos um número'),
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,21 +23,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { currentPassword, newPassword } = body;
-
-    if (!currentPassword || !newPassword) {
-      return NextResponse.json(
-        { error: 'Senha atual e nova senha são obrigatórias' },
-        { status: 400 }
-      );
+    const parsed = changePasswordSchema.safeParse(body);
+    if (!parsed.success) {
+      const firstError = parsed.error.issues[0]?.message || 'Dados inválidos';
+      return NextResponse.json({ error: firstError }, { status: 400 });
     }
 
-    if (newPassword.length < 6) {
-      return NextResponse.json(
-        { error: 'A nova senha deve ter no mínimo 6 caracteres' },
-        { status: 400 }
-      );
-    }
+    const { currentPassword, newPassword } = parsed.data;
 
     const user = await db.user.findUnique({
       where: { id: session.user.id },
