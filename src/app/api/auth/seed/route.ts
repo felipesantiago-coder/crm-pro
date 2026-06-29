@@ -33,7 +33,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const SEED_PASSWORD = process.env.SEED_PASSWORD || 'ChangeMeImmediately123!';
+    const SEED_PASSWORD = process.env.SEED_PASSWORD;
+    if (!SEED_PASSWORD) {
+      return NextResponse.json(
+        { error: 'SEED_PASSWORD não configurada' },
+        { status: 500 }
+      );
+    }
     const passwordHash = await hashPassword(SEED_PASSWORD);
 
     const admin = await db.user.create({
