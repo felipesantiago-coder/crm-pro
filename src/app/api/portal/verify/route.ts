@@ -1,8 +1,13 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPortalToken } from '@/lib/portal-token';
+import { rateLimit } from '@/lib/rate-limit';
 
 export async function GET(request: NextRequest) {
+  // Rate limiting: 15 req/min por IP (endpoint público)
+  const limited = rateLimit(request, { maxRequests: 15, windowSeconds: 60, keyPrefix: 'portal-verify' });
+  if (limited) return limited;
+
   try {
     const { searchParams } = new URL(request.url);
     const token = searchParams.get('t');
