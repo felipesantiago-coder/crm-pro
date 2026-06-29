@@ -122,7 +122,6 @@ async function fetchLeadData(leadgenId: string, pageAccessToken: string): Promis
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[Meta Webhook] Erro ao buscar lead ${leadgenId} via Graph API: ${response.status} - ${errorText}`);
       return null;
     }
 
@@ -130,11 +129,9 @@ async function fetchLeadData(leadgenId: string, pageAccessToken: string): Promis
     const fieldData = data?.field_data;
 
     if (!fieldData || !Array.isArray(fieldData)) {
-      console.error(`[Meta Webhook] field_data vazio ou inválido na resposta do Graph API para lead ${leadgenId}`);
       return null;
     }
 
-    console.log(`[Meta Webhook] Dados do lead ${leadgenId} obtidos via Graph API (${fieldData.length} campos)`);
     return fieldData;
   } catch (error) {
     console.error(`[Meta Webhook] Falha ao buscar lead ${leadgenId}:`, error);
@@ -147,7 +144,7 @@ async function fetchLeadData(leadgenId: string, pageAccessToken: string): Promis
  * para evitar duplicatas de leads do mesmo anúncio.
  */
 async function findExistingClient(phone: string | null, email: string | null) {
-  const conditions: any[] = [];
+  const conditions: Array<{ phone: string } | { email: string }> = [];
 
   if (phone) {
     conditions.push({ phone });
@@ -185,7 +182,6 @@ export async function GET(request: NextRequest) {
     const config = await getMetaConfig();
 
     if (!config.verifyToken) {
-      console.warn('[Meta Webhook] Verificação falhou: verify_token não configurado nas Configurações do CRM');
       return NextResponse.json(
         { error: 'Webhook não configurado. Configure o verify_token nas Configurações do CRM.' },
         { status: 403 }
@@ -193,14 +189,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (token === config.verifyToken) {
-      console.log('[Meta Webhook] Verificação bem-sucedida');
       return new NextResponse(challenge, {
         status: 200,
         headers: { 'Content-Type': 'text/plain' },
       });
     }
 
-    console.warn('[Meta Webhook] Verificação falhou: token inválido');
     return NextResponse.json({ error: 'Token inválido' }, { status: 403 });
   }
 
@@ -227,7 +221,6 @@ export async function POST(request: NextRequest) {
     const config = await getMetaConfig();
 
     if (!config.enabled) {
-      console.log('[Meta Webhook] Recebido POST mas webhook está desativado');
       return NextResponse.json({ received: true, processed: false, reason: 'webhook_disabled' });
     }
 
@@ -236,17 +229,28 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.text();
 
     if (!config.appSecret) {
-      console.error('[Meta Webhook] App Secret não configurado — rejeitando requisição por segurança');
       return NextResponse.json({ error: 'App Secret não configurado' }, { status: 403 });
     }
 
     if (!isValidSignature(rawBody, signature, config.appSecret)) {
-      console.error('[Meta Webhook] Assinatura inválida — possível tentativa de spoofing');
       return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 });
     }
 
     // 3. Parsear o payload
-    let body: any;
+    let body: {
+      entry?: Array<{
+        changes?: Array<{
+          field: string;
+          value?: {
+            leadgen_id?: string | number;
+            field_data?: Array<{ name: string; values: string[] }>;
+            ad_name?: string;
+            campaign_name?: string;
+            form_name?: string;
+          };
+        }>;
+      }>;
+    };
     try {
       body = JSON.parse(rawBody);
     } catch {
@@ -259,7 +263,6 @@ export async function POST(request: NextRequest) {
     const entries = body.entry || [];
 
     if (entries.length === 0) {
-      console.log('[Meta Webhook] Nenhum entry no payload');
       return NextResponse.json({ received: true, processed: false, reason: 'empty_entry' });
     }
 
@@ -288,15 +291,14 @@ export async function POST(request: NextRequest) {
 
         // O Meta envia apenas o ID — buscar dados via Graph API
         if (fieldData.length === 0 && config.pageAccessToken) {
-          console.log(`[Meta Webhook] field_data vazio para lead ${leadgenId} — buscando via Graph API`);
           const fetched = await fetchLeadData(leadgenId, config.pageAccessToken);
           if (fetched) {
             fieldData = fetched;
           } else {
-            console.error(`[Meta Webhook] Não foi possível obter dados do lead ${leadgenId}. Verifique o Page Access Token.`);
+          
           }
         } else if (fieldData.length === 0) {
-          console.error(`[Meta Webhook] field_data vazio E sem Page Access Token. Lead ${leadgenId} será criado com dados mínimos.`);
+          
         }
 
         // Extrair campos do formulário
@@ -329,8 +331,6 @@ export async function POST(request: NextRequest) {
         // 5. Verificar duplicata
         const existing = await findExistingClient(phone, email);
         if (existing) {
-          console.log(`[Meta Webhook] Lead duplicado ignorado: ${name} (já existe cliente ${existing.id})`);
-
           // Criar interação registrando o novo contato do anúncio
           await db.interaction.create({
             data: {
@@ -387,7 +387,6 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          console.log(`[Meta Webhook] Novo cliente criado: ${name} (ID: ${newClient.id})`);
           results.push({
             success: true,
             clientName: name,
@@ -419,7 +418,7 @@ export async function POST(request: NextRequest) {
           create: { key: 'meta_lead_count', value: String(successCount) },
         });
       } catch (countError) {
-        console.warn('[Meta Webhook] Erro ao incrementar contador (não crítico):', countError);
+        // Non-critical: counter update failed silently
       }
     }
 

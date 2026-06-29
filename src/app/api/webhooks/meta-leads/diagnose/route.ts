@@ -182,11 +182,12 @@ export async function GET() {
             });
           }
         }
-      } catch (fetchError: any) {
+      } catch (fetchError: unknown) {
+        const errMsg = fetchError instanceof Error ? fetchError.message : 'Erro de conexão';
         checks.push({
           name: 'Validação do Token (Graph API)',
           status: 'error',
-          details: `Falha de conexão com a Graph API: ${fetchError.message}`,
+          details: `Falha de conexão com a Graph API: ${errMsg}`,
           fix: 'Verifique se o servidor Vercel consegue acessar graph.facebook.com.',
         });
       }
@@ -236,11 +237,12 @@ export async function GET() {
             fix: 'O token pode ser inválido. Tente gerar um novo.',
           });
         }
-      } catch (permErr: any) {
+      } catch (permErr: unknown) {
+        const errMsg = permErr instanceof Error ? permErr.message : 'Erro desconhecido';
         checks.push({
           name: 'Permissões do Token',
           status: 'error',
-          details: `Falha ao verificar permissões: ${permErr.message}`,
+          details: `Falha ao verificar permissões: ${errMsg}`,
         });
       }
     } else {
@@ -324,11 +326,12 @@ export async function GET() {
             });
           }
         }
-      } catch (pagesErr: any) {
+      } catch (pagesErr: unknown) {
+        const errMsg = pagesErr instanceof Error ? pagesErr.message : 'Erro desconhecido';
         checks.push({
           name: 'Páginas associadas ao token',
           status: 'error',
-          details: `Falha ao verificar páginas: ${pagesErr.message}`,
+          details: `Falha ao verificar páginas: ${errMsg}`,
         });
       }
     } else {
@@ -393,11 +396,12 @@ export async function GET() {
         details: `Conexão com graph.facebook.com OK (${healthRes.status}) em ${latency}ms.`,
         fix: latency >= 3000 ? 'Latência alta. Isso pode causar timeout no Vercel Hobby (limite 10s).' : undefined,
       });
-    } catch (connErr: any) {
+    } catch (connErr: unknown) {
+      const errMsg = connErr instanceof Error ? connErr.message : 'Erro desconhecido';
       checks.push({
         name: 'Conectividade com Graph API',
         status: 'error',
-        details: `FALHA de conexão com graph.facebook.com: ${connErr.message}`,
+        details: `FALHA de conexão com graph.facebook.com: ${errMsg}`,
         fix: 'O Vercel pode estar bloqueando requisições para a Graph API. Verifique as configurações de rede.',
       });
     }

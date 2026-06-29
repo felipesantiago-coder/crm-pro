@@ -2,8 +2,13 @@ import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPortalToken } from '@/lib/portal-token';
 import { updateCalendarEvent } from '@/lib/google-calendar';
+import { rateLimit } from '@/lib/rate-limit';
 
 export async function PATCH(request: NextRequest) {
+  // Rate limiting: 10 req/min por IP (endpoint público)
+  const limited = rateLimit(request, { maxRequests: 10, windowSeconds: 60, keyPrefix: 'portal-reschedule' });
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { token, clientId, scheduleId, newDate, newTime } = body;
@@ -28,10 +33,10 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const isValid = verifyPortalToken(token, client.id, client.createdAt.toISOString());
-    if (!isValid) {
+    const result = verifyPortalToken(token, client.id, client.createdAt.toISOString());
+    if (!result.valid) {
       return NextResponse.json(
-        { error: 'Acesso não autorizado.' },
+        { error: result.reason === 'expired' ? 'Link expirado. Solicite um novo acesso.' : 'Acesso não autorizado.' },
         { status: 403 }
       );
     }
