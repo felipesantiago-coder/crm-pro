@@ -105,7 +105,7 @@ export async function POST(
       data: { pdfContent: extractedText },
     });
 
-    console.log(`[ENTERPRISE KB] Base de dados processada para "${enterprise.name}" (${file.name}): ${extractedText.length} caracteres`);
+
 
     return NextResponse.json({
       success: true,
@@ -151,7 +151,7 @@ export async function DELETE(
       data: { pdfContent: null },
     });
 
-    console.log(`[ENTERPRISE KB] Base de dados removida de "${enterprise.name}"`);
+
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -65,9 +65,8 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error('[Google Calendar] Callback error:', error);
-    const msg = error instanceof Error ? error.message : 'Erro desconhecido';
     return NextResponse.redirect(
-      `${process.env.NEXTAUTH_URL || ''}/?google_calendar_error=${encodeURIComponent(msg)}`
+      `${process.env.NEXTAUTH_URL || ''}/?google_calendar_error=oauth_failed`
     );
   }
 }
