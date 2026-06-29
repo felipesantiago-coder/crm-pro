@@ -33,7 +33,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const passwordHash = await hashPassword('admincrmquadra@!');
+    const SEED_PASSWORD = process.env.SEED_PASSWORD || 'ChangeMeImmediately123!';
+    const passwordHash = await hashPassword(SEED_PASSWORD);
 
     const admin = await db.user.create({
       data: {

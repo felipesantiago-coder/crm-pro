@@ -3,6 +3,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 
+async function canAccessClient(clientId: string, userId: string, isAdmin: boolean): Promise<boolean> {
+  if (isAdmin) return true;
+  const client = await db.client.findFirst({
+    where: {
+      id: clientId,
+      OR: [
+        { createdBy: userId },
+        { partners: { some: { userId } } },
+      ],
+    },
+    select: { id: true },
+  });
+  return !!client;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -14,6 +29,20 @@ export async function GET(
     }
 
     const { id } = await params;
+
+    // Verificar permissão de acesso ao cliente
+    const currentUser = await db.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true, role: true },
+    });
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessClient(id, currentUser.id, currentUser.role === 'ADMIN');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Acesso negado a este cliente' }, { status: 403 });
+    }
 
     // Buscar dados completos do cliente
     const client = await db.client.findUnique({
