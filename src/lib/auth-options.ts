@@ -19,19 +19,21 @@ export const authOptions: NextAuthOptions = {
         const email = credentials.email.trim().toLowerCase();
         const password = credentials.password;
 
-        // Brute-force protection: rate limit por email+IP
-        // Nota: Em serverless (Vercel), usamos verificação leve no authorize.
-        // Para proteção robusta em produção, considerar Redis/Upstash.
-        const xff = request?.headers?.get('x-forwarded-for');
-        const ip = xff?.split(',')[0]?.trim() || 'unknown';
-        const loginId = `${email}:${ip}`;
-
         // Validação de tamanho mínimo da senha (rejeitar antes de consultar DB)
         if (password.length < 6) {
           return null;
         }
 
-        let user: {
+        type UserType = {
+          id: string;
+          name: string;
+          email: string;
+          passwordHash: string;
+          role: string;
+          mustChangePassword: boolean;
+        };
+
+        let user: UserType | null = null;
 
         // Retry up to 3 times with delays to survive Supabase cold starts.
         // The DB can take 5-10 seconds to wake up after being paused.
@@ -49,16 +51,12 @@ export const authOptions: NextAuthOptions = {
                 mustChangePassword: true,
               },
             });
-            // DB query succeeded
-            break;
+            break; // DB query succeeded
           } catch (err) {
-            lastError = err;
             console.error(`[AUTH] DB attempt ${attempt}/3 failed`);
             if (attempt < 3) {
               // Wait 3s between attempts to give Supabase time to wake up
-              const delay = 3000;
-              // Waiting before retry...
-              await new Promise(resolve => setTimeout(resolve, delay));
+              await new Promise(resolve => setTimeout(resolve, 3000));
             }
           }
         }
@@ -75,7 +73,6 @@ export const authOptions: NextAuthOptions = {
         }
 
         // Login bem-sucedido
-
         return {
           id: user.id,
           name: user.name,
