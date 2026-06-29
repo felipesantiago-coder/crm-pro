@@ -2,12 +2,27 @@ import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 
+async function canAccessClient(clientId: string, userId: string, isAdmin: boolean): Promise<boolean> {
+  if (isAdmin) return true;
+  const client = await db.client.findFirst({
+    where: {
+      id: clientId,
+      OR: [
+        { createdBy: userId },
+        { partners: { some: { userId } } },
+      ],
+    },
+    select: { id: true },
+  });
+  return !!client;
+}
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { error } = await requireAuth();
+    const { error, session } = await requireAuth();
     if (error) return error;
 
     const { id } = await params;
@@ -17,6 +32,20 @@ export async function PUT(
     const existing = await db.reminder.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json({ error: 'Reminder not found' }, { status: 404 });
+    }
+
+    // Verificar permissão de acesso ao cliente associado ao lembrete
+    const currentUser = await db.user.findUnique({
+      where: { email: session!.user!.email! },
+      select: { id: true, role: true },
+    });
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessClient(existing.clientId, currentUser.id, currentUser.role === 'ADMIN');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Acesso negado a este cliente' }, { status: 403 });
     }
 
     const reminder = await db.reminder.update({
@@ -46,10 +75,34 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { error } = await requireAuth();
+    const { error, session } = await requireAuth();
     if (error) return error;
 
     const { id } = await params;
+
+    // Buscar o lembrete para verificar o clientId associado
+    const existing = await db.reminder.findUnique({
+      where: { id },
+      select: { id: true, clientId: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: 'Reminder not found' }, { status: 404 });
+    }
+
+    // Verificar permissão de acesso ao cliente associado ao lembrete
+    const currentUser = await db.user.findUnique({
+      where: { email: session!.user!.email! },
+      select: { id: true, role: true },
+    });
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessClient(existing.clientId, currentUser.id, currentUser.role === 'ADMIN');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Acesso negado a este cliente' }, { status: 403 });
+    }
+
     await db.reminder.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {

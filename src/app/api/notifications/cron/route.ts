@@ -43,7 +43,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('[CRON] Erro geral:', error);
     return NextResponse.json(
-      { error: 'Erro interno do servidor', details: String(error) },
+      { error: 'Erro interno do servidor' },
       { status: 500 }
     );
   }
