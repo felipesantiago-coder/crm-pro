@@ -31,7 +31,7 @@ export async function PUT(
 
     const existing = await db.reminder.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: 'Reminder not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Lembrete não encontrado' }, { status: 404 });
     }
 
     // Verificar permissão de acesso ao cliente associado ao lembrete
@@ -66,7 +66,7 @@ export async function PUT(
     return NextResponse.json(reminder);
   } catch (error) {
     console.error('Error updating reminder:', error);
-    return NextResponse.json({ error: 'Failed to update reminder' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao atualizar lembrete' }, { status: 500 });
   }
 }
 
@@ -86,7 +86,7 @@ export async function DELETE(
       select: { id: true, clientId: true },
     });
     if (!existing) {
-      return NextResponse.json({ error: 'Reminder not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Lembrete não encontrado' }, { status: 404 });
     }
 
     // Verificar permissão de acesso ao cliente associado ao lembrete
@@ -107,6 +107,6 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting reminder:', error);
-    return NextResponse.json({ error: 'Failed to delete reminder' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao excluir lembrete' }, { status: 500 });
   }
 }

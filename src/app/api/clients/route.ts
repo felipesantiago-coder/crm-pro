@@ -118,18 +118,33 @@ export async function GET(request: NextRequest) {
 
     if (needsUpdate) {
       const now = new Date();
-      const clientsNeedingUpdate = await db.$queryRaw`
-        SELECT c.* FROM "clients" c
-        WHERE 
-          CASE 
-            WHEN c."lastInteractionAt" IS NOT NULL 
-            THEN (c."lastInteractionAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
-            ELSE (c."createdAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
-          END
-        ORDER BY c."createdAt" DESC
-      `;
+      // ADMIN vê todos; USER vê apenas os que criou + os que é parceiro
+      const clientsNeedingUpdate = isAdminUser
+        ? await db.$queryRaw<Array<{id: string}>>`
+            SELECT c.id FROM "clients" c
+            WHERE
+              CASE
+                WHEN c."lastInteractionAt" IS NOT NULL
+                THEN (c."lastInteractionAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
+                ELSE (c."createdAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
+              END
+            ORDER BY c."createdAt" DESC
+          `
+        : await db.$queryRaw<Array<{id: string}>>`
+            SELECT c.id FROM "clients" c
+            WHERE
+              (c."created_by" = ${currentUser.id} OR EXISTS (
+                SELECT 1 FROM client_partners cp WHERE cp."client_id" = c.id AND cp."user_id" = ${currentUser.id}
+              ))
+              AND CASE
+                WHEN c."lastInteractionAt" IS NOT NULL
+                THEN (c."lastInteractionAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
+                ELSE (c."createdAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
+              END
+            ORDER BY c."createdAt" DESC
+          `;
 
-      const paginatedIds = (clientsNeedingUpdate as Array<{id: string}>)
+      const paginatedIds = clientsNeedingUpdate
         .slice((page - 1) * limit, page * limit)
         .map(c => c.id);
 
@@ -148,7 +163,7 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'desc' },
       });
 
-      return NextResponse.json({ clients, total: (clientsNeedingUpdate as Array<unknown>).length, page, limit });
+      return NextResponse.json({ clients, total: clientsNeedingUpdate.length, page, limit });
     }
 
     const [clients, total] = await Promise.all([
