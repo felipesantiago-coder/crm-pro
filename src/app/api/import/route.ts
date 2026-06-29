@@ -3,6 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { requireAuth } from '@/lib/api-auth';
 
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_MIME_TYPES = [
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'text/csv',
+];
+const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.csv'];
+
 export async function POST(request: NextRequest) {
   try {
     const { error, session } = await requireAuth();
@@ -17,6 +25,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 });
     }
 
+    // Validação de tamanho
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: 'Arquivo muito grande. Tamanho máximo: 5MB' },
+        { status: 400 }
+      );
+    }
+
+    // Validação de tipo por extensão
+    const fileName = (file.name || '').toLowerCase();
+    const hasValidExtension = ALLOWED_EXTENSIONS.some(ext => fileName.endsWith(ext));
+    if (!hasValidExtension) {
+      return NextResponse.json(
+        { error: 'Tipo de arquivo inválido. Use .xlsx, .xls ou .csv' },
+        { status: 400 }
+      );
+    }
+
+    // Validação MIME type
+    if (file.type && !ALLOWED_MIME_TYPES.includes(file.type) && !hasValidExtension) {
+      return NextResponse.json(
+        { error: 'Tipo de arquivo não suportado' },
+        { status: 400 }
+      );
+    }
+
+    // Validação de linhas máximas (proteção contra denial of service)
     const bytes = await file.arrayBuffer();
     const workbook = XLSX.read(bytes, { type: 'array' });
     const sheetName = workbook.SheetNames[0];
@@ -25,6 +60,13 @@ export async function POST(request: NextRequest) {
 
     if (rows.length === 0) {
       return NextResponse.json({ imported: 0, errors: ['Arquivo vazio ou sem dados'] });
+    }
+
+    if (rows.length > 1000) {
+      return NextResponse.json(
+        { imported: 0, errors: ['Arquivo contém mais de 1000 linhas. Divida em arquivos menores.'] },
+        { status: 400 }
+      );
     }
 
     let imported = 0;
@@ -45,6 +87,9 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      // Sanitizar nome: remover caracteres perigosos
+      const sanitizedName = name.replace(/[<>'"&]/g, '').substring(0, 200);
+
       const updatePeriodStr = (row['Período de Atualização'] || row['Periodo'] || row['periodo'] || '30').toString().trim();
       const updatePeriod = [15, 20, 30].includes(parseInt(updatePeriodStr))
         ? parseInt(updatePeriodStr)
@@ -53,7 +98,7 @@ export async function POST(request: NextRequest) {
       try {
         await db.client.create({
           data: {
-            name,
+            name: sanitizedName,
             phone,
             email,
             region,
@@ -64,7 +109,7 @@ export async function POST(request: NextRequest) {
         });
         imported++;
       } catch (err) {
-        errors.push(`Linha ${rowNum}: Erro ao importar "${name}"`);
+        errors.push(`Linha ${rowNum}: Erro ao importar "${sanitizedName}"`);
       }
     }
 
