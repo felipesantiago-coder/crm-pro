@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const tagIds = searchParams.getAll('tagId').filter(Boolean);
     const stage = searchParams.get('stage') || '';
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
     const needsUpdate = searchParams.get('needsUpdate') === 'true';
 
     // ADMIN vê todos; USER vê apenas os que criou + os que é parceiro

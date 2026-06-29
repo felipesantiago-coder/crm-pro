@@ -210,8 +210,6 @@ export async function GET(request: NextRequest) {
     status: 'ok',
     webhook: 'meta-leads',
     enabled: config.enabled,
-    hasVerifyToken: !!config.verifyToken,
-    hasAppSecret: !!config.appSecret,
     message: config.enabled
       ? 'Webhook ativo e pronto para receber leads do Meta Ads'
       : 'Webhook configurado mas desativado. Ative nas Configurações do CRM.',
@@ -237,13 +235,14 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get('x-hub-signature-256');
     const rawBody = await request.text();
 
-    if (config.appSecret) {
-      if (!isValidSignature(rawBody, signature, config.appSecret)) {
-        console.error('[Meta Webhook] Assinatura inválida — possível tentativa de spoofing');
-        return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 });
-      }
-    } else {
-      console.warn('[Meta Webhook] App Secret não configurado — pulando validação de assinatura. Recomendado configurar para segurança.');
+    if (!config.appSecret) {
+      console.error('[Meta Webhook] App Secret não configurado — rejeitando requisição por segurança');
+      return NextResponse.json({ error: 'App Secret não configurado' }, { status: 403 });
+    }
+
+    if (!isValidSignature(rawBody, signature, config.appSecret)) {
+      console.error('[Meta Webhook] Assinatura inválida — possível tentativa de spoofing');
+      return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 });
     }
 
     // 3. Parsear o payload

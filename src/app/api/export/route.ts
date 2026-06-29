@@ -7,15 +7,33 @@ const EXPORT_LIMIT = 10000;
 
 export async function GET() {
   try {
-    const { error } = await requireAuth();
+    const { error, session } = await requireAuth();
     if (error) return error;
 
-    const total = await db.client.count();
+    // Buscar usuário para filtro de acesso
+    const currentUser = await db.user.findUnique({
+      where: { email: session!.user!.email! },
+      select: { id: true, role: true },
+    });
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const isAdmin = currentUser.role === 'ADMIN';
+    const accessFilter = isAdmin ? {} : {
+      OR: [
+        { createdBy: currentUser.id },
+        { partners: { some: { userId: currentUser.id } } },
+      ],
+    };
+
+    const total = await db.client.count({ where: accessFilter });
     if (total > EXPORT_LIMIT) {
       console.warn(`[EXPORT] Total clients (${total}) exceeds limit (${EXPORT_LIMIT}). Exporting first ${EXPORT_LIMIT}.`);
     }
 
     const clients = await db.client.findMany({
+      where: accessFilter,
       include: {
         tags: {
           include: { tag: true },

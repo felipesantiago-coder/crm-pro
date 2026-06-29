@@ -4,6 +4,28 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { notifyTeamPartnerAdded } from '@/lib/notifications';
 
+async function canAccessClient(clientId: string, userId: string, isAdmin: boolean): Promise<boolean> {
+  if (isAdmin) return true;
+  const client = await db.client.findFirst({
+    where: {
+      id: clientId,
+      OR: [
+        { createdBy: userId },
+        { partners: { some: { userId } } },
+      ],
+    },
+    select: { id: true },
+  });
+  return !!client;
+}
+
+async function getAuthenticatedUser(email: string) {
+  return db.user.findUnique({
+    where: { email },
+    select: { id: true, role: true },
+  });
+}
+
 // GET /api/clients/[id]/partners — Listar parceiros de um cliente
 export async function GET(
   _request: NextRequest,
@@ -16,6 +38,17 @@ export async function GET(
     }
 
     const { id } = await params;
+
+    // Verificar permissão de acesso ao cliente
+    const currentUser = await getAuthenticatedUser(session.user.email);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessClient(id, currentUser.id, currentUser.role === 'ADMIN');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Acesso negado a este cliente' }, { status: 403 });
+    }
 
     const partners = await db.clientPartner.findMany({
       where: { clientId: id },
@@ -52,6 +85,20 @@ export async function POST(
       return NextResponse.json({ error: 'userId é obrigatório' }, { status: 400 });
     }
 
+    // Verificar permissão de acesso ao cliente
+    const currentUser = await db.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true, name: true, role: true },
+    });
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessClient(id, currentUser.id, currentUser.role === 'ADMIN');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Acesso negado a este cliente' }, { status: 403 });
+    }
+
     // Verificar se o cliente existe
     const client = await db.client.findUnique({ where: { id } });
     if (!client) {
@@ -86,20 +133,11 @@ export async function POST(
       );
     }
 
-    // Buscar o usuário que está adicionando (addedBy)
-    const addingUser = await db.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, name: true },
-    });
-    if (!addingUser) {
-      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
-    }
-
     const partner = await db.clientPartner.create({
       data: {
         clientId: id,
         userId,
-        addedBy: addingUser.id,
+        addedBy: currentUser.id,
       },
       include: {
         user: { select: { id: true, name: true, email: true } },
@@ -111,7 +149,7 @@ export async function POST(
     notifyTeamPartnerAdded({
       clientId: id,
       newPartnerName: targetUser.name,
-      addedByName: addingUser.name || 'Usuário',
+      addedByName: currentUser.name || 'Usuário',
     }).catch(() => {});
 
     return NextResponse.json(partner, { status: 201 });
@@ -138,6 +176,17 @@ export async function DELETE(
 
     if (!userId) {
       return NextResponse.json({ error: 'userId é obrigatório' }, { status: 400 });
+    }
+
+    // Verificar permissão de acesso ao cliente antes de remover parceiro
+    const currentUser = await getAuthenticatedUser(session.user.email);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessClient(id, currentUser.id, currentUser.role === 'ADMIN');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Acesso negado a este cliente' }, { status: 403 });
     }
 
     await db.clientPartner.deleteMany({

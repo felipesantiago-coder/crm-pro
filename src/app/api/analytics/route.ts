@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
@@ -105,7 +106,7 @@ export async function GET() {
         }),
       ]);
 
-    // 5. Taxa de conclusão de visitas (% de CONCLUIDO sobre total de agendamentos)
+    // 5. Taxa de conclusão de visitas
     const totalSchedules =
       pendingSchedules + completedSchedules + cancelledSchedules + overdueSchedules;
     const completionRate =
@@ -153,38 +154,60 @@ export async function GET() {
     });
 
     // 10. Últimos 6 meses: novos clientes por mês (tendência)
-    const monthlyClients = await db.$queryRawUnsafe<Array<{ month: string; count: bigint }>>(
-      `
-      SELECT
-        TO_CHAR("created_at", 'YYYY-MM') as month,
-        COUNT(*)::bigint as count
-      FROM clients
-      WHERE "created_at" >= NOW() - INTERVAL '6 months'
-      ${!isAdmin ? `AND ("created_by" = '${currentUser.id}' OR EXISTS (
-        SELECT 1 FROM client_partners cp WHERE cp."client_id" = clients.id AND cp."user_id" = '${currentUser.id}'
-      ))` : ''}
-      GROUP BY TO_CHAR("created_at", 'YYYY-MM')
-      ORDER BY month ASC
-    `
-    );
+    // FIX: Usar $queryRaw com Prisma.sql (parameterizado) ao invés de $queryRawUnsafe
+    const monthlyClients = isAdmin
+      ? await db.$queryRaw<Array<{ month: string; count: bigint }>>(
+          Prisma.sql`
+            SELECT
+              TO_CHAR("created_at", 'YYYY-MM') as month,
+              COUNT(*)::bigint as count
+            FROM clients
+            WHERE "created_at" >= NOW() - INTERVAL '6 months'
+            GROUP BY TO_CHAR("created_at", 'YYYY-MM')
+            ORDER BY month ASC
+          `
+        )
+      : await db.$queryRaw<Array<{ month: string; count: bigint }>>(
+          Prisma.sql`
+            SELECT
+              TO_CHAR("created_at", 'YYYY-MM') as month,
+              COUNT(*)::bigint as count
+            FROM clients
+            WHERE "created_at" >= NOW() - INTERVAL '6 months'
+              AND ("created_by" = ${currentUser.id} OR EXISTS (
+                SELECT 1 FROM client_partners cp WHERE cp."client_id" = clients.id AND cp."user_id" = ${currentUser.id}
+              ))
+            GROUP BY TO_CHAR("created_at", 'YYYY-MM')
+            ORDER BY month ASC
+          `
+        );
 
-    // 11. Atividade semanal (interações + agendamentos concluídos)
+    // 11. Atividade semanal (interações)
     const weekStart = new Date(now);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
     weekStart.setHours(0, 0, 0, 0);
 
-    const [interactionsThisWeek] = await db.$queryRawUnsafe<Array<{ count: bigint }>>(
-      `
-      SELECT COUNT(*)::bigint as count
-      FROM interactions i
-      JOIN clients c ON i."client_id" = c.id
-      WHERE i."created_at" >= $1
-      ${!isAdmin ? `AND (c."created_by" = '${currentUser.id}' OR EXISTS (
-        SELECT 1 FROM client_partners cp WHERE cp."client_id" = c.id AND cp."user_id" = '${currentUser.id}'
-      ))` : ''}
-    `,
-      weekStart.toISOString()
-    );
+    // FIX: Usar $queryRaw com Prisma.sql (parameterizado)
+    const [interactionsThisWeek] = isAdmin
+      ? await db.$queryRaw<Array<{ count: bigint }>>(
+          Prisma.sql`
+            SELECT COUNT(*)::bigint as count
+            FROM interactions i
+            JOIN clients c ON i."client_id" = c.id
+            WHERE i."created_at" >= ${weekStart.toISOString()}
+          `
+        )
+      : await db.$queryRaw<Array<{ count: bigint }>>(
+          Prisma.sql`
+            SELECT COUNT(*)::bigint as count
+            FROM interactions i
+            JOIN clients c ON i."client_id" = c.id
+            WHERE i."created_at" >= ${weekStart.toISOString()}
+              AND (c."created_by" = ${currentUser.id} OR EXISTS (
+                SELECT 1 FROM client_partners cp WHERE cp."client_id" = c.id AND cp."user_id" = ${currentUser.id}
+              ))
+          `
+        );
 
     // 12. Ganhos vs Perdidos
     const wonCount = stageMap['FECHADO_GANHO'] || 0;

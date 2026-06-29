@@ -305,7 +305,10 @@ async function askGemini(systemText: string, messages: Message[]): Promise<strin
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': GEMINI_API_KEY,
+    },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: systemText }] },
       contents,
@@ -561,9 +564,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reply: finalReply });
   } catch (error) {
     console.error('[AI ASSISTANT] Error:', error);
-    const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+    const msg = 'Erro ao processar sua mensagem';
     return NextResponse.json(
-      { error: `Erro ao processar: ${msg}` },
+      { error: 'Erro ao processar sua mensagem' },
       { status: 500 }
     );
   }

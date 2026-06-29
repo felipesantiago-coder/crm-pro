@@ -6,6 +6,28 @@ import { authOptions } from '@/lib/auth-options';
 import { notifyTeamScheduleCreated } from '@/lib/notifications';
 import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '@/lib/google-calendar';
 
+async function canAccessClient(clientId: string, userId: string, isAdmin: boolean): Promise<boolean> {
+  if (isAdmin) return true;
+  const client = await db.client.findFirst({
+    where: {
+      id: clientId,
+      OR: [
+        { createdBy: userId },
+        { partners: { some: { userId } } },
+      ],
+    },
+    select: { id: true },
+  });
+  return !!client;
+}
+
+async function getAuthenticatedUser(email: string) {
+  return db.user.findUnique({
+    where: { email },
+    select: { id: true, role: true },
+  });
+}
+
 // GET /api/clients/[id]/schedules — List all schedules for a client
 export async function GET(
   _request: NextRequest,
@@ -18,6 +40,17 @@ export async function GET(
     }
 
     const { id } = await params;
+
+    // Verificar permissão de acesso ao cliente
+    const currentUser = await getAuthenticatedUser(session.user.email);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessClient(id, currentUser.id, currentUser.role === 'ADMIN');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Acesso negado a este cliente' }, { status: 403 });
+    }
 
     let schedules;
     try {
@@ -70,10 +103,16 @@ export async function POST(
     // Look up current user for createdBy
     const currentUser = await db.user.findUnique({
       where: { email: session.user.email },
-      select: { id: true },
+      select: { id: true, role: true },
     });
     if (!currentUser) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    // Verificar permissão de acesso ao cliente
+    const hasAccess = await canAccessClient(id, currentUser.id, currentUser.role === 'ADMIN');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Acesso negado a este cliente' }, { status: 403 });
     }
 
     // Parse date string manually to avoid UTC timezone offset bug.
@@ -180,6 +219,17 @@ export async function PATCH(
       }
     }
 
+    // Verificar permissão de acesso ao cliente antes de buscar o agendamento
+    const currentUser = await getAuthenticatedUser(session.user.email);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessClient(id, currentUser.id, currentUser.role === 'ADMIN');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Acesso negado a este cliente' }, { status: 403 });
+    }
+
     const schedule = await db.schedule.findUnique({
       where: { id: scheduleId },
     });
@@ -260,6 +310,17 @@ export async function DELETE(
         { error: 'scheduleId é obrigatório' },
         { status: 400 }
       );
+    }
+
+    // Verificar permissão de acesso ao cliente antes de excluir
+    const currentUser = await getAuthenticatedUser(session.user.email);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessClient(id, currentUser.id, currentUser.role === 'ADMIN');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Acesso negado a este cliente' }, { status: 403 });
     }
 
     const schedule = await db.schedule.findUnique({
