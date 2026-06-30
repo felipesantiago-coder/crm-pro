@@ -127,7 +127,16 @@ export async function POST(request: NextRequest) {
         utmCampaign: (r.utmCampaign as string) || (r.utm_campaign as string) || null,
         utmContent: (r.utmContent as string) || (r.utm_content as string) || null,
         utmTerm: (r.utmTerm as string) || (r.utm_term as string) || null,
-        metadata: r.metadata || r.lead_id ? { ...r, lead_id: r.lead_id } : null,
+        metadata: (() => {
+          // Properly merge top-level lead_id into metadata without spreading the entire event
+          if (r.metadata && typeof r.metadata === 'object' && !Array.isArray(r.metadata)) {
+            const m = { ...(r.metadata as Record<string, unknown>) };
+            if (r.lead_id) m.lead_id = r.lead_id;
+            return m;
+          }
+          if (r.lead_id) return { lead_id: r.lead_id };
+          return undefined;
+        })(),
       };
     })
     .filter((e): e is TrackingPayload => e !== null && isValidPayload(e));
@@ -211,6 +220,18 @@ export async function POST(request: NextRequest) {
             metadata: metadata ?? null,
           },
         });
+
+        // Link visitor to lead on identify events — enables funnel tracking (pageview → lead)
+        if (eventType === 'identify') {
+          const rawMeta = (metadata as Record<string, unknown>) || {};
+          const leadIdValue = typeof rawMeta.lead_id === 'string' ? rawMeta.lead_id : null;
+          if (leadIdValue) {
+            await db.trackingVisitor.update({
+              where: { visitorId },
+              data: { leadId: leadIdValue },
+            });
+          }
+        }
       }),
     );
   } catch (error) {

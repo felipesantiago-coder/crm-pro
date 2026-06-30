@@ -241,13 +241,13 @@ export async function GET(request: Request) {
         `,
       ),
 
-      // ── 10a. Meta discrepancy: pixel-tracked leads ──
+      // ── 10a. Meta discrepancy: pixel-tracked leads (form_submit + lead from Meta campaigns) ──
       db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
           FROM tracking_events e
           WHERE e."createdAt" >= ${startDate}::timestamptz
-            AND e."eventType" = 'lead'
+            AND (e."eventType" = 'lead' OR e."eventType" = 'form_submit')
             AND (LOWER(e."utmSource") LIKE '%meta%' OR LOWER(e."utmSource") LIKE '%facebook%')
         `,
       ),
@@ -270,7 +270,7 @@ export async function GET(request: Request) {
           JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
           JOIN clients c ON c.id = v."leadId" AND c."notes" LIKE '%[Meta Ads]%'
           WHERE e."createdAt" >= ${startDate}::timestamptz
-            AND e."eventType" = 'lead'
+            AND (e."eventType" = 'lead' OR e."eventType" = 'form_submit')
             AND (LOWER(e."utmSource") LIKE '%meta%' OR LOWER(e."utmSource") LIKE '%facebook%')
         `,
       ),
