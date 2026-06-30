@@ -5,7 +5,7 @@ import {
   Building2, MapPin, Search, Filter, X, ChevronLeft, ChevronRight,
   FileText, Users, Grid3X3, List, Maximize2,
   ZoomIn, ArrowLeft, Ruler, BedDouble, HardHat, Sparkles,
-  Palette, Navigation, DollarSign, Clock, CheckCircle2, Camera,
+  Palette, Navigation, DollarSign, Clock, CheckCircle2, Camera, CalendarDays,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { GalleryManager } from './gallery-manager';
@@ -412,23 +412,41 @@ function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery }: { enterprise
             )}
           </div>
 
-          {/* Status Badge — extracted from differentials or summary */}
+          {/* Status & Delivery Card — always visible */}
           {(() => {
             const allText = [info!.summary, ...(info!.differentials || [])].filter(Boolean).join(' ');
             let status: string | null = null;
-            let statusColor = '';
-            if (/entregue|pronto para morar|habite-se/i.test(allText)) { status = 'Entregue'; statusColor = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'; }
-            else if (/em construção|em construção/i.test(allText) || /construção/i.test(allText)) { status = 'Em Construção'; statusColor = 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'; }
+            let statusColor = 'bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-400';
+            let statusIcon = <Clock className="h-3 w-3 mr-1" />;
+            if (/entregue|pronto para morar|habite-se/i.test(allText)) { status = 'Entregue'; statusColor = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'; statusIcon = <CheckCircle2 className="h-3 w-3 mr-1" />; }
+            else if (/em construção|construção/i.test(allText)) { status = 'Em Construção'; statusColor = 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'; statusIcon = <HardHat className="h-3 w-3 mr-1" />; }
             else if (/lançamento|pré-lançamento/i.test(allText)) { status = 'Lançamento'; statusColor = 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'; }
             const priceMatch = info!.summary?.match(/a partir de\s*R\$\s*[\d.]+/i) || info!.apartmentTypes?.[0]?.description?.match(/a partir de\s*R\$\s*[\d.]+/i);
             const deliveryMatch = allText.match(/entrega.*?(\d{1,2}\/[\d]{4}|outubro \d{4}|dezembro \d{4}|30\/10\/\d{4})/i);
-            if (!status && !priceMatch && !deliveryMatch) return null;
+            const deliveryText = deliveryMatch ? deliveryMatch[1] : (status === 'Entregue' ? 'Já entregue' : null);
             return (
-              <div className="flex flex-wrap items-center gap-2">
-                {status && <Badge className={cn('text-xs font-medium', statusColor)}><CheckCircle2 className="h-3 w-3 mr-1" />{status}</Badge>}
-                {priceMatch && <Badge className="text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"><DollarSign className="h-3 w-3 mr-1" />{priceMatch[0]}</Badge>}
-                {deliveryMatch && <Badge className="text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"><Clock className="h-3 w-3 mr-1" />Previsão: {deliveryMatch[1]}</Badge>}
-              </div>
+              <Card className="min-w-0 border-l-4 border-l-[#C9A96E]">
+                <CardContent className="p-3 sm:p-4 space-y-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-[#C9A96E]/15 flex items-center justify-center flex-shrink-0"><CalendarDays className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-[#C9A96E]" /></div>
+                    <h3 className="text-sm font-semibold truncate">Situação do Empreendimento</h3>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 sm:pl-10">
+                    <Badge className={cn('text-xs font-semibold px-2.5 py-1', statusColor)}>{statusIcon}{status || 'A definir'}</Badge>
+                    {deliveryText && (
+                      <Badge className={cn('text-xs font-medium px-2.5 py-1',
+                        status === 'Entregue'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                          : 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                      )}>
+                        {status === 'Entregue' ? <CheckCircle2 className="h-3 w-3 mr-1" /> : <Clock className="h-3 w-3 mr-1" />}
+                        {status === 'Entregue' ? deliveryText : `Previsão: ${deliveryText}`}
+                      </Badge>
+                    )}
+                    {priceMatch && <Badge className="text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1"><DollarSign className="h-3 w-3 mr-1" />{priceMatch[0]}</Badge>}
+                  </div>
+                </CardContent>
+              </Card>
             );
           })()}
 
