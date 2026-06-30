@@ -53,19 +53,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── Check for existing client with same phone + email ────
+    // ── Check for existing client (match by phone OR email) ─
     const existingClient = await db.client.findFirst({
       where: {
-        AND: [
+        OR: [
           { phone: cleanPhone },
           { email: cleanEmail },
         ],
       },
-      select: { id: true, name: true, stage: true, enterpriseId: true },
+      select: { id: true, name: true, stage: true, enterpriseId: true, phone: true, email: true },
     });
 
     if (existingClient) {
-      // Update existing client with this new interaction
+      // Update existing client with this new interaction (no queue assignment — don't waste a turn)
       await db.interaction.create({
         data: {
           clientId: existingClient.id,
@@ -73,36 +73,12 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Still assign to queue if possible
-      let assignedUser = null;
-      try {
-        const assignRes = await fetch(
-          `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/lead-queues/assign`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              leadId: existingClient.id,
-              source: slug ? `landing_form:${slug}` : 'landing_form',
-            }),
-          },
-        );
-        if (assignRes.ok) {
-          assignedUser = await assignRes.json();
-        }
-      } catch {
-        // Silent — queue assignment is best-effort
-      }
-
       return NextResponse.json({
         success: true,
         isExisting: true,
+        clientId: existingClient.id,
         clientName: existingClient.name,
-        assignedUser: assignedUser?.assigned ? {
-          userId: assignedUser.userId,
-          userName: assignedUser.userName,
-          userPhone: assignedUser.userPhone,
-        } : null,
+        assignedUser: null,
       });
     }
 
@@ -177,6 +153,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       isExisting: false,
+      clientId: client.id,
       clientName: client.name,
       assignedUser: assignedUser?.assigned ? {
         userId: assignedUser.userId,
