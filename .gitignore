@@ -63,3 +63,4 @@ server.log
 bun.lock
 crm-fix
 crm-pro
+tool-results/
