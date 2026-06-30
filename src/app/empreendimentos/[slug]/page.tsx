@@ -6,7 +6,7 @@ import {
   X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Copy, Check, User, Send, AlertCircle,
-  Shield, ChevronDown, CalendarDays,
+  Shield, ChevronDown, CalendarDays, TrendingUp,
 } from 'lucide-react';
 
 /* ================================================================
@@ -394,7 +394,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
      Render
      ================================================================ */
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-white overflow-x-hidden">
+    <div className="min-h-screen bg-[#0A0A0A] text-white overflow-x-hidden [word-break:break-word]">
 
       {/* ── Custom Keyframes ────────────────────────────── */}
       <style>{`
@@ -492,21 +492,21 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
               </span>
             )}
             {priceMatch && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
-                <DollarSign className="h-3 w-3" />
-                {priceMatch[0]}
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 max-w-[200px] sm:max-w-none">
+                <DollarSign className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{priceMatch[0]}</span>
               </span>
             )}
             {deliveryMatch && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25">
-                <Clock className="h-3 w-3" />
-                Previsão: {deliveryMatch[1]}
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 max-w-[200px] sm:max-w-none">
+                <Clock className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">Previsão: {deliveryMatch[1]}</span>
               </span>
             )}
             {e.region && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white/70 border border-white/10">
-                <MapPin className="h-3 w-3" />
-                {e.region}
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white/70 border border-white/10 max-w-[180px] sm:max-w-none">
+                <MapPin className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{e.region}</span>
               </span>
             )}
             {/* ★ NEW: Urgency Badge — only for Lançamento or Em Construção */}
@@ -649,7 +649,6 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
       </ScrollReveal>
 
       {/* ── Ficha Técnica do Empreendimento ─────────────── */}
-      {hasInfo && info && (
       <ScrollReveal>
         <section className="py-12 sm:py-24 border-t border-white/[0.04]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -666,138 +665,118 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
             {/* Spec grid */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
               {/* Status */}
-              {status && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${
-                      status === 'Lançamento' ? 'bg-emerald-500/15' : status === 'Em Construção' ? 'bg-amber-500/15' : 'bg-blue-500/15'
+                      status === 'Lançamento' ? 'bg-emerald-500/15' : status === 'Em Construção' ? 'bg-amber-500/15' : status === 'Entregue' ? 'bg-blue-500/15' : 'bg-white/5'
                     }`}>
-                      <Clock className={`h-4 w-4 ${status === 'Lançamento' ? 'text-emerald-400' : status === 'Em Construção' ? 'text-amber-400' : 'text-blue-400'}`} />
+                      <Clock className={`h-4 w-4 ${status === 'Lançamento' ? 'text-emerald-400' : status === 'Em Construção' ? 'text-amber-400' : status === 'Entregue' ? 'text-blue-400' : 'text-white/20'}`} />
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Status</span>
                   </div>
-                  <p className={`text-sm font-semibold ${status === 'Lançamento' ? 'text-emerald-400' : status === 'Em Construção' ? 'text-amber-400' : 'text-blue-400'}`}>{status}</p>
+                  <p className={`text-sm font-semibold ${status === 'Lançamento' ? 'text-emerald-400' : status === 'Em Construção' ? 'text-amber-400' : status === 'Entregue' ? 'text-blue-400' : 'text-white/40'}`}>{status || 'A definir'}</p>
                 </div>
-              )}
 
               {/* Construtora */}
-              {info.builder && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-orange-500/15 flex items-center justify-center">
                       <HardHat className="h-4 w-4 text-orange-400" />
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Construtora</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.builder.split('(')[0].trim()}</p>
+                  <p className="text-sm font-semibold text-white/85 leading-snug truncate" title={info?.builder?.split('(')[0].trim() || ''}>{info?.builder?.split('(')[0].trim() || '—'}</p>
                 </div>
-              )}
 
               {/* Localização */}
-              {(info.location.neighborhood || info.location.city) && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
                       <MapPin className="h-4 w-4 text-blue-400" />
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Localização</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug">
-                    {[info.location.neighborhood, info.location.city].filter(Boolean).join(', ')}
+                  <p className="text-sm font-semibold text-white/85 leading-snug truncate" title={([info?.location?.neighborhood, info?.location?.city].filter(Boolean).join(', ')) || ''}>
+                    {[info?.location?.neighborhood, info?.location?.city].filter(Boolean).join(', ') || '—'}
                   </p>
                 </div>
-              )}
 
               {/* Tipos de Unidade */}
-              {(info.apartmentTypes && info.apartmentTypes.length > 0) && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
                       <Building2 className="h-4 w-4 text-violet-400" />
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Plantas</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85">{info.apartmentTypes.length} tipo{info.apartmentTypes.length > 1 ? 's' : ''} de unidade</p>
+                  <p className="text-sm font-semibold text-white/85">{(info?.apartmentTypes?.length || 0) > 0 ? `${info!.apartmentTypes.length} tipo${info!.apartmentTypes.length > 1 ? 's' : ''} de unidade` : 'Consulte'}</p>
                   {areaRange && <p className="text-xs text-white/40 mt-1">{areaRange}</p>}
                 </div>
-              )}
 
               {/* Arquitetura */}
-              {info.architecture && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
                       <Palette className="h-4 w-4 text-violet-400" />
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Arquitetura</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.architecture}</p>
+                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info?.architecture || '—'}</p>
                 </div>
-              )}
 
               {/* Paisagismo */}
-              {info.landscaping && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
                       <Sparkles className="h-4 w-4 text-emerald-400" />
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Paisagismo</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.landscaping}</p>
+                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info?.landscaping || '—'}</p>
                 </div>
-              )}
 
               {/* Preço */}
-              {priceText && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-[#C9A96E]/15 flex items-center justify-center">
                       <DollarSign className="h-4 w-4 text-[#C9A96E]" />
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Investimento</span>
                   </div>
-                  <p className="text-sm font-bold text-[#C9A96E]">{priceText}</p>
+                  <p className="text-sm font-bold text-[#C9A96E]">{priceText || 'Consulte valores'}</p>
                 </div>
-              )}
 
               {/* Previsão de Entrega */}
-              {deliveryText && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
                       <CalendarDays className="h-4 w-4 text-amber-400" />
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Entrega</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85">{deliveryText}</p>
+                  <p className="text-sm font-semibold text-white/85">{deliveryText || 'A definir'}</p>
                 </div>
-              )}
 
               {/* Endereço */}
-              {info.location.address && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors sm:col-span-2 lg:col-span-2">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0 sm:col-span-2 lg:col-span-2">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
                       <Navigation className="h-4 w-4 text-blue-400" />
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Endereço</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.location.address}</p>
-                  {info.location.additionalInfo && (
+                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info?.location?.address || '—'}</p>
+                  {info?.location?.additionalInfo && (
                     <p className="text-xs text-white/40 mt-1">{info.location.additionalInfo}</p>
                   )}
                 </div>
-              )}
             </div>
           </div>
         </section>
       </ScrollReveal>
-      )}
 
       {/* ── Details Section ────────────────────────────── */}
       <ScrollReveal>
-        {hasInfo && info! && (
           <section className="py-12 sm:py-24 border-t border-white/[0.04]">
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               {/* Section header */}
@@ -810,7 +789,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
               </div>
 
               {/* Summary — Sobre o Empreendimento */}
-              {info.summary && (
+              {info?.summary ? (
                 <div className="mb-8 sm:mb-12">
                   <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.08] via-[#C9A96E]/[0.03] to-transparent border border-[#C9A96E]/15 p-6 sm:p-8 lg:p-10">
                     <div className="absolute top-0 right-0 w-48 h-48 bg-[#C9A96E]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
@@ -823,14 +802,13 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* Info blocks — stacked, full-width, each with clear visual identity */}
               <div className="space-y-4 sm:space-y-5">
 
                 {/* Location */}
-                {(info.location.address || info.location.neighborhood || info.location.city) && (
-                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
                     <div className="flex items-stretch">
                       {/* Icon strip */}
                       <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-blue-500/15 to-blue-500/5 flex items-center justify-center">
@@ -842,21 +820,17 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                       <div className="flex-1 p-5 sm:p-6">
                         <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Localização</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
-                          {info.location.address && (
-                            <div>
-                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Endereço</p>
-                              <p className="text-sm text-white/70 leading-relaxed">{info.location.address}</p>
-                            </div>
-                          )}
-                          {(info.location.neighborhood || info.location.city) && (
-                            <div>
-                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Região</p>
-                              <p className="text-sm text-white/70 leading-relaxed">
-                                {[info.location.neighborhood, info.location.city, info.location.state].filter(Boolean).join(', ')}
-                              </p>
-                            </div>
-                          )}
-                          {info.location.additionalInfo && (
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Endereço</p>
+                            <p className="text-sm text-white/70 leading-relaxed">{info?.location?.address || 'Consulte o endereço completo'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Região</p>
+                            <p className="text-sm text-white/70 leading-relaxed">
+                              {[info?.location?.neighborhood, info?.location?.city, info?.location?.state].filter(Boolean).join(', ') || e.region || '—'}
+                            </p>
+                          </div>
+                          {info?.location?.additionalInfo && (
                             <div className="sm:col-span-2">
                               <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Referências</p>
                               <p className="text-sm text-white/50 leading-relaxed">{info.location.additionalInfo}</p>
@@ -866,11 +840,9 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                       </div>
                     </div>
                   </div>
-                )}
 
                 {/* Builder */}
-                {info.builder && (
-                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
                     <div className="flex items-stretch">
                       <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-orange-500/15 to-orange-500/5 flex items-center justify-center">
                         <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
@@ -879,15 +851,13 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                       </div>
                       <div className="flex-1 p-5 sm:p-6">
                         <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Construtora</h3>
-                        <p className="text-sm sm:text-[15px] text-white/70 leading-relaxed max-w-3xl">{info.builder}</p>
+                        <p className="text-sm sm:text-[15px] text-white/70 leading-relaxed max-w-3xl">{info?.builder || 'Informações em breve'}</p>
                       </div>
                     </div>
                   </div>
-                )}
 
                 {/* Architecture / Landscaping */}
-                {(info.architecture || info.landscaping) && (
-                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
                     <div className="flex items-stretch">
                       <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-violet-500/15 to-violet-500/5 flex items-center justify-center">
                         <div className="h-9 w-9 rounded-xl bg-violet-500/20 flex items-center justify-center">
@@ -897,38 +867,32 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                       <div className="flex-1 p-5 sm:p-6">
                         <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Projeto</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
-                          {info.architecture && (
-                            <div>
-                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Arquitetura</p>
-                              <p className="text-sm text-white/70 leading-relaxed">{info.architecture}</p>
-                            </div>
-                          )}
-                          {info.landscaping && (
-                            <div>
-                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Paisagismo</p>
-                              <p className="text-sm text-white/70 leading-relaxed">{info.landscaping}</p>
-                            </div>
-                          )}
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Arquitetura</p>
+                            <p className="text-sm text-white/70 leading-relaxed">{info?.architecture || 'Em breve'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Paisagismo</p>
+                            <p className="text-sm text-white/70 leading-relaxed">{info?.landscaping || 'Em breve'}</p>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                )}
 
               </div>
 
               {/* Apartment Types */}
-              {info.apartmentTypes && info.apartmentTypes.length > 0 && (
-                <div className="mt-10 sm:mt-14">
+              <div className="mt-10 sm:mt-14">
                   <div className="flex items-center gap-3 mb-6 sm:mb-8">
                     <div className="h-9 w-9 rounded-xl bg-emerald-500/15 flex items-center justify-center">
                       <Building2 className="h-4 w-4 text-emerald-400" />
                     </div>
                     <h3 className="text-lg sm:text-xl font-semibold">Tipos de Unidades</h3>
-                    <span className="text-xs text-white/25 font-medium ml-auto">{info.apartmentTypes.length} tipo{info.apartmentTypes.length !== 1 ? 's' : ''} disponíve{info.apartmentTypes.length !== 1 ? 'is' : 'l'}</span>
+                    <span className="text-xs text-white/25 font-medium ml-auto">{(info?.apartmentTypes?.length || 0)} tipo{(info?.apartmentTypes?.length || 0) !== 1 ? 's' : ''} disponíve{(info?.apartmentTypes?.length || 0) !== 1 ? 'is' : 'l'}</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {info.apartmentTypes.map((apt, idx) => {
+                    {(info?.apartmentTypes || []).map((apt, idx) => {
                       const priceInDesc = apt.description?.match(/R\$[\d.,]+/);
                       return (
                         <div
@@ -966,12 +930,13 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                       );
                     })}
                   </div>
+                  {(!info?.apartmentTypes || info.apartmentTypes.length === 0) && (
+                    <p className="text-sm text-white/30 text-center py-8">Plantas e tipos de unidades serão disponibilizadas em breve.</p>
+                  )}
                 </div>
-              )}
 
               {/* Differentials */}
-              {info.differentials && info.differentials.length > 0 && (
-                <div className="mt-10 sm:mt-14">
+              <div className="mt-10 sm:mt-14">
                   <div className="flex items-center gap-3 mb-6 sm:mb-8">
                     <div className="h-9 w-9 rounded-xl bg-[#C9A96E]/15 flex items-center justify-center">
                       <Sparkles className="h-4 w-4 text-[#C9A96E]" />
@@ -979,21 +944,107 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                     <h3 className="text-lg sm:text-xl font-semibold">Diferenciais</h3>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {info.differentials.map((d, i) => (
+                    {(info?.differentials || []).map((d, i) => (
                       <div
                         key={i}
-                        className="flex items-center gap-3 px-4 sm:px-5 py-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:border-[#C9A96E]/20 transition-colors"
+                        className="flex items-start gap-3 px-4 sm:px-5 py-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:border-[#C9A96E]/20 transition-colors min-w-0"
                       >
                         <CheckCircle2 className="h-4 w-4 text-[#C9A96E] flex-shrink-0" />
-                        <span className="text-sm text-white/70">{d}</span>
+                        <span className="text-sm text-white/70 leading-relaxed min-w-0">{d}</span>
                       </div>
                     ))}
                   </div>
+                {(!info?.differentials || info.differentials.length === 0) && (
+                  <p className="text-sm text-white/30 text-center py-8">Diferenciais serão informados em breve.</p>
+                )}
                 </div>
-              )}
             </div>
           </section>
-        )}
+      </ScrollReveal>
+
+      {/* ── Por que o {e.name}? ──────────────────────────── */}
+      <ScrollReveal>
+        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+            {/* Section header */}
+            <div className="flex items-center gap-4 mb-8 sm:mb-12">
+              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+              <div className="text-center">
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Por que o {e.name}?</h2>
+                <p className="text-sm text-white/40 mt-1">Destaques que fazem a diferença</p>
+              </div>
+              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+              {/* Card 1 — Localização Privilegiada */}
+              <div className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+                <div className="h-0.5 w-12 bg-gradient-to-r from-[#C9A96E] to-transparent mb-5 rounded-full" />
+                <div className="h-10 w-10 rounded-xl bg-blue-500/15 flex items-center justify-center mb-4">
+                  <MapPin className="h-5 w-5 text-blue-400" />
+                </div>
+                <h3 className="text-base font-semibold text-white/90 mb-2">Localização Privilegiada</h3>
+                <p className="text-sm text-white/50 leading-relaxed">
+                  {[info?.location?.neighborhood, info?.location?.city].filter(Boolean).join(', ') || e.region || 'Região estratégica'} com excelente infraestrutura, comércio, transporte e serviços ao seu redor.
+                </p>
+              </div>
+
+              {/* Card 2 — Qualidade de Construção */}
+              <div className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+                <div className="h-0.5 w-12 bg-gradient-to-r from-[#C9A96E] to-transparent mb-5 rounded-full" />
+                <div className="h-10 w-10 rounded-xl bg-orange-500/15 flex items-center justify-center mb-4">
+                  <HardHat className="h-5 w-5 text-orange-400" />
+                </div>
+                <h3 className="text-base font-semibold text-white/90 mb-2">Construtora Reconhecida</h3>
+                <p className="text-sm text-white/50 leading-relaxed">
+                  {info?.builder?.split('(')[0].trim() || 'Construtora de renome'}, com histórico comprovado de entregas e compromisso com a qualidade em cada detalhe.
+                </p>
+              </div>
+
+              {/* Card 3 — Diferenciais Exclusivos */}
+              <div className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+                <div className="h-0.5 w-12 bg-gradient-to-r from-[#C9A96E] to-transparent mb-5 rounded-full" />
+                <div className="h-10 w-10 rounded-xl bg-[#C9A96E]/15 flex items-center justify-center mb-4">
+                  <Sparkles className="h-5 w-5 text-[#C9A96E]" />
+                </div>
+                <h3 className="text-base font-semibold text-white/90 mb-2">Diferenciais Exclusivos</h3>
+                <p className="text-sm text-white/50 leading-relaxed">
+                  {(info?.differentials && info.differentials.length > 0)
+                    ? info.differentials.slice(0, 3).join(', ') + (info.differentials.length > 3 ? ' e muito mais.' : '.')
+                    : 'Lazer completo, segurança 24h e acabamentos de alto padrão para o seu conforto.'}
+                </p>
+              </div>
+
+              {/* Card 4 — Oportunidade de Investimento */}
+              <div className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+                <div className="h-0.5 w-12 bg-gradient-to-r from-[#C9A96E] to-transparent mb-5 rounded-full" />
+                <div className="h-10 w-10 rounded-xl bg-emerald-500/15 flex items-center justify-center mb-4">
+                  <TrendingUp className="h-5 w-5 text-emerald-400" />
+                </div>
+                <h3 className="text-base font-semibold text-white/90 mb-2">Oportunidade de Investimento</h3>
+                <p className="text-sm text-white/50 leading-relaxed">
+                  {priceText
+                    ? `${priceText} em uma região com alta valorização imobiliária.`
+                    : 'Valores acessíveis e condições especiais em uma região com forte valorização imobiliária.'}
+                </p>
+              </div>
+
+              {/* Card 5 — Atendimento Personalizado */}
+              <div className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+                <div className="h-0.5 w-12 bg-gradient-to-r from-[#C9A96E] to-transparent mb-5 rounded-full" />
+                <div className="h-10 w-10 rounded-xl bg-purple-500/15 flex items-center justify-center mb-4">
+                  <Shield className="h-5 w-5 text-purple-400" />
+                </div>
+                <h3 className="text-base font-semibold text-white/90 mb-2">Atendimento Exclusivo</h3>
+                <p className="text-sm text-white/50 leading-relaxed">
+                  {e._count && e._count.clients > 0
+                    ? `${e._count.clients} pessoa${e._count.clients !== 1 ? 's' : ''} já demonstraram interesse. Cadastre-se e receba atendimento individualizado.`
+                    : 'Consultoria dedicada para acompanhar cada etapa, da simulação até a entrega das chaves.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
       </ScrollReveal>
 
       {/* ── Fallback: Landing Description ──────────────── */}
@@ -1059,7 +1110,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
 
               {/* Right side — Form */}
               <div className="relative order-1 lg:order-2">
-                <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/10 via-transparent to-[#C9A96E]/5 rounded-3xl blur-xl" />
+                <div className="absolute -inset-1 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/10 via-transparent to-[#C9A96E]/5 rounded-3xl blur-sm sm:blur-xl" />
                 <form
                   onSubmit={handleFormSubmit}
                   className="relative z-10 rounded-2xl bg-white/[0.03] border border-white/[0.08] p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
