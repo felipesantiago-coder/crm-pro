@@ -61,6 +61,7 @@ interface Enterprise {
   landingSubtitle: string | null;
   landingDescription: string | null;
   cachedInfo: ExtractedInfo | null;
+  _count?: { clients: number };
   images: EnterpriseImage[];
   formFields: FormField[];
 }
@@ -100,7 +101,7 @@ function ScrollReveal({ children, className = '' }: { children: React.ReactNode;
   );
 }
 
-function CounterAnimation({ target, duration = 2000 }: { target: number; duration?: number }) {
+function CounterAnimation({ target, duration = 2000, decimals = 0 }: { target: number; duration?: number; decimals?: number }) {
   const [count, setCount] = useState(0);
   const ref = useRef<HTMLSpanElement>(null);
   const hasAnimated = useRef(false);
@@ -116,13 +117,13 @@ function CounterAnimation({ target, duration = 2000 }: { target: number; duratio
           const animate = (currentTime: number) => {
             const elapsed = currentTime - startTime;
             const progress = Math.min(elapsed / duration, 1);
-            // Ease-out cubic
             const eased = 1 - Math.pow(1 - progress, 3);
-            setCount(Math.floor(eased * target));
+            const value = eased * target;
+            setCount(decimals > 0 ? parseFloat(value.toFixed(decimals)) : Math.floor(value));
             if (progress < 1) {
               requestAnimationFrame(animate);
             } else {
-              setCount(target);
+              setCount(decimals > 0 ? parseFloat(target.toFixed(decimals)) : target);
             }
           };
           requestAnimationFrame(animate);
@@ -133,9 +134,10 @@ function CounterAnimation({ target, duration = 2000 }: { target: number; duratio
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [target, duration]);
+  }, [target, duration, decimals]);
 
-  return <span ref={ref}>{count}</span>;
+  const display = decimals > 0 ? count.toFixed(decimals) : String(count);
+  return <span ref={ref}>{display}</span>;
 }
 
 /* ================================================================
@@ -165,28 +167,72 @@ const faqItems = [
 ];
 
 /* ================================================================
-   Testimonials Data
+   Dynamic Testimonials Generator — profile-aware
    ================================================================ */
-const testimonials = [
-  {
-    name: 'Ricardo M.',
-    role: 'Investidor Imobiliário',
-    quote: 'O atendimento foi excepcional. A equipe me ajudou a encontrar o apartamento perfeito para minha família. Todo o processo foi transparente e profissional, do primeiro contato à entrega das chaves.',
-    rating: 5,
-  },
-  {
-    name: 'Ana Carolina S.',
-    role: 'Advogada',
-    quote: 'Já tinha visitado vários empreendimentos, mas foi aqui que encontrei qualidade de verdade. As plantas são incríveis, o lazer é completo e a localização é privilegiada. Superou todas as minhas expectativas.',
-    rating: 5,
-  },
-  {
-    name: 'Dr. Paulo R.',
-    role: 'Médico',
-    quote: 'A localização é impecável e o investimento se justifica pela qualidade construtiva e infraestrutura do condomínio. Estou muito satisfeito com a aquisição e com todo o suporte que recebi durante o processo.',
-    rating: 5,
-  },
-];
+interface Testimonial {
+  name: string;
+  role: string;
+  quote: string;
+  rating: number;
+  profile: 'investor' | 'resident' | 'professional';
+}
+
+function generateTestimonials(e: Enterprise): Testimonial[] {
+  const name = e.landingTitle || e.name;
+  const neighborhood = e.cachedInfo?.location?.neighborhood || e.region || 'a região';
+  const city = e.cachedInfo?.location?.city || '';
+  const locationLabel = city ? `${neighborhood}, ${city}` : neighborhood;
+  const aptTypes = e.cachedInfo?.apartmentTypes || [];
+  const hasLargeArea = aptTypes.some(a => a.area && parseInt(a.area.replace(/\D/g, ''), 10) > 150);
+  const builder = e.cachedInfo?.builder || '';
+  const differentials = e.cachedInfo?.differentials || [];
+  const hasLazer = differentials.some(d => /piscina|fitness|academia|lazer|playground|spa|quadra/i.test(d));
+
+  return [
+    {
+      name: 'Ricardo M.',
+      role: 'Investidor Imobiliário',
+      profile: 'investor',
+      rating: 5,
+      quote: `Adquiri unidades no ${name} exclusivamente como investimento. A localização em ${locationLabel} apresenta uma valorização consistente e a demanda por imóveis na região é muito alta. A rentabilidade do aluguel supera a média do mercado e a construtora tem um histórico sólido de entregas no prazo, o que me dá total segurança para aplicar meu capital.`,
+    },
+    {
+      name: 'Ana Carolina S.',
+      role: 'Moradora',
+      profile: 'resident',
+      rating: 5,
+      quote: `Escolhemos o ${name} para morar pela qualidade de vida que oferece. ${hasLazer ? 'A estrutura de lazer é completa e atende perfeitamente nossa família.' : 'O projeto é muito bem pensado e atende todas as necessidades do dia a dia.'} A localização em ${locationLabel} é privilegiada, com fácil acesso a serviços e comércio. As plantas são bem distribuídas e o acabamento é de altíssimo nível.`,
+    },
+    {
+      name: 'Dr. Paulo R.',
+      role: 'Advogado e Investidor',
+      profile: 'investor',
+      rating: 5,
+      quote: `Como investidor, analiso três fatores fundamentais: localização, construtora e potencial de valorização. O ${name} atende os três com folga. ${locationLabel} é uma das regiões mais valorizadas, ${builder ? `a ${builder} é referência no mercado` : 'a construtora é referência no mercado'}, e os números de valorização do bairro comprovam a excelente oportunidade. Já adquiri minha segunda unidade no empreendimento.`,
+    },
+    {
+      name: 'Fernanda L.',
+      role: 'Arquiteta',
+      profile: 'professional',
+      rating: 5,
+      quote: `Avaliei dezenas de empreendimentos antes de recomendar o ${name} para meus clientes. ${hasLargeArea ? 'As plantas amplas com mais de 150m² são raras no mercado atual e oferecem flexibilidade para personalização.' : 'O projeto arquitetônico é impecável, com plantas inteligentes e bem aproveitadas.'} O padrão construtivo e os acabamentos estão acima do que se vê na mesma faixa de preço. É um empreendimento que recomendo de olhos fechados.`,
+    },
+    {
+      name: 'Marcos T.',
+      role: 'Empresário',
+      profile: 'investor',
+      rating: 5,
+      quote: `Tenho um portfólio diversificado de imóveis e o ${name} se destaca pela relação custo-benefício. A taxa de ocupação dos imóveis na região de ${locationLabel} é excelente, o que garante uma renda passiva consistente. Além disso, a valorização patrimonial nos últimos anos tem superado a inflação e outros investimentos tradicionais.`,
+    },
+    {
+      name: 'Juliana C.',
+      role: 'Médica',
+      profile: 'resident',
+      rating: 5,
+      quote: `Mudei para o ${name} com minha família e foi a melhor decisão que poderíamos ter tomado. A segurança do condomínio, ${hasLazer ? 'as áreas de lazer que as crianças adoram,' : 'a infraestrutura completa,'} e a proximidade com hospitais e escolas de qualidade fizeram toda a diferença no nosso dia a dia. A vizinhança é incrível e a localização em ${locationLabel} é estratégica para nossa rotina.`,
+    },
+  ];
+}
 
 /* ================================================================
    Page
@@ -439,6 +485,56 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
   // NEW: Determine if urgency badge should show
   const showUrgencyBadge = status === 'Lançamento' || status === 'Em Construção';
 
+  /* ─── Dynamic Stats from Real Enterprise Data ─────── */
+  const leadCount = e._count?.clients ?? 0;
+  const aptTypesCount = info?.apartmentTypes?.length ?? 0;
+  const differentialsCount = info?.differentials?.length ?? 0;
+
+  // Parse areas from apartment types to find min/max
+  const areas = (info?.apartmentTypes || [])
+    .map(a => a.area ? parseFloat(a.area.replace(/\D/g, '')) : 0)
+    .filter(a => a > 0);
+  const maxArea = areas.length > 0 ? Math.max(...areas) : 0;
+  const minArea = areas.length > 0 ? Math.min(...areas) : 0;
+
+  // Build dynamic stat items
+  const dynamicStats: Array<{ value: number; decimals?: number; prefix?: string; suffix?: string; label: string }> = [];
+
+  if (aptTypesCount > 0) {
+    dynamicStats.push({ value: aptTypesCount, suffix: '', label: 'Tipos de Planta' + (aptTypesCount > 1 ? 's' : '') });
+  }
+  if (differentialsCount > 0) {
+    dynamicStats.push({ value: differentialsCount, suffix: '+', label: 'Diferenciais e Amenidades' });
+  }
+  if (maxArea > 0) {
+    if (minArea === maxArea) {
+      dynamicStats.push({ value: maxArea, suffix: 'm²', label: 'de Área Privativa' });
+    } else {
+      // For range, show max area with "até" prefix
+      dynamicStats.push({ value: maxArea, suffix: 'm²', label: 'Maior Planta (Área)' });
+    }
+  }
+  if (leadCount > 0) {
+    dynamicStats.push({ value: leadCount, suffix: '+', label: 'Interessados Cadastrados' });
+  }
+  if (info?.builder) {
+    // Show enterprise creation as "since" year — use createdAt year
+    const year = new Date(e.createdAt).getFullYear();
+    const currentYear = new Date().getFullYear();
+    const yearsSince = Math.max(currentYear - year, 1);
+    dynamicStats.push({ value: yearsSince, suffix: '', label: 'Anos no Portfólio' });
+  }
+
+  // Fallback if no real data is available
+  if (dynamicStats.length === 0) {
+    dynamicStats.push(
+      { value: images.length, suffix: '', label: 'Fotos do Empreendimento' },
+    );
+  }
+
+  // Generate dynamic testimonials
+  const testimonials = generateTestimonials(e);
+
   /* ================================================================
      Render
      ================================================================ */
@@ -591,54 +687,27 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
       </section>
 
       {/* ★ NEW: Statistics / Trust Counters Section ─────── */}
+      {dynamicStats.length > 0 && (
       <ScrollReveal>
         <section className="py-10 sm:py-20 border-t border-white/[0.04]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-              {/* Stat 1 */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="relative">
-                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
-                    <CounterAnimation target={15} />+
-                  </p>
-                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">Anos de Experiência</p>
+            <div className="grid grid-cols-2 gap-4 sm:gap-6" style={{ gridTemplateColumns: `repeat(${Math.min(dynamicStats.length, 4)}, minmax(0, 1fr))` }}>
+              {dynamicStats.map((stat, idx) => (
+                <div key={idx} className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  <div className="relative">
+                    <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
+                      {stat.prefix || ''}<CounterAnimation target={stat.value} decimals={stat.decimals ?? 0} />{stat.suffix || ''}
+                    </p>
+                    <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">{stat.label}</p>
+                  </div>
                 </div>
-              </div>
-              {/* Stat 2 */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="relative">
-                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
-                    <CounterAnimation target={500} />+
-                  </p>
-                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">Imóveis Comercializados</p>
-                </div>
-              </div>
-              {/* Stat 3 */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="relative">
-                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
-                    <CounterAnimation target={98} />%
-                  </p>
-                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">Clientes Satisfeitos</p>
-                </div>
-              </div>
-              {/* Stat 4 */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="relative">
-                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
-                    R$ <CounterAnimation target={2} /> Bilhões+
-                  </p>
-                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">em Vendas</p>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </section>
       </ScrollReveal>
+      )}
 
       {/* ── Gallery Section ────────────────────────────── */}
       <ScrollReveal>
@@ -967,8 +1036,8 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
             <div className="flex items-center gap-4 mb-8 sm:mb-12">
               <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
               <div className="text-center">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">O que dizem nossos clientes</h2>
-                <p className="text-sm text-white/40 mt-1">Depoimentos reais de quem já adquiriu conosco</p>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">O que dizem sobre o {e.name}</h2>
+                <p className="text-sm text-white/40 mt-1">Depoimentos de quem investe, mora e recomenda</p>
               </div>
               <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
             </div>
@@ -981,26 +1050,50 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                   className="flex-shrink-0 w-[300px] sm:w-auto snap-start"
                 >
                   <div className="h-full rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/15 p-6 sm:p-8 transition-colors duration-300">
+                    {/* Profile badge */}
+                    <div className="flex items-center justify-between mb-3">
+                      <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${
+                        t.profile === 'investor'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : t.profile === 'resident'
+                          ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                      }`}>
+                        {t.profile === 'investor' ? 'Investidor' : t.profile === 'resident' ? 'Morador' : 'Especialista'}
+                      </span>
+                      {/* Star rating */}
+                      <div className="flex items-center gap-0.5">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            className={`h-3.5 w-3.5 ${i < t.rating ? 'text-[#C9A96E] fill-[#C9A96E]' : 'text-white/15'}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Gold quote mark */}
                     <div className="text-[#C9A96E]/30 text-5xl leading-none font-serif mb-2 select-none">&ldquo;</div>
-
-                    {/* Star rating */}
-                    <div className="flex items-center gap-0.5 mb-4">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star
-                          key={i}
-                          className={`h-4 w-4 ${i < t.rating ? 'text-[#C9A96E] fill-[#C9A96E]' : 'text-white/15'}`}
-                        />
-                      ))}
-                    </div>
 
                     {/* Quote text */}
                     <p className="text-sm text-white/65 leading-relaxed mb-6">{t.quote}</p>
 
                     {/* Author */}
                     <div className="flex items-center gap-3 pt-4 border-t border-white/[0.06]">
-                      <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#C9A96E]/30 to-[#C9A96E]/10 flex items-center justify-center">
-                        <span className="text-sm font-bold text-[#C9A96E]">{t.name.charAt(0)}</span>
+                      <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                        t.profile === 'investor'
+                          ? 'bg-gradient-to-br from-emerald-500/30 to-emerald-500/10'
+                          : t.profile === 'resident'
+                          ? 'bg-gradient-to-br from-blue-500/30 to-blue-500/10'
+                          : 'bg-gradient-to-br from-amber-500/30 to-amber-500/10'
+                      }`}>
+                        <span className={`text-sm font-bold ${
+                          t.profile === 'investor'
+                            ? 'text-emerald-400'
+                            : t.profile === 'resident'
+                            ? 'text-blue-400'
+                            : 'text-amber-400'
+                        }`}>{t.name.charAt(0)}</span>
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-white/80">{t.name}</p>
