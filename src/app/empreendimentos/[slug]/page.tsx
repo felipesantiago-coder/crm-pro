@@ -155,6 +155,50 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
   // NEW: FAQ accordion state
   const [faqOpenIndex, setFaqOpenIndex] = useState<number | null>(null);
 
+  // Tracking: form field focus timestamps
+  const fieldFocusTime = useRef<Record<string, number>>({});
+
+  // Tracking: section visibility (IntersectionObserver)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.CRMPIXEL) return;
+    const sectionNames: Record<string, string> = {
+      'galeria': 'galeria',
+      'ficha técnica': 'ficha-tecnica',
+      'detalhes do empreendimento': 'detalhes',
+      'por que o': 'por-que',
+      'cadastre-se': 'cadastro',
+      'perguntas frequentes': 'faq',
+    };
+    const headings = document.querySelectorAll('h2');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const text = (entry.target.textContent || '').toLowerCase();
+          for (const [key, name] of Object.entries(sectionNames)) {
+            if (text.includes(key)) {
+              window.CRMPIXEL.trackSectionView(name);
+              break;
+            }
+          }
+        }
+      });
+    }, { threshold: 0.2 });
+    headings.forEach((h) => observer.observe(h));
+    return () => observer.disconnect();
+  }, []);
+
+  // Tracking: exit intent (desktop only)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.CRMPIXEL) return;
+    const handler = (e: MouseEvent) => {
+      if ((e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth) && e.relatedTarget === null) {
+        window.CRMPIXEL.trackExitIntent();
+      }
+    };
+    document.addEventListener('mouseleave', handler);
+    return () => document.removeEventListener('mouseleave', handler);
+  }, []);
+
   useEffect(() => {
     params.then((p) => setSlug(p.slug));
   }, [params]);
@@ -551,7 +595,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
               rel="noopener noreferrer"
               onClick={() => {
                 if (typeof window !== 'undefined' && window.CRMPIXEL) {
-                  window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
+                  window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'hero', userId: queueUser?.userId });
                 }
               }}
               className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-3.5 sm:px-9 sm:py-4 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-semibold text-sm sm:text-base hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
@@ -608,7 +652,10 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
               {/* Main image */}
               <div
                 className="relative aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
-                onClick={() => setLightboxOpen(true)}
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackGalleryClick(activeImgIdx, images.length);
+                  setLightboxOpen(true);
+                }}
               >
                 <img
                   src={images[activeImgIdx]?.url || heroImage || ''}
@@ -634,7 +681,10 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                   {images.map((img, idx) => (
                     <button
                       key={img.id}
-                      onClick={() => setActiveImgIdx(idx)}
+                      onClick={() => {
+                        if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackGalleryClick(idx, images.length);
+                        setActiveImgIdx(idx);
+                      }}
                       className={`flex-shrink-0 w-20 h-14 sm:w-28 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${
                         idx === activeImgIdx
                           ? 'border-[#C9A96E] ring-2 ring-[#C9A96E]/20'
@@ -1101,7 +1151,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                   rel="noopener noreferrer"
                   onClick={() => {
                     if (typeof window !== 'undefined' && window.CRMPIXEL) {
-                      window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
+                      window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'form_section', userId: queueUser?.userId });
                     }
                   }}
                   className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
@@ -1142,7 +1192,9 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                         id="form-name"
                         type="text"
                         value={formName}
-                        onChange={(ev) => setFormName(ev.target.value)}
+                        onChange={(ev) => { setFormName(ev.target.value); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL._setFormFieldsFilled([ev.target.value, formPhone, formEmail].filter(Boolean).length); }}
+                        onFocus={() => { fieldFocusTime.current.name = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('name'); }}
+                        onBlur={() => { const t = fieldFocusTime.current.name || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('name', Date.now() - t); }}
                         placeholder="Seu nome completo"
                         required
                         className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
@@ -1161,7 +1213,9 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                         id="form-phone"
                         type="tel"
                         value={formPhone}
-                        onChange={(ev) => handlePhoneChange(ev.target.value)}
+                        onChange={(ev) => { handlePhoneChange(ev.target.value); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL._setFormFieldsFilled([formName, ev.target.value, formEmail].filter(Boolean).length); }}
+                        onFocus={() => { fieldFocusTime.current.phone = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('phone'); }}
+                        onBlur={() => { const t = fieldFocusTime.current.phone || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('phone', Date.now() - t); }}
                         placeholder="(11) 99999-9999"
                         required
                         className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
@@ -1180,7 +1234,9 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                         id="form-email"
                         type="email"
                         value={formEmail}
-                        onChange={(ev) => setFormEmail(ev.target.value)}
+                        onChange={(ev) => { setFormEmail(ev.target.value); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL._setFormFieldsFilled([formName, formPhone, ev.target.value].filter(Boolean).length); }}
+                        onFocus={() => { fieldFocusTime.current.email = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('email'); }}
+                        onBlur={() => { const t = fieldFocusTime.current.email || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('email', Date.now() - t); }}
                         placeholder="seuemail@exemplo.com"
                         required
                         className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
@@ -1345,7 +1401,12 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                   }`}
                 >
                   <button
-                    onClick={() => setFaqOpenIndex(faqOpenIndex === idx ? null : idx)}
+                    onClick={() => {
+                      if (faqOpenIndex !== idx && typeof window !== 'undefined' && window.CRMPIXEL) {
+                        window.CRMPIXEL.trackFAQOpen(idx, faqItems[idx]?.question);
+                      }
+                      setFaqOpenIndex(faqOpenIndex === idx ? null : idx);
+                    }}
                     className="w-full flex items-center justify-between gap-4 p-5 sm:p-6 text-left"
                   >
                     <span className={`text-sm sm:text-[15px] font-semibold transition-colors ${
@@ -1481,7 +1542,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
               rel="noopener noreferrer"
               onClick={() => {
                 if (typeof window !== 'undefined' && window.CRMPIXEL) {
-                  window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
+                  window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'floating_bar', userId: queueUser?.userId });
                 }
               }}
               className="flex items-center justify-center gap-2.5 py-3.5 px-6 text-[#0A0A0A] font-semibold text-sm"
