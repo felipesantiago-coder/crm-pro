@@ -419,6 +419,22 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
   const goNext = () => setActiveImgIdx((p) => (p + 1) % Math.max(images.length, 1));
   const goPrev = () => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1));
 
+  /* ─── Lightbox keyboard navigation & scroll lock ──────── */
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const h = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setLightboxOpen(false);
+      if (ev.key === 'ArrowRight') goNext();
+      if (ev.key === 'ArrowLeft') goPrev();
+    };
+    window.addEventListener('keydown', h);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', h);
+      document.body.style.overflow = '';
+    };
+  }, [lightboxOpen]);
+
   const displayTitle = e.landingTitle || e.name;
   const displaySubtitle = e.landingSubtitle || info?.summary?.slice(0, 120) || null;
 
