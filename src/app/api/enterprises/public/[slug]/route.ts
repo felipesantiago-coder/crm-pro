@@ -21,6 +21,9 @@ export async function GET(
         landingDescription: true,
         cachedInfo: true,
         createdAt: true,
+        _count: {
+          select: { clients: true },
+        },
         images: {
           select: { id: true, url: true, altText: true, sortOrder: true },
           orderBy: { sortOrder: 'asc' },
