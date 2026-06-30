@@ -5,9 +5,8 @@ import {
   Building2, MapPin, ArrowLeft, ChevronLeft, ChevronRight,
   X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
-  Loader2, ZoomIn, Share2, Copy, Check, User, Send, AlertCircle,
-  Shield, ChevronDown, CalendarDays, TrendingUp, Home, Award,
-  Gem,
+  Loader2, ZoomIn, Copy, Check, User, Send, AlertCircle,
+  Shield, ChevronDown, CalendarDays,
 } from 'lucide-react';
 
 /* ================================================================
@@ -379,7 +378,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
   // NEW: Determine if urgency badge should show
   const showUrgencyBadge = status === 'Lançamento' || status === 'Em Construção';
 
-  /* ─── Derived data for Ficha Técnica & Destaques ─────── */
+  /* ─── Derived data for Ficha Técnica ────────────────── */
   const areas = (info?.apartmentTypes || [])
     .map(a => a.area ? parseFloat(a.area.replace(/\D/g, '')) : 0)
     .filter(a => a > 0);
@@ -533,6 +532,41 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
               {displaySubtitle}
             </p>
           )}
+
+          {/* CTA row */}
+          <div className="mt-6 sm:mt-10 flex flex-wrap items-center gap-3 sm:gap-4">
+            <a
+              href="#cadastro"
+              className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-3.5 sm:px-9 sm:py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-sm sm:text-base hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/25"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Quero saber mais
+            </a>
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.CRMPIXEL) {
+                  window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
+                }
+              }}
+              className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-3.5 sm:px-9 sm:py-4 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-semibold text-sm sm:text-base hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
+              style={{ animationDelay: '0.1s' }}
+            >
+              <Phone className="h-4 w-4" />
+              WhatsApp
+            </a>
+            {e._count && e._count.clients > 0 && (
+              <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/30" style={{ animationDelay: '0.2s' }}>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#C9A96E] opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#C9A96E]" />
+                </span>
+                {e._count.clients} pessoa{e._count.clients !== 1 ? 's' : ''} interessada{e._count.clients !== 1 ? 's' : ''}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Scroll indicator */}
@@ -542,10 +576,82 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
         </div>
       </section>
 
+      {/* ── Gallery Section ────────────────────────────── */}
+      <ScrollReveal>
+        {images.length > 0 && (
+          <section id="galeria" className="py-12 sm:py-24 border-t border-white/[0.04]">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              {/* Section header */}
+              <div className="flex items-center gap-4 mb-8 sm:mb-12">
+                <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+                <div className="text-center">
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Galeria</h2>
+                  <p className="text-sm text-white/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''} do empreendimento</p>
+                </div>
+                {images.length > 1 ? (
+                  <div className="flex items-center gap-2">
+                    <button onClick={goPrev} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <button onClick={goNext} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+                )}
+              </div>
+
+              {/* Main image */}
+              <div
+                className="relative aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
+                onClick={() => setLightboxOpen(true)}
+              >
+                <img
+                  src={images[activeImgIdx]?.url || heroImage || ''}
+                  alt={images[activeImgIdx]?.altText || e.name}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="bg-black/50 backdrop-blur-sm rounded-full p-4">
+                    <ZoomIn className="h-6 w-6 text-white" />
+                  </div>
+                </div>
+                {images.length > 1 && (
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full">
+                    {activeImgIdx + 1} / {images.length}
+                  </div>
+                )}
+              </div>
+
+              {/* Thumbnails */}
+              {images.length > 1 && (
+                <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
+                  {images.map((img, idx) => (
+                    <button
+                      key={img.id}
+                      onClick={() => setActiveImgIdx(idx)}
+                      className={`flex-shrink-0 w-20 h-14 sm:w-28 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${
+                        idx === activeImgIdx
+                          ? 'border-[#C9A96E] ring-2 ring-[#C9A96E]/20'
+                          : 'border-transparent opacity-50 hover:opacity-80'
+                      }`}
+                    >
+                      <img src={img.url} alt={img.altText || ''} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+      </ScrollReveal>
+
       {/* ── Ficha Técnica do Empreendimento ─────────────── */}
       {hasInfo && info && (
       <ScrollReveal>
-        <section className="py-10 sm:py-20 border-t border-white/[0.04]">
+        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             {/* Section header */}
             <div className="flex items-center gap-4 mb-8 sm:mb-12">
@@ -689,83 +795,17 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
       </ScrollReveal>
       )}
 
-      {/* ── Gallery Section ────────────────────────────── */}
-      <ScrollReveal>
-        {images.length > 0 && (
-          <section id="galeria" className="py-12 sm:py-28 border-t border-white/[0.04]">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6">
-              <div className="flex items-center justify-between mb-6 sm:mb-10">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold">Galeria</h2>
-                  <p className="text-sm text-white/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''} disponíve{images.length !== 1 ? 'is' : 'l'}</p>
-                </div>
-                {images.length > 1 && (
-                  <div className="flex items-center gap-2">
-                    <button onClick={goPrev} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
-                      <ChevronLeft className="h-5 w-5" />
-                    </button>
-                    <button onClick={goNext} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
-                      <ChevronRight className="h-5 w-5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Main image */}
-              <div
-                className="relative aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
-                onClick={() => setLightboxOpen(true)}
-              >
-                <img
-                  src={images[activeImgIdx]?.url || heroImage || ''}
-                  alt={images[activeImgIdx]?.altText || e.name}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="bg-black/50 backdrop-blur-sm rounded-full p-4">
-                    <ZoomIn className="h-6 w-6 text-white" />
-                  </div>
-                </div>
-                {images.length > 1 && (
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full">
-                    {activeImgIdx + 1} / {images.length}
-                  </div>
-                )}
-              </div>
-
-              {/* Thumbnails */}
-              {images.length > 1 && (
-                <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
-                  {images.map((img, idx) => (
-                    <button
-                      key={img.id}
-                      onClick={() => setActiveImgIdx(idx)}
-                      className={`flex-shrink-0 w-20 h-14 sm:w-28 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${
-                        idx === activeImgIdx
-                          ? 'border-[#C9A96E] ring-2 ring-[#C9A96E]/20'
-                          : 'border-transparent opacity-50 hover:opacity-80'
-                      }`}
-                    >
-                      <img src={img.url} alt={img.altText || ''} className="w-full h-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-      </ScrollReveal>
-
       {/* ── Details Section ────────────────────────────── */}
       <ScrollReveal>
         {hasInfo && info! && (
-          <section className="py-12 sm:py-28 border-t border-white/[0.04]">
+          <section className="py-12 sm:py-24 border-t border-white/[0.04]">
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               {/* Section header */}
               <div className="flex items-center gap-4 mb-8 sm:mb-12">
                 <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight whitespace-nowrap">Detalhes do Empreendimento</h2>
+                <div className="text-center">
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Detalhes do Empreendimento</h2>
+                </div>
                 <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
               </div>
 
@@ -958,7 +998,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
 
       {/* ── Fallback: Landing Description ──────────────── */}
       {!hasInfo && e.landingDescription && (
-        <section className="py-12 sm:py-28 border-t border-white/[0.04]">
+        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
           <div className="max-w-3xl mx-auto px-4 sm:px-6">
             {e.landingTitle && (
               <h2 className="text-2xl sm:text-3xl font-bold mb-4">{e.landingTitle}</h2>
@@ -973,242 +1013,20 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
         </section>
       )}
 
-      {/* ★ NEW: Lead Magnet CTA ───────────────────────── */}
+      {/* ── Registration Form Section ───────────────────── */}
       <ScrollReveal>
-        <section className="py-10 sm:py-16">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="relative overflow-hidden rounded-2xl border border-[#C9A96E]/20">
-              {/* Background gradient */}
-              <div className="absolute inset-0 bg-gradient-to-r from-[#C9A96E]/[0.12] via-[#C9A96E]/[0.06] to-[#C9A96E]/[0.02]" />
-              <div className="absolute top-0 right-0 w-64 h-64 bg-[#C9A96E]/[0.06] rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none" />
-
-              <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-8 p-6 sm:p-10">
-                <div className="text-center sm:text-left">
-                  <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#C9A96E] uppercase tracking-widest mb-3">
-                    <Sparkles className="h-4 w-4" />
-                    Material Exclusivo
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-bold mb-2">
-                    Receba plantas, valores e condições especiais
-                  </h3>
-                  <p className="text-sm text-white/50 max-w-lg">
-                    Acesse o material completo do empreendimento diretamente no seu e-mail. Plantas atualizadas, tabela de preços e condições de pagamento exclusivas.
-                  </p>
-                </div>
-                <a
-                  href="#cadastro"
-                  className="flex-shrink-0 inline-flex items-center gap-2.5 px-8 py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-sm hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/25"
-                >
-                  <Mail className="h-4 w-4" />
-                  Quero Receber Agora
-                </a>
-              </div>
-            </div>
-          </div>
-        </section>
-      </ScrollReveal>
-
-      {/* ── Destaques do Empreendimento ──────────────── */}
-      {hasInfo && info && (
-      <ScrollReveal>
-        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
+        <section id="cadastro" className="py-12 sm:py-24 border-t border-white/[0.04]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             {/* Section header */}
             <div className="flex items-center gap-4 mb-8 sm:mb-12">
               <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
               <div className="text-center">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Por que o {e.name}?</h2>
-                <p className="text-sm text-white/40 mt-1">Os pontos que fazem deste empreendimento uma oportunidade única</p>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Cadastre-se</h2>
+                <p className="text-sm text-white/40 mt-1">Receba atendimento personalizado sobre o {e.name}</p>
               </div>
               <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
-              {/* 1 — Localização */}
-              {(info.location.neighborhood || info.location.city || info.location.region) && (
-                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-blue-500/20 transition-all duration-300 overflow-hidden">
-                  <div className="flex items-stretch">
-                    <div className="flex-shrink-0 w-14 sm:w-16 bg-gradient-to-b from-blue-500/15 to-blue-500/5 flex items-center justify-center">
-                      <MapPin className="h-6 w-6 text-blue-400" />
-                    </div>
-                    <div className="flex-1 p-5 sm:p-6">
-                      <h3 className="text-base font-bold text-white/90 mb-2">Localização Estratégica</h3>
-                      <p className="text-sm text-white/55 leading-relaxed">
-                        {[info.location.neighborhood, info.location.city, info.location.state].filter(Boolean).join(', ')}
-                        {info.location.region && info.location.region !== info.location.neighborhood && info.location.region !== info.location.city && (
-                          <span> &mdash; {info.location.region}</span>
-                        )}
-                      </p>
-                      {info.location.additionalInfo && (
-                        <p className="text-xs text-white/35 mt-2 leading-relaxed">{info.location.additionalInfo}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 2 — Escala / Plantas */}
-              {(info.apartmentTypes && info.apartmentTypes.length > 0) && (
-                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-violet-500/20 transition-all duration-300 overflow-hidden">
-                  <div className="flex items-stretch">
-                    <div className="flex-shrink-0 w-14 sm:w-16 bg-gradient-to-b from-violet-500/15 to-violet-500/5 flex items-center justify-center">
-                      <Home className="h-6 w-6 text-violet-400" />
-                    </div>
-                    <div className="flex-1 p-5 sm:p-6">
-                      <h3 className="text-base font-bold text-white/90 mb-2">
-                        {info.apartmentTypes.length > 1 ? `${info.apartmentTypes.length} Opções de Plantas` : 'Planta Exclusiva'}
-                      </h3>
-                      <p className="text-sm text-white/55 leading-relaxed">
-                        {areaRange
-                          ? `Unidades de ${areaRange}, atendendo desde quem busca praticidade até quem precisa de mais espaço.`
-                          : `${info.apartmentTypes.length} tipo${info.apartmentTypes.length > 1 ? 's' : ''} de unidade${info.apartmentTypes.length > 1 ? 's' : ''} cuidadosamente planejada${info.apartmentTypes.length > 1 ? 's' : ''} para diferentes perfis de moradores e investidores.`
-                        }
-                      </p>
-                      {/* Bedroom tags */}
-                      {(() => {
-                        const bedroomsSet = new Set(info.apartmentTypes!.map(a => a.bedrooms).filter(Boolean));
-                        if (bedroomsSet.size === 0) return null;
-                        return (
-                          <div className="flex flex-wrap gap-2 mt-3">
-                            {[...bedroomsSet].map((b, i) => (
-                              <span key={i} className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/15">
-                                <BedDouble className="h-3 w-3 inline mr-1 -mt-0.5" />{b}
-                              </span>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 3 — Infraestrutura / Diferenciais */}
-              {(info.differentials && info.differentials.length > 0) && (
-                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-emerald-500/20 transition-all duration-300 overflow-hidden">
-                  <div className="flex items-stretch">
-                    <div className="flex-shrink-0 w-14 sm:w-16 bg-gradient-to-b from-emerald-500/15 to-emerald-500/5 flex items-center justify-center">
-                      <Gem className="h-6 w-6 text-emerald-400" />
-                    </div>
-                    <div className="flex-1 p-5 sm:p-6">
-                      <h3 className="text-base font-bold text-white/90 mb-2">
-                        {info.differentials.length >= 6 ? 'Infraestrutura Completa' : info.differentials.length >= 3 ? 'Diferenciais Exclusivos' : 'Diferencial'}
-                      </h3>
-                      <p className="text-sm text-white/55 leading-relaxed mb-3">
-                        {info.differentials.length >= 6
-                          ? `Com ${info.differentials.length} itens de lazer e infraestrutura, o empreendimento oferece uma experiência completa de vida sem precisar sair de casa.`
-                          : `${info.differentials.length} diferencial${info.differentials.length > 1 ? 'es' : ''} que elevam o padrão do empreendimento e garantem qualidade de vida e valorização patrimonial.`
-                        }
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {info.differentials.slice(0, 4).map((d, i) => (
-                          <span key={i} className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/15">
-                            <CheckCircle2 className="h-3 w-3 inline mr-1 -mt-0.5" />{d}
-                          </span>
-                        ))}
-                        {info.differentials.length > 4 && (
-                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-white/[0.04] text-white/40 border border-white/[0.08]">
-                            +{info.differentials.length - 4} mais
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 4 — Credibilidade (Construtora + Arquitetura) */}
-              {(info.builder || info.architecture) && (
-                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden">
-                  <div className="flex items-stretch">
-                    <div className="flex-shrink-0 w-14 sm:w-16 bg-gradient-to-b from-[#C9A96E]/15 to-[#C9A96E]/5 flex items-center justify-center">
-                      <Award className="h-6 w-6 text-[#C9A96E]" />
-                    </div>
-                    <div className="flex-1 p-5 sm:p-6">
-                      <h3 className="text-base font-bold text-white/90 mb-2">Projeto de Referência</h3>
-                      <p className="text-sm text-white/55 leading-relaxed">
-                        {info.builder && info.architecture
-                          ? <>Desenvolvido pela <span className="text-white/75 font-medium">{info.builder.split('(')[0].trim()}</span> com projeto arquitetônico assinado pelo <span className="text-white/75 font-medium">{info.architecture}</span>{info.landscaping ? <> e paisagismo de <span className="text-white/75 font-medium">{info.landscaping}</span></> : ''}.</>
-                          : info.builder
-                          ? <>Incorporação e construção pela <span className="text-white/75 font-medium">{info.builder.split('(')[0].trim()}</span>, garantindo entregas no prazo e padrão construtivo de excelência.</>
-                          : <>Projeto arquitetônico assinado pelo <span className="text-white/75 font-medium">{info.architecture}</span>, escritório reconhecido por projetos de alto padrão.</>
-                        }
-                      </p>
-                      {/* Projetos visuais */}
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        {info.builder && (
-                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-[#C9A96E]/10 text-[#C9A96E] border border-[#C9A96E]/15">
-                            <HardHat className="h-3 w-3 inline mr-1 -mt-0.5" />{info.builder.split('(')[0].trim().split(' ').slice(-1)[0]}
-                          </span>
-                        )}
-                        {info.architecture && (
-                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/15">
-                            <Palette className="h-3 w-3 inline mr-1 -mt-0.5" />{info.architecture.split(' ').slice(-1)[0]}
-                          </span>
-                        )}
-                        {info.landscaping && (
-                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/15">
-                            <Sparkles className="h-3 w-3 inline mr-1 -mt-0.5" />{info.landscaping.split(' ').slice(-1)[0]}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 5 — Oportunidade (Status + Preço) */}
-              {(status || priceText) && (
-                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-amber-500/20 transition-all duration-300 overflow-hidden md:col-span-2">
-                  <div className="flex items-stretch">
-                    <div className="flex-shrink-0 w-14 sm:w-16 bg-gradient-to-b from-amber-500/15 to-amber-500/5 flex items-center justify-center">
-                      <TrendingUp className="h-6 w-6 text-amber-400" />
-                    </div>
-                    <div className="flex-1 p-5 sm:p-6">
-                      <h3 className="text-base font-bold text-white/90 mb-2">Oportunidade de {status === 'Lançamento' ? 'Lançamento' : status === 'Em Construção' ? 'Investimento' : 'Moradia'}</h3>
-                      <p className="text-sm text-white/55 leading-relaxed">
-                        {status === 'Lançamento' && `Em fase de lançamento, este é o momento ideal para acessar as melhores condições comerciais e tabelas de preço iniciais. ${priceText ? `Investimento ${priceText.toLowerCase()}.` : 'Condições especiais para os primeiros interessados.'}`}
-                        {status === 'Em Construção' && `Com a obra em andamento, é possível acompanhar a evolução do canteiro e garantir unidades com valor de aquisição inferior ao mercado. ${deliveryText ? `Previsão de entrega: ${deliveryText}.` : ''}`}
-                        {status === 'Entregue' && `Empreendimento pronto para morar ou alugar. Sem risco construtivo, com valorização já comprovada pela região. ${priceText ? `A partir de ${priceText.toLowerCase()}.` : ''}`}
-                        {!status && priceText && `Condições acessíveis ${priceText.toLowerCase()}. Consulte as formas de pagamento e financiamento disponíveis.`}
-                      </p>
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        {status && (
-                          <span className={`text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg border ${
-                            status === 'Lançamento'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              : status === 'Em Construção'
-                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                              : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                          }`}>
-                            {status}
-                          </span>
-                        )}
-                        {priceText && (
-                          <span className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-[#C9A96E]/10 text-[#C9A96E] border border-[#C9A96E]/15">
-                            {priceText}
-                          </span>
-                        )}
-                        {deliveryText && (
-                          <span className="text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] text-white/50 border border-white/[0.08]">
-                            <CalendarDays className="h-3 w-3 inline mr-1 -mt-0.5" />Entrega: {deliveryText}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      </ScrollReveal>
-      )}
-
-      {/* ── Registration Form Section ───────────────────── */}
-      <ScrollReveal>
-        <section id="cadastro" className="py-12 sm:py-28 border-t border-white/[0.04]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-start">
               {/* Left side — CTA text */}
               <div className="order-2 lg:order-1">
@@ -1448,17 +1266,17 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
         </section>
       </ScrollReveal>
 
-      {/* ★ NEW: FAQ Section ───────────────────────────── */}
+      {/* ── FAQ Section ────────────────────────────────── */}
       <ScrollReveal>
         <section className="py-12 sm:py-24 border-t border-white/[0.04]">
           <div className="max-w-3xl mx-auto px-4 sm:px-6">
             {/* Section header */}
-            <div className="text-center mb-8 sm:mb-12">
-              <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#C9A96E] uppercase tracking-widest mb-3">
-                <MessageSquare className="h-4 w-4" />
-                Dúvidas Frequentes
+            <div className="flex items-center gap-4 mb-8 sm:mb-12">
+              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+              <div className="text-center">
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Perguntas Frequentes</h2>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Perguntas frequentes</h2>
+              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
             </div>
 
             {/* FAQ accordion */}
