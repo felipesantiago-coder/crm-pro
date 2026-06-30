@@ -46,24 +46,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Round-robin: pick member at currentIdx
+    // Peek only — return current member WITHOUT advancing counter or creating assignment.
+    // The counter only advances on actual lead assignment (form submit via /api/lead-queues/assign).
+    // This prevents ghost assignments from page loads and double-advancing when form is submitted.
     const idx = queue.currentIdx % queue.members.length;
     const member = queue.members[idx];
-
-    // Advance counter (atomic-ish via update)
-    await db.leadQueue.update({
-      where: { id: queue.id },
-      data: { currentIdx: { increment: 1 } },
-    });
-
-    // Create assignment record (no lead yet — WhatsApp click)
-    await db.leadQueueAssignment.create({
-      data: {
-        queueId: queue.id,
-        userId: member.userId,
-        source: slug ? `landing_page:${slug}` : 'landing_page',
-      },
-    });
 
     return NextResponse.json({
       hasQueue: true,

@@ -83,21 +83,56 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Parse body
+  // Parse body — support both raw JSON and pixel's data=JSON (URL-encoded)
   let body: unknown;
+  const contentType = request.headers.get('content-type') || '';
+
   try {
-    body = await request.json();
+    if (contentType.includes('application/x-www-form-urlencoded')) {
+      // Pixel sends: data=<url-encoded-json>
+      const rawBody = await request.text();
+      const urlParams = new URLSearchParams(rawBody);
+      const dataParam = urlParams.get('data');
+      if (dataParam) {
+        body = JSON.parse(decodeURIComponent(dataParam));
+      } else {
+        return NextResponse.json({ error: 'No data parameter' }, { status: 400 });
+      }
+    } else {
+      body = await request.json();
+    }
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
   // Support both single event and batch (array) payloads
-  const events: TrackingPayload[] = Array.isArray(body)
-    ? body
-    : [body];
+  const rawEvents: unknown[] = Array.isArray(body) ? body : [body];
 
-  // Validate each event — skip invalid ones but don't fail the whole batch
-  const validEvents = events.filter(isValidPayload);
+  // Normalize pixel snake_case → camelCase and validate
+  const events: TrackingPayload[] = rawEvents
+    .map((e: unknown) => {
+      if (typeof e !== 'object' || e === null) return null;
+      const r = e as Record<string, unknown>;
+      // Map pixel's snake_case fields to the camelCase schema
+      return {
+        visitorId: (r.visitorId as string) || (r.vid as string) || '',
+        sessionId: (r.sessionId as string) || (r.sid as string) || '',
+        siteId: (r.siteId as string) || (r.site_id as string) || '',
+        eventType: (r.eventType as string) || (r.event as string) || '',
+        eventName: (r.eventName as string) || (r.event_name as string) || null,
+        pageUrl: (r.pageUrl as string) || (r.url as string) || null,
+        referrer: (r.referrer as string) || null,
+        utmSource: (r.utmSource as string) || (r.utm_source as string) || null,
+        utmMedium: (r.utmMedium as string) || (r.utm_medium as string) || null,
+        utmCampaign: (r.utmCampaign as string) || (r.utm_campaign as string) || null,
+        utmContent: (r.utmContent as string) || (r.utm_content as string) || null,
+        utmTerm: (r.utmTerm as string) || (r.utm_term as string) || null,
+        metadata: r.metadata || r.lead_id ? { ...r, lead_id: r.lead_id } : null,
+      };
+    })
+    .filter((e): e is TrackingPayload => e !== null && isValidPayload(e));
+
+  const validEvents = events;
 
   if (validEvents.length === 0) {
     return NextResponse.json(

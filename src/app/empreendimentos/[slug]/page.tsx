@@ -284,9 +284,12 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
       const data = await res.json();
 
       if (res.ok && data.success) {
-        // Track pixel event
+        // Track pixel event + identify visitor with new lead
         if (typeof window !== 'undefined' && window.CRMPIXEL) {
           window.CRMPIXEL.track('lead_form_submit', { enterprise: enterprise?.name });
+          if (data.clientId) {
+            window.CRMPIXEL.identify(data.clientId);
+          }
         }
 
         // Redirect to success page
@@ -1377,6 +1380,11 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                 href={whatsappUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.CRMPIXEL) {
+                    window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'faq_cta', userId: queueUser?.userId });
+                  }
+                }}
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
               >
                 <Phone className="h-4 w-4" />
@@ -1435,6 +1443,11 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                   href={whatsappUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => {
+                    if (typeof window !== 'undefined' && window.CRMPIXEL) {
+                      window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'footer', userId: queueUser?.userId });
+                    }
+                  }}
                   className="flex items-center gap-2.5 text-sm text-white/30 hover:text-[#C9A96E] transition-colors"
                 >
                   <div className="h-8 w-8 rounded-lg bg-[#25D366]/10 flex items-center justify-center flex-shrink-0">
