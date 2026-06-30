@@ -1,0 +1,502 @@
+     1→   400→   400→      <style>{`
+     2→   401→   401→        @keyframes pulse-urgency {
+     3→   402→   402→          0%, 100% { opacity: 1; }
+     4→   403→   403→          50% { opacity: 0.6; }
+     5→   404→   404→        }
+     6→   405→   405→        .animate-pulse-urgency { animation: pulse-urgency 2s ease-in-out infinite; }
+     7→   406→   406→
+     8→   407→   407→        @keyframes slide-up-bar {
+     9→   408→   408→          from { transform: translateY(100%); opacity: 0; }
+    10→   409→   409→          to { transform: translateY(0); opacity: 1; }
+    11→   410→   410→        }
+    12→   411→   411→        .animate-slide-up-bar { animation: slide-up-bar 0.4s ease-out forwards; }
+    13→   412→   412→
+    14→   413→   413→        @keyframes fade-in-up {
+    15→   414→   414→          from { opacity: 0; transform: translateY(24px); }
+    16→   415→   415→          to { opacity: 1; transform: translateY(0); }
+    17→   416→   416→        }
+    18→   417→   417→        .animate-fade-in-up { animation: fade-in-up 0.6s ease-out forwards; }
+    19→   418→   418→      `}</style>
+    20→   419→   419→
+    21→   420→   420→      {/* ── Navigation ─────────────────────────────────── */}
+    22→   421→   421→      <nav
+    23→   422→   422→        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
+    24→   423→   423→          scrolled
+    25→   424→   424→            ? 'bg-[#0A0A0A]/90 backdrop-blur-xl border-b border-white/[0.06] shadow-2xl'
+    26→   425→   425→            : 'bg-transparent'
+    27→   426→   426→        }`}
+    28→   427→   427→      >
+    29→   428→   428→        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-20 flex items-center justify-between">
+    30→   429→   429→          <a href="/empreendimentos" className="flex items-center gap-3 group">
+    31→   430→   430→            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/20 group-hover:shadow-[#C9A96E]/40 transition-shadow">
+    32→   431→   431→              <Building2 className="h-4 w-4 text-white" />
+    33→   432→   432→            </div>
+    34→   433→   433→            <span className="text-base font-bold tracking-tight hidden sm:block">Empreendimentos</span>
+    35→   434→   434→          </a>
+    36→   435→   435→
+    37→   436→   436→          <div className="flex items-center gap-3">
+    38→   437→   437→            <button
+    39→   438→   438→              onClick={handleCopyLink}
+    40→   439→   439→              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+    41→   440→   440→            >
+    42→   441→   441→              {copiedLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+    43→   442→   442→              <span className="hidden sm:inline">{copiedLink ? 'Copiado!' : 'Compartilhar'}</span>
+    44→   443→   443→            </button>
+    45→   444→   444→            <a
+    46→   445→   445→              href="#cadastro"
+    47→   446→   446→              className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-semibold hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20"
+    48→   447→   447→            >
+    49→   448→   448→              Cadastre-se
+    50→   449→   449→            </a>
+    51→   450→   450→          </div>
+    52→   451→   451→        </div>
+    53→   452→   452→      </nav>
+    54→   453→   453→
+    55→   454→   454→      {/* ── Hero Section ───────────────────────────────── */}
+    56→   455→   455→      <section className="relative min-h-[75dvh] sm:min-h-[100dvh] flex items-end">
+    57→   456→   456→        {/* Background image */}
+    58→   457→   457→        {heroImage && (
+    59→   458→   458→          <div className="absolute inset-0">
+    60→   459→   459→            <img
+    61→   460→   460→              src={heroImage}
+    62→   461→   461→              alt={e.name}
+    63→   462→   462→              className="w-full h-full object-cover"
+    64→   463→   463→            />
+    65→   464→   464→            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/50 to-[#0A0A0A]/20" />
+    66→   465→   465→            <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/30 to-transparent" />
+    67→   466→   466→          </div>
+    68→   467→   467→        )}
+    69→   468→   468→
+    70→   469→   469→        {/* Decorative gold line */}
+    71→   470→   470→        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-32 bg-gradient-to-b from-[#C9A96E]/40 to-transparent" />
+    72→   471→   471→
+    73→   472→   472→        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pb-10 sm:pb-24 pt-24 sm:pt-32 w-full">
+    74→   473→   473→          {/* Breadcrumb */}
+    75→   474→   474→          <a
+    76→   475→   475→            href="/empreendimentos"
+    77→   476→   476→            className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-[#C9A96E] transition-colors mb-4 sm:mb-6 group"
+    78→   477→   477→          >
+    79→   478→   478→            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+    80→   479→   479→            Empreendimentos
+    81→   480→   480→          </a>
+    82→   481→   481→
+    83→   482→   482→          {/* Status + Region badges */}
+    84→   483→   483→          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
+    85→   484→   484→            {status && (
+    86→   485→   485→              <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border backdrop-blur-sm ${
+    87→   486→   486→                status === 'Entregue' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+    88→   487→   487→                status === 'Em Construção' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
+    89→   488→   488→                'bg-blue-500/20 text-blue-300 border-blue-500/30'
+    90→   489→   489→              }`}>
+    91→   490→   490→                <CheckCircle2 className="h-3 w-3" />
+    92→   491→   491→                {status}
+    93→   492→   492→              </span>
+    94→   493→   493→            )}
+    95→   494→   494→            {priceMatch && (
+    96→   495→   495→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+    97→   496→   496→                <DollarSign className="h-3 w-3" />
+    98→   497→   497→                {priceMatch[0]}
+    99→   498→   498→              </span>
+   100→   499→   499→            )}
+   101→   500→   500→            {deliveryMatch && (
+   102→   501→   501→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25">
+   103→   502→   502→                <Clock className="h-3 w-3" />
+   104→   503→   503→                Previsão: {deliveryMatch[1]}
+   105→   504→   504→              </span>
+   106→   505→   505→            )}
+   107→   506→   506→            {e.region && (
+   108→   507→   507→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white/70 border border-white/10">
+   109→   508→   508→                <MapPin className="h-3 w-3" />
+   110→   509→   509→                {e.region}
+   111→   510→   510→              </span>
+   112→   511→   511→            )}
+   113→   512→   512→            {/* ★ NEW: Urgency Badge — only for Lançamento or Em Construção */}
+   114→   513→   513→            {showUrgencyBadge && (
+   115→   514→   514→              <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 animate-pulse-urgency">
+   116→   515→   515→                <span className="relative flex h-2 w-2">
+   117→   516→   516→                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+   118→   517→   517→                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400" />
+   119→   518→   518→                </span>
+   120→   519→   519→                Vagas limitadas
+   121→   520→   520→              </span>
+   122→   521→   521→            )}
+   123→   522→   522→          </div>
+   124→   523→   523→
+   125→   524→   524→          {/* Title */}
+   126→   525→   525→          <h1 className="text-3xl sm:text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1] max-w-4xl">
+   127→   526→   526→            {displayTitle}
+   128→   527→   527→          </h1>
+   129→   528→   528→
+   130→   529→   529→          {/* Subtitle */}
+   131→   530→   530→          {displaySubtitle && (
+   132→   531→   531→            <p className="mt-3 sm:mt-6 text-base sm:text-xl text-white/60 max-w-2xl leading-relaxed">
+   133→   532→   532→              {displaySubtitle}
+   134→   533→   533→            </p>
+   135→   534→   534→          )}
+   136→   535→   535→
+   137→   536→   536→          {/* CTA row */}
+   138→   537→   537→          <div className="mt-6 sm:mt-10 flex flex-wrap items-center gap-3 sm:gap-4">
+   139→   538→   538→            <a
+   140→   539→   539→              href="#cadastro"
+   141→   540→   540→              className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-3.5 sm:px-9 sm:py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-sm sm:text-base hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/25"
+   142→   541→   541→            >
+   143→   542→   542→              <MessageSquare className="h-4 w-4" />
+   144→   543→   543→              Quero saber mais
+   145→   544→   544→            </a>
+   146→   545→   545→            <a
+   147→   546→   546→              href={whatsappUrl}
+   148→   547→   547→              target="_blank"
+   149→   548→   548→              rel="noopener noreferrer"
+   150→   549→   549→              onClick={() => {
+   151→   550→   550→                if (typeof window !== 'undefined' && window.CRMPIXEL) {
+   152→   551→   551→                  window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
+   153→   552→   552→                }
+   154→   553→   553→              }}
+   155→   554→   554→              className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-3.5 sm:px-9 sm:py-4 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-semibold text-sm sm:text-base hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
+   156→   555→   555→              style={{ animationDelay: '0.1s' }}
+   157→   556→   556→            >
+   158→   557→   557→              <Phone className="h-4 w-4" />
+   159→   558→   558→              WhatsApp
+   160→   559→   559→            </a>
+   161→   560→   560→            {e._count && e._count.clients > 0 && (
+   162→   561→   561→              <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/30" style={{ animationDelay: '0.2s' }}>
+   163→   562→   562→                <span className="relative flex h-2 w-2">
+   164→   563→   563→                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#C9A96E] opacity-75" />
+   165→   564→   564→                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#C9A96E]" />
+   166→   565→   565→                </span>
+   167→   566→   566→                {e._count.clients} pessoa{e._count.clients !== 1 ? 's' : ''} interessada{e._count.clients !== 1 ? 's' : ''}
+   168→   567→   567→              </div>
+   169→   568→   568→            )}
+   170→   569→   569→          </div>
+   171→   570→   570→        </div>
+   172→   571→   571→
+   173→   572→   572→        {/* Scroll indicator */}
+   174→   573→   573→        <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce hidden sm:flex">
+   175→   574→   574→          <span className="text-[10px] text-white/30 uppercase tracking-widest">Scroll</span>
+   176→   575→   575→          <div className="w-px h-8 bg-gradient-to-b from-white/30 to-transparent" />
+   177→   576→   576→        </div>
+   178→   577→   577→      </section>
+   179→   578→   578→
+   180→   579→   579→      {/* ── Gallery Section ────────────────────────────── */}
+   181→   580→   580→      <ScrollReveal>
+   182→   581→   581→        {images.length > 0 && (
+   183→   582→   582→          <section id="galeria" className="py-12 sm:py-24 border-t border-white/[0.04]">
+   184→   583→   583→            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   185→   584→   584→              {/* Section header */}
+   186→   585→   585→              <div className="flex items-center gap-4 mb-8 sm:mb-12">
+   187→   586→   586→                <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+   188→   587→   587→                <div className="text-center">
+   189→   588→   588→                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Galeria</h2>
+   190→   589→   589→                  <p className="text-sm text-white/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''} do empreendimento</p>
+   191→   590→   590→                </div>
+   192→   591→   591→                {images.length > 1 ? (
+   193→   592→   592→                  <div className="flex items-center gap-2">
+   194→   593→   593→                    <button onClick={goPrev} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+   195→   594→   594→                      <ChevronLeft className="h-5 w-5" />
+   196→   595→   595→                    </button>
+   197→   596→   596→                    <button onClick={goNext} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+   198→   597→   597→                      <ChevronRight className="h-5 w-5" />
+   199→   598→   598→                    </button>
+   200→   599→   599→                  </div>
+   201→   600→   600→                ) : (
+   202→   601→   601→                  <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+   203→   602→   602→                )}
+   204→   603→   603→              </div>
+   205→   604→   604→
+   206→   605→   605→              {/* Main image */}
+   207→   606→   606→              <div
+   208→   607→   607→                className="relative aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
+   209→   608→   608→                onClick={() => setLightboxOpen(true)}
+   210→   609→   609→              >
+   211→   610→   610→                <img
+   212→   611→   611→                  src={images[activeImgIdx]?.url || heroImage || ''}
+   213→   612→   612→                  alt={images[activeImgIdx]?.altText || e.name}
+   214→   613→   613→                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+   215→   614→   614→                />
+   216→   615→   615→                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+   217→   616→   616→                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+   218→   617→   617→                  <div className="bg-black/50 backdrop-blur-sm rounded-full p-4">
+   219→   618→   618→                    <ZoomIn className="h-6 w-6 text-white" />
+   220→   619→   619→                  </div>
+   221→   620→   620→                </div>
+   222→   621→   621→                {images.length > 1 && (
+   223→   622→   622→                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full">
+   224→   623→   623→                    {activeImgIdx + 1} / {images.length}
+   225→   624→   624→                  </div>
+   226→   625→   625→                )}
+   227→   626→   626→              </div>
+   228→   627→   627→
+   229→   628→   628→              {/* Thumbnails */}
+   230→   629→   629→              {images.length > 1 && (
+   231→   630→   630→                <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
+   232→   631→   631→                  {images.map((img, idx) => (
+   233→   632→   632→                    <button
+   234→   633→   633→                      key={img.id}
+   235→   634→   634→                      onClick={() => setActiveImgIdx(idx)}
+   236→   635→   635→                      className={`flex-shrink-0 w-20 h-14 sm:w-28 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${
+   237→   636→   636→                        idx === activeImgIdx
+   238→   637→   637→                          ? 'border-[#C9A96E] ring-2 ring-[#C9A96E]/20'
+   239→   638→   638→                          : 'border-transparent opacity-50 hover:opacity-80'
+   240→   639→   639→                      }`}
+   241→   640→   640→                    >
+   242→   641→   641→                      <img src={img.url} alt={img.altText || ''} className="w-full h-full object-cover" />
+   243→   642→   642→                    </button>
+   244→   643→   643→                  ))}
+   245→   644→   644→                </div>
+   246→   645→   645→              )}
+   247→   646→   646→            </div>
+   248→   647→   647→          </section>
+   249→   648→   648→        )}
+   250→   649→   649→      </ScrollReveal>
+   251→   650→   650→
+   252→   651→   651→      {/* ── Ficha Técnica do Empreendimento ─────────────── */}
+   253→   652→   652→      {hasInfo && info && (
+   254→   653→   653→      <ScrollReveal>
+   255→   654→   654→        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
+   256→   655→   655→          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   257→   656→   656→            {/* Section header */}
+   258→   657→   657→            <div className="flex items-center gap-4 mb-8 sm:mb-12">
+   259→   658→   658→              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+   260→   659→   659→              <div className="text-center">
+   261→   660→   660→                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Ficha Técnica</h2>
+   262→   661→   661→                <p className="text-sm text-white/40 mt-1">Dados oficiais do {e.name}</p>
+   263→   662→   662→              </div>
+   264→   663→   663→              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+   265→   664→   664→            </div>
+   266→   665→   665→
+   267→   666→   666→            {/* Spec grid */}
+   268→   667→   667→            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+   269→   668→   668→              {/* Status */}
+   270→   669→   669→              {status && (
+   271→   670→   670→                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+   272→   671→   671→                  <div className="flex items-center gap-2.5 mb-3">
+   273→   672→   672→                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${
+   274→   673→   673→                      status === 'Lançamento' ? 'bg-emerald-500/15' : status === 'Em Construção' ? 'bg-amber-500/15' : 'bg-blue-500/15'
+   275→   674→   674→                    }`}>
+   276→   675→   675→                      <Clock className={`h-4 w-4 ${status === 'Lançamento' ? 'text-emerald-400' : status === 'Em Construção' ? 'text-amber-400' : 'text-blue-400'}`} />
+   277→   676→   676→                    </div>
+   278→   677→   677→                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Status</span>
+   279→   678→   678→                  </div>
+   280→   679→   679→                  <p className={`text-sm font-semibold ${status === 'Lançamento' ? 'text-emerald-400' : status === 'Em Construção' ? 'text-amber-400' : 'text-blue-400'}`}>{status}</p>
+   281→   680→   680→                </div>
+   282→   681→   681→              )}
+   283→   682→   682→
+   284→   683→   683→              {/* Construtora */}
+   285→   684→   684→              {info.builder && (
+   286→   685→   685→                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+   287→   686→   686→                  <div className="flex items-center gap-2.5 mb-3">
+   288→   687→   687→                    <div className="h-8 w-8 rounded-lg bg-orange-500/15 flex items-center justify-center">
+   289→   688→   688→                      <HardHat className="h-4 w-4 text-orange-400" />
+   290→   689→   689→                    </div>
+   291→   690→   690→                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Construtora</span>
+   292→   691→   691→                  </div>
+   293→   692→   692→                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.builder.split('(')[0].trim()}</p>
+   294→   693→   693→                </div>
+   295→   694→   694→              )}
+   296→   695→   695→
+   297→   696→   696→              {/* Localização */}
+   298→   697→   697→              {(info.location.neighborhood || info.location.city) && (
+   299→   698→   698→                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+   300→   699→   699→                  <div className="flex items-center gap-2.5 mb-3">
+   301→   700→   700→                    <div className="h-8 w-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
+   302→   701→   701→                      <MapPin className="h-4 w-4 text-blue-400" />
+   303→   702→   702→                    </div>
+   304→   703→   703→                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Localização</span>
+   305→   704→   704→                  </div>
+   306→   705→   705→                  <p className="text-sm font-semibold text-white/85 leading-snug">
+   307→   706→   706→                    {[info.location.neighborhood, info.location.city].filter(Boolean).join(', ')}
+   308→   707→   707→                  </p>
+   309→   708→   708→                </div>
+   310→   709→   709→              )}
+   311→   710→   710→
+   312→   711→   711→              {/* Tipos de Unidade */}
+   313→   712→   712→              {(info.apartmentTypes && info.apartmentTypes.length > 0) && (
+   314→   713→   713→                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+   315→   714→   714→                  <div className="flex items-center gap-2.5 mb-3">
+   316→   715→   715→                    <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
+   317→   716→   716→                      <Building2 className="h-4 w-4 text-violet-400" />
+   318→   717→   717→                    </div>
+   319→   718→   718→                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Plantas</span>
+   320→   719→   719→                  </div>
+   321→   720→   720→                  <p className="text-sm font-semibold text-white/85">{info.apartmentTypes.length} tipo{info.apartmentTypes.length > 1 ? 's' : ''} de unidade</p>
+   322→   721→   721→                  {areaRange && <p className="text-xs text-white/40 mt-1">{areaRange}</p>}
+   323→   722→   722→                </div>
+   324→   723→   723→              )}
+   325→   724→   724→
+   326→   725→   725→              {/* Arquitetura */}
+   327→   726→   726→              {info.architecture && (
+   328→   727→   727→                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+   329→   728→   728→                  <div className="flex items-center gap-2.5 mb-3">
+   330→   729→   729→                    <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
+   331→   730→   730→                      <Palette className="h-4 w-4 text-violet-400" />
+   332→   731→   731→                    </div>
+   333→   732→   732→                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Arquitetura</span>
+   334→   733→   733→                  </div>
+   335→   734→   734→                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.architecture}</p>
+   336→   735→   735→                </div>
+   337→   736→   736→              )}
+   338→   737→   737→
+   339→   738→   738→              {/* Paisagismo */}
+   340→   739→   739→              {info.landscaping && (
+   341→   740→   740→                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+   342→   741→   741→                  <div className="flex items-center gap-2.5 mb-3">
+   343→   742→   742→                    <div className="h-8 w-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+   344→   743→   743→                      <Sparkles className="h-4 w-4 text-emerald-400" />
+   345→   744→   744→                    </div>
+   346→   745→   745→                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Paisagismo</span>
+   347→   746→   746→                  </div>
+   348→   747→   747→                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.landscaping}</p>
+   349→   748→   748→                </div>
+   350→   749→   749→              )}
+   351→   750→   750→
+   352→   751→   751→              {/* Preço */}
+   353→   752→   752→              {priceText && (
+   354→   753→   753→                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+   355→   754→   754→                  <div className="flex items-center gap-2.5 mb-3">
+   356→   755→   755→                    <div className="h-8 w-8 rounded-lg bg-[#C9A96E]/15 flex items-center justify-center">
+   357→   756→   756→                      <DollarSign className="h-4 w-4 text-[#C9A96E]" />
+   358→   757→   757→                    </div>
+   359→   758→   758→                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Investimento</span>
+   360→   759→   759→                  </div>
+   361→   760→   760→                  <p className="text-sm font-bold text-[#C9A96E]">{priceText}</p>
+   362→   761→   761→                </div>
+   363→   762→   762→              )}
+   364→   763→   763→
+   365→   764→   764→              {/* Previsão de Entrega */}
+   366→   765→   765→              {deliveryText && (
+   367→   766→   766→                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+   368→   767→   767→                  <div className="flex items-center gap-2.5 mb-3">
+   369→   768→   768→                    <div className="h-8 w-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
+   370→   769→   769→                      <CalendarDays className="h-4 w-4 text-amber-400" />
+   371→   770→   770→                    </div>
+   372→   771→   771→                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Entrega</span>
+   373→   772→   772→                  </div>
+   374→   773→   773→                  <p className="text-sm font-semibold text-white/85">{deliveryText}</p>
+   375→   774→   774→                </div>
+   376→   775→   775→              )}
+   377→   776→   776→
+   378→   777→   777→              {/* Endereço */}
+   379→   778→   778→              {info.location.address && (
+   380→   779→   779→                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors sm:col-span-2 lg:col-span-2">
+   381→   780→   780→                  <div className="flex items-center gap-2.5 mb-3">
+   382→   781→   781→                    <div className="h-8 w-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
+   383→   782→   782→                      <Navigation className="h-4 w-4 text-blue-400" />
+   384→   783→   783→                    </div>
+   385→   784→   784→                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Endereço</span>
+   386→   785→   785→                  </div>
+   387→   786→   786→                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.location.address}</p>
+   388→   787→   787→                  {info.location.additionalInfo && (
+   389→   788→   788→                    <p className="text-xs text-white/40 mt-1">{info.location.additionalInfo}</p>
+   390→   789→   789→                  )}
+   391→   790→   790→                </div>
+   392→   791→   791→              )}
+   393→   792→   792→            </div>
+   394→   793→   793→          </div>
+   395→   794→   794→        </section>
+   396→   795→   795→      </ScrollReveal>
+   397→   796→   796→      )}
+   398→   797→   797→
+   399→   798→   798→      {/* ── Details Section ────────────────────────────── */}
+   400→   799→   799→      <ScrollReveal>
+   401→   800→   800→        {hasInfo && info! && (
+   402→   801→   801→          <section className="py-12 sm:py-24 border-t border-white/[0.04]">
+   403→   802→   802→            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   404→   803→   803→              {/* Section header */}
+   405→   804→   804→              <div className="flex items-center gap-4 mb-8 sm:mb-12">
+   406→   805→   805→                <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+   407→   806→   806→                <div className="text-center">
+   408→   807→   807→                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Detalhes do Empreendimento</h2>
+   409→   808→   808→                </div>
+   410→   809→   809→                <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+   411→   810→   810→              </div>
+   412→   811→   811→
+   413→   812→   812→              {/* Summary — Sobre o Empreendimento */}
+   414→   813→   813→              {info.summary && (
+   415→   814→   814→                <div className="mb-8 sm:mb-12">
+   416→   815→   815→                  <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.08] via-[#C9A96E]/[0.03] to-transparent border border-[#C9A96E]/15 p-6 sm:p-8 lg:p-10">
+   417→   816→   816→                    <div className="absolute top-0 right-0 w-48 h-48 bg-[#C9A96E]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+   418→   817→   817→                    <div className="relative">
+   419→   818→   818→                      <div className="flex items-center gap-2.5 mb-4">
+   420→   819→   819→                        <div className="h-1.5 w-8 rounded-full bg-[#C9A96E]" />
+   421→   820→   820→                        <span className="text-xs font-semibold text-[#C9A96E] uppercase tracking-widest">Sobre o empreendimento</span>
+   422→   821→   821→                      </div>
+   423→   822→   822→                      <p className="text-sm sm:text-[15px] text-white/75 leading-[1.8] max-w-4xl">{info.summary}</p>
+   424→   823→   823→                    </div>
+   425→   824→   824→                  </div>
+   426→   825→   825→                </div>
+   427→   826→   826→              )}
+   428→   827→   827→
+   429→   828→   828→              {/* Info blocks — stacked, full-width, each with clear visual identity */}
+   430→   829→   829→              <div className="space-y-4 sm:space-y-5">
+   431→   830→   830→
+   432→   831→   831→                {/* Location */}
+   433→   832→   832→                {(info.location.address || info.location.neighborhood || info.location.city) && (
+   434→   833→   833→                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+   435→   834→   834→                    <div className="flex items-stretch">
+   436→   835→   835→                      {/* Icon strip */}
+   437→   836→   836→                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-blue-500/15 to-blue-500/5 flex items-center justify-center">
+   438→   837→   837→                        <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
+   439→   838→   838→                          <Navigation className="h-4 w-4 text-blue-400" />
+   440→   839→   839→                        </div>
+   441→   840→   840→                      </div>
+   442→   841→   841→                      {/* Content */}
+   443→   842→   842→                      <div className="flex-1 p-5 sm:p-6">
+   444→   843→   843→                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Localização</h3>
+   445→   844→   844→                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+   446→   845→   845→                          {info.location.address && (
+   447→   846→   846→                            <div>
+   448→   847→   847→                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Endereço</p>
+   449→   848→   848→                              <p className="text-sm text-white/70 leading-relaxed">{info.location.address}</p>
+   450→   849→   849→                            </div>
+   451→   850→   850→                          )}
+   452→   851→   851→                          {(info.location.neighborhood || info.location.city) && (
+   453→   852→   852→                            <div>
+   454→   853→   853→                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Região</p>
+   455→   854→   854→                              <p className="text-sm text-white/70 leading-relaxed">
+   456→   855→   855→                                {[info.location.neighborhood, info.location.city, info.location.state].filter(Boolean).join(', ')}
+   457→   856→   856→                              </p>
+   458→   857→   857→                            </div>
+   459→   858→   858→                          )}
+   460→   859→   859→                          {info.location.additionalInfo && (
+   461→   860→   860→                            <div className="sm:col-span-2">
+   462→   861→   861→                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Referências</p>
+   463→   862→   862→                              <p className="text-sm text-white/50 leading-relaxed">{info.location.additionalInfo}</p>
+   464→   863→   863→                            </div>
+   465→   864→   864→                          )}
+   466→   865→   865→                        </div>
+   467→   866→   866→                      </div>
+   468→   867→   867→                    </div>
+   469→   868→   868→                  </div>
+   470→   869→   869→                )}
+   471→   870→   870→
+   472→   871→   871→                {/* Builder */}
+   473→   872→   872→                {info.builder && (
+   474→   873→   873→                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+   475→   874→   874→                    <div className="flex items-stretch">
+   476→   875→   875→                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-orange-500/15 to-orange-500/5 flex items-center justify-center">
+   477→   876→   876→                        <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
+   478→   877→   877→                          <HardHat className="h-4 w-4 text-orange-400" />
+   479→   878→   878→                        </div>
+   480→   879→   879→                      </div>
+   481→   880→   880→                      <div className="flex-1 p-5 sm:p-6">
+   482→   881→   881→                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Construtora</h3>
+   483→   882→   882→                        <p className="text-sm sm:text-[15px] text-white/70 leading-relaxed max-w-3xl">{info.builder}</p>
+   484→   883→   883→                      </div>
+   485→   884→   884→                    </div>
+   486→   885→   885→                  </div>
+   487→   886→   886→                )}
+   488→   887→   887→
+   489→   888→   888→                {/* Architecture / Landscaping */}
+   490→   889→   889→                {(info.architecture || info.landscaping) && (
+   491→   890→   890→                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+   492→   891→   891→                    <div className="flex items-stretch">
+   493→   892→   892→                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-violet-500/15 to-violet-500/5 flex items-center justify-center">
+   494→   893→   893→                        <div className="h-9 w-9 rounded-xl bg-violet-500/20 flex items-center justify-center">
+   495→   894→   894→                          <Palette className="h-4 w-4 text-violet-400" />
+   496→   895→   895→                        </div>
+   497→   896→   896→                      </div>
+   498→   897→   897→                      <div className="flex-1 p-5 sm:p-6">
+   499→   898→   898→                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Projeto</h3>
+   500→   899→   899→                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+
+[showing lines 1-500 of 502; use offset=501 with limit to continue reading]
