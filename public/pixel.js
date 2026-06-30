@@ -123,14 +123,18 @@
 
   /* ── Transport: sendBeacon → fetch ──────────────────── */
   function send(payload) {
-    var data = "data=" + encodeURIComponent(JSON.stringify(payload));
+    var json = JSON.stringify(payload);
     if (navigator.sendBeacon) {
       try {
-        var sent = navigator.sendBeacon(TRACK_ENDPOINT, data);
+        // Use URLSearchParams so sendBeacon sets Content-Type: application/x-www-form-urlencoded
+        var params = new URLSearchParams();
+        params.append("data", json);
+        var sent = navigator.sendBeacon(TRACK_ENDPOINT, params);
         if (sent) return;
       } catch (e) { /* fallback */ }
     }
     try {
+      var data = "data=" + encodeURIComponent(json);
       fetch(TRACK_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -250,14 +254,17 @@
       });
     } catch (e) { /* unsupported */ }
 
-    // FCP (First Contentful Paint)
+    // FCP (First Contentful Paint) — use "paint" type, filter by name
     try {
       new PerformanceObserver(function (list) {
         var entries = list.getEntries();
-        if (entries.length > 0) {
-          send(basePayload("web_vital", { metric: "FCP", value: Math.round(entries[0].startTime) }));
+        for (var i = 0; i < entries.length; i++) {
+          if (entries[i].name === "first-contentful-paint") {
+            send(basePayload("web_vital", { metric: "FCP", value: Math.round(entries[i].startTime) }));
+            break;
+          }
         }
-      }).observe({ type: "first-contentful-paint", buffered: true });
+      }).observe({ type: "paint", buffered: true });
     } catch (e) { /* unsupported */ }
 
     // TTFB (Time to First Byte)
@@ -336,9 +343,10 @@
         var filled = _formFieldsFilled;
         if (filled > 0) {
           var payload = basePayload("form_abandon", { fields_filled: filled });
-          var data = "data=" + encodeURIComponent(JSON.stringify(payload));
+          var params = new URLSearchParams();
+          params.append("data", JSON.stringify(payload));
           if (navigator.sendBeacon) {
-            try { navigator.sendBeacon(TRACK_ENDPOINT, data); } catch (e) { /* noop */ }
+            try { navigator.sendBeacon(TRACK_ENDPOINT, params); } catch (e) { /* noop */ }
           }
         }
       }
@@ -361,9 +369,10 @@
   window.addEventListener("beforeunload", function () {
     stopHeartbeat();
     var payload = basePayload("pageview_duration", { time_on_page: Math.round((Date.now() - _started) / 1000) });
-    var data = "data=" + encodeURIComponent(JSON.stringify(payload));
+    var params = new URLSearchParams();
+    params.append("data", JSON.stringify(payload));
     if (navigator.sendBeacon) {
-      try { navigator.sendBeacon(TRACK_ENDPOINT, data); } catch (e) { /* noop */ }
+      try { navigator.sendBeacon(TRACK_ENDPOINT, params); } catch (e) { /* noop */ }
     }
   });
 
