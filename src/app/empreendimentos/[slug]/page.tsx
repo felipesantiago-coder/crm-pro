@@ -286,7 +286,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
       if (res.ok && data.success) {
         // Track pixel event + identify visitor with new lead
         if (typeof window !== 'undefined' && window.CRMPIXEL) {
-          window.CRMPIXEL.track('lead_form_submit', { enterprise: enterprise?.name });
+          window.CRMPIXEL.track('form_submit', { enterprise: enterprise?.name });
           if (data.clientId) {
             window.CRMPIXEL.identify(data.clientId);
           }
