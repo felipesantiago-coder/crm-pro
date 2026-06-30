@@ -6,7 +6,8 @@ import {
   X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Share2, Copy, Check, User, Send, AlertCircle,
-  Shield, Star, ChevronDown,
+  Shield, ChevronDown, CalendarDays, TrendingUp, Home, Award,
+  Gem,
 } from 'lucide-react';
 
 /* ================================================================
@@ -67,7 +68,7 @@ interface Enterprise {
 }
 
 /* ================================================================
-   Custom Components — Scroll Reveal & Counter Animation
+   Custom Component — Scroll Reveal
    ================================================================ */
 function ScrollReveal({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -101,45 +102,6 @@ function ScrollReveal({ children, className = '' }: { children: React.ReactNode;
   );
 }
 
-function CounterAnimation({ target, duration = 2000, decimals = 0 }: { target: number; duration?: number; decimals?: number }) {
-  const [count, setCount] = useState(0);
-  const ref = useRef<HTMLSpanElement>(null);
-  const hasAnimated = useRef(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !hasAnimated.current) {
-          hasAnimated.current = true;
-          const startTime = performance.now();
-          const animate = (currentTime: number) => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const eased = 1 - Math.pow(1 - progress, 3);
-            const value = eased * target;
-            setCount(decimals > 0 ? parseFloat(value.toFixed(decimals)) : Math.floor(value));
-            if (progress < 1) {
-              requestAnimationFrame(animate);
-            } else {
-              setCount(decimals > 0 ? parseFloat(target.toFixed(decimals)) : target);
-            }
-          };
-          requestAnimationFrame(animate);
-          observer.unobserve(el);
-        }
-      },
-      { threshold: 0.5 }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [target, duration, decimals]);
-
-  const display = decimals > 0 ? count.toFixed(decimals) : String(count);
-  return <span ref={ref}>{display}</span>;
-}
-
 /* ================================================================
    FAQ Data
    ================================================================ */
@@ -165,74 +127,6 @@ const faqItems = [
     answer: 'Com certeza! Após o cadastro, nosso consultor entrará em contato para agendar a visita no melhor horário para você. Oferecemos visitas presenciais guiadas ao canteiro de obras ou ao empreendimento já entregue, dependendo do status do projeto.',
   },
 ];
-
-/* ================================================================
-   Dynamic Testimonials Generator — profile-aware
-   ================================================================ */
-interface Testimonial {
-  name: string;
-  role: string;
-  quote: string;
-  rating: number;
-  profile: 'investor' | 'resident' | 'professional';
-}
-
-function generateTestimonials(e: Enterprise): Testimonial[] {
-  const name = e.landingTitle || e.name;
-  const neighborhood = e.cachedInfo?.location?.neighborhood || e.region || 'a região';
-  const city = e.cachedInfo?.location?.city || '';
-  const locationLabel = city ? `${neighborhood}, ${city}` : neighborhood;
-  const aptTypes = e.cachedInfo?.apartmentTypes || [];
-  const hasLargeArea = aptTypes.some(a => a.area && parseInt(a.area.replace(/\D/g, ''), 10) > 150);
-  const builder = e.cachedInfo?.builder || '';
-  const differentials = e.cachedInfo?.differentials || [];
-  const hasLazer = differentials.some(d => /piscina|fitness|academia|lazer|playground|spa|quadra/i.test(d));
-
-  return [
-    {
-      name: 'Ricardo M.',
-      role: 'Investidor Imobiliário',
-      profile: 'investor',
-      rating: 5,
-      quote: `Adquiri unidades no ${name} exclusivamente como investimento. A localização em ${locationLabel} apresenta uma valorização consistente e a demanda por imóveis na região é muito alta. A rentabilidade do aluguel supera a média do mercado e a construtora tem um histórico sólido de entregas no prazo, o que me dá total segurança para aplicar meu capital.`,
-    },
-    {
-      name: 'Ana Carolina S.',
-      role: 'Moradora',
-      profile: 'resident',
-      rating: 5,
-      quote: `Escolhemos o ${name} para morar pela qualidade de vida que oferece. ${hasLazer ? 'A estrutura de lazer é completa e atende perfeitamente nossa família.' : 'O projeto é muito bem pensado e atende todas as necessidades do dia a dia.'} A localização em ${locationLabel} é privilegiada, com fácil acesso a serviços e comércio. As plantas são bem distribuídas e o acabamento é de altíssimo nível.`,
-    },
-    {
-      name: 'Dr. Paulo R.',
-      role: 'Advogado e Investidor',
-      profile: 'investor',
-      rating: 5,
-      quote: `Como investidor, analiso três fatores fundamentais: localização, construtora e potencial de valorização. O ${name} atende os três com folga. ${locationLabel} é uma das regiões mais valorizadas, ${builder ? `a ${builder} é referência no mercado` : 'a construtora é referência no mercado'}, e os números de valorização do bairro comprovam a excelente oportunidade. Já adquiri minha segunda unidade no empreendimento.`,
-    },
-    {
-      name: 'Fernanda L.',
-      role: 'Arquiteta',
-      profile: 'professional',
-      rating: 5,
-      quote: `Avaliei dezenas de empreendimentos antes de recomendar o ${name} para meus clientes. ${hasLargeArea ? 'As plantas amplas com mais de 150m² são raras no mercado atual e oferecem flexibilidade para personalização.' : 'O projeto arquitetônico é impecável, com plantas inteligentes e bem aproveitadas.'} O padrão construtivo e os acabamentos estão acima do que se vê na mesma faixa de preço. É um empreendimento que recomendo de olhos fechados.`,
-    },
-    {
-      name: 'Marcos T.',
-      role: 'Empresário',
-      profile: 'investor',
-      rating: 5,
-      quote: `Tenho um portfólio diversificado de imóveis e o ${name} se destaca pela relação custo-benefício. A taxa de ocupação dos imóveis na região de ${locationLabel} é excelente, o que garante uma renda passiva consistente. Além disso, a valorização patrimonial nos últimos anos tem superado a inflação e outros investimentos tradicionais.`,
-    },
-    {
-      name: 'Juliana C.',
-      role: 'Médica',
-      profile: 'resident',
-      rating: 5,
-      quote: `Mudei para o ${name} com minha família e foi a melhor decisão que poderíamos ter tomado. A segurança do condomínio, ${hasLazer ? 'as áreas de lazer que as crianças adoram,' : 'a infraestrutura completa,'} e a proximidade com hospitais e escolas de qualidade fizeram toda a diferença no nosso dia a dia. A vizinhança é incrível e a localização em ${locationLabel} é estratégica para nossa rotina.`,
-    },
-  ];
-}
 
 /* ================================================================
    Page
@@ -485,55 +379,17 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
   // NEW: Determine if urgency badge should show
   const showUrgencyBadge = status === 'Lançamento' || status === 'Em Construção';
 
-  /* ─── Dynamic Stats from Real Enterprise Data ─────── */
-  const leadCount = e._count?.clients ?? 0;
-  const aptTypesCount = info?.apartmentTypes?.length ?? 0;
-  const differentialsCount = info?.differentials?.length ?? 0;
-
-  // Parse areas from apartment types to find min/max
+  /* ─── Derived data for Ficha Técnica & Destaques ─────── */
   const areas = (info?.apartmentTypes || [])
     .map(a => a.area ? parseFloat(a.area.replace(/\D/g, '')) : 0)
     .filter(a => a > 0);
   const maxArea = areas.length > 0 ? Math.max(...areas) : 0;
   const minArea = areas.length > 0 ? Math.min(...areas) : 0;
-
-  // Build dynamic stat items
-  const dynamicStats: Array<{ value: number; decimals?: number; prefix?: string; suffix?: string; label: string }> = [];
-
-  if (aptTypesCount > 0) {
-    dynamicStats.push({ value: aptTypesCount, suffix: '', label: 'Tipos de Planta' + (aptTypesCount > 1 ? 's' : '') });
-  }
-  if (differentialsCount > 0) {
-    dynamicStats.push({ value: differentialsCount, suffix: '+', label: 'Diferenciais e Amenidades' });
-  }
-  if (maxArea > 0) {
-    if (minArea === maxArea) {
-      dynamicStats.push({ value: maxArea, suffix: 'm²', label: 'de Área Privativa' });
-    } else {
-      // For range, show max area with "até" prefix
-      dynamicStats.push({ value: maxArea, suffix: 'm²', label: 'Maior Planta (Área)' });
-    }
-  }
-  if (leadCount > 0) {
-    dynamicStats.push({ value: leadCount, suffix: '+', label: 'Interessados Cadastrados' });
-  }
-  if (info?.builder) {
-    // Show enterprise creation as "since" year — use createdAt year
-    const year = new Date(e.createdAt).getFullYear();
-    const currentYear = new Date().getFullYear();
-    const yearsSince = Math.max(currentYear - year, 1);
-    dynamicStats.push({ value: yearsSince, suffix: '', label: 'Anos no Portfólio' });
-  }
-
-  // Fallback if no real data is available
-  if (dynamicStats.length === 0) {
-    dynamicStats.push(
-      { value: images.length, suffix: '', label: 'Fotos do Empreendimento' },
-    );
-  }
-
-  // Generate dynamic testimonials
-  const testimonials = generateTestimonials(e);
+  const areaRange = maxArea > 0
+    ? (minArea === maxArea ? `${maxArea}m²` : `${minArea} a ${maxArea}m²`)
+    : null;
+  const priceText = priceMatch ? priceMatch[0] : null;
+  const deliveryText = deliveryMatch ? deliveryMatch[1] : null;
 
   /* ================================================================
      Render
@@ -686,23 +542,147 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
         </div>
       </section>
 
-      {/* ★ NEW: Statistics / Trust Counters Section ─────── */}
-      {dynamicStats.length > 0 && (
+      {/* ── Ficha Técnica do Empreendimento ─────────────── */}
+      {hasInfo && info && (
       <ScrollReveal>
         <section className="py-10 sm:py-20 border-t border-white/[0.04]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            <div className="grid grid-cols-2 gap-4 sm:gap-6" style={{ gridTemplateColumns: `repeat(${Math.min(dynamicStats.length, 4)}, minmax(0, 1fr))` }}>
-              {dynamicStats.map((stat, idx) => (
-                <div key={idx} className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative">
-                    <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
-                      {stat.prefix || ''}<CounterAnimation target={stat.value} decimals={stat.decimals ?? 0} />{stat.suffix || ''}
-                    </p>
-                    <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">{stat.label}</p>
+            {/* Section header */}
+            <div className="flex items-center gap-4 mb-8 sm:mb-12">
+              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+              <div className="text-center">
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Ficha Técnica</h2>
+                <p className="text-sm text-white/40 mt-1">Dados oficiais do {e.name}</p>
+              </div>
+              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+            </div>
+
+            {/* Spec grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+              {/* Status */}
+              {status && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${
+                      status === 'Lançamento' ? 'bg-emerald-500/15' : status === 'Em Construção' ? 'bg-amber-500/15' : 'bg-blue-500/15'
+                    }`}>
+                      <Clock className={`h-4 w-4 ${status === 'Lançamento' ? 'text-emerald-400' : status === 'Em Construção' ? 'text-amber-400' : 'text-blue-400'}`} />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Status</span>
                   </div>
+                  <p className={`text-sm font-semibold ${status === 'Lançamento' ? 'text-emerald-400' : status === 'Em Construção' ? 'text-amber-400' : 'text-blue-400'}`}>{status}</p>
                 </div>
-              ))}
+              )}
+
+              {/* Construtora */}
+              {info.builder && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-orange-500/15 flex items-center justify-center">
+                      <HardHat className="h-4 w-4 text-orange-400" />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Construtora</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.builder.split('(')[0].trim()}</p>
+                </div>
+              )}
+
+              {/* Localização */}
+              {(info.location.neighborhood || info.location.city) && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
+                      <MapPin className="h-4 w-4 text-blue-400" />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Localização</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white/85 leading-snug">
+                    {[info.location.neighborhood, info.location.city].filter(Boolean).join(', ')}
+                  </p>
+                </div>
+              )}
+
+              {/* Tipos de Unidade */}
+              {(info.apartmentTypes && info.apartmentTypes.length > 0) && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
+                      <Building2 className="h-4 w-4 text-violet-400" />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Plantas</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white/85">{info.apartmentTypes.length} tipo{info.apartmentTypes.length > 1 ? 's' : ''} de unidade</p>
+                  {areaRange && <p className="text-xs text-white/40 mt-1">{areaRange}</p>}
+                </div>
+              )}
+
+              {/* Arquitetura */}
+              {info.architecture && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
+                      <Palette className="h-4 w-4 text-violet-400" />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Arquitetura</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.architecture}</p>
+                </div>
+              )}
+
+              {/* Paisagismo */}
+              {info.landscaping && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+                      <Sparkles className="h-4 w-4 text-emerald-400" />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Paisagismo</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.landscaping}</p>
+                </div>
+              )}
+
+              {/* Preço */}
+              {priceText && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-[#C9A96E]/15 flex items-center justify-center">
+                      <DollarSign className="h-4 w-4 text-[#C9A96E]" />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Investimento</span>
+                  </div>
+                  <p className="text-sm font-bold text-[#C9A96E]">{priceText}</p>
+                </div>
+              )}
+
+              {/* Previsão de Entrega */}
+              {deliveryText && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
+                      <CalendarDays className="h-4 w-4 text-amber-400" />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Entrega</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white/85">{deliveryText}</p>
+                </div>
+              )}
+
+              {/* Endereço */}
+              {info.location.address && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors sm:col-span-2 lg:col-span-2">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
+                      <Navigation className="h-4 w-4 text-blue-400" />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Endereço</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white/85 leading-snug">{info.location.address}</p>
+                  {info.location.additionalInfo && (
+                    <p className="text-xs text-white/40 mt-1">{info.location.additionalInfo}</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -1028,7 +1008,8 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
         </section>
       </ScrollReveal>
 
-      {/* ★ NEW: Social Proof / Testimonials Section ───── */}
+      {/* ── Destaques do Empreendimento ──────────────── */}
+      {hasInfo && info && (
       <ScrollReveal>
         <section className="py-12 sm:py-24 border-t border-white/[0.04]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -1036,77 +1017,193 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
             <div className="flex items-center gap-4 mb-8 sm:mb-12">
               <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
               <div className="text-center">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">O que dizem sobre o {e.name}</h2>
-                <p className="text-sm text-white/40 mt-1">Depoimentos de quem investe, mora e recomenda</p>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Por que o {e.name}?</h2>
+                <p className="text-sm text-white/40 mt-1">Os pontos que fazem deste empreendimento uma oportunidade única</p>
               </div>
               <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
             </div>
 
-            {/* Testimonials grid (desktop) / scroll (mobile) */}
-            <div className="flex gap-5 sm:gap-6 overflow-x-auto pb-4 sm:pb-0 -mx-4 sm:mx-0 px-4 sm:px-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 snap-x snap-mandatory sm:snap-none">
-              {testimonials.map((t, idx) => (
-                <div
-                  key={idx}
-                  className="flex-shrink-0 w-[300px] sm:w-auto snap-start"
-                >
-                  <div className="h-full rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/15 p-6 sm:p-8 transition-colors duration-300">
-                    {/* Profile badge */}
-                    <div className="flex items-center justify-between mb-3">
-                      <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${
-                        t.profile === 'investor'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : t.profile === 'resident'
-                          ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      }`}>
-                        {t.profile === 'investor' ? 'Investidor' : t.profile === 'resident' ? 'Morador' : 'Especialista'}
-                      </span>
-                      {/* Star rating */}
-                      <div className="flex items-center gap-0.5">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <Star
-                            key={i}
-                            className={`h-3.5 w-3.5 ${i < t.rating ? 'text-[#C9A96E] fill-[#C9A96E]' : 'text-white/15'}`}
-                          />
-                        ))}
-                      </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
+              {/* 1 — Localização */}
+              {(info.location.neighborhood || info.location.city || info.location.region) && (
+                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-blue-500/20 transition-all duration-300 overflow-hidden">
+                  <div className="flex items-stretch">
+                    <div className="flex-shrink-0 w-14 sm:w-16 bg-gradient-to-b from-blue-500/15 to-blue-500/5 flex items-center justify-center">
+                      <MapPin className="h-6 w-6 text-blue-400" />
                     </div>
+                    <div className="flex-1 p-5 sm:p-6">
+                      <h3 className="text-base font-bold text-white/90 mb-2">Localização Estratégica</h3>
+                      <p className="text-sm text-white/55 leading-relaxed">
+                        {[info.location.neighborhood, info.location.city, info.location.state].filter(Boolean).join(', ')}
+                        {info.location.region && info.location.region !== info.location.neighborhood && info.location.region !== info.location.city && (
+                          <span> &mdash; {info.location.region}</span>
+                        )}
+                      </p>
+                      {info.location.additionalInfo && (
+                        <p className="text-xs text-white/35 mt-2 leading-relaxed">{info.location.additionalInfo}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                    {/* Gold quote mark */}
-                    <div className="text-[#C9A96E]/30 text-5xl leading-none font-serif mb-2 select-none">&ldquo;</div>
+              {/* 2 — Escala / Plantas */}
+              {(info.apartmentTypes && info.apartmentTypes.length > 0) && (
+                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-violet-500/20 transition-all duration-300 overflow-hidden">
+                  <div className="flex items-stretch">
+                    <div className="flex-shrink-0 w-14 sm:w-16 bg-gradient-to-b from-violet-500/15 to-violet-500/5 flex items-center justify-center">
+                      <Home className="h-6 w-6 text-violet-400" />
+                    </div>
+                    <div className="flex-1 p-5 sm:p-6">
+                      <h3 className="text-base font-bold text-white/90 mb-2">
+                        {info.apartmentTypes.length > 1 ? `${info.apartmentTypes.length} Opções de Plantas` : 'Planta Exclusiva'}
+                      </h3>
+                      <p className="text-sm text-white/55 leading-relaxed">
+                        {areaRange
+                          ? `Unidades de ${areaRange}, atendendo desde quem busca praticidade até quem precisa de mais espaço.`
+                          : `${info.apartmentTypes.length} tipo${info.apartmentTypes.length > 1 ? 's' : ''} de unidade${info.apartmentTypes.length > 1 ? 's' : ''} cuidadosamente planejada${info.apartmentTypes.length > 1 ? 's' : ''} para diferentes perfis de moradores e investidores.`
+                        }
+                      </p>
+                      {/* Bedroom tags */}
+                      {(() => {
+                        const bedroomsSet = new Set(info.apartmentTypes!.map(a => a.bedrooms).filter(Boolean));
+                        if (bedroomsSet.size === 0) return null;
+                        return (
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {[...bedroomsSet].map((b, i) => (
+                              <span key={i} className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/15">
+                                <BedDouble className="h-3 w-3 inline mr-1 -mt-0.5" />{b}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                    {/* Quote text */}
-                    <p className="text-sm text-white/65 leading-relaxed mb-6">{t.quote}</p>
-
-                    {/* Author */}
-                    <div className="flex items-center gap-3 pt-4 border-t border-white/[0.06]">
-                      <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                        t.profile === 'investor'
-                          ? 'bg-gradient-to-br from-emerald-500/30 to-emerald-500/10'
-                          : t.profile === 'resident'
-                          ? 'bg-gradient-to-br from-blue-500/30 to-blue-500/10'
-                          : 'bg-gradient-to-br from-amber-500/30 to-amber-500/10'
-                      }`}>
-                        <span className={`text-sm font-bold ${
-                          t.profile === 'investor'
-                            ? 'text-emerald-400'
-                            : t.profile === 'resident'
-                            ? 'text-blue-400'
-                            : 'text-amber-400'
-                        }`}>{t.name.charAt(0)}</span>
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-white/80">{t.name}</p>
-                        <p className="text-xs text-white/35">{t.role}</p>
+              {/* 3 — Infraestrutura / Diferenciais */}
+              {(info.differentials && info.differentials.length > 0) && (
+                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-emerald-500/20 transition-all duration-300 overflow-hidden">
+                  <div className="flex items-stretch">
+                    <div className="flex-shrink-0 w-14 sm:w-16 bg-gradient-to-b from-emerald-500/15 to-emerald-500/5 flex items-center justify-center">
+                      <Gem className="h-6 w-6 text-emerald-400" />
+                    </div>
+                    <div className="flex-1 p-5 sm:p-6">
+                      <h3 className="text-base font-bold text-white/90 mb-2">
+                        {info.differentials.length >= 6 ? 'Infraestrutura Completa' : info.differentials.length >= 3 ? 'Diferenciais Exclusivos' : 'Diferencial'}
+                      </h3>
+                      <p className="text-sm text-white/55 leading-relaxed mb-3">
+                        {info.differentials.length >= 6
+                          ? `Com ${info.differentials.length} itens de lazer e infraestrutura, o empreendimento oferece uma experiência completa de vida sem precisar sair de casa.`
+                          : `${info.differentials.length} diferencial${info.differentials.length > 1 ? 'es' : ''} que elevam o padrão do empreendimento e garantem qualidade de vida e valorização patrimonial.`
+                        }
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {info.differentials.slice(0, 4).map((d, i) => (
+                          <span key={i} className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/15">
+                            <CheckCircle2 className="h-3 w-3 inline mr-1 -mt-0.5" />{d}
+                          </span>
+                        ))}
+                        {info.differentials.length > 4 && (
+                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-white/[0.04] text-white/40 border border-white/[0.08]">
+                            +{info.differentials.length - 4} mais
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* 4 — Credibilidade (Construtora + Arquitetura) */}
+              {(info.builder || info.architecture) && (
+                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden">
+                  <div className="flex items-stretch">
+                    <div className="flex-shrink-0 w-14 sm:w-16 bg-gradient-to-b from-[#C9A96E]/15 to-[#C9A96E]/5 flex items-center justify-center">
+                      <Award className="h-6 w-6 text-[#C9A96E]" />
+                    </div>
+                    <div className="flex-1 p-5 sm:p-6">
+                      <h3 className="text-base font-bold text-white/90 mb-2">Projeto de Referência</h3>
+                      <p className="text-sm text-white/55 leading-relaxed">
+                        {info.builder && info.architecture
+                          ? <>Desenvolvido pela <span className="text-white/75 font-medium">{info.builder.split('(')[0].trim()}</span> com projeto arquitetônico assinado pelo <span className="text-white/75 font-medium">{info.architecture}</span>{info.landscaping ? <> e paisagismo de <span className="text-white/75 font-medium">{info.landscaping}</span></> : ''}.</>
+                          : info.builder
+                          ? <>Incorporação e construção pela <span className="text-white/75 font-medium">{info.builder.split('(')[0].trim()}</span>, garantindo entregas no prazo e padrão construtivo de excelência.</>
+                          : <>Projeto arquitetônico assinado pelo <span className="text-white/75 font-medium">{info.architecture}</span>, escritório reconhecido por projetos de alto padrão.</>
+                        }
+                      </p>
+                      {/* Projetos visuais */}
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {info.builder && (
+                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-[#C9A96E]/10 text-[#C9A96E] border border-[#C9A96E]/15">
+                            <HardHat className="h-3 w-3 inline mr-1 -mt-0.5" />{info.builder.split('(')[0].trim().split(' ').slice(-1)[0]}
+                          </span>
+                        )}
+                        {info.architecture && (
+                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/15">
+                            <Palette className="h-3 w-3 inline mr-1 -mt-0.5" />{info.architecture.split(' ').slice(-1)[0]}
+                          </span>
+                        )}
+                        {info.landscaping && (
+                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/15">
+                            <Sparkles className="h-3 w-3 inline mr-1 -mt-0.5" />{info.landscaping.split(' ').slice(-1)[0]}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 5 — Oportunidade (Status + Preço) */}
+              {(status || priceText) && (
+                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-amber-500/20 transition-all duration-300 overflow-hidden md:col-span-2">
+                  <div className="flex items-stretch">
+                    <div className="flex-shrink-0 w-14 sm:w-16 bg-gradient-to-b from-amber-500/15 to-amber-500/5 flex items-center justify-center">
+                      <TrendingUp className="h-6 w-6 text-amber-400" />
+                    </div>
+                    <div className="flex-1 p-5 sm:p-6">
+                      <h3 className="text-base font-bold text-white/90 mb-2">Oportunidade de {status === 'Lançamento' ? 'Lançamento' : status === 'Em Construção' ? 'Investimento' : 'Moradia'}</h3>
+                      <p className="text-sm text-white/55 leading-relaxed">
+                        {status === 'Lançamento' && `Em fase de lançamento, este é o momento ideal para acessar as melhores condições comerciais e tabelas de preço iniciais. ${priceText ? `Investimento ${priceText.toLowerCase()}.` : 'Condições especiais para os primeiros interessados.'}`}
+                        {status === 'Em Construção' && `Com a obra em andamento, é possível acompanhar a evolução do canteiro e garantir unidades com valor de aquisição inferior ao mercado. ${deliveryText ? `Previsão de entrega: ${deliveryText}.` : ''}`}
+                        {status === 'Entregue' && `Empreendimento pronto para morar ou alugar. Sem risco construtivo, com valorização já comprovada pela região. ${priceText ? `A partir de ${priceText.toLowerCase()}.` : ''}`}
+                        {!status && priceText && `Condições acessíveis ${priceText.toLowerCase()}. Consulte as formas de pagamento e financiamento disponíveis.`}
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {status && (
+                          <span className={`text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg border ${
+                            status === 'Lançamento'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : status === 'Em Construção'
+                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                              : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                          }`}>
+                            {status}
+                          </span>
+                        )}
+                        {priceText && (
+                          <span className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-[#C9A96E]/10 text-[#C9A96E] border border-[#C9A96E]/15">
+                            {priceText}
+                          </span>
+                        )}
+                        {deliveryText && (
+                          <span className="text-[11px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] text-white/50 border border-white/[0.08]">
+                            <CalendarDays className="h-3 w-3 inline mr-1 -mt-0.5" />Entrega: {deliveryText}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </section>
       </ScrollReveal>
+      )}
 
       {/* ── Registration Form Section ───────────────────── */}
       <ScrollReveal>
