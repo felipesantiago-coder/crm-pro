@@ -451,7 +451,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
     ? (minArea === maxArea ? `${maxArea}m²` : `${minArea} a ${maxArea}m²`)
     : null;
   const priceText = priceMatch ? priceMatch[0] : null;
-  const deliveryText = deliveryMatch ? deliveryMatch[1] : null;
+  const deliveryText = deliveryMatch ? deliveryMatch[1] : (status === 'Entregue' ? 'Já entregue' : null);
 
   /* ================================================================
      Render
@@ -560,7 +560,13 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                 <span className="truncate">{priceMatch[0]}</span>
               </span>
             )}
-            {deliveryMatch && (
+            {status === 'Entregue' && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
+                <span>Já entregue</span>
+              </span>
+            )}
+            {deliveryMatch && status !== 'Entregue' && (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 max-w-[200px] sm:max-w-none">
                 <Clock className="h-3 w-3 flex-shrink-0" />
                 <span className="truncate">Previsão: {deliveryMatch[1]}</span>
@@ -816,14 +822,17 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                 </div>
 
               {/* Previsão de Entrega */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              <div className={`relative group rounded-2xl border p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0 ${status === 'Entregue' ? 'bg-emerald-500/[0.06] border-emerald-500/20' : 'bg-white/[0.02] border-white/[0.06]'}`}>
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
-                      <CalendarDays className="h-4 w-4 text-amber-400" />
+                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${status === 'Entregue' ? 'bg-emerald-500/20' : 'bg-amber-500/15'}`}>
+                      {status === 'Entregue'
+                        ? <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                        : <CalendarDays className="h-4 w-4 text-amber-400" />
+                      }
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Entrega</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85">{deliveryText || 'A definir'}</p>
+                  <p className={`text-sm font-semibold ${status === 'Entregue' ? 'text-emerald-400' : 'text-white/85'}`}>{deliveryText || 'A definir'}</p>
                 </div>
 
               {/* Endereço */}
