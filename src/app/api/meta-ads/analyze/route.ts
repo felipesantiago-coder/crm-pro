@@ -155,6 +155,17 @@ export async function GET() {
       referrerBreakdown: Array<{ referrer: string; visitors: number; leads: number }>;
       topPages: Array<{ url: string; views: number; leads: number }>;
       funnelStages: Array<{ stage: string; count: number; rate: number }>;
+      webVitals: Array<{ metric: string; avg_value: number; count: number }>;
+      galleryEngagement: { totalClicks: number; visitorsClicked: number; avgImagesViewed: number };
+      faqEngagement: Array<{ question_index: number; question: string; opens: number }>;
+      formFieldDropoff: Array<{ field: string; avg_time_ms: number; focus_count: number; blur_count: number }>;
+      sectionViews: Array<{ section: string; visitors: number }>;
+      exitIntentCount: number;
+      jsErrorCount: number;
+      printCount: number;
+      formAbandonCount: number;
+      timezoneBreakdown: Array<{ timezone: string; visitors: number }>;
+      languageBreakdown: Array<{ language: string; visitors: number }>;
     } = {
       visitors: 0,
       pageviews: 0,
@@ -171,6 +182,17 @@ export async function GET() {
       referrerBreakdown: [],
       topPages: [],
       funnelStages: [],
+      webVitals: [],
+      galleryEngagement: { totalClicks: 0, visitorsClicked: 0, avgImagesViewed: 0 },
+      faqEngagement: [],
+      formFieldDropoff: [],
+      sectionViews: [],
+      exitIntentCount: 0,
+      jsErrorCount: 0,
+      printCount: 0,
+      formAbandonCount: 0,
+      timezoneBreakdown: [],
+      languageBreakdown: [],
     };
 
     let pixelAvailable = false;
@@ -188,6 +210,14 @@ export async function GET() {
         referrerResult,
         topPagesResult,
         funnelStagesResult,
+        webVitalsResult,
+        galleryResult,
+        faqResult,
+        formFieldResult,
+        sectionViewResult,
+        eventCountsResult,
+        timezoneResult,
+        languageResult,
       ] = await Promise.all([
         // Query 1: Core funnel data
         db.$queryRaw<{
@@ -372,6 +402,115 @@ export async function GET() {
           UNION ALL
           SELECT 'lead' AS stage, (SELECT cnt FROM leads) AS count
         `,
+
+        // Query 11: Web Vitals (average LCP, FID, CLS, FCP, TTFB, INP)
+        db.$queryRaw<{ metric: string; avg_value: string | number; count: string | number }[]>`
+          SELECT
+            metadata->>'metric' as metric,
+            ROUND(AVG((metadata->>'value')::numeric))::text as avg_value,
+            COUNT(*)::text as count
+          FROM "tracking_events"
+          WHERE "eventType" = 'web_vital'
+            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND metadata->>'metric' IS NOT NULL
+            AND metadata->>'value' IS NOT NULL
+          GROUP BY metadata->>'metric'
+          ORDER BY avg_value::numeric DESC
+        `,
+
+        // Query 12: Gallery engagement
+        db.$queryRaw<{ total_clicks: string | number; visitors_clicked: string | number; avg_images: string | number }[]>`
+          SELECT
+            COUNT(*)::text as total_clicks,
+            COUNT(DISTINCT "visitorId")::text as visitors_clicked,
+            ROUND(AVG((metadata->>'total_images')::numeric))::text as avg_images
+          FROM "tracking_events"
+          WHERE "eventType" = 'gallery_click'
+            AND "createdAt" >= NOW() - INTERVAL '30 days'
+        `,
+
+        // Query 13: FAQ engagement
+        db.$queryRaw<{ question_index: number; question: string; opens: string | number }[]>`
+          SELECT
+            COALESCE((metadata->>'question_index')::int, 0) as question_index,
+            COALESCE(metadata->>'question', '(sem texto)') as question,
+            COUNT(*)::text as opens
+          FROM "tracking_events"
+          WHERE "eventType" = 'faq_open'
+            AND "createdAt" >= NOW() - INTERVAL '30 days'
+          GROUP BY COALESCE((metadata->>'question_index')::int, 0), COALESCE(metadata->>'question', '(sem texto)')
+          ORDER BY opens DESC
+        `,
+
+        // Query 14: Form field drop-off (avg time per field, focus vs blur counts)
+        db.$queryRaw<{ field: string; avg_time_ms: string | number; focus_count: string | number; blur_count: string | number }[]>`
+          SELECT
+            COALESCE(metadata->>'field', '(desconhecido)') as field,
+            ROUND(AVG((metadata->>'time_spent_ms')::numeric))::text as avg_time_ms,
+            COUNT(*) FILTER (WHERE "eventType" = 'form_focus')::text as focus_count,
+            COUNT(*) FILTER (WHERE "eventType" = 'form_blur')::text as blur_count
+          FROM "tracking_events"
+          WHERE ("eventType" = 'form_focus' OR "eventType" = 'form_blur')
+            AND "createdAt" >= NOW() - INTERVAL '30 days'
+          GROUP BY COALESCE(metadata->>'field', '(desconhecido)')
+          ORDER BY avg_time_ms::numeric DESC
+        `,
+
+        // Query 15: Section views
+        db.$queryRaw<{ section: string; visitors: string | number }[]>`
+          SELECT
+            COALESCE(metadata->>'section', '(desconhecida)') as section,
+            COUNT(DISTINCT "visitorId")::text as visitors
+          FROM "tracking_events"
+          WHERE "eventType" = 'section_view'
+            AND "createdAt" >= NOW() - INTERVAL '30 days'
+          GROUP BY COALESCE(metadata->>'section', '(desconhecida)')
+          ORDER BY visitors DESC
+        `,
+
+        // Query 16: Exit intent, JS errors, print, form abandon counts
+        db.$queryRaw<{
+          exit_intent: string | number;
+          js_errors: string | number;
+          prints: string | number;
+          form_abandons: string | number;
+        }[]>`
+          SELECT
+            COUNT(*) FILTER (WHERE "eventType" = 'exit_intent')::text as exit_intent,
+            COUNT(*) FILTER (WHERE "eventType" = 'js_error')::text as js_errors,
+            COUNT(*) FILTER (WHERE "eventType" = 'print')::text as prints,
+            COUNT(*) FILTER (WHERE "eventType" = 'form_abandon')::text as form_abandons
+          FROM "tracking_events"
+          WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+        `,
+
+        // Query 17: Timezone breakdown (from metadata of pageview events)
+        db.$queryRaw<{ timezone: string; visitors: string | number }[]>`
+          SELECT
+            COALESCE(metadata->>'timezone', '(desconhecido)') as timezone,
+            COUNT(DISTINCT "visitorId")::text as visitors
+          FROM "tracking_events"
+          WHERE "eventType" = 'pageview'
+            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND metadata->>'timezone' IS NOT NULL
+          GROUP BY COALESCE(metadata->>'timezone', '(desconhecido)')
+          ORDER BY visitors DESC
+          LIMIT 10
+        `,
+
+        // Query 18: Language breakdown
+        db.$queryRaw<{ language: string; visitors: string | number }[]>`
+          SELECT
+            COALESCE(metadata->>'language', '(desconhecido)') as language,
+            COUNT(DISTINCT "visitorId")::text as visitors
+          FROM "tracking_events"
+          WHERE "eventType" = 'pageview'
+            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND metadata->>'language' IS NOT NULL
+          GROUP BY COALESCE(metadata->>'language', '(desconhecido)')
+          ORDER BY visitors DESC
+          LIMIT 10
+        `,
       ]);
 
       if (funnelResult.length > 0) {
@@ -446,6 +585,65 @@ export async function GET() {
           rate: pvCount > 0 ? Math.round((count / pvCount) * 1000) / 10 : 0,
         };
       });
+
+      // Web vitals
+      pixelData.webVitals = webVitalsResult.map((r) => ({
+        metric: r.metric,
+        avg_value: Number(r.avg_value) || 0,
+        count: Number(r.count) || 0,
+      }));
+
+      // Gallery engagement
+      if (galleryResult.length > 0) {
+        const gr = galleryResult[0];
+        pixelData.galleryEngagement = {
+          totalClicks: Number(gr.total_clicks) || 0,
+          visitorsClicked: Number(gr.visitors_clicked) || 0,
+          avgImagesViewed: Number(gr.avg_images) || 0,
+        };
+      }
+
+      // FAQ engagement
+      pixelData.faqEngagement = faqResult.map((r) => ({
+        question_index: r.question_index,
+        question: r.question,
+        opens: Number(r.opens) || 0,
+      }));
+
+      // Form field drop-off
+      pixelData.formFieldDropoff = formFieldResult.map((r) => ({
+        field: r.field,
+        avg_time_ms: Number(r.avg_time_ms) || 0,
+        focus_count: Number(r.focus_count) || 0,
+        blur_count: Number(r.blur_count) || 0,
+      }));
+
+      // Section views
+      pixelData.sectionViews = sectionViewResult.map((r) => ({
+        section: r.section,
+        visitors: Number(r.visitors) || 0,
+      }));
+
+      // Event counts (exit intent, errors, prints, form abandons)
+      if (eventCountsResult.length > 0) {
+        const ec = eventCountsResult[0];
+        pixelData.exitIntentCount = Number(ec.exit_intent) || 0;
+        pixelData.jsErrorCount = Number(ec.js_errors) || 0;
+        pixelData.printCount = Number(ec.prints) || 0;
+        pixelData.formAbandonCount = Number(ec.form_abandons) || 0;
+      }
+
+      // Timezone breakdown
+      pixelData.timezoneBreakdown = timezoneResult.map((r) => ({
+        timezone: r.timezone,
+        visitors: Number(r.visitors) || 0,
+      }));
+
+      // Language breakdown
+      pixelData.languageBreakdown = languageResult.map((r) => ({
+        language: r.language,
+        visitors: Number(r.visitors) || 0,
+      }));
     } catch (pixelErr) {
       // tracking_events table may not exist yet (migration not run) — continue without pixel data
       console.warn('[Meta Ads Analyze] Tabela tracking_events não disponível, prosseguindo sem dados de pixel:', pixelErr);
@@ -542,7 +740,39 @@ ${campaignLines}
 ### Discrepancia Pixel vs CRM:
 - Leads no pixel (form_submit + lead, ultimos 30 dias): ${pixelData.pixelLeads}
 - Leads no CRM (tag Meta Ads, ultimos 30 dias): ${crmMetaLeads30d}
-- NOTA: Leads do webhook Meta Ads NAO geram eventos de pixel. A discrepancia e esperada quando ha leads vindos diretamente do formulario do Facebook.`;
+- NOTA: Leads do webhook Meta Ads NAO geram eventos de pixel. A discrepancia e esperada quando ha leads vindos diretamente do formulario do Facebook.
+
+### Performance da Pagina (Web Vitals):
+${pixelData.webVitals.length > 0 ? pixelData.webVitals.map((v) => `- ${v.metric}: media ${v.avg_value}ms (${v.count} amostras)`).join('\n') : '- Nenhum dado de Web Vitals disponivel'}
+
+### Engajamento com Galeria de Imagens:
+- Total de cliques na galeria: ${pixelData.galleryEngagement.totalClicks}
+- Visitantes que clicaram: ${pixelData.galleryEngagement.visitorsClicked} (${pixelData.visitors > 0 ? ((pixelData.galleryEngagement.visitorsClicked / pixelData.visitors) * 100).toFixed(1) : '0.0'}% dos visitantes)
+- Media de imagens por sessao com galeria: ${pixelData.galleryEngagement.avgImagesViewed.toFixed(1)}
+
+### Perguntas Frequentes (FAQ) - Engajamento:
+${pixelData.faqEngagement.length > 0 ? pixelData.faqEngagement.map((f) => `- P${f.question_index + 1}: "${f.question}" — ${f.opens} aberturas`).join('\n') : '- Nenhum dado de FAQ disponivel'}
+
+### Comportamento no Formulario (tempo por campo):
+${pixelData.formFieldDropoff.length > 0 ? pixelData.formFieldDropoff.map((f) => {
+  const dropoff = f.focus_count > 0 ? ((1 - f.blur_count / f.focus_count) * 100).toFixed(1) : 'N/A';
+  return `- Campo "${f.field}": focos=${f.focus_count}, blurs=${f.blur_count}, tempo medio=${f.avg_time_ms}ms, taxa de desistencia=${dropoff}%`;
+}).join('\n') : '- Nenhum dado de formulario disponivel'}
+
+### Visualizacao de Secoes (quais secos os visitantes veem):
+${pixelData.sectionViews.length > 0 ? pixelData.sectionViews.map((s) => `- ${s.section}: ${s.visitors} visitantes (${pixelData.visitors > 0 ? ((s.visitors / pixelData.visitors) * 100).toFixed(1) : '0.0'}%)`).join('\n') : '- Nenhum dado de secoes disponivel'}
+
+### Comportamento de Saida e Erros:
+- Exit intent (mouse saindo da pagina): ${pixelData.exitIntentCount} eventos (${pixelData.visitors > 0 ? ((pixelData.exitIntentCount / pixelData.visitors) * 100).toFixed(1) : '0.0'}% dos visitantes)
+- Erros de JavaScript: ${pixelData.jsErrorCount} erros registrados
+- Impressoes (print): ${pixelData.printCount}
+- Formularios abandonados (usuario saiu sem enviar): ${pixelData.formAbandonCount}
+
+### Fuso Horario dos Visitantes:
+${pixelData.timezoneBreakdown.length > 0 ? pixelData.timezoneBreakdown.map((t) => `- ${t.timezone}: ${t.visitors} visitantes (${((t.visitors / pixelData.visitors) * 100).toFixed(1)}%)`).join('\n') : '- Nenhum dado de fuso horario disponivel'}
+
+### Idioma do Navegador:
+${pixelData.languageBreakdown.length > 0 ? pixelData.languageBreakdown.map((l) => `- ${l.language}: ${l.visitors} visitantes (${((l.visitors / pixelData.visitors) * 100).toFixed(1)}%)`).join('\n') : '- Nenhum dado de idioma disponivel'}`;
     }
 
     const dataSummary = `
@@ -580,19 +810,27 @@ Analise os dados fornecidos e gere um relatório estruturado com as seguintes se
 
 1. **Resumo Executivo** — Visão geral rápida dos números e tendências
 2. **Análise de Funil Completo** — Use o funil do pixel (pageview → engagement → lead). Identifique gargalos. Analise a taxa de rejeição e o tempo médio na página.
-3. **Engajamento e Comportamento** — Analise scroll depth, tempo na página, dispositivos (mobile vs desktop), e fontes de tráfego (referrer). Identifique padrões de comportamento.
+3. **Engajamento e Comportamento** — Analise scroll depth, tempo na página, dispositivos, fontes de tráfego e visualização de seções. Identifique padrões de comportamento.
 4. **Qualidade dos Leads** — Os leads parecem qualificados? Há padrões nos dados? Que tipo de visitante converte?
-5. **Desempenho por Campanha e Criativo** — Qual campanha traz os melhores leads? Qual landing page converte mais?
-6. **Efetividade do WhatsApp** — Quantos cliques no WhatsApp? Qual CTA é mais efetivo (botão principal, FAQ, footer, etc.)?
-7. **Alertas e Problemas** — Leads sem interação, estagnados, alta taxa de rejeição, discrepância pixel vs CRM.
-8. **Recomendações** — 7-10 recomendações práticas e específicas para melhorar os resultados. Inclua sugestões sobre otimização de landing pages, CTAs, campanhas e acompanhamento de leads.
+5. **Performance da Landing Page** — Analise Web Vitals (LCP, FID, CLS). Há problemas de performance que afetam a conversão? Há erros de JavaScript?
+6. **Desempenho por Campanha e Criativo** — Qual campanha traz os melhores leads? Qual landing page converte mais?
+7. **Análise do Formulário** — Qual campo tem maior taxa de desistência? Quanto tempo os visitantes gastam em cada campo? Há formulários abandonados?
+8. **Galeria e FAQ** — Os visitantes interagem com as imagens? Quais perguntas do FAQ mais geram interesse? A galeria influencia na conversão?
+9. **Efetividade do WhatsApp** — Quantos cliques no WhatsApp? Qual CTA é mais efetivo? Qual a relação entre exit intent e cliques no WhatsApp?
+10. **Geografia e Idioma** — De quais fusos horários vêm os visitantes? Quais idiomas? Quais horários têm mais engajamento?
+11. **Alertas e Problemas** — Leads sem interação, estagnados, alta taxa de rejeição, discrepância pixel vs CRM, erros de JS.
+12. **Recomendações** — 10-15 recomendações práticas e específicas para melhorar os resultados. Inclua sugestões sobre otimização de landing pages, CTAs, campanhas, formulário, horários de atendimento e acompanhamento de leads.
 
 IMPORTANTE:
 - Leads do webhook Meta Ads chegam diretamente do Facebook e NÃO geram eventos de pixel. A discrepancia entre pixel e CRM e esperada nesse caso.
 - Leads cadastrados via formulario das landing pages GERAM eventos de pixel (form_submit).
 - Use dados numericos em TODOS os argumentos. Nunca faca afirmações vagas.
 - Foque no que importa para um corretor/consultor imobiliário.
-- Se houver dados de dispositivo, analise se mobile ou desktop tem melhor conversão.`;
+- Se houver dados de dispositivo, analise se mobile ou desktop tem melhor conversão.
+- Se houver dados de Web Vitals, identifique problemas de performance (LCP > 2500ms, CLS > 0.1, FID > 100ms).
+- Se houver dados de FAQ, identifique quais dúvidas são mais frequentes e sugira otimizações.
+- Se houver dados de exit intent, sugira estratégias de retenção (popup, oferta especial, etc.).
+- Se houver dados de fuso horario, sugira horários otimos para atendimento via WhatsApp.`;
 
     // ─────────────────────────────────────────
     // 4. Chamar IA

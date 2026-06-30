@@ -1,6 +1,22 @@
 /*!
- * CRM Pixel — Lightweight tracking for landing pages
+ * CRM Pixel v2 — Complete tracking for landing pages
  * Embed: <script src="pixel.js" data-site-id="SITE_ID"></script>
+ *
+ * Auto-tracks: pageview, scroll depth, heartbeat, pageview_duration,
+ *              web vitals (LCP/FID/CLS/FCP/TTFB), JS errors, print,
+ *              timezone, language, connection type.
+ *
+ * Public API (window.CRMPIXEL):
+ *   .track(name, data)           — fire custom event
+ *   .identify(id)                — link visitor to CRM lead
+ *   .trackSectionView(name)      — fire section_view event
+ *   .trackFormFocus(field)       — fire form_focus event
+ *   .trackFormBlur(field, ms)    — fire form_blur event
+ *   .trackFormAbandon(filled)    — fire form_abandon event
+ *   .trackGalleryClick(idx, tot) — fire gallery_click event
+ *   .trackFAQOpen(idx, text)     — fire faq_open event
+ *   .trackExitIntent()           — fire exit_intent event
+ *   .pixelURL(evt, data)         — build <img> tracking URL
  */
 (function () {
   "use strict";
@@ -57,8 +73,21 @@
 
   var utmParams = parseUTM();
 
+  /* ── Visitor context (detected once) ────────────────── */
+  var _visitorCtx = {};
+  try {
+    _visitorCtx.timezone = (Intl && Intl.DateTimeFormat && Intl.DateTimeFormat().resolvedOptions().timeZone) || null;
+  } catch (e) { /* noop */ }
+  _visitorCtx.language = navigator.language || null;
+  try {
+    _visitorCtx.connection = (navigator.connection && navigator.connection.effectiveType) || null;
+  } catch (e) { /* noop */ }
+  _visitorCtx.dnt = (typeof navigator.doNotTrack !== "undefined") ? navigator.doNotTrack : null;
+
   /* ── Common payload builder ─────────────────────────── */
   var leadId = "";
+  var _formTouched = false; // track if any form field was interacted with
+  var _formFieldsFilled = 0; // count of non-empty fields at last check
 
   function basePayload(evt, extra) {
     var d = {
@@ -76,6 +105,9 @@
       utm_campaign: utmParams.utm_campaign || undefined,
       utm_content: utmParams.utm_content || undefined,
       utm_term: utmParams.utm_term || undefined,
+      timezone: _visitorCtx.timezone || undefined,
+      language: _visitorCtx.language || undefined,
+      connection: _visitorCtx.connection || undefined,
       ts: Date.now()
     };
     // Merge cookie consent flag if Cookiebot / OneTrust / custom global exists
@@ -119,9 +151,10 @@
 
   /* ── Debounce guard ─────────────────────────────────── */
   var _lastEvent = {};
-  function debounce(key) {
+  function debounce(key, ms) {
+    ms = ms || DEBOUNCE_MS;
     var now = Date.now();
-    if (_lastEvent[key] && now - _lastEvent[key] < DEBOUNCE_MS) return false;
+    if (_lastEvent[key] && now - _lastEvent[key] < ms) return false;
     _lastEvent[key] = now;
     return true;
   }
@@ -170,12 +203,158 @@
     }, { passive: true });
   }
 
+  /* ── Web Vitals tracking ────────────────────────────── */
+  function trackWebVitals() {
+    if (typeof PerformanceObserver === "undefined") return;
+
+    // LCP (Largest Contentful Paint)
+    try {
+      new PerformanceObserver(function (list) {
+        var entries = list.getEntries();
+        if (entries.length > 0) {
+          var last = entries[entries.length - 1];
+          send(basePayload("web_vital", { metric: "LCP", value: Math.round(last.startTime) }));
+        }
+      }).observe({ type: "largest-contentful-paint", buffered: true });
+    } catch (e) { /* unsupported */ }
+
+    // FID (First Input Delay)
+    try {
+      new PerformanceObserver(function (list) {
+        var entries = list.getEntries();
+        for (var i = 0; i < entries.length; i++) {
+          var entry = entries[i];
+          send(basePayload("web_vital", { metric: "FID", value: Math.round(entry.processingStart - entry.startTime) }));
+        }
+      }).observe({ type: "first-input", buffered: true });
+    } catch (e) { /* unsupported */ }
+
+    // CLS (Cumulative Layout Shift)
+    try {
+      var clsValue = 0;
+      var clsEntries = [];
+      new PerformanceObserver(function (list) {
+        for (var i = 0; i < list.getEntries().length; i++) {
+          var entry = list.getEntries()[i];
+          if (!entry.hadRecentInput) {
+            clsValue += entry.value;
+            clsEntries.push(entry);
+          }
+        }
+      }).observe({ type: "layout-shift", buffered: true });
+      // Report CLS on page hide
+      window.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") {
+          send(basePayload("web_vital", { metric: "CLS", value: Math.round(clsValue * 1000) / 1000 }));
+        }
+      });
+    } catch (e) { /* unsupported */ }
+
+    // FCP (First Contentful Paint)
+    try {
+      new PerformanceObserver(function (list) {
+        var entries = list.getEntries();
+        if (entries.length > 0) {
+          send(basePayload("web_vital", { metric: "FCP", value: Math.round(entries[0].startTime) }));
+        }
+      }).observe({ type: "first-contentful-paint", buffered: true });
+    } catch (e) { /* unsupported */ }
+
+    // TTFB (Time to First Byte)
+    try {
+      new PerformanceObserver(function (list) {
+        var entries = list.getEntries();
+        if (entries.length > 0) {
+          var nav = entries[0];
+          send(basePayload("web_vital", {
+            metric: "TTFB",
+            value: Math.round(nav.responseStart - nav.requestStart)
+          }));
+        }
+      }).observe({ type: "navigation", buffered: true });
+    } catch (e) { /* unsupported */ }
+
+    // INP (Interaction to Next Paint)
+    try {
+      var inpValue = 0;
+      new PerformanceObserver(function (list) {
+        for (var i = 0; i < list.getEntries().length; i++) {
+          var entry = list.getEntries()[i];
+          var duration = entry.duration;
+          if (duration > inpValue) inpValue = duration;
+        }
+      }).observe({ type: "event", buffered: true, durationThreshold: 16 });
+      window.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") {
+          send(basePayload("web_vital", { metric: "INP", value: Math.round(inpValue) }));
+        }
+      });
+    } catch (e) { /* unsupported */ }
+  }
+
+  /* ── JS Error tracking ──────────────────────────────── */
+  function trackErrors() {
+    var _errorCount = 0;
+    window.addEventListener("error", function (event) {
+      _errorCount++;
+      // Cap at 5 errors per session to avoid spam
+      if (_errorCount > 5) return;
+      send(basePayload("js_error", {
+        message: (event.message || "Unknown error").substring(0, 200),
+        filename: (event.filename || "").split("/").pop() || null,
+        lineno: event.lineno || null,
+        colno: event.colno || null
+      }));
+    });
+    // Unhandled promise rejections
+    window.addEventListener("unhandledrejection", function (event) {
+      _errorCount++;
+      if (_errorCount > 5) return;
+      var reason = event.reason;
+      var msg = (reason && reason.message) ? reason.message : String(reason);
+      send(basePayload("js_error", {
+        message: ("Promise: " + msg).substring(0, 200),
+        filename: null,
+        lineno: null,
+        colno: null
+      }));
+    });
+  }
+
+  /* ── Print tracking ─────────────────────────────────── */
+  function trackPrint() {
+    window.addEventListener("beforeprint", function () {
+      send(basePayload("print", {}));
+    });
+  }
+
+  /* ── Form abandonment on page unload ────────────────── */
+  function trackFormAbandonOnUnload() {
+    window.addEventListener("beforeunload", function () {
+      if (_formTouched) {
+        // Count non-empty form fields as a rough measure
+        var filled = _formFieldsFilled;
+        if (filled > 0) {
+          var payload = basePayload("form_abandon", { fields_filled: filled });
+          var data = "data=" + encodeURIComponent(JSON.stringify(payload));
+          if (navigator.sendBeacon) {
+            try { navigator.sendBeacon(TRACK_ENDPOINT, data); } catch (e) { /* noop */ }
+          }
+        }
+      }
+    });
+  }
+
   /* ── Page-view (called once per session load) ───────── */
   function trackPageview() {
     if (!debounce("pageview")) return;
     send(basePayload("pageview"));
     ensureScrollListener();
     startHeartbeat();
+    trackWebVitals();
+    trackErrors();
+    trackPrint();
+    trackFormAbandonOnUnload();
   }
 
   /* ── Unload: final heartbeat + beacon ───────────────── */
@@ -207,6 +386,94 @@
       if (!id) return;
       leadId = id;
       send(basePayload("identify", { lead_id: id }));
+    },
+
+    /**
+     * Track section visibility (call when a section enters viewport).
+     * @param {string} sectionName — e.g. "galeria", "ficha-tecnica", "faq"
+     */
+    trackSectionView: function (sectionName) {
+      if (!sectionName || !debounce("section_view:" + sectionName, 5000)) return;
+      send(basePayload("section_view", { section: sectionName }));
+    },
+
+    /**
+     * Track form field focus.
+     * @param {string} fieldName — e.g. "name", "phone", "email"
+     */
+    trackFormFocus: function (fieldName) {
+      _formTouched = true;
+      send(basePayload("form_focus", { field: fieldName }));
+    },
+
+    /**
+     * Track form field blur with time spent.
+     * @param {string} fieldName
+     * @param {number} timeSpentMs — time in milliseconds the field was focused
+     */
+    trackFormBlur: function (fieldName, timeSpentMs) {
+      send(basePayload("form_blur", { field: fieldName, time_spent_ms: Math.round(timeSpentMs) }));
+    },
+
+    /**
+     * Manually track form abandonment (e.g. exit intent while form is open).
+     * @param {number} fieldsFilled — count of non-empty fields
+     */
+    trackFormAbandon: function (fieldsFilled) {
+      send(basePayload("form_abandon", { fields_filled: fieldsFilled }));
+    },
+
+    /**
+     * Track gallery image interaction.
+     * @param {number} imageIndex — zero-based index of the image
+     * @param {number} totalImages — total number of images
+     */
+    trackGalleryClick: function (imageIndex, totalImages) {
+      send(basePayload("gallery_click", { image_index: imageIndex, total_images: totalImages }));
+    },
+
+    /**
+     * Track FAQ accordion open.
+     * @param {number} questionIndex — zero-based index of the FAQ item
+     * @param {string} questionText — the question text (truncated to 100 chars internally)
+     */
+    trackFAQOpen: function (questionIndex, questionText) {
+      send(basePayload("faq_open", {
+        question_index: questionIndex,
+        question: (questionText || "").substring(0, 100)
+      }));
+    },
+
+    /**
+     * Track exit intent (call when user's mouse leaves viewport on desktop).
+     */
+    trackExitIntent: function () {
+      if (!debounce("exit_intent", 10000)) return; // max once per 10s
+      send(basePayload("exit_intent", { time_on_page: Math.round((Date.now() - _started) / 1000) }));
+    },
+
+    /**
+     * Track custom field interaction (for dynamic form fields).
+     * @param {string} fieldName — custom field name
+     * @param {string} action — "focus" or "blur"
+     * @param {number} [timeSpentMs]
+     */
+    trackCustomField: function (fieldName, action, timeSpentMs) {
+      if (action === "focus") {
+        _formTouched = true;
+        send(basePayload("form_focus", { field: fieldName }));
+      } else if (action === "blur") {
+        send(basePayload("form_blur", { field: fieldName, time_spent_ms: Math.round(timeSpentMs || 0) }));
+      }
+    },
+
+    /**
+     * Update internal form field count (for abandonment tracking).
+     * Call this whenever a form field value changes.
+     * @param {number} count — number of non-empty fields
+     */
+    _setFormFieldsFilled: function (count) {
+      _formFieldsFilled = count;
     },
 
     /**
