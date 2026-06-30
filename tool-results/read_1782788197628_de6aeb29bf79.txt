@@ -1,0 +1,1455 @@
+     1→'use client';
+     2→
+     3→import React, { useEffect, useState, useCallback } from 'react';
+     4→import {
+     5→  Megaphone, Eye, EyeOff, RefreshCw, Zap, CheckCircle2, Circle,
+     6→  Copy, ExternalLink, Loader2, Save, Users, TrendingUp, Target,
+     7→  ArrowUpRight, ArrowDownRight, Search, BarChart3, Brain,
+     8→  ChevronDown, ChevronUp, Phone, Mail, MapPin, Calendar,
+     9→  AlertTriangle, Filter, Download, ChevronLeft, ChevronRight,
+    10→  UserPlus, Sparkles, Activity, PieChart, Crosshair, Globe, UsersRound,
+    11→} from 'lucide-react';
+    12→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    13→import { Button } from '@/components/ui/button';
+    14→import { Input } from '@/components/ui/input';
+    15→import { Label } from '@/components/ui/label';
+    16→import { Switch } from '@/components/ui/switch';
+    17→import { Separator } from '@/components/ui/separator';
+    18→import { Badge } from '@/components/ui/badge';
+    19→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    20→import {
+    21→  Select,
+    22→  SelectContent,
+    23→  SelectItem,
+    24→  SelectTrigger,
+    25→  SelectValue,
+    26→} from '@/components/ui/select';
+    27→import { toast } from 'sonner';
+    28→import { format, parseISO } from 'date-fns';
+    29→import { TrackingTab } from './tracking-tab';
+    30→import { LandingPagesTab } from './landing-pages-tab';
+    31→import { QueuesTab } from './queues-tab';
+    32→import { ptBR } from 'date-fns/locale';
+    33→
+    34→// ============================================================
+    35→// Types
+    36→// ============================================================
+    37→interface Metrics {
+    38→  totalLeads: number;
+    39→  periodLeads: number;
+    40→  convertedLeads: number;
+    41→  conversionRate: number;
+    42→  byStage: Record<string, number>;
+    43→}
+    44→
+    45→interface LeadItem {
+    46→  id: string;
+    47→  name: string;
+    48→  phone: string | null;
+    49→  email: string | null;
+    50→  region: string | null;
+    51→  stage: string;
+    52→  notes: string | null;
+    53→  createdAt: string;
+    54→  lastInteractionAt: string | null;
+    55→  enterprise: string | null;
+    56→  adName: string;
+    57→  campaignName: string;
+    58→  formName: string;
+    59→  leadId: string;
+    60→  _count: { interactions: number };
+    61→}
+    62→
+    63→interface ChartPoint {
+    64→  date: string;
+    65→  count: number;
+    66→}
+    67→
+    68→interface CampaignStat {
+    69→  name: string;
+    70→  count: number;
+    71→}
+    72→
+    73→interface RegionStat {
+    74→  region: string;
+    75→  count: number;
+    76→}
+    77→
+    78→interface AnalysisResponse {
+    79→  analysis: string | null;
+    80→  error?: string;
+    81→  message?: string;
+    82→  generatedAt?: string;
+    83→  dataPoints?: {
+    84→    totalLeads: number;
+    85→    recentLeads: number;
+    86→    conversionRate: number;
+    87→    withoutInteraction: number;
+    88→  };
+    89→}
+    90→
+    91→// ============================================================
+    92→// Stage config
+    93→// ============================================================
+    94→const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+    95→  LEAD: { label: 'Lead', color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900/30' },
+    96→  CONTATO: { label: 'Contato', color: 'text-cyan-700 dark:text-cyan-400', bg: 'bg-cyan-100 dark:bg-cyan-900/30' },
+    97→  VISITA: { label: 'Visita', color: 'text-purple-700 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900/30' },
+    98→  NEGOCIACAO: { label: 'Negociação', color: 'text-amber-700 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+    99→  PROPOSTA: { label: 'Proposta', color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
+   100→  FECHADO: { label: 'Fechado', color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+   101→  PERDIDO: { label: 'Perdido', color: 'text-red-700 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-900/30' },
+   102→};
+   103→
+   104→function StageBadge({ stage }: { stage: string }) {
+   105→  const config = STAGE_CONFIG[stage] || { label: stage, color: 'text-gray-600', bg: 'bg-gray-100 dark:bg-gray-800' };
+   106→  return (
+   107→    <Badge className={`${config.bg} ${config.color} text-[11px] font-semibold px-2 py-0.5 border-0`}>
+   108→      {config.label}
+   109→    </Badge>
+   110→  );
+   111→}
+   112→
+   113→// ============================================================
+   114→// Mini bar chart (CSS-only, no chart library needed)
+   115→// ============================================================
+   116→function MiniBarChart({ data, height = 80 }: { data: ChartPoint[]; height?: number }) {
+   117→  const maxCount = Math.max(...data.map((d) => d.count), 1);
+   118→
+   119→  return (
+   120→    <div className="flex items-end gap-[3px] w-full" style={{ height }}>
+   121→      {data.map((d, i) => {
+   122→        const barH = (d.count / maxCount) * 100;
+   123→        const isToday = d.date === new Date().toISOString().split('T')[0];
+   124→        return (
+   125→          <div
+   126→            key={d.date}
+   127→            className="flex-1 min-w-0 flex flex-col items-center gap-1 group relative"
+   128→          >
+   129→            {/* Tooltip */}
+   130→            <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:flex items-center justify-center bg-popover text-popover-foreground text-[10px] px-1.5 py-0.5 rounded shadow-md border whitespace-nowrap z-10 pointer-events-none">
+   131→              {format(parseISO(d.date), "dd MMM", { locale: ptBR })}: {d.count} lead{d.count !== 1 ? 's' : ''}
+   132→            </div>
+   133→            <div
+   134→              className={`w-full rounded-sm transition-all duration-300 ${
+   135→                isToday
+   136→                  ? 'bg-emerald-500'
+   137→                  : d.count > 0
+   138→                    ? 'bg-blue-400/70 dark:bg-blue-500/60'
+   139→                    : 'bg-muted'
+   140→              }`}
+   141→              style={{ height: `${Math.max(barH, 2)}%` }}
+   142→            />
+   143→          </div>
+   144→        );
+   145→      })}
+   146→    </div>
+   147→  );
+   148→}
+   149→
+   150→// ============================================================
+   151→// Funnel Visualization
+   152→// ============================================================
+   153→function FunnelVisualization({ byStage }: { byStage: Record<string, number> }) {
+   154→  const funnelStages = ['LEAD', 'CONTATO', 'VISITA', 'NEGOCIACAO', 'PROPOSTA', 'FECHADO'];
+   155→  const data = funnelStages
+   156→    .map((s) => ({ stage: s, count: byStage[s] || 0 }))
+   157→    .filter((d) => d.count > 0);
+   158→
+   159→  const maxCount = Math.max(...data.map((d) => d.count), 1);
+   160→
+   161→  if (data.length === 0) {
+   162→    return (
+   163→      <div className="text-center py-8 text-muted-foreground text-sm">
+   164→        Nenhum dado de funil disponível
+   165→      </div>
+   166→    );
+   167→  }
+   168→
+   169→  return (
+   170→    <div className="space-y-2">
+   171→      {data.map((d, i) => {
+   172→        const widthPct = Math.max((d.count / maxCount) * 100, 15);
+   173→        const config = STAGE_CONFIG[d.stage] || { label: d.stage, color: 'text-gray-600', bg: 'bg-gray-100 dark:bg-gray-800' };
+   174→        const prevCount = i > 0 ? data[i - 1].count : d.count;
+   175→        const dropRate = prevCount > 0 ? (((prevCount - d.count) / prevCount) * 100).toFixed(0) : '0';
+   176→
+   177→        return (
+   178→          <div key={d.stage} className="flex items-center gap-3">
+   179→            <div className="w-24 text-right text-[11px] font-medium text-muted-foreground flex-shrink-0">
+   180→              {config.label}
+   181→            </div>
+   182→            <div className="flex-1 relative">
+   183→              <div
+   184→                className={`${config.bg} rounded-sm h-7 flex items-center px-2 transition-all duration-500`}
+   185→                style={{ width: `${widthPct}%` }}
+   186→              >
+   187→                <span className={`text-[11px] font-bold ${config.color}`}>{d.count}</span>
+   188→              </div>
+   189→            </div>
+   190→            {i > 0 && d.count < prevCount && (
+   191→              <div className="w-16 text-right flex-shrink-0">
+   192→                <span className="text-[10px] text-red-500 font-medium">-{dropRate}%</span>
+   193→              </div>
+   194→            )}
+   195→          </div>
+   196→        );
+   197→      })}
+   198→    </div>
+   199→  );
+   200→}
+   201→
+   202→// ============================================================
+   203→// Tab: Visão Geral
+   204→// ============================================================
+   205→function OverviewTab({ metrics, chartData, topCampaigns, topRegions, onRefresh }: {
+   206→  metrics: Metrics | null;
+   207→  chartData: ChartPoint[];
+   208→  topCampaigns: CampaignStat[];
+   209→  topRegions: RegionStat[];
+   210→  onRefresh: () => void;
+   211→}) {
+   212→  if (!metrics) {
+   213→    return (
+   214→      <div className="flex items-center justify-center py-16">
+   215→        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+   216→      </div>
+   217→    );
+   218→  }
+   219→
+   220→  const totalLeads = metrics.totalLeads;
+   221→  const stageOrder = ['LEAD', 'CONTATO', 'VISITA', 'NEGOCIACAO', 'PROPOSTA', 'FECHADO', 'PERDIDO'];
+   222→
+   223→  return (
+   224→    <div className="space-y-6">
+   225→      {/* Header com refresh */}
+   226→      <div className="flex items-center justify-between">
+   227→        <div>
+   228→          <h2 className="text-lg font-semibold">Visão Geral</h2>
+   229→          <p className="text-sm text-muted-foreground">Métricas e desempenho dos seus anúncios Meta</p>
+   230→        </div>
+   231→        <Button variant="outline" size="sm" onClick={onRefresh}>
+   232→          <RefreshCw className="h-4 w-4 mr-1" />
+   233→          Atualizar
+   234→        </Button>
+   235→      </div>
+   236→
+   237→      {/* KPI Cards */}
+   238→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+   239→        <KpiCard
+   240→          title="Total de Leads"
+   241→          value={totalLeads}
+   242→          icon={<Users className="h-4 w-4" />}
+   243→          iconBg="bg-blue-100 dark:bg-blue-900/30"
+   244→          iconColor="text-blue-600 dark:text-blue-400"
+   245→          subtitle="Desde o início"
+   246→        />
+   247→        <KpiCard
+   248→          title="Leads no Período"
+   249→          value={metrics.periodLeads}
+   250→          icon={<UserPlus className="h-4 w-4" />}
+   251→          iconBg="bg-emerald-100 dark:bg-emerald-900/30"
+   252→          iconColor="text-emerald-600 dark:text-emerald-400"
+   253→          subtitle="Últimos 30 dias"
+   254→          trend={metrics.periodLeads > 0 ? 'up' : 'neutral'}
+   255→        />
+   256→        <KpiCard
+   257→          title="Convertidos"
+   258→          value={metrics.convertedLeads}
+   259→          icon={<Target className="h-4 w-4" />}
+   260→          iconBg="bg-purple-100 dark:bg-purple-900/30"
+   261→          iconColor="text-purple-600 dark:text-purple-400"
+   262→          subtitle="Negociação + Proposta + Fechado"
+   263→        />
+   264→        <KpiCard
+   265→          title="Taxa de Conversão"
+   266→          value={`${metrics.conversionRate}%`}
+   267→          icon={<TrendingUp className="h-4 w-4" />}
+   268→          iconBg="bg-amber-100 dark:bg-amber-900/30"
+   269→          iconColor="text-amber-600 dark:text-amber-400"
+   270→          subtitle="Leads → Avançados"
+   271→          trend={metrics.conversionRate >= 10 ? 'up' : metrics.conversionRate >= 5 ? 'neutral' : 'down'}
+   272→        />
+   273→      </div>
+   274→
+   275→      {/* Gráfico + Funil */}
+   276→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   277→        {/* Gráfico de leads por dia */}
+   278→        <Card>
+   279→          <CardHeader className="pb-2">
+   280→            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   281→              <BarChart3 className="h-4 w-4 text-blue-500" />
+   282→              Leads por Dia
+   283→            </CardTitle>
+   284→          </CardHeader>
+   285→          <CardContent>
+   286→            {chartData.length > 0 ? (
+   287→              <>
+   288→                <MiniBarChart data={chartData} height={120} />
+   289→                <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+   290→                  <span>{format(parseISO(chartData[0].date), "dd MMM", { locale: ptBR })}</span>
+   291→                  <span>{format(parseISO(chartData[chartData.length - 1].date), "dd MMM yyyy", { locale: ptBR })}</span>
+   292→                </div>
+   293→              </>
+   294→            ) : (
+   295→              <div className="text-center py-8 text-sm text-muted-foreground">
+   296→                Nenhum lead no período selecionado
+   297→              </div>
+   298→            )}
+   299→          </CardContent>
+   300→        </Card>
+   301→
+   302→        {/* Funil de conversão */}
+   303→        <Card>
+   304→          <CardHeader className="pb-2">
+   305→            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   306→              <PieChart className="h-4 w-4 text-purple-500" />
+   307→              Funil de Conversão
+   308→            </CardTitle>
+   309→          </CardHeader>
+   310→          <CardContent>
+   311→            <FunnelVisualization byStage={metrics.byStage} />
+   312→          </CardContent>
+   313→        </Card>
+   314→      </div>
+   315→
+   316→      {/* Campanhas + Regiões */}
+   317→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   318→        {/* Top Campanhas */}
+   319→        <Card>
+   320→          <CardHeader className="pb-2">
+   321→            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   322→              <Megaphone className="h-4 w-4 text-blue-500" />
+   323→              Top Campanhas
+   324→            </CardTitle>
+   325→          </CardHeader>
+   326→          <CardContent>
+   327→            {topCampaigns.length > 0 ? (
+   328→              <div className="space-y-2">
+   329→                {topCampaigns.map((c, i) => {
+   330→                  const maxCount = topCampaigns[0].count;
+   331→                  const widthPct = Math.max((c.count / maxCount) * 100, 10);
+   332→                  return (
+   333→                    <div key={c.name} className="space-y-1">
+   334→                      <div className="flex items-center justify-between">
+   335→                        <span className="text-xs font-medium truncate max-w-[200px]">{c.name}</span>
+   336→                        <span className="text-xs text-muted-foreground font-mono">{c.count}</span>
+   337→                      </div>
+   338→                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+   339→                        <div
+   340→                          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-500"
+   341→                          style={{ width: `${widthPct}%` }}
+   342→                        />
+   343→                      </div>
+   344→                    </div>
+   345→                  );
+   346→                })}
+   347→              </div>
+   348→            ) : (
+   349→              <div className="text-center py-6 text-sm text-muted-foreground">
+   350→                Nenhuma campanha identificada nos leads
+   351→              </div>
+   352→            )}
+   353→          </CardContent>
+   354→        </Card>
+   355→
+   356→        {/* Top Regiões */}
+   357→        <Card>
+   358→          <CardHeader className="pb-2">
+   359→            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   360→              <MapPin className="h-4 w-4 text-emerald-500" />
+   361→              Top Regiões
+   362→            </CardTitle>
+   363→          </CardHeader>
+   364→          <CardContent>
+   365→            {topRegions.length > 0 ? (
+   366→              <div className="space-y-2">
+   367→                {topRegions.map((r, i) => {
+   368→                  const maxCount = topRegions[0].count;
+   369→                  const widthPct = Math.max((r.count / maxCount) * 100, 10);
+   370→                  return (
+   371→                    <div key={r.region} className="space-y-1">
+   372→                      <div className="flex items-center justify-between">
+   373→                        <span className="text-xs font-medium truncate max-w-[200px]">{r.region}</span>
+   374→                        <span className="text-xs text-muted-foreground font-mono">{r.count}</span>
+   375→                      </div>
+   376→                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+   377→                        <div
+   378→                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
+   379→                          style={{ width: `${widthPct}%` }}
+   380→                        />
+   381→                      </div>
+   382→                    </div>
+   383→                  );
+   384→                })}
+   385→              </div>
+   386→            ) : (
+   387→              <div className="text-center py-6 text-sm text-muted-foreground">
+   388→                Nenhuma região identificada nos leads
+   389→              </div>
+   390→            )}
+   391→          </CardContent>
+   392→        </Card>
+   393→      </div>
+   394→
+   395→      {/* Distribuição por estágio (cards inline) */}
+   396→      <Card>
+   397→        <CardHeader className="pb-2">
+   398→          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   399→            <Activity className="h-4 w-4 text-amber-500" />
+   400→            Distribuição por Etapa
+   401→          </CardTitle>
+   402→        </CardHeader>
+   403→        <CardContent>
+   404→          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+   405→            {stageOrder
+   406→              .filter((s) => metrics.byStage[s] > 0)
+   407→              .map((s) => {
+   408→                const config = STAGE_CONFIG[s];
+   409→                const count = metrics.byStage[s];
+   410→                const pct = ((count / totalLeads) * 100).toFixed(0);
+   411→                return (
+   412→                  <div
+   413→                    key={s}
+   414→                    className={`rounded-lg border p-3 ${config.bg} border-transparent hover:border-border transition-colors`}
+   415→                  >
+   416→                    <div className={`text-lg font-bold ${config.color}`}>{count}</div>
+   417→                    <div className="text-[11px] text-muted-foreground">{config.label}</div>
+   418→                    <div className={`text-[10px] font-medium ${config.color} mt-0.5`}>{pct}% do total</div>
+   419→                  </div>
+   420→                );
+   421→              })}
+   422→          </div>
+   423→        </CardContent>
+   424→      </Card>
+   425→    </div>
+   426→  );
+   427→}
+   428→
+   429→// ============================================================
+   430→// KPI Card Component
+   431→// ============================================================
+   432→function KpiCard({ title, value, icon, iconBg, iconColor, subtitle, trend }: {
+   433→  title: string;
+   434→  value: number | string;
+   435→  icon: React.ReactNode;
+   436→  iconBg: string;
+   437→  iconColor: string;
+   438→  subtitle: string;
+   439→  trend?: 'up' | 'down' | 'neutral';
+   440→}) {
+   441→  return (
+   442→    <Card className="hover:shadow-md transition-shadow duration-200">
+   443→      <CardContent className="p-4">
+   444→        <div className="flex items-start justify-between">
+   445→          <div className="space-y-1">
+   446→            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
+   447→            <p className="text-2xl font-bold tracking-tight">{value}</p>
+   448→            <div className="flex items-center gap-1.5">
+   449→              {trend === 'up' && <ArrowUpRight className="h-3 w-3 text-emerald-500" />}
+   450→              {trend === 'down' && <ArrowDownRight className="h-3 w-3 text-red-500" />}
+   451→              <p className="text-[11px] text-muted-foreground">{subtitle}</p>
+   452→            </div>
+   453→          </div>
+   454→          <div className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+   455→            <span className={iconColor}>{icon}</span>
+   456→          </div>
+   457→        </div>
+   458→      </CardContent>
+   459→    </Card>
+   460→  );
+   461→}
+   462→
+   463→// ============================================================
+   464→// Tab: Leads
+   465→// ============================================================
+   466→function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
+   467→  const [leads, setLeads] = useState<LeadItem[]>([]);
+   468→  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+   469→  const [loading, setLoading] = useState(true);
+   470→  const [search, setSearch] = useState('');
+   471→  const [stageFilter, setStageFilter] = useState('all');
+   472→  const [period, setPeriod] = useState('30');
+   473→  const [expandedId, setExpandedId] = useState<string | null>(null);
+   474→
+   475→  const fetchLeads = useCallback(async (p = 1) => {
+   476→    setLoading(true);
+   477→    try {
+   478→      const params = new URLSearchParams({
+   479→        page: String(p),
+   480→        limit: '20',
+   481→        period,
+   482→      });
+   483→      if (search) params.set('search', search);
+   484→      if (stageFilter && stageFilter !== 'all') params.set('stage', stageFilter);
+   485→
+   486→      const res = await fetch(`/api/meta-ads/leads?${params}`);
+   487→      if (res.ok) {
+   488→        const data = await res.json();
+   489→        setLeads(data.leads);
+   490→        setPagination(data.pagination);
+   491→      } else {
+   492→        toast.error('Erro ao buscar leads');
+   493→      }
+   494→    } catch {
+   495→      toast.error('Falha de conexão');
+   496→    } finally {
+   497→      setLoading(false);
+   498→    }
+   499→  }, [search, stageFilter, period]);
+   500→
+   501→  useEffect(() => {
+   502→    onLeadsNeeded();
+   503→  }, [onLeadsNeeded]);
+   504→
+   505→  useEffect(() => {
+   506→    fetchLeads(1);
+   507→  }, [fetchLeads]);
+   508→
+   509→  const totalPages = pagination.totalPages;
+   510→
+   511→  return (
+   512→    <div className="space-y-4">
+   513→      {/* Header */}
+   514→      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   515→        <div>
+   516→          <h2 className="text-lg font-semibold">Leads do Meta Ads</h2>
+   517→          <p className="text-sm text-muted-foreground">
+   518→            {pagination.total} lead{pagination.total !== 1 ? 's' : ''} recebido{pagination.total !== 1 ? 's' : ''} via Facebook/Instagram
+   519→          </p>
+   520→        </div>
+   521→        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   522→          <Badge variant="outline" className="text-[11px]">
+   523→            <Filter className="h-3 w-3 mr-1" />
+   524→            {pagination.total} resultado{pagination.total !== 1 ? 's' : ''}
+   525→          </Badge>
+   526→        </div>
+   527→      </div>
+   528→
+   529→      {/* Filtros */}
+   530→      <div className="flex flex-col sm:flex-row gap-2">
+   531→        <div className="relative flex-1">
+   532→          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   533→          <Input
+   534→            placeholder="Buscar por nome, email ou telefone..."
+   535→            value={search}
+   536→            onChange={(e) => setSearch(e.target.value)}
+   537→            className="pl-9 h-9 text-sm"
+   538→          />
+   539→        </div>
+   540→        <Select value={stageFilter} onValueChange={(v) => setStageFilter(v)}>
+   541→          <SelectTrigger className="w-full sm:w-[160px] h-9 text-sm">
+   542→            <SelectValue placeholder="Etapa" />
+   543→          </SelectTrigger>
+   544→          <SelectContent>
+   545→            <SelectItem value="all">Todas as etapas</SelectItem>
+   546→            {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
+   547→              <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+   548→            ))}
+   549→          </SelectContent>
+   550→        </Select>
+   551→        <Select value={period} onValueChange={(v) => setPeriod(v)}>
+   552→          <SelectTrigger className="w-full sm:w-[140px] h-9 text-sm">
+   553→            <SelectValue />
+   554→          </SelectTrigger>
+   555→          <SelectContent>
+   556→            <SelectItem value="7">Últimos 7 dias</SelectItem>
+   557→            <SelectItem value="30">Últimos 30 dias</SelectItem>
+   558→            <SelectItem value="60">Últimos 60 dias</SelectItem>
+   559→            <SelectItem value="90">Últimos 90 dias</SelectItem>
+   560→            <SelectItem value="365">Último ano</SelectItem>
+   561→          </SelectContent>
+   562→        </Select>
+   563→      </div>
+   564→
+   565→      {/* Lista de leads */}
+   566→      <div className="space-y-2">
+   567→        {loading ? (
+   568→          <div className="space-y-3">
+   569→            {[1, 2, 3, 4].map((i) => (
+   570→              <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />
+   571→            ))}
+   572→          </div>
+   573→        ) : leads.length === 0 ? (
+   574→          <Card>
+   575→            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+   576→              <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center mb-3">
+   577→                <Megaphone className="h-6 w-6 text-muted-foreground" />
+   578→              </div>
+   579→              <p className="text-sm font-medium text-muted-foreground">Nenhum lead encontrado</p>
+   580→              <p className="text-xs text-muted-foreground mt-1">
+   581→                {search || stageFilter !== 'all'
+   582→                  ? 'Tente ajustar os filtros'
+   583→                  : 'Os leads aparecerão aqui quando o webhook receber formulários do Meta Ads'}
+   584→              </p>
+   585→            </CardContent>
+   586→          </Card>
+   587→        ) : (
+   588→          leads.map((lead) => (
+   589→            <Card
+   590→              key={lead.id}
+   591→              className="hover:shadow-md transition-shadow duration-200 cursor-pointer"
+   592→              onClick={() => setExpandedId(expandedId === lead.id ? null : lead.id)}
+   593→            >
+   594→              <CardContent className="p-4">
+   595→                <div className="flex items-start gap-3">
+   596→                  {/* Avatar */}
+   597→                  <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+   598→                    <span className="text-blue-600 dark:text-blue-400 text-sm font-bold">
+   599→                      {lead.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
+   600→                    </span>
+   601→                  </div>
+   602→
+   603→                  {/* Info */}
+   604→                  <div className="flex-1 min-w-0">
+   605→                    <div className="flex items-center gap-2 flex-wrap">
+   606→                      <span className="text-sm font-semibold truncate">{lead.name}</span>
+   607→                      <StageBadge stage={lead.stage} />
+   608→                    </div>
+   609→                    <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
+   610→                      {lead.phone && (
+   611→                        <span className="flex items-center gap-1">
+   612→                          <Phone className="h-3 w-3" />
+   613→                          {lead.phone}
+   614→                        </span>
+   615→                      )}
+   616→                      {lead.email && (
+   617→                        <span className="flex items-center gap-1">
+   618→                          <Mail className="h-3 w-3" />
+   619→                          {lead.email}
+   620→                        </span>
+   621→                      )}
+   622→                      {lead.region && (
+   623→                        <span className="flex items-center gap-1">
+   624→                          <MapPin className="h-3 w-3" />
+   625→                          {lead.region}
+   626→                        </span>
+   627→                      )}
+   628→                      <span className="flex items-center gap-1">
+   629→                        <Calendar className="h-3 w-3" />
+   630→                        {format(parseISO(lead.createdAt), "dd/MM/yyyy")}
+   631→                      </span>
+   632→                    </div>
+   633→
+   634→                    {/* Expanded details */}
+   635→                    {expandedId === lead.id && (
+   636→                      <div className="mt-3 pt-3 border-t space-y-2">
+   637→                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+   638→                          <div>
+   639→                            <span className="text-muted-foreground">Anúncio: </span>
+   640→                            <span className="font-medium">{lead.adName}</span>
+   641→                          </div>
+   642→                          {lead.campaignName && (
+   643→                            <div>
+   644→                              <span className="text-muted-foreground">Campanha: </span>
+   645→                              <span className="font-medium">{lead.campaignName}</span>
+   646→                            </div>
+   647→                          )}
+   648→                          {lead.formName && (
+   649→                            <div>
+   650→                              <span className="text-muted-foreground">Formulário: </span>
+   651→                              <span className="font-medium">{lead.formName}</span>
+   652→                            </div>
+   653→                          )}
+   654→                          {lead.leadId && (
+   655→                            <div>
+   656→                              <span className="text-muted-foreground">Lead ID: </span>
+   657→                              <span className="font-mono">{lead.leadId}</span>
+   658→                            </div>
+   659→                          )}
+   660→                          <div>
+   661→                            <span className="text-muted-foreground">Interações: </span>
+   662→                            <span className="font-medium">{lead._count.interactions}</span>
+   663→                          </div>
+   664→                          <div>
+   665→                            <span className="text-muted-foreground">Última interação: </span>
+   666→                            <span className="font-medium">
+   667→                              {lead.lastInteractionAt
+   668→                                ? format(parseISO(lead.lastInteractionAt), "dd/MM/yyyy HH:mm")
+   669→                                : 'Nenhuma'}
+   670→                            </span>
+   671→                          </div>
+   672→                        </div>
+   673→                      </div>
+   674→                    )}
+   675→                  </div>
+   676→
+   677→                  {/* Expand icon */}
+   678→                  <div className="flex-shrink-0 text-muted-foreground">
+   679→                    {expandedId === lead.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+   680→                  </div>
+   681→                </div>
+   682→              </CardContent>
+   683→            </Card>
+   684→          ))
+   685→        )}
+   686→      </div>
+   687→
+   688→      {/* Paginação */}
+   689→      {totalPages > 1 && (
+   690→        <div className="flex items-center justify-center gap-2 pt-2">
+   691→          <Button
+   692→            variant="outline"
+   693→            size="sm"
+   694→            onClick={() => fetchLeads(pagination.page - 1)}
+   695→            disabled={pagination.page <= 1}
+   696→            className="h-8"
+   697→          >
+   698→            <ChevronLeft className="h-4 w-4" />
+   699→          </Button>
+   700→          <span className="text-xs text-muted-foreground px-2">
+   701→            {pagination.page} de {totalPages}
+   702→          </span>
+   703→          <Button
+   704→            variant="outline"
+   705→            size="sm"
+   706→            onClick={() => fetchLeads(pagination.page + 1)}
+   707→            disabled={pagination.page >= totalPages}
+   708→            className="h-8"
+   709→          >
+   710→            <ChevronRight className="h-4 w-4" />
+   711→          </Button>
+   712→        </div>
+   713→      )}
+   714→    </div>
+   715→  );
+   716→}
+   717→
+   718→// ============================================================
+   719→// Tab: Análise IA
+   720→// ============================================================
+   721→function AnalysisTab() {
+   722→  const [loading, setLoading] = useState(false);
+   723→  const [analysis, setAnalysis] = useState<string | null>(null);
+   724→  const [error, setError] = useState<string | null>(null);
+   725→  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+   726→
+   727→  async function runAnalysis() {
+   728→    setLoading(true);
+   729→    setError(null);
+   730→    setAnalysis(null);
+   731→    try {
+   732→      const res = await fetch('/api/meta-ads/analyze');
+   733→      if (res.ok) {
+   734→        const data: AnalysisResponse = await res.json();
+   735→        if (data.analysis) {
+   736→          setAnalysis(data.analysis);
+   737→          setGeneratedAt(data.generatedAt || null);
+   738→          toast.success('Análise gerada com sucesso');
+   739→        } else if (data.error) {
+   740→          setError(data.error);
+   741→          toast.error(data.error);
+   742→        } else if (data.message) {
+   743→          setError(data.message);
+   744→        }
+   745→      } else {
+   746→        const data = await res.json().catch(() => ({}));
+   747→        setError(data.error || 'Erro ao gerar análise');
+   748→        toast.error('Erro ao gerar análise');
+   749→      }
+   750→    } catch {
+   751→      setError('Falha de conexão');
+   752→      toast.error('Falha de conexão ao servidor');
+   753→    } finally {
+   754→      setLoading(false);
+   755→    }
+   756→  }
+   757→
+   758→  function renderMarkdown(text: string) {
+   759→    // Simple markdown renderer: headings, bold, lists, line breaks
+   760→    const lines = text.split('\n');
+   761→    return lines.map((line, i) => {
+   762→      // Headings
+   763→      if (line.startsWith('### ')) {
+   764→        return <h3 key={i} className="text-sm font-bold mt-4 mb-1">{line.slice(4)}</h3>;
+   765→      }
+   766→      if (line.startsWith('## ')) {
+   767→        return <h2 key={i} className="text-base font-bold mt-5 mb-2">{line.slice(3)}</h2>;
+   768→      }
+   769→      if (line.startsWith('# ')) {
+   770→        return <h1 key={i} className="text-lg font-bold mt-4 mb-2">{line.slice(2)}</h1>;
+   771→      }
+   772→      // Bold
+   773→      const parts = line.split(/(\*\*[^*]+\*\*)/g);
+   774→      const rendered = parts.map((part, j) => {
+   775→        if (part.startsWith('**') && part.endsWith('**')) {
+   776→          return <strong key={j}>{part.slice(2, -2)}</strong>;
+   777→        }
+   778→        return <span key={j}>{part}</span>;
+   779→      });
+   780→      // List items
+   781→      if (line.startsWith('- ')) {
+   782→        return (
+   783→          <li key={i} className="ml-4 text-sm list-disc text-muted-foreground">
+   784→            {rendered}
+   785→          </li>
+   786→        );
+   787→      }
+   788→      if (line.match(/^\d+\.\s/)) {
+   789→        const numMatch = line.match(/^(\d+)\.\s(.*)$/);
+   790→        return (
+   791→          <li key={i} className="ml-4 text-sm list-decimal text-muted-foreground">
+   792→            {numMatch ? numMatch[2] : rendered}
+   793→          </li>
+   794→        );
+   795→      }
+   796→      // Empty line
+   797→      if (line.trim() === '') {
+   798→        return <div key={i} className="h-2" />;
+   799→      }
+   800→      // Regular paragraph
+   801→      return <p key={i} className="text-sm text-muted-foreground leading-relaxed">{rendered}</p>;
+   802→    });
+   803→  }
+   804→
+   805→  return (
+   806→    <div className="space-y-4">
+   807→      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   808→        <div>
+   809→          <h2 className="text-lg font-semibold flex items-center gap-2">
+   810→            <Brain className="h-5 w-5 text-purple-500" />
+   811→            Análise por IA
+   812→          </h2>
+   813→          <p className="text-sm text-muted-foreground">
+   814→            Insights e recomendações inteligentes sobre seus anúncios
+   815→          </p>
+   816→        </div>
+   817→        <Button
+   818→          onClick={runAnalysis}
+   819→          disabled={loading}
+   820→          className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+   821→        >
+   822→          {loading ? (
+   823→            <>
+   824→              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+   825→              Analisando...
+   826→            </>
+   827→          ) : (
+   828→            <>
+   829→              <Sparkles className="h-4 w-4 mr-2" />
+   830→              Gerar Análise
+   831→            </>
+   832→          )}
+   833→        </Button>
+   834→      </div>
+   835→
+   836→      {/* Info card */}
+   837→      <Card className="border-purple-200/50 dark:border-purple-800/30 bg-purple-50/30 dark:bg-purple-950/10">
+   838→        <CardContent className="p-4 flex items-start gap-3">
+   839→          <Sparkles className="h-5 w-5 text-purple-500 flex-shrink-0 mt-0.5" />
+   840→          <div className="text-sm text-muted-foreground">
+   841→            <p className="font-medium text-foreground">Como funciona</p>
+   842→            <p className="mt-1">
+   843→              A IA analisa todos os seus leads do Meta Ads, incluindo volume, distribuição por estágio,
+   844→              campanhas, regiões e padrões nos dados. Com base nisso, gera um relatório com insights
+   845→              de qualidade, gargalos no funil e recomendações práticas para otimizar seus anúncios.
+   846→            </p>
+   847→          </div>
+   848→        </CardContent>
+   849→      </Card>
+   850→
+   851→      {/* Loading state */}
+   852→      {loading && (
+   853→        <Card>
+   854→          <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
+   855→            <div className="relative">
+   856→              <div className="h-12 w-12 rounded-full border-4 border-purple-200 dark:border-purple-800" />
+   857→              <div className="absolute inset-0 h-12 w-12 rounded-full border-4 border-transparent border-t-purple-500 animate-spin" />
+   858→            </div>
+   859→            <div className="text-center">
+   860→              <p className="text-sm font-medium">Analisando seus dados de anúncios...</p>
+   861→              <p className="text-xs text-muted-foreground mt-1">Isso pode levar alguns segundos</p>
+   862→            </div>
+   863→          </CardContent>
+   864→        </Card>
+   865→      )}
+   866→
+   867→      {/* Error state */}
+   868→      {error && !loading && (
+   869→        <Card className="border-red-200 dark:border-red-800/50">
+   870→          <CardContent className="p-4 flex items-start gap-3">
+   871→            <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+   872→            <div>
+   873→              <p className="text-sm font-medium text-red-600 dark:text-red-400">{error}</p>
+   874→            </div>
+   875→          </CardContent>
+   876→        </Card>
+   877→      )}
+   878→
+   879→      {/* Analysis result */}
+   880→      {analysis && !loading && (
+   881→        <Card>
+   882→          <CardHeader className="pb-2">
+   883→            <div className="flex items-center justify-between">
+   884→              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   885→                <Brain className="h-4 w-4 text-purple-500" />
+   886→                Relatório de Análise
+   887→              </CardTitle>
+   888→              {generatedAt && (
+   889→                <span className="text-[10px] text-muted-foreground">
+   890→                  Gerado em {format(parseISO(generatedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+   891→                </span>
+   892→              )}
+   893→            </div>
+   894→          </CardHeader>
+   895→          <CardContent className="prose prose-sm max-w-none">
+   896→            {renderMarkdown(analysis)}
+   897→          </CardContent>
+   898→        </Card>
+   899→      )}
+   900→    </div>
+   901→  );
+   902→}
+   903→
+   904→// ============================================================
+   905→// Tab: Configuração (migrado do painel original)
+   906→// ============================================================
+   907→function ConfigTab() {
+   908→  const [enabled, setEnabled] = useState(false);
+   909→  const [verifyToken, setVerifyToken] = useState('');
+   910→  const [appSecret, setAppSecret] = useState('');
+   911→  const [showAppSecret, setShowAppSecret] = useState(false);
+   912→  const [pageAccessToken, setPageAccessToken] = useState('');
+   913→  const [showPageToken, setShowPageToken] = useState(false);
+   914→  const [loading, setLoading] = useState(true);
+   915→  const [saving, setSaving] = useState(false);
+   916→  const [webhookStatus, setWebhookStatus] = useState<any>(null);
+   917→  const [leadCount, setLeadCount] = useState(0);
+   918→  const [hasVerifyToken, setHasVerifyToken] = useState(false);
+   919→  const [hasAppSecret, setHasAppSecret] = useState(false);
+   920→  const [hasPageAccessToken, setHasPageAccessToken] = useState(false);
+   921→  const [diagnosing, setDiagnosing] = useState(false);
+   922→  const [diagnosis, setDiagnosis] = useState<any>(null);
+   923→
+   924→  const webhookUrl = typeof window !== 'undefined'
+   925→    ? `${window.location.origin}/api/webhooks/meta-leads`
+   926→    : '';
+   927→
+   928→  useEffect(() => { loadConfig(); }, []);
+   929→
+   930→  async function loadConfig() {
+   931→    setLoading(true);
+   932→    try {
+   933→      const res = await fetch('/api/webhooks/meta-leads/config');
+   934→      if (res.ok) {
+   935→        const data = await res.json();
+   936→        setEnabled(data.enabled);
+   937→        setLeadCount(data.leadCount);
+   938→        setHasVerifyToken(data.hasVerifyToken);
+   939→        setHasAppSecret(data.hasAppSecret);
+   940→        setHasPageAccessToken(data.hasPageAccessToken);
+   941→      }
+   942→    } catch {
+   943→      // Silencioso
+   944→    } finally {
+   945→      setLoading(false);
+   946→    }
+   947→  }
+   948→
+   949→  async function checkWebhookStatus() {
+   950→    try {
+   951→      const res = await fetch('/api/webhooks/meta-leads');
+   952→      if (res.ok) {
+   953→        const data = await res.json();
+   954→        setWebhookStatus(data);
+   955→        toast.success(data.enabled ? 'Webhook ativo e pronto' : 'Webhook configurado mas desativado');
+   956→      }
+   957→    } catch {
+   958→      toast.error('Erro ao verificar status do webhook');
+   959→    }
+   960→  }
+   961→
+   962→  async function runDiagnosis() {
+   963→    setDiagnosing(true);
+   964→    setDiagnosis(null);
+   965→    try {
+   966→      const res = await fetch('/api/webhooks/meta-leads/diagnose');
+   967→      if (res.ok) {
+   968→        const data = await res.json();
+   969→        setDiagnosis(data);
+   970→        const errCount = data.summary.errors;
+   971→        const warnCount = data.summary.warnings;
+   972→        if (errCount > 0) {
+   973→          toast.error(`Diagnóstico: ${errCount} erro(s) encontrado(s)`);
+   974→        } else if (warnCount > 0) {
+   975→          toast.warning(`Diagnóstico: funcionando com ${warnCount} aviso(s)`);
+   976→        } else {
+   977→          toast.success('Diagnóstico: tudo OK!');
+   978→        }
+   979→      } else {
+   980→        toast.error('Erro ao executar diagnóstico');
+   981→      }
+   982→    } catch {
+   983→      toast.error('Falha de conexão ao executar diagnóstico');
+   984→    } finally {
+   985→      setDiagnosing(false);
+   986→    }
+   987→  }
+   988→
+   989→  async function saveConfig() {
+   990→    setSaving(true);
+   991→    try {
+   992→      const res = await fetch('/api/webhooks/meta-leads/config', {
+   993→        method: 'PUT',
+   994→        headers: { 'Content-Type': 'application/json' },
+   995→        body: JSON.stringify({
+   996→          verifyToken: verifyToken || null,
+   997→          appSecret: appSecret || null,
+   998→          pageAccessToken: pageAccessToken || null,
+   999→          enabled,
+  1000→        }),
+  1001→      });
+  1002→
+  1003→      if (res.ok) {
+  1004→        toast.success('Configurações do Meta Ads salvas com sucesso');
+  1005→        setVerifyToken('');
+  1006→        setAppSecret('');
+  1007→        setPageAccessToken('');
+  1008→        loadConfig();
+  1009→      } else {
+  1010→        const data = await res.json();
+  1011→        throw new Error(data.error || 'Erro ao salvar');
+  1012→      }
+  1013→    } catch (err: any) {
+  1014→      toast.error(err.message || 'Erro ao salvar configurações');
+  1015→    } finally {
+  1016→      setSaving(false);
+  1017→    }
+  1018→  }
+  1019→
+  1020→  function copyToClipboard(text: string, label: string) {
+  1021→    navigator.clipboard.writeText(text);
+  1022→    toast.success(`${label} copiado!`);
+  1023→  }
+  1024→
+  1025→  if (loading) {
+  1026→    return (
+  1027→      <div className="flex items-center justify-center py-16">
+  1028→        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+  1029→      </div>
+  1030→    );
+  1031→  }
+  1032→
+  1033→  return (
+  1034→    <div className="space-y-4 max-w-3xl">
+  1035→      <div>
+  1036→        <h2 className="text-lg font-semibold">Configuração do Webhook</h2>
+  1037→        <p className="text-sm text-muted-foreground">
+  1038→          Configure a integração com o Meta Ads para receber leads automaticamente
+  1039→        </p>
+  1040→      </div>
+  1041→
+  1042→      <Card className={enabled ? 'border-blue-200 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-950/20' : ''}>
+  1043→        <CardHeader className="pb-3">
+  1044→          <div className="flex items-center justify-between">
+  1045→            <div>
+  1046→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+  1047→                Meta Ads — Lead Ads
+  1048→              </CardTitle>
+  1049→              <CardDescription className="mt-1">
+  1050→                Configuração do webhook para receber leads automaticamente
+  1051→              </CardDescription>
+  1052→            </div>
+  1053→            <div className="flex items-center gap-2 flex-shrink-0">
+  1054→              {enabled ? (
+  1055→                <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 gap-1">
+  1056→                  <Zap className="h-3 w-3" />
+  1057→                  Ativo
+  1058→                </Badge>
+  1059→              ) : (
+  1060→                <Badge className="bg-muted text-muted-foreground gap-1">
+  1061→                  <Circle className="h-3 w-3" />
+  1062→                  Inativo
+  1063→                </Badge>
+  1064→              )}
+  1065→              {leadCount > 0 && (
+  1066→                <span className="text-xs text-muted-foreground">
+  1067→                  {leadCount} lead{leadCount !== 1 ? 's' : ''}
+  1068→                </span>
+  1069→              )}
+  1070→            </div>
+  1071→          </div>
+  1072→        </CardHeader>
+  1073→        <CardContent className="space-y-4">
+  1074→          {/* Toggle */}
+  1075→          <div className="flex items-center justify-between">
+  1076→            <Label htmlFor="meta-enabled" className="text-sm cursor-pointer">
+  1077→              {enabled ? 'Integração ativada' : 'Ativar integração'}
+  1078→            </Label>
+  1079→            <Switch id="meta-enabled" checked={enabled} onCheckedChange={setEnabled} />
+  1080→          </div>
+  1081→
+  1082→          <Separator />
+  1083→
+  1084→          {/* Webhook URL */}
+  1085→          <div className="space-y-2">
+  1086→            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+  1087→              URL do Webhook
+  1088→            </Label>
+  1089→            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border">
+  1090→              <code className="flex-1 text-xs font-mono truncate text-foreground">
+  1091→                {webhookUrl}
+  1092→              </code>
+  1093→              <Button
+  1094→                variant="ghost"
+  1095→                size="sm"
+  1096→                className="h-7 w-7 p-0 flex-shrink-0"
+  1097→                onClick={() => copyToClipboard(webhookUrl, 'URL do Webhook')}
+  1098→              >
+  1099→                <Copy className="h-3.5 w-3.5" />
+  1100→              </Button>
+  1101→            </div>
+  1102→            <p className="text-[11px] text-muted-foreground">
+  1103→              Cole esta URL no campo &quot;Callback URL&quot; ao configurar o webhook no Meta for Developers ou Ads Manager
+  1104→            </p>
+  1105→          </div>
+  1106→
+  1107→          {/* Verify Token */}
+  1108→          <div className="space-y-2">
+  1109→            <div className="flex items-center gap-2">
+  1110→              <Label htmlFor="meta-verify-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+  1111→                Token de Verificação
+  1112→              </Label>
+  1113→              {hasVerifyToken && (
+  1114→                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+  1115→                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+  1116→                  Configurado
+  1117→                </Badge>
+  1118→              )}
+  1119→            </div>
+  1120→            <Input
+  1121→              id="meta-verify-token"
+  1122→              placeholder={hasVerifyToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Ex: meu_token_secreto_123'}
+  1123→              value={verifyToken}
+  1124→              onChange={(e) => setVerifyToken(e.target.value)}
+  1125→              type="text"
+  1126→              className="font-mono text-sm"
+  1127→            />
+  1128→            <p className="text-[11px] text-muted-foreground">
+  1129→              Crie uma string aleatória segura (ex: <code className="bg-muted px-1 rounded">openssl rand -hex 16</code>).
+  1130→              Use o mesmo valor no campo &quot;Verify Token&quot; do Meta.
+  1131→            </p>
+  1132→          </div>
+  1133→
+  1134→          {/* App Secret */}
+  1135→          <div className="space-y-2">
+  1136→            <div className="flex items-center gap-2">
+  1137→              <Label htmlFor="meta-app-secret" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+  1138→                App Secret (segurança)
+  1139→              </Label>
+  1140→              {hasAppSecret && (
+  1141→                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+  1142→                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+  1143→                  Configurado
+  1144→                </Badge>
+  1145→              )}
+  1146→            </div>
+  1147→            <div className="relative">
+  1148→              <Input
+  1149→                id="meta-app-secret"
+  1150→                placeholder={hasAppSecret ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Ex: a1b2c3d4e5f6...'}
+  1151→                value={appSecret}
+  1152→                onChange={(e) => setAppSecret(e.target.value)}
+  1153→                type={showAppSecret ? 'text' : 'password'}
+  1154→                className="font-mono text-sm pr-10"
+  1155→              />
+  1156→              <Button
+  1157→                type="button"
+  1158→                variant="ghost"
+  1159→                size="sm"
+  1160→                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+  1161→                onClick={() => setShowAppSecret(!showAppSecret)}
+  1162→              >
+  1163→                {showAppSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+  1164→              </Button>
+  1165→            </div>
+  1166→            <p className="text-[11px] text-muted-foreground">
+  1167→              Encontrado em Meta for Developers → Seu App → Settings → Basic → App Secret.
+  1168→              Obrigatório para validar que os leads vieram realmente do Meta (HMAC-SHA256).
+  1169→            </p>
+  1170→          </div>
+  1171→
+  1172→          {/* Page Access Token */}
+  1173→          <div className="space-y-2">
+  1174→            <div className="flex items-center gap-2">
+  1175→              <Label htmlFor="meta-page-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+  1176→                Page Access Token (obrigatório)
+  1177→              </Label>
+  1178→              {hasPageAccessToken && (
+  1179→                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+  1180→                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+  1181→                  Configurado
+  1182→                </Badge>
+  1183→              )}
+  1184→            </div>
+  1185→            <div className="relative">
+  1186→              <Input
+  1187→                id="meta-page-token"
+  1188→                placeholder={hasPageAccessToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'EAAxxxxxxxxxxxxxxxxx...'}
+  1189→                value={pageAccessToken}
+  1190→                onChange={(e) => setPageAccessToken(e.target.value)}
+  1191→                type={showPageToken ? 'text' : 'password'}
+  1192→                className="font-mono text-sm pr-10"
+  1193→              />
+  1194→              <Button
+  1195→                type="button"
+  1196→                variant="ghost"
+  1197→                size="sm"
+  1198→                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+  1199→                onClick={() => setShowPageToken(!showPageToken)}
+  1200→              >
+  1201→                {showPageToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+  1202→              </Button>
+  1203→            </div>
+  1204→            <p className="text-[11px] text-muted-foreground">
+  1205→              Necessário para buscar dados do lead (o Meta envia apenas o ID no webhook).
+  1206→              Para obter: acesse o{' '}
+  1207→              <span
+  1208→                className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer"
+  1209→                onClick={() => window.open('https://developers.facebook.com/tools/explorer/', '_blank')}
+  1210→              >
+  1211→                Graph API Explorer
+  1212→              </span>
+  1213→              , selecione sua Página como Token User, marque a permissão{' '}
+  1214→              <code className="bg-muted px-1 rounded">pages_read_engagement</code> e copie o token gerado.
+  1215→            </p>
+  1216→          </div>
+  1217→
+  1218→          <Separator />
+  1219→
+  1220→          {/* Actions */}
+  1221→          <div className="flex flex-wrap items-center gap-2">
+  1222→            <Button
+  1223→              onClick={saveConfig}
+  1224→              disabled={saving}
+  1225→              className="bg-blue-600 hover:bg-blue-700 text-white"
+  1226→            >
+  1227→              {saving ? (
+  1228→                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
+  1229→              ) : (
+  1230→                <><Save className="h-4 w-4 mr-2" /> Salvar Configurações</>
+  1231→              )}
+  1232→            </Button>
+  1233→            <Button
+  1234→              variant="outline"
+  1235→              size="sm"
+  1236→              onClick={checkWebhookStatus}
+  1237→            >
+  1238→              <RefreshCw className="h-4 w-4 mr-1" />
+  1239→              Testar
+  1240→            </Button>
+  1241→            <Button
+  1242→              variant="outline"
+  1243→              size="sm"
+  1244→              onClick={runDiagnosis}
+  1245→              disabled={diagnosing}
+  1246→              className="border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+  1247→            >
+  1248→              {diagnosing ? (
+  1249→                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Aguarde...</>
+  1250→              ) : (
+  1251→                <><Zap className="h-4 w-4 mr-1" /> Diagnosticar</>
+  1252→              )}
+  1253→            </Button>
+  1254→          </div>
+  1255→
+  1256→          {/* Diagnosis Panel */}
+  1257→          {diagnosis && (
+  1258→            <div className="space-y-2">
+  1259→              <div className="flex items-center gap-2">
+  1260→                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Diagnóstico</span>
+  1261→                {diagnosis.status === 'healthy' && <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Tudo OK</Badge>}
+  1262→                {diagnosis.status === 'degraded' && <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Atenção</Badge>}
+  1263→                {diagnosis.status === 'broken' && <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Problemas</Badge>}
+  1264→              </div>
+  1265→              <div className="rounded-lg border space-y-1.5 p-3 bg-muted/30">
+  1266→                {diagnosis.checks.map((check: any, i: number) => (
+  1267→                  <div key={i} className="flex items-start gap-2 text-xs">
+  1268→                    {check.status === 'ok' && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mt-0.5 flex-shrink-0" />}
+  1269→                    {check.status === 'warn' && <Zap className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />}
+  1270→                    {check.status === 'error' && <Circle className="h-3.5 w-3.5 text-red-500 mt-0.5 flex-shrink-0" />}
+  1271→                    {check.status === 'skip' && <Circle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
+  1272→                    <div className="min-w-0">
+  1273→                      <span className="font-medium">{check.name}: </span>
+  1274→                      <span className={check.status === 'error' ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}>
+  1275→                        {check.details}
+  1276→                      </span>
+  1277→                      {check.fix && (
+  1278→                        <p className="text-amber-600 dark:text-amber-400 mt-0.5">Solução: {check.fix}</p>
+  1279→                      )}
+  1280→                    </div>
+  1281→                  </div>
+  1282→                ))}
+  1283→              </div>
+  1284→            </div>
+  1285→          )}
+  1286→
+  1287→          {/* Tutorial */}
+  1288→          <details className="group">
+  1289→            <summary className="text-xs font-medium text-blue-600 dark:text-blue-400 cursor-pointer hover:underline flex items-center gap-1">
+  1290→              Como configurar no Meta Ads
+  1291→            </summary>
+  1292→            <ol className="mt-2 text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
+  1293→              <li>
+  1294→                Acesse o{' '}
+  1295→                <span
+  1296→                  className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer inline-flex items-center gap-0.5"
+  1297→                  onClick={() => window.open('https://developers.facebook.com/apps/', '_blank')}
+  1298→                >
+  1299→                  Meta for Developers <ExternalLink className="h-2.5 w-2.5" />
+  1300→                </span>
+  1301→                {' '}e crie/abra seu App
+  1302→              </li>
+  1303→              <li>Vá em <strong>Settings → Basic</strong> e copie o <strong>App Secret</strong></li>
+  1304→              <li>No menu lateral, vá em <strong>Webhooks → Adicionar</strong></li>
+  1305→              <li>Cole a <strong>URL do Webhook</strong> (acima) no campo Callback URL</li>
+  1306→              <li>Cole o <strong>Token de Verificação</strong> no campo Verify Token</li>
+  1307→              <li>Em &quot;Subscribe to&quot;, selecione <strong>leadgen</strong> (Lead Ads)</li>
+  1308→              <li>No <strong>Ads Manager</strong>, crie um formulário de Lead Ads</li>
+  1309→              <li>Ao publicar o anúncio, os leads serão criados automaticamente no CRM com stage <strong>LEAD</strong></li>
+  1310→            </ol>
+  1311→          </details>
+  1312→        </CardContent>
+  1313→      </Card>
+  1314→    </div>
+  1315→  );
+  1316→}
+  1317→
+  1318→// ============================================================
+  1319→// Main Panel
+  1320→// ============================================================
+  1321→export function MetaAdsPanel() {
+  1322→  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  1323→  const [chartData, setChartData] = useState<ChartPoint[]>([]);
+  1324→  const [topCampaigns, setTopCampaigns] = useState<CampaignStat[]>([]);
+  1325→  const [topRegions, setTopRegions] = useState<RegionStat[]>([]);
+  1326→  const [overviewLoading, setOverviewLoading] = useState(true);
+  1327→  const [activeTab, setActiveTab] = useState('overview');
+  1328→
+  1329→  const fetchOverview = useCallback(async () => {
+  1330→    setOverviewLoading(true);
+  1331→    try {
+  1332→      const res = await fetch('/api/meta-ads/leads?limit=1&period=30');
+  1333→      if (res.ok) {
+  1334→        const data = await res.json();
+  1335→        setMetrics(data.metrics);
+  1336→        setChartData(data.chartData);
+  1337→        setTopCampaigns(data.topCampaigns);
+  1338→        setTopRegions(data.topRegions);
+  1339→      }
+  1340→    } catch {
+  1341→      // Silencioso
+  1342→    } finally {
+  1343→      setOverviewLoading(false);
+  1344→    }
+  1345→  }, []);
+  1346→
+  1347→  useEffect(() => {
+  1348→    if (activeTab === 'overview') {
+  1349→      fetchOverview();
+  1350→    }
+  1351→  }, [activeTab, fetchOverview]);
+  1352→
+  1353→  return (
+  1354→    <div className="space-y-6 max-w-full">
+  1355→      {/* Header */}
+  1356→      <div>
+  1357→        <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-3">
+  1358→          <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg flex-shrink-0">
+  1359→            <Megaphone className="h-5 w-5 text-white" />
+  1360→          </div>
+  1361→          Anúncios Meta
+  1362→        </h1>
+  1363→        <p className="text-muted-foreground mt-1 text-sm">
+  1364→          Gerencie seus anúncios do Facebook e Instagram, acompanhe métricas e receba análises inteligentes
+  1365→        </p>
+  1366→      </div>
+  1367→
+  1368→      {/* Tabs */}
+  1369→      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+  1370→        {/* Mobile dropdown */}
+  1371→        <div className="lg:hidden mb-3">
+  1372→          <Select value={activeTab} onValueChange={setActiveTab}>
+  1373→            <SelectTrigger className="w-full">
+  1374→              <SelectValue />
+  1375→            </SelectTrigger>
+  1376→            <SelectContent>
+  1377→              <SelectItem value="overview"><span className="flex items-center gap-2"><BarChart3 className="h-4 w-4" />Visão Geral</span></SelectItem>
+  1378→              <SelectItem value="leads"><span className="flex items-center gap-2"><Users className="h-4 w-4" />Leads</span></SelectItem>
+  1379→              <SelectItem value="analysis"><span className="flex items-center gap-2"><Brain className="h-4 w-4" />Análise IA</span></SelectItem>
+  1380→              <SelectItem value="tracking"><span className="flex items-center gap-2"><Crosshair className="h-4 w-4" />Tracking</span></SelectItem>
+  1381→              <SelectItem value="landing"><span className="flex items-center gap-2"><Globe className="h-4 w-4" />Landing Pages</span></SelectItem>
+  1382→              <SelectItem value="queues"><span className="flex items-center gap-2"><UsersRound className="h-4 w-4" />Filas</span></SelectItem>
+  1383→              <SelectItem value="config"><span className="flex items-center gap-2"><Zap className="h-4 w-4" />Config</span></SelectItem>
+  1384→            </SelectContent>
+  1385→          </Select>
+  1386→        </div>
+  1387→        {/* Desktop tabs */}
+  1388→        <TabsList className="hidden lg:grid lg:grid-cols-7 lg:max-w-3xl w-full gap-1 p-0.5">
+  1389→          <TabsTrigger value="overview" className="text-sm gap-1.5 whitespace-nowrap">
+  1390→            <BarChart3 className="h-3.5 w-3.5" />
+  1391→            Visão Geral
+  1392→          </TabsTrigger>
+  1393→          <TabsTrigger value="leads" className="text-sm gap-1.5 whitespace-nowrap">
+  1394→            <Users className="h-3.5 w-3.5" />
+  1395→            Leads
+  1396→          </TabsTrigger>
+  1397→          <TabsTrigger value="analysis" className="text-sm gap-1.5 whitespace-nowrap">
+  1398→            <Brain className="h-3.5 w-3.5" />
+  1399→            Análise IA
+  1400→          </TabsTrigger>
+  1401→          <TabsTrigger value="tracking" className="text-sm gap-1.5 whitespace-nowrap">
+  1402→            <Crosshair className="h-3.5 w-3.5" />
+  1403→            Tracking
+  1404→          </TabsTrigger>
+  1405→          <TabsTrigger value="landing" className="text-sm gap-1.5 whitespace-nowrap">
+  1406→            <Globe className="h-3.5 w-3.5" />
+  1407→            Landing Pages
+  1408→          </TabsTrigger>
+  1409→          <TabsTrigger value="queues" className="text-sm gap-1.5 whitespace-nowrap">
+  1410→            <UsersRound className="h-3.5 w-3.5" />
+  1411→            Filas
+  1412→          </TabsTrigger>
+  1413→          <TabsTrigger value="config" className="text-sm gap-1.5 whitespace-nowrap">
+  1414→            <Zap className="h-3.5 w-3.5" />
+  1415→            Config
+  1416→          </TabsTrigger>
+  1417→        </TabsList>
+  1418→
+  1419→        <TabsContent value="overview">
+  1420→          <OverviewTab
+  1421→            metrics={metrics}
+  1422→            chartData={chartData}
+  1423→            topCampaigns={topCampaigns}
+  1424→            topRegions={topRegions}
+  1425→            onRefresh={fetchOverview}
+  1426→          />
+  1427→        </TabsContent>
+  1428→
+  1429→        <TabsContent value="leads">
+  1430→          <LeadsTab onLeadsNeeded={fetchOverview} />
+  1431→        </TabsContent>
+  1432→
+  1433→        <TabsContent value="analysis">
+  1434→          <AnalysisTab />
+  1435→        </TabsContent>
+  1436→
+  1437→        <TabsContent value="tracking">
+  1438→          <TrackingTab />
+  1439→        </TabsContent>
+  1440→
+  1441→        <TabsContent value="landing">
+  1442→          <LandingPagesTab />
+  1443→        </TabsContent>
+  1444→
+  1445→        <TabsContent value="queues">
+  1446→          <QueuesTab />
+  1447→        </TabsContent>
+  1448→
+  1449→        <TabsContent value="config">
+  1450→          <ConfigTab />
+  1451→        </TabsContent>
+  1452→      </Tabs>
+  1453→    </div>
+  1454→  );
+  1455→}
