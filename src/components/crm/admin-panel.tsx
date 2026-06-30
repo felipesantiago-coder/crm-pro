@@ -239,7 +239,7 @@ export function AdminPanel() {
 
         <TabsContent value="users" className="space-y-6">
           {/* Sub-header with new user button */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <h2 className="text-lg font-semibold">Gerenciamento de Usuários</h2>
             <Dialog open={newUserOpen} onOpenChange={setNewUserOpen}>
               <DialogTrigger asChild>

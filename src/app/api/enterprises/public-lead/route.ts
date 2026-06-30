@@ -1,0 +1,194 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { Prisma } from '@prisma/client';
+
+/**
+ * PUBLIC endpoint — no auth required.
+ * Receives a lead submission from a landing page form.
+ * Creates a Client record and optionally assigns it via the lead queue.
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { name, phone, email, slug, customAnswers } = body;
+
+    // ── Validate required fields ─────────────────────────────
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      return NextResponse.json(
+        { error: 'Nome completo é obrigatório (mínimo 2 caracteres).' },
+        { status: 400 },
+      );
+    }
+
+    const cleanPhone = (phone || '').replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      return NextResponse.json(
+        { error: 'Telefone é obrigatório e deve conter DDD + número.' },
+        { status: 400 },
+      );
+    }
+
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return NextResponse.json(
+        { error: 'E-mail é obrigatório e deve ser válido.' },
+        { status: 400 },
+      );
+    }
+
+    // ── Find enterprise by slug ──────────────────────────────
+    let enterpriseId: string | null = null;
+    let enterpriseName: string | null = null;
+    let enterpriseRegion: string | null = null;
+
+    if (slug) {
+      const enterprise = await db.enterprise.findUnique({
+        where: { slug },
+        select: { id: true, name: true, region: true },
+      });
+      if (enterprise) {
+        enterpriseId = enterprise.id;
+        enterpriseName = enterprise.name;
+        enterpriseRegion = enterprise.region;
+      }
+    }
+
+    // ── Check for existing client with same phone + email ────
+    const existingClient = await db.client.findFirst({
+      where: {
+        AND: [
+          { phone: cleanPhone },
+          { email: cleanEmail },
+        ],
+      },
+      select: { id: true, name: true, stage: true, enterpriseId: true },
+    });
+
+    if (existingClient) {
+      // Update existing client with this new interaction
+      await db.interaction.create({
+        data: {
+          clientId: existingClient.id,
+          description: `[Landing Page] Novo cadastro${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? ` (slug: ${slug})` : ''}`,
+        },
+      });
+
+      // Still assign to queue if possible
+      let assignedUser = null;
+      try {
+        const assignRes = await fetch(
+          `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/lead-queues/assign`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              leadId: existingClient.id,
+              source: slug ? `landing_form:${slug}` : 'landing_form',
+            }),
+          },
+        );
+        if (assignRes.ok) {
+          assignedUser = await assignRes.json();
+        }
+      } catch {
+        // Silent — queue assignment is best-effort
+      }
+
+      return NextResponse.json({
+        success: true,
+        isExisting: true,
+        clientName: existingClient.name,
+        assignedUser: assignedUser?.assigned ? {
+          userId: assignedUser.userId,
+          userName: assignedUser.userName,
+          userPhone: assignedUser.userPhone,
+        } : null,
+      });
+    }
+
+    // ── Find a user to assign as createdBy (queue or system) ─
+    let assignedUser = null;
+    let createdByUserId: string | null = null;
+
+    try {
+      const assignRes = await fetch(
+        `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/lead-queues/assign`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: slug ? `landing_form:${slug}` : 'landing_form',
+          }),
+        },
+      );
+      if (assignRes.ok) {
+        assignedUser = await assignRes.json();
+        if (assignedUser.assigned) {
+          createdByUserId = assignedUser.userId;
+        }
+      }
+    } catch {
+      // Silent
+    }
+
+    // Fallback: find first admin user
+    if (!createdByUserId) {
+      const firstUser = await db.user.findFirst({
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      createdByUserId = firstUser?.id || 'system';
+    }
+
+    // ── Build custom answers text ──────────────────────────────
+    let customAnswersText = '';
+    if (customAnswers && typeof customAnswers === 'object' && Object.keys(customAnswers).length > 0) {
+      const lines = Object.entries(customAnswers)
+        .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+        .map(([k, v]) => `  • ${k}: ${v}`);
+      if (lines.length > 0) {
+        customAnswersText = '\n\nRespostas do formulário:\n' + lines.join('\n');
+      }
+    }
+
+    // ── Create client ────────────────────────────────────────
+    const client = await db.client.create({
+      data: {
+        name: name.trim(),
+        phone: cleanPhone,
+        email: cleanEmail,
+        region: enterpriseRegion,
+        enterprise: enterpriseName || undefined,
+        enterpriseId: enterpriseId || undefined,
+        stage: 'LEAD',
+        createdBy: createdByUserId,
+        notes: `[Landing Page] Cadastro realizado via formulário${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? `\nSlug: ${slug}` : ''}${customAnswersText}`,
+      },
+    });
+
+    // ── Create initial interaction ───────────────────────────
+    await db.interaction.create({
+      data: {
+        clientId: client.id,
+        description: `[Landing Page] Cadastro inicial${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? ` (slug: ${slug})` : ''}`,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      isExisting: false,
+      clientName: client.name,
+      assignedUser: assignedUser?.assigned ? {
+        userId: assignedUser.userId,
+        userName: assignedUser.userName,
+        userPhone: assignedUser.userPhone,
+      } : null,
+    });
+  } catch (error) {
+    console.error('[Public Lead] Erro:', error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      return NextResponse.json({ error: 'Erro ao processar cadastro.' }, { status: 409 });
+    }
+    return NextResponse.json({ error: 'Erro interno do servidor.' }, { status: 500 });
+  }
+}

@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { isAdmin } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { Prisma } from '@prisma/client';
+import { extractAndCache } from '../../extract-info/route';
 
 // POST /api/enterprises/[id]/pdf — Upload de base de dados (PDF, Markdown ou TXT)
 const ACCEPTED_TYPES = [
@@ -102,10 +104,15 @@ export async function POST(
 
     await db.enterprise.update({
       where: { id },
-      data: { pdfContent: extractedText },
+      data: { pdfContent: extractedText, cachedInfo: Prisma.DbNull },
     });
 
 
+
+    // Auto-extract in background (fire-and-forget)
+    extractAndCache(id).catch((err) => {
+      console.warn(`[ENTERPRISE KB] Auto-extract falhou para "${enterprise.name}":`, err instanceof Error ? err.message : err);
+    });
 
     return NextResponse.json({
       success: true,
@@ -148,7 +155,7 @@ export async function DELETE(
 
     await db.enterprise.update({
       where: { id },
-      data: { pdfContent: null },
+      data: { pdfContent: null, cachedInfo: Prisma.DbNull },
     });
 
 

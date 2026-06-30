@@ -10,6 +10,7 @@ import { SupabaseRealtimeProvider } from '@/components/crm/supabase-realtime-pro
 import { useCRMStore } from '@/store/crm-store';
 import { Toaster } from '@/components/ui/sonner';
 import { AIChatWidget } from '@/components/ai-assistant/ai-chat-widget'; // [AI ASSISTANT] — remova esta linha e o <AIChatWidget /> abaixo para desativar
+import { useSessionGuard } from '@/hooks/use-session-guard';
 
 // Code splitting: carrega apenas a view ativa
 const DashboardView = lazy(() =>
@@ -33,6 +34,12 @@ const AdminPanel = lazy(() =>
 const ClosedDealsView = lazy(() =>
   import('@/components/crm/closed-deals-view').then((m) => ({ default: m.ClosedDealsView }))
 );
+const EnterprisePanel = lazy(() =>
+  import('@/components/crm/enterprise-panel').then((m) => ({ default: m.EnterprisePanel }))
+);
+const MetaAdsPanel = lazy(() =>
+  import('@/components/crm/meta-ads-panel').then((m) => ({ default: m.MetaAdsPanel }))
+);
 
 function ViewLoader() {
   return (
@@ -52,13 +59,17 @@ function CRMApp() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
+  // Intercepta 401 e redireciona ao login automaticamente
+  useSessionGuard();
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login');
       return;
     }
     if (session?.user && (session.user as { mustChangePassword?: boolean }).mustChangePassword) {
-      router.push('/change-password');
+      // Hard navigation para evitar loop causado por estado residual do SessionProvider
+      window.location.href = '/change-password';
     }
   }, [session, status, router]);
 
@@ -83,6 +94,8 @@ function CRMApp() {
     switch (currentView) {
       case 'dashboard':
         return <DashboardView />;
+      case 'enterprises':
+        return <EnterprisePanel />;
       case 'clients':
         return <ClientsView />;
       case 'closed-deals':
@@ -95,6 +108,8 @@ function CRMApp() {
         return <SettingsView />;
       case 'admin':
         return <AdminPanel />;
+      case 'meta-ads':
+        return <MetaAdsPanel />;
       default:
         return <DashboardView />;
     }

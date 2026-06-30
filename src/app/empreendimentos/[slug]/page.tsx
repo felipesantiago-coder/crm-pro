@@ -1,0 +1,1032 @@
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Building2, MapPin, ArrowLeft, ChevronLeft, ChevronRight,
+  X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
+  CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
+  Loader2, ZoomIn, Share2, Copy, Check, User, Send, AlertCircle,
+} from 'lucide-react';
+
+/* ================================================================
+   Types
+   ================================================================ */
+interface EnterpriseImage {
+  id: string;
+  url: string;
+  altText: string | null;
+  sortOrder: number;
+}
+
+interface FormField {
+  id: string;
+  label: string;
+  fieldType: string;
+  placeholder: string | null;
+  options: string | null;
+  required: boolean;
+  sortOrder: number;
+}
+
+interface ExtractedInfo {
+  location: {
+    address: string | null;
+    neighborhood: string | null;
+    city: string | null;
+    state: string | null;
+    region: string | null;
+    additionalInfo: string | null;
+  };
+  builder: string | null;
+  architecture: string | null;
+  landscaping: string | null;
+  differentials: string[];
+  apartmentTypes: Array<{
+    name: string;
+    area: string | null;
+    bedrooms: string | null;
+    description: string | null;
+  }>;
+  summary: string | null;
+}
+
+interface Enterprise {
+  id: string;
+  name: string;
+  slug: string | null;
+  region: string | null;
+  imageUrl: string | null;
+  landingTitle: string | null;
+  landingSubtitle: string | null;
+  landingDescription: string | null;
+  cachedInfo: ExtractedInfo | null;
+  images: EnterpriseImage[];
+  formFields: FormField[];
+}
+
+/* ================================================================
+   Page
+   ================================================================ */
+export default function LandingPage({ params }: { params: Promise<{ slug: string }> }) {
+  const [slug, setSlug] = useState<string | null>(null);
+  const [enterprise, setEnterprise] = useState<Enterprise | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeImgIdx, setActiveImgIdx] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [queueUser, setQueueUser] = useState<{ userId: string; userName: string; userPhone: string | null } | null>(null);
+
+  // Form state
+  const [formName, setFormName] = useState('');
+  const [formPhone, setFormPhone] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    params.then((p) => setSlug(p.slug));
+  }, [params]);
+
+  const fetchEnterprise = useCallback(async () => {
+    if (!slug) return;
+    try {
+      const res = await fetch(`/api/enterprises/public/${slug}`);
+      if (res.ok) {
+        const data = await res.json();
+        setEnterprise(data);
+        // Dynamic browser title
+        document.title = `${data.landingTitle || data.name} | Empreendimentos`;
+      } else {
+        setError('Empreendimento não encontrado.');
+      }
+    } catch {
+      setError('Erro de conexão.');
+    } finally {
+      setLoading(false);
+    }
+  }, [slug]);
+
+  useEffect(() => { fetchEnterprise(); }, [fetchEnterprise]);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 60);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Fetch queue user for dynamic WhatsApp
+  useEffect(() => {
+    if (!slug) return;
+    fetch(`/api/lead-queues/next-user?slug=${encodeURIComponent(slug)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.hasQueue && data.userPhone) {
+          setQueueUser({ userId: data.userId, userName: data.userName, userPhone: data.userPhone });
+        }
+      })
+      .catch(() => { /* silent — fallback to generic WhatsApp */ });
+  }, [slug]);
+
+  const whatsappNumber = queueUser?.userPhone
+    ? queueUser.userPhone.replace(/\D/g, '')
+    : null;
+  const whatsappUrl = whatsappNumber
+    ? `https://wa.me/${whatsappNumber.startsWith('55') ? whatsappNumber : '55' + whatsappNumber}?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`
+    : `https://wa.me/?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`;
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch { /* silent */ }
+  };
+
+  /* ── Form handler ─────────────────────────────────────── */
+  const handleFormSubmit = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    setFormError('');
+
+    if (!formName.trim() || formName.trim().length < 2) {
+      setFormError('Informe seu nome completo.');
+      return;
+    }
+    const cleanPhone = formPhone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
+      setFormError('Informe um telefone válido com DDD.');
+      return;
+    }
+    const cleanEmail = formEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setFormError('Informe um e-mail válido.');
+      return;
+    }
+
+    // Validate required custom fields
+    if (enterprise?.formFields) {
+      for (const field of enterprise.formFields) {
+        if (field.required && field.fieldType !== 'checkbox') {
+          const val = customAnswers[field.id];
+          if (!val || val.trim() === '') {
+            setFormError(`O campo "${field.label}" é obrigatório.`);
+            return;
+          }
+        }
+      }
+    }
+
+    setFormSubmitting(true);
+    try {
+      // Build clean custom answers (label -> value)
+      const answersData: Record<string, string> = {};
+      if (enterprise?.formFields) {
+        for (const field of enterprise.formFields) {
+          const val = customAnswers[field.id];
+          if (val !== undefined && val !== null && String(val).trim() !== '') {
+            answersData[field.label] = String(val).trim();
+          }
+        }
+      }
+
+      const res = await fetch('/api/enterprises/public-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formName.trim(),
+          phone: cleanPhone,
+          email: cleanEmail,
+          slug: slug || undefined,
+          customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        // Track pixel event
+        if (typeof window !== 'undefined' && window.CRMPIXEL) {
+          window.CRMPIXEL.track('lead_form_submit', { enterprise: enterprise?.name });
+        }
+
+        // Redirect to success page
+        const params = new URLSearchParams();
+        params.set('empreendimento', enterprise?.name || '');
+        params.set('nome', formName.trim());
+        if (data.assignedUser?.userName) params.set('atendente', data.assignedUser.userName);
+        if (data.assignedUser?.userPhone) params.set('telefone', data.assignedUser.userPhone);
+
+        window.location.href = `/empreendimentos/${slug}/cadastro-sucesso?${params.toString()}`;
+      } else {
+        setFormError(data.error || 'Erro ao enviar. Tente novamente.');
+      }
+    } catch {
+      setFormError('Erro de conexão. Verifique sua internet e tente novamente.');
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
+  /* ─── Phone mask ──────────────────────────────────────── */
+  const handlePhoneChange = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 11);
+    let masked = '';
+    if (digits.length > 0) masked += `(${digits.slice(0, 2)}`;
+    if (digits.length > 2) masked += `) ${digits.slice(2, 7)}`;
+    if (digits.length > 7) masked += `-${digits.slice(7)}`;
+    setFormPhone(masked);
+  };
+
+  /* ─── Loading ─────────────────────────────────────────── */
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 text-[#C9A96E] animate-spin" />
+      </div>
+    );
+  }
+
+  /* ─── Error ───────────────────────────────────────────── */
+  if (error || !enterprise) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <Building2 className="h-16 w-16 text-white/10 mx-auto mb-6" />
+          <h1 className="text-2xl font-bold text-white mb-2">Não encontrado</h1>
+          <p className="text-white/40 mb-8">{error || 'Este empreendimento não existe ou foi removido.'}</p>
+          <a
+            href="/empreendimentos"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-sm hover:bg-[#D4B87E] transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Ver todos os empreendimentos
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  /* ─── Derived ─────────────────────────────────────────── */
+  const e = enterprise;
+  const images = e.images.length > 0 ? e.images : [];
+  const heroImage = e.imageUrl || images[0]?.url || null;
+  const info = e.cachedInfo;
+
+  const hasInfo = info && (
+    info.location?.address || info.location?.neighborhood || info.location?.city ||
+    info.builder || info.architecture || info.landscaping ||
+    (info.differentials && info.differentials.length > 0) ||
+    (info.apartmentTypes && info.apartmentTypes.length > 0) || info.summary
+  );
+
+  const allText = [info?.summary, ...(info?.differentials || [])].filter(Boolean).join(' ');
+  let status: string | null = null;
+  if (/entregue|pronto para morar|habite-se/i.test(allText)) status = 'Entregue';
+  else if (/em construção|construção/i.test(allText)) status = 'Em Construção';
+  else if (/lançamento|pré-lançamento/i.test(allText)) status = 'Lançamento';
+
+  const priceMatch = info?.summary?.match(/a partir de\s*R\$\s*[\d.]+/i) ||
+    info?.apartmentTypes?.[0]?.description?.match(/a partir de\s*R\$\s*[\d.]+/i);
+  const deliveryMatch = allText.match(/entrega.*?(\d{1,2}\/[\d]{4}|outubro \d{4}|dezembro \d{4})/i);
+
+  const goNext = () => setActiveImgIdx((p) => (p + 1) % Math.max(images.length, 1));
+  const goPrev = () => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1));
+
+  const displayTitle = e.landingTitle || e.name;
+  const displaySubtitle = e.landingSubtitle || info?.summary?.slice(0, 120) || null;
+
+  /* ================================================================
+     Render
+     ================================================================ */
+  return (
+    <div className="min-h-screen bg-[#0A0A0A] text-white overflow-x-hidden">
+      {/* ── Navigation ─────────────────────────────────── */}
+      <nav
+        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
+          scrolled
+            ? 'bg-[#0A0A0A]/90 backdrop-blur-xl border-b border-white/[0.06] shadow-2xl'
+            : 'bg-transparent'
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-20 flex items-center justify-between">
+          <a href="/empreendimentos" className="flex items-center gap-3 group">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/20 group-hover:shadow-[#C9A96E]/40 transition-shadow">
+              <Building2 className="h-4 w-4 text-white" />
+            </div>
+            <span className="text-base font-bold tracking-tight hidden sm:block">Empreendimentos</span>
+          </a>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleCopyLink}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              {copiedLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+              <span className="hidden sm:inline">{copiedLink ? 'Copiado!' : 'Compartilhar'}</span>
+            </button>
+            <a
+              href="#cadastro"
+              className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-semibold hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20"
+            >
+              Cadastre-se
+            </a>
+          </div>
+        </div>
+      </nav>
+
+      {/* ── Hero Section ───────────────────────────────── */}
+      <section className="relative min-h-[75dvh] sm:min-h-[100dvh] flex items-end">
+        {/* Background image */}
+        {heroImage && (
+          <div className="absolute inset-0">
+            <img
+              src={heroImage}
+              alt={e.name}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/50 to-[#0A0A0A]/20" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/30 to-transparent" />
+          </div>
+        )}
+
+        {/* Decorative gold line */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-32 bg-gradient-to-b from-[#C9A96E]/40 to-transparent" />
+
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pb-10 sm:pb-24 pt-24 sm:pt-32 w-full">
+          {/* Breadcrumb */}
+          <a
+            href="/empreendimentos"
+            className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-[#C9A96E] transition-colors mb-4 sm:mb-6 group"
+          >
+            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+            Empreendimentos
+          </a>
+
+          {/* Status + Region badges */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
+            {status && (
+              <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border backdrop-blur-sm ${
+                status === 'Entregue' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                status === 'Em Construção' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
+                'bg-blue-500/20 text-blue-300 border-blue-500/30'
+              }`}>
+                <CheckCircle2 className="h-3 w-3" />
+                {status}
+              </span>
+            )}
+            {priceMatch && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+                <DollarSign className="h-3 w-3" />
+                {priceMatch[0]}
+              </span>
+            )}
+            {deliveryMatch && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25">
+                <Clock className="h-3 w-3" />
+                Previsão: {deliveryMatch[1]}
+              </span>
+            )}
+            {e.region && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white/70 border border-white/10">
+                <MapPin className="h-3 w-3" />
+                {e.region}
+              </span>
+            )}
+          </div>
+
+          {/* Title */}
+          <h1 className="text-3xl sm:text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1] max-w-4xl">
+            {displayTitle}
+          </h1>
+
+          {/* Subtitle */}
+          {displaySubtitle && (
+            <p className="mt-3 sm:mt-6 text-base sm:text-xl text-white/60 max-w-2xl leading-relaxed">
+              {displaySubtitle}
+            </p>
+          )}
+        </div>
+
+        {/* Scroll indicator */}
+        <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce hidden sm:flex">
+          <span className="text-[10px] text-white/30 uppercase tracking-widest">Scroll</span>
+          <div className="w-px h-8 bg-gradient-to-b from-white/30 to-transparent" />
+        </div>
+      </section>
+
+      {/* ── Gallery Section ────────────────────────────── */}
+      {images.length > 0 && (
+        <section id="galeria" className="py-12 sm:py-28 border-t border-white/[0.04]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+            <div className="flex items-center justify-between mb-6 sm:mb-10">
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-bold">Galeria</h2>
+                <p className="text-sm text-white/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''} disponíve{images.length !== 1 ? 'is' : 'l'}</p>
+              </div>
+              {images.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <button onClick={goPrev} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button onClick={goNext} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Main image */}
+            <div
+              className="relative aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
+              onClick={() => setLightboxOpen(true)}
+            >
+              <img
+                src={images[activeImgIdx]?.url || heroImage || ''}
+                alt={images[activeImgIdx]?.altText || e.name}
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="bg-black/50 backdrop-blur-sm rounded-full p-4">
+                  <ZoomIn className="h-6 w-6 text-white" />
+                </div>
+              </div>
+              {images.length > 1 && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full">
+                  {activeImgIdx + 1} / {images.length}
+                </div>
+              )}
+            </div>
+
+            {/* Thumbnails */}
+            {images.length > 1 && (
+              <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
+                {images.map((img, idx) => (
+                  <button
+                    key={img.id}
+                    onClick={() => setActiveImgIdx(idx)}
+                    className={`flex-shrink-0 w-20 h-14 sm:w-28 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${
+                      idx === activeImgIdx
+                        ? 'border-[#C9A96E] ring-2 ring-[#C9A96E]/20'
+                        : 'border-transparent opacity-50 hover:opacity-80'
+                    }`}
+                  >
+                    <img src={img.url} alt={img.altText || ''} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ── Details Section ────────────────────────────── */}
+      {hasInfo && info! && (
+        <section className="py-12 sm:py-28 border-t border-white/[0.04]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+            {/* Section header */}
+            <div className="flex items-center gap-4 mb-8 sm:mb-12">
+              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight whitespace-nowrap">Detalhes do Empreendimento</h2>
+              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+            </div>
+
+            {/* Summary — Sobre o Empreendimento */}
+            {info.summary && (
+              <div className="mb-8 sm:mb-12">
+                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.08] via-[#C9A96E]/[0.03] to-transparent border border-[#C9A96E]/15 p-6 sm:p-8 lg:p-10">
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-[#C9A96E]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                  <div className="relative">
+                    <div className="flex items-center gap-2.5 mb-4">
+                      <div className="h-1.5 w-8 rounded-full bg-[#C9A96E]" />
+                      <span className="text-xs font-semibold text-[#C9A96E] uppercase tracking-widest">Sobre o empreendimento</span>
+                    </div>
+                    <p className="text-sm sm:text-[15px] text-white/75 leading-[1.8] max-w-4xl">{info.summary}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Info blocks — stacked, full-width, each with clear visual identity */}
+            <div className="space-y-4 sm:space-y-5">
+
+              {/* Location */}
+              {(info.location.address || info.location.neighborhood || info.location.city) && (
+                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                  <div className="flex items-stretch">
+                    {/* Icon strip */}
+                    <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-blue-500/15 to-blue-500/5 flex items-center justify-center">
+                      <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                        <Navigation className="h-4 w-4 text-blue-400" />
+                      </div>
+                    </div>
+                    {/* Content */}
+                    <div className="flex-1 p-5 sm:p-6">
+                      <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Localização</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+                        {info.location.address && (
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Endereço</p>
+                            <p className="text-sm text-white/70 leading-relaxed">{info.location.address}</p>
+                          </div>
+                        )}
+                        {(info.location.neighborhood || info.location.city) && (
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Região</p>
+                            <p className="text-sm text-white/70 leading-relaxed">
+                              {[info.location.neighborhood, info.location.city, info.location.state].filter(Boolean).join(', ')}
+                            </p>
+                          </div>
+                        )}
+                        {info.location.additionalInfo && (
+                          <div className="sm:col-span-2">
+                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Referências</p>
+                            <p className="text-sm text-white/50 leading-relaxed">{info.location.additionalInfo}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Builder */}
+              {info.builder && (
+                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                  <div className="flex items-stretch">
+                    <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-orange-500/15 to-orange-500/5 flex items-center justify-center">
+                      <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
+                        <HardHat className="h-4 w-4 text-orange-400" />
+                      </div>
+                    </div>
+                    <div className="flex-1 p-5 sm:p-6">
+                      <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Construtora</h3>
+                      <p className="text-sm sm:text-[15px] text-white/70 leading-relaxed max-w-3xl">{info.builder}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Architecture / Landscaping */}
+              {(info.architecture || info.landscaping) && (
+                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                  <div className="flex items-stretch">
+                    <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-violet-500/15 to-violet-500/5 flex items-center justify-center">
+                      <div className="h-9 w-9 rounded-xl bg-violet-500/20 flex items-center justify-center">
+                        <Palette className="h-4 w-4 text-violet-400" />
+                      </div>
+                    </div>
+                    <div className="flex-1 p-5 sm:p-6">
+                      <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Projeto</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+                        {info.architecture && (
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Arquitetura</p>
+                            <p className="text-sm text-white/70 leading-relaxed">{info.architecture}</p>
+                          </div>
+                        )}
+                        {info.landscaping && (
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Paisagismo</p>
+                            <p className="text-sm text-white/70 leading-relaxed">{info.landscaping}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Apartment Types */}
+            {info.apartmentTypes && info.apartmentTypes.length > 0 && (
+              <div className="mt-10 sm:mt-14">
+                <div className="flex items-center gap-3 mb-6 sm:mb-8">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-500/15 flex items-center justify-center">
+                    <Building2 className="h-4 w-4 text-emerald-400" />
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-semibold">Tipos de Unidades</h3>
+                  <span className="text-xs text-white/25 font-medium ml-auto">{info.apartmentTypes.length} tipo{info.apartmentTypes.length !== 1 ? 's' : ''} disponíve{info.apartmentTypes.length !== 1 ? 'is' : 'l'}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {info.apartmentTypes.map((apt, idx) => {
+                    const priceInDesc = apt.description?.match(/R\$[\d.,]+/);
+                    return (
+                      <div
+                        key={idx}
+                        className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-emerald-500/20 hover:bg-white/[0.03] transition-all duration-300 overflow-hidden"
+                      >
+                        {/* Top accent bar */}
+                        <div className="h-0.5 bg-gradient-to-r from-emerald-500/40 to-transparent" />
+                        <div className="p-5 sm:p-6">
+                          <div className="flex items-start justify-between gap-3 mb-4">
+                            <h4 className="text-sm font-semibold text-white/90 leading-tight">{apt.name}</h4>
+                            {priceInDesc && (
+                              <span className="text-xs font-bold text-[#C9A96E] whitespace-nowrap flex-shrink-0 bg-[#C9A96E]/10 px-2.5 py-1 rounded-lg">
+                                {priceInDesc[0]}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-5 text-xs text-white/50 mb-2">
+                            {apt.area && (
+                              <span className="flex items-center gap-1.5">
+                                <Ruler className="h-3.5 w-3.5 text-white/30" />{apt.area}
+                              </span>
+                            )}
+                            {apt.bedrooms && (
+                              <span className="flex items-center gap-1.5">
+                                <BedDouble className="h-3.5 w-3.5 text-white/30" />{apt.bedrooms}
+                              </span>
+                            )}
+                          </div>
+                          {apt.description && (
+                            <p className="text-xs text-white/40 mt-3 leading-relaxed">{apt.description}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Differentials */}
+            {info.differentials && info.differentials.length > 0 && (
+              <div className="mt-10 sm:mt-14">
+                <div className="flex items-center gap-3 mb-6 sm:mb-8">
+                  <div className="h-9 w-9 rounded-xl bg-[#C9A96E]/15 flex items-center justify-center">
+                    <Sparkles className="h-4 w-4 text-[#C9A96E]" />
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-semibold">Diferenciais</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {info.differentials.map((d, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 px-4 sm:px-5 py-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:border-[#C9A96E]/20 transition-colors"
+                    >
+                      <CheckCircle2 className="h-4 w-4 text-[#C9A96E] flex-shrink-0" />
+                      <span className="text-sm text-white/70">{d}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ── Fallback: Landing Description ──────────────── */}
+      {!hasInfo && e.landingDescription && (
+        <section className="py-12 sm:py-28 border-t border-white/[0.04]">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6">
+            {e.landingTitle && (
+              <h2 className="text-2xl sm:text-3xl font-bold mb-4">{e.landingTitle}</h2>
+            )}
+            {e.landingSubtitle && (
+              <p className="text-lg text-[#C9A96E] mb-6">{e.landingSubtitle}</p>
+            )}
+            <p className="text-base text-white/60 leading-relaxed whitespace-pre-wrap">
+              {e.landingDescription}
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* ── Registration Form Section ───────────────────── */}
+      <section id="cadastro" className="py-12 sm:py-28 border-t border-white/[0.04]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-start">
+            {/* Left side — CTA text */}
+            <div className="order-2 lg:order-1">
+              <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-2xl bg-[#C9A96E]/20 flex items-center justify-center mb-4 sm:mb-6">
+                <MessageSquare className="h-5 w-5 sm:h-7 sm:w-7 text-[#C9A96E]" />
+              </div>
+              <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">
+                Interessado em <span className="text-[#C9A96E]">{e.name}</span>?
+              </h2>
+              <p className="text-white/50 max-w-lg text-sm sm:text-base leading-relaxed mb-6 sm:mb-8">
+                Preencha o formulário ao lado e receba atendimento personalizado sobre este empreendimento. Nossa equipe entrará em contato com você em breve para agendar uma visita ou tirar todas as suas dúvidas.
+              </p>
+
+              {/* Quick WhatsApp */}
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.CRMPIXEL) {
+                    window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
+                  }
+                }}
+                className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
+              >
+                <Phone className="h-4 w-4" />
+                Prefere o WhatsApp? Fale agora
+              </a>
+            </div>
+
+            {/* Right side — Form */}
+            <div className="relative order-1 lg:order-2">
+              <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/10 via-transparent to-[#C9A96E]/5 rounded-3xl blur-xl" />
+              <form
+                onSubmit={handleFormSubmit}
+                className="relative z-10 rounded-2xl bg-white/[0.03] border border-white/[0.08] p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
+              >
+                <div className="mb-2">
+                  <h3 className="text-xl font-bold">Cadastro</h3>
+                  <p className="text-sm text-white/40 mt-1">Preencha seus dados para receber atendimento</p>
+                </div>
+
+                {/* Error */}
+                {formError && (
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+                    <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-red-300">{formError}</p>
+                  </div>
+                )}
+
+                {/* Name */}
+                <div>
+                  <label htmlFor="form-name" className="block text-sm font-medium text-white/70 mb-2">
+                    Nome Completo <span className="text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                    <input
+                      id="form-name"
+                      type="text"
+                      value={formName}
+                      onChange={(ev) => setFormName(ev.target.value)}
+                      placeholder="Seu nome completo"
+                      required
+                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label htmlFor="form-phone" className="block text-sm font-medium text-white/70 mb-2">
+                    Telefone <span className="text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                    <input
+                      id="form-phone"
+                      type="tel"
+                      value={formPhone}
+                      onChange={(ev) => handlePhoneChange(ev.target.value)}
+                      placeholder="(11) 99999-9999"
+                      required
+                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label htmlFor="form-email" className="block text-sm font-medium text-white/70 mb-2">
+                    E-mail <span className="text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                    <input
+                      id="form-email"
+                      type="email"
+                      value={formEmail}
+                      onChange={(ev) => setFormEmail(ev.target.value)}
+                      placeholder="seuemail@exemplo.com"
+                      required
+                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Dynamic custom fields */}
+                {e.formFields && e.formFields.length > 0 && (
+                  <div className="space-y-4 pt-2">
+                    <div className="h-px bg-white/[0.06]" />
+                    {e.formFields.map((field) => {
+                      const val = customAnswers[field.id] || '';
+                      const parsedOptions = field.options ? (() => { try { return JSON.parse(field.options); } catch { return []; } })() : [];
+
+                      return (
+                        <div key={field.id}>
+                          <label htmlFor={`field-${field.id}`} className="block text-sm font-medium text-white/70 mb-2">
+                            {field.label}
+                            {field.required && <span className="text-red-400"> *</span>}
+                          </label>
+
+                          {field.fieldType === 'text' && (
+                            <input
+                              id={`field-${field.id}`}
+                              type="text"
+                              value={val}
+                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                              placeholder={field.placeholder || undefined}
+                              required={field.required}
+                              className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                            />
+                          )}
+
+                          {field.fieldType === 'number' && (
+                            <input
+                              id={`field-${field.id}`}
+                              type="number"
+                              value={val}
+                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                              placeholder={field.placeholder || undefined}
+                              required={field.required}
+                              className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                            />
+                          )}
+
+                          {field.fieldType === 'textarea' && (
+                            <textarea
+                              id={`field-${field.id}`}
+                              value={val}
+                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                              placeholder={field.placeholder || undefined}
+                              required={field.required}
+                              rows={3}
+                              className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all resize-none"
+                            />
+                          )}
+
+                          {field.fieldType === 'select' && parsedOptions.length > 0 && (
+                            <select
+                              id={`field-${field.id}`}
+                              value={val}
+                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                              required={field.required}
+                              className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all appearance-none cursor-pointer"
+                              style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                            >
+                              <option value="" disabled className="bg-[#1a1a1a]">{field.placeholder || 'Selecione uma opção...'}</option>
+                              {parsedOptions.map((opt: string, i: number) => (
+                                <option key={i} value={opt} className="bg-[#1a1a1a]">{opt}</option>
+                              ))}
+                            </select>
+                          )}
+
+                          {field.fieldType === 'checkbox' && (
+                            <label htmlFor={`field-${field.id}`} className="flex items-center gap-3 cursor-pointer group py-1">
+                              <input
+                                id={`field-${field.id}`}
+                                type="checkbox"
+                                checked={val === 'Sim'}
+                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.checked ? 'Sim' : 'Não' }))}
+                                className="h-4 w-4 rounded border-white/20 bg-white/[0.04] text-[#C9A96E] focus:ring-[#C9A96E]/20 cursor-pointer accent-[#C9A96E]"
+                              />
+                              <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">
+                                {field.placeholder || field.label}
+                              </span>
+                            </label>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={formSubmitting}
+                  className="w-full flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-base hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                >
+                  {formSubmitting ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4" />
+                      Cadastrar e Receber Atendimento
+                    </>
+                  )}
+                </button>
+
+                <p className="text-xs text-white/25 text-center">
+                  Ao se cadastrar, você concorda em receber informações sobre este empreendimento.
+                </p>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Footer ─────────────────────────────────────── */}
+      <footer className="border-t border-white/[0.06]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          {/* Top row */}
+          <div className="py-8 sm:py-12 grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-10">
+            {/* Brand */}
+            <div>
+              <a href="/empreendimentos" className="flex items-center gap-3 mb-4 group">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/15">
+                  <Building2 className="h-5 w-5 text-white" />
+                </div>
+                <span className="text-base font-bold tracking-tight">Empreendimentos</span>
+              </a>
+              <p className="text-sm text-white/30 leading-relaxed max-w-xs">
+                Encontre o imóvel ideal para você e sua família. Qualidade, confiança e atendimento personalizado.
+              </p>
+            </div>
+
+            {/* Quick links */}
+            <div>
+              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Navegação</h4>
+              <ul className="space-y-2.5">
+                <li>
+                  <a href="/empreendimentos" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+                    Todos os Empreendimentos
+                  </a>
+                </li>
+                <li>
+                  <a href="#galeria" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+                    Galeria
+                  </a>
+                </li>
+                <li>
+                  <a href="#cadastro" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+                    Cadastre-se
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* Contact */}
+            <div>
+              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Contato</h4>
+              <div className="space-y-3">
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2.5 text-sm text-white/30 hover:text-[#C9A96E] transition-colors"
+                >
+                  <div className="h-8 w-8 rounded-lg bg-[#25D366]/10 flex items-center justify-center flex-shrink-0">
+                    <Phone className="h-3.5 w-3.5 text-[#25D366]" />
+                  </div>
+                  WhatsApp
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom bar */}
+          <div className="border-t border-white/[0.04] py-5 sm:py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-xs text-white/20">
+              &copy; {new Date().getFullYear()} Todos os direitos reservados.
+            </p>
+            <p className="text-xs text-white/15">
+              Todos os valores e informações são sujeitos a alteração sem aviso prévio.
+            </p>
+          </div>
+        </div>
+      </footer>
+
+      {/* ── Lightbox ───────────────────────────────────── */}
+      {lightboxOpen && (
+        <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-2 sm:p-0" onClick={() => setLightboxOpen(false)}>
+          <button
+            onClick={() => setLightboxOpen(false)}
+            className="absolute top-3 right-3 sm:top-5 sm:right-5 text-white/60 hover:text-white z-10 bg-white/10 backdrop-blur-sm rounded-full p-2 sm:p-2.5 transition-colors"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <div className="absolute top-3 left-3 sm:top-5 sm:left-5 text-white/60 text-xs sm:text-sm bg-white/10 backdrop-blur-sm px-3 py-1.5 sm:px-4 sm:py-2 rounded-full">
+            {activeImgIdx + 1} / {images.length}
+          </div>
+          <img
+            src={images[activeImgIdx]?.url}
+            alt={images[activeImgIdx]?.altText || ''}
+            className="max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] sm:max-h-[85vh] object-contain rounded-xl"
+            onClick={(ev) => ev.stopPropagation()}
+          />
+          {images.length > 1 && (
+            <>
+              <button
+                onClick={(ev) => { ev.stopPropagation(); goPrev(); }}
+                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"
+              >
+                <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
+              </button>
+              <button
+                onClick={(ev) => { ev.stopPropagation(); goNext(); }}
+                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"
+              >
+                <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

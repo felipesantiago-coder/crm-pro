@@ -8,6 +8,8 @@ import {
   Trash2,
   AlertTriangle,
   Filter,
+  CalendarCheck,
+  Clock,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,7 +51,9 @@ interface ReminderItem {
   title: string;
   description: string | null;
   dueDate: string;
+  dueTime: string | null;
   notified: boolean;
+  googleCalendarEventId: string | null;
   createdAt: string;
   client: { id: string; name: string };
 }
@@ -74,6 +78,7 @@ export function RemindersView() {
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [formDueDate, setFormDueDate] = useState('');
+  const [formDueTime, setFormDueTime] = useState('');
   const [formClientId, setFormClientId] = useState('');
 
   useEffect(() => {
@@ -112,6 +117,7 @@ export function RemindersView() {
     setFormTitle('');
     setFormDescription('');
     setFormDueDate('');
+    setFormDueTime('');
     setFormClientId('');
     setFormOpen(true);
   }
@@ -123,6 +129,10 @@ export function RemindersView() {
     }
     if (!formDueDate) {
       toast.error('Data de vencimento é obrigatória');
+      return;
+    }
+    if (!formDueTime) {
+      toast.error('Hora é obrigatória para sincronizar com o Google Calendar');
       return;
     }
     if (!formClientId) {
@@ -139,6 +149,7 @@ export function RemindersView() {
           title: formTitle.trim(),
           description: formDescription.trim() || null,
           dueDate: formDueDate,
+          dueTime: formDueTime,
           clientId: formClientId,
         }),
       });
@@ -374,6 +385,18 @@ export function RemindersView() {
                               locale: ptBR,
                             })}
                           </span>
+                          {reminder.dueTime && (
+                            <>
+                              <span>&bull;</span>
+                              <span className="flex items-center gap-0.5">
+                                <Clock className="h-3 w-3" />
+                                {reminder.dueTime}
+                              </span>
+                            </>
+                          )}
+                          {reminder.googleCalendarEventId && (
+                            <CalendarCheck className="h-3.5 w-3.5 text-blue-500" title="Sincronizado com Google Calendar" />
+                          )}
                         </div>
 
                         <div className="flex gap-1">
@@ -410,7 +433,7 @@ export function RemindersView() {
 
       {/* Create Dialog */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="sm:max-w-[450px]">
+        <DialogContent className="sm:max-w-[560px]">
           <DialogHeader>
             <DialogTitle>Novo Lembrete</DialogTitle>
           </DialogHeader>
@@ -438,7 +461,7 @@ export function RemindersView() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="reminder-date">
                   Data <span className="text-destructive">*</span>
@@ -450,6 +473,20 @@ export function RemindersView() {
                   onChange={(e) => setFormDueDate(e.target.value)}
                   onFocus={(e) => e.target.showPicker?.()}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reminder-time">
+                  Hora <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="reminder-time"
+                  type="time"
+                  value={formDueTime}
+                  onChange={(e) => setFormDueTime(e.target.value)}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Necessária para sincronizar com o Google Calendar
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="reminder-client">

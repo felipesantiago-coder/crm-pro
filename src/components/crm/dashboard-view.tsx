@@ -620,7 +620,8 @@ export function DashboardView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="sticky top-0 z-20 -mt-4 sm:-mt-5 lg:-mt-6 pt-4 sm:pt-5 lg:pt-6 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground mt-1">
@@ -663,6 +664,7 @@ export function DashboardView() {
             <span className="hidden sm:inline">Analytics</span>
           </button>
         </div>
+      </div>
       </div>
 
       {/* Kanban view */}

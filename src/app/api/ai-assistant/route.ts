@@ -301,7 +301,7 @@ async function askGemini(systemText: string, messages: Message[]): Promise<strin
     parts: [{ text: m.content }],
   }));
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
   const res = await fetch(url, {
     method: 'POST',

@@ -79,6 +79,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useSession } from 'next-auth/react';
 
 interface Interaction {
@@ -561,7 +568,7 @@ function DetailContent({
             <Trash2 className="h-3.5 w-3.5 mr-1.5" />
             Excluir
           </Button>
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 sm:ml-auto">
             {whatsappUrl && (
               <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-flex">
                 <Button size="sm" className="bg-[#25D366] hover:bg-[#1ebe5a] text-white border-0 shadow-sm h-9 text-xs font-semibold dark:shadow-none">
@@ -668,8 +675,34 @@ function DetailContent({
             })()}
           </div>
 
-          {/* Stage pipeline */}
-          <div className="flex flex-wrap gap-1.5">
+          {/* Stage pipeline — mobile dropdown */}
+          <div className="sm:hidden">
+            <Select
+              value={currentStage}
+              onValueChange={(val) => updateStage(val)}
+              disabled={updatingStage}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STAGES.map((stage) => {
+                  const StageIcon = stage.icon;
+                  return (
+                    <SelectItem key={stage.value} value={stage.value}>
+                      <span className="flex items-center gap-2">
+                        <StageIcon className="h-4 w-4" />
+                        {stage.label}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground mt-1.5">Selecione a etapa do cliente</p>
+          </div>
+          {/* Stage pipeline — desktop buttons */}
+          <div className="hidden sm:flex flex-wrap gap-1.5">
             {STAGES.map((stage) => {
               const isActive = currentStage === stage.value;
               const StageIcon = stage.icon;
@@ -682,7 +715,7 @@ function DetailContent({
                   key={stage.value}
                   onClick={() => updateStage(stage.value)}
                   disabled={updatingStage || isActive}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all duration-200 ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${
                     isActive
                       ? `${stage.color} ${stage.borderColor} ring-2 ring-offset-1 ring-emerald-500/30 dark:ring-offset-background`
                       : isPast
@@ -692,12 +725,12 @@ function DetailContent({
                   title={stage.label}
                 >
                   <StageIcon className="h-3 w-3 flex-shrink-0" />
-                  <span className="hidden sm:inline">{stage.label}</span>
+                  {stage.label}
                 </button>
               );
             })}
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1">Clique em uma etapa para alterar o status do cliente</p>
+          <p className="text-[10px] text-muted-foreground mt-1 hidden sm:block">Clique em uma etapa para alterar o status do cliente</p>
         </div>
       </div>
 

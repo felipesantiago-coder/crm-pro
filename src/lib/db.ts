@@ -43,9 +43,9 @@ export const db = new Proxy({} as PrismaClient, {
  * Supabase Free Tier pauses after inactivity — the first connection
  * attempt may fail while the DB is waking up.
  *
- * This function retries with increasing delays (2s, 3s, 4s) to give
+ * This function retries with increasing delays (3s, 4s, 5s) to give
  * the database enough time to resume from its paused state.
- * Total worst-case wait: ~9 seconds.
+ * Total worst-case wait: ~12 seconds.
  */
 export async function ensureDbConnection(maxRetries = 3): Promise<PrismaClient> {
   const client = getDb()
@@ -56,8 +56,8 @@ export async function ensureDbConnection(maxRetries = 3): Promise<PrismaClient> 
     } catch (err) {
       console.error(`[DB] Connection attempt ${attempt}/${maxRetries} failed:`, err)
       if (attempt < maxRetries) {
-        // Increasing delay: 2s, 3s, 4s — gives Supabase time to wake up
-        const delay = (attempt + 1) * 1000
+        // Increasing delay: 3s, 4s, 5s — gives Supabase time to wake up
+        const delay = (attempt + 2) * 1000
         console.log(`[DB] Waiting ${delay}ms before retry...`)
         await new Promise(resolve => setTimeout(resolve, delay))
         // Force a fresh connection on next attempt

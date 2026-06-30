@@ -16,6 +16,7 @@ export async function GET() {
         id: true,
         name: true,
         email: true,
+        phone: true,
         role: true,
         createdAt: true,
       },
@@ -40,7 +41,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name } = body;
+    const { name, phone } = body;
 
     if (!name || name.trim() === '') {
       return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 });
@@ -48,11 +49,15 @@ export async function PUT(request: NextRequest) {
 
     const user = await db.user.update({
       where: { id: session.user.id },
-      data: { name: name.trim() },
+      data: {
+        name: name.trim(),
+        ...(phone !== undefined ? { phone: phone.trim() || null } : {}),
+      },
       select: {
         id: true,
         name: true,
         email: true,
+        phone: true,
         role: true,
         createdAt: true,
       },
