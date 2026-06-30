@@ -1,0 +1,1468 @@
+     1→'use client';
+     2→
+     3→import React, { useState, useEffect, useCallback, useRef } from 'react';
+     4→import {
+     5→  Building2, MapPin, ArrowLeft, ChevronLeft, ChevronRight,
+     6→  X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
+     7→  CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
+     8→  Loader2, ZoomIn, Share2, Copy, Check, User, Send, AlertCircle,
+     9→  Shield, Star, ChevronDown,
+    10→} from 'lucide-react';
+    11→
+    12→/* ================================================================
+    13→   Types
+    14→   ================================================================ */
+    15→interface EnterpriseImage {
+    16→  id: string;
+    17→  url: string;
+    18→  altText: string | null;
+    19→  sortOrder: number;
+    20→}
+    21→
+    22→interface FormField {
+    23→  id: string;
+    24→  label: string;
+    25→  fieldType: string;
+    26→  placeholder: string | null;
+    27→  options: string | null;
+    28→  required: boolean;
+    29→  sortOrder: number;
+    30→}
+    31→
+    32→interface ExtractedInfo {
+    33→  location: {
+    34→    address: string | null;
+    35→    neighborhood: string | null;
+    36→    city: string | null;
+    37→    state: string | null;
+    38→    region: string | null;
+    39→    additionalInfo: string | null;
+    40→  };
+    41→  builder: string | null;
+    42→  architecture: string | null;
+    43→  landscaping: string | null;
+    44→  differentials: string[];
+    45→  apartmentTypes: Array<{
+    46→    name: string;
+    47→    area: string | null;
+    48→    bedrooms: string | null;
+    49→    description: string | null;
+    50→  }>;
+    51→  summary: string | null;
+    52→}
+    53→
+    54→interface Enterprise {
+    55→  id: string;
+    56→  name: string;
+    57→  slug: string | null;
+    58→  region: string | null;
+    59→  imageUrl: string | null;
+    60→  landingTitle: string | null;
+    61→  landingSubtitle: string | null;
+    62→  landingDescription: string | null;
+    63→  cachedInfo: ExtractedInfo | null;
+    64→  images: EnterpriseImage[];
+    65→  formFields: FormField[];
+    66→}
+    67→
+    68→/* ================================================================
+    69→   Custom Components — Scroll Reveal & Counter Animation
+    70→   ================================================================ */
+    71→function ScrollReveal({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+    72→  const ref = useRef<HTMLDivElement>(null);
+    73→  const [isVisible, setIsVisible] = useState(false);
+    74→
+    75→  useEffect(() => {
+    76→    const el = ref.current;
+    77→    if (!el) return;
+    78→    const observer = new IntersectionObserver(
+    79→      ([entry]) => {
+    80→        if (entry.isIntersecting) {
+    81→          setIsVisible(true);
+    82→          observer.unobserve(el);
+    83→        }
+    84→      },
+    85→      { threshold: 0.08, rootMargin: '0px 0px -40px 0px' }
+    86→    );
+    87→    observer.observe(el);
+    88→    return () => observer.disconnect();
+    89→  }, []);
+    90→
+    91→  return (
+    92→    <div
+    93→      ref={ref}
+    94→      className={`transition-all duration-700 ease-out ${
+    95→        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+    96→      } ${className}`}
+    97→    >
+    98→      {children}
+    99→    </div>
+   100→  );
+   101→}
+   102→
+   103→function CounterAnimation({ target, duration = 2000 }: { target: number; duration?: number }) {
+   104→  const [count, setCount] = useState(0);
+   105→  const ref = useRef<HTMLSpanElement>(null);
+   106→  const hasAnimated = useRef(false);
+   107→
+   108→  useEffect(() => {
+   109→    const el = ref.current;
+   110→    if (!el) return;
+   111→    const observer = new IntersectionObserver(
+   112→      ([entry]) => {
+   113→        if (entry.isIntersecting && !hasAnimated.current) {
+   114→          hasAnimated.current = true;
+   115→          const startTime = performance.now();
+   116→          const animate = (currentTime: number) => {
+   117→            const elapsed = currentTime - startTime;
+   118→            const progress = Math.min(elapsed / duration, 1);
+   119→            // Ease-out cubic
+   120→            const eased = 1 - Math.pow(1 - progress, 3);
+   121→            setCount(Math.floor(eased * target));
+   122→            if (progress < 1) {
+   123→              requestAnimationFrame(animate);
+   124→            } else {
+   125→              setCount(target);
+   126→            }
+   127→          };
+   128→          requestAnimationFrame(animate);
+   129→          observer.unobserve(el);
+   130→        }
+   131→      },
+   132→      { threshold: 0.5 }
+   133→    );
+   134→    observer.observe(el);
+   135→    return () => observer.disconnect();
+   136→  }, [target, duration]);
+   137→
+   138→  return <span ref={ref}>{count}</span>;
+   139→}
+   140→
+   141→/* ================================================================
+   142→   FAQ Data
+   143→   ================================================================ */
+   144→const faqItems = [
+   145→  {
+   146→    question: 'Como funciona o atendimento personalizado?',
+   147→    answer: 'Após preencher o formulário, um consultor exclusivo entrará em contato em até 24 horas. Você receberá atendimento individualizado com informações detalhadas sobre plantas, valores, condições de pagamento e agendamento de visita presencial ao empreendimento.',
+   148→  },
+   149→  {
+   150→    question: 'Posso financiar o imóvel?',
+   151→    answer: 'Sim! Oferecemos suporte completo para financiamento bancário. Trabalhamos com os principais bancos do mercado e nossa equipe auxilia em todo o processo, desde a simulação até a aprovação do crédito, garantindo as melhores condições para você.',
+   152→  },
+   153→  {
+   154→    question: 'Quais documentos preciso para visitar o empreendimento?',
+   155→    answer: 'Para agendar uma visita, basta preencher o formulário com seus dados. Para a visita presencial, recomendamos levar um documento de identificação com foto. Nosso consultor entrará em contato para confirmar o melhor horário e ponto de encontro.',
+   156→  },
+   157→  {
+   158→    question: 'O atendimento é exclusivo para este empreendimento?',
+   159→    answer: 'Sim, você terá um consultor dedicado que conhece todos os detalhes deste empreendimento. Nossa equipe é especializada e preparada para tirar todas as suas dúvidas sobre o projeto, localização, lazer, plantas e condições comerciais.',
+   160→  },
+   161→  {
+   162→    question: 'Posso agendar uma visita presencial?',
+   163→    answer: 'Com certeza! Após o cadastro, nosso consultor entrará em contato para agendar a visita no melhor horário para você. Oferecemos visitas presenciais guiadas ao canteiro de obras ou ao empreendimento já entregue, dependendo do status do projeto.',
+   164→  },
+   165→];
+   166→
+   167→/* ================================================================
+   168→   Testimonials Data
+   169→   ================================================================ */
+   170→const testimonials = [
+   171→  {
+   172→    name: 'Ricardo M.',
+   173→    role: 'Investidor Imobiliário',
+   174→    quote: 'O atendimento foi excepcional. A equipe me ajudou a encontrar o apartamento perfeito para minha família. Todo o processo foi transparente e profissional, do primeiro contato à entrega das chaves.',
+   175→    rating: 5,
+   176→  },
+   177→  {
+   178→    name: 'Ana Carolina S.',
+   179→    role: 'Advogada',
+   180→    quote: 'Já tinha visitado vários empreendimentos, mas foi aqui que encontrei qualidade de verdade. As plantas são incríveis, o lazer é completo e a localização é privilegiada. Superou todas as minhas expectativas.',
+   181→    rating: 5,
+   182→  },
+   183→  {
+   184→    name: 'Dr. Paulo R.',
+   185→    role: 'Médico',
+   186→    quote: 'A localização é impecável e o investimento se justifica pela qualidade construtiva e infraestrutura do condomínio. Estou muito satisfeito com a aquisição e com todo o suporte que recebi durante o processo.',
+   187→    rating: 5,
+   188→  },
+   189→];
+   190→
+   191→/* ================================================================
+   192→   Page
+   193→   ================================================================ */
+   194→export default function LandingPage({ params }: { params: Promise<{ slug: string }> }) {
+   195→  const [slug, setSlug] = useState<string | null>(null);
+   196→  const [enterprise, setEnterprise] = useState<Enterprise | null>(null);
+   197→  const [loading, setLoading] = useState(true);
+   198→  const [error, setError] = useState<string | null>(null);
+   199→  const [activeImgIdx, setActiveImgIdx] = useState(0);
+   200→  const [lightboxOpen, setLightboxOpen] = useState(false);
+   201→  const [copiedLink, setCopiedLink] = useState(false);
+   202→  const [scrolled, setScrolled] = useState(false);
+   203→  const [queueUser, setQueueUser] = useState<{ userId: string; userName: string; userPhone: string | null } | null>(null);
+   204→
+   205→  // Form state
+   206→  const [formName, setFormName] = useState('');
+   207→  const [formPhone, setFormPhone] = useState('');
+   208→  const [formEmail, setFormEmail] = useState('');
+   209→  const [formSubmitting, setFormSubmitting] = useState(false);
+   210→  const [formError, setFormError] = useState('');
+   211→  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+   212→
+   213→  // NEW: Floating WhatsApp bar visibility (mobile)
+   214→  const [showFloatingWhatsApp, setShowFloatingWhatsApp] = useState(false);
+   215→
+   216→  // NEW: FAQ accordion state
+   217→  const [faqOpenIndex, setFaqOpenIndex] = useState<number | null>(null);
+   218→
+   219→  useEffect(() => {
+   220→    params.then((p) => setSlug(p.slug));
+   221→  }, [params]);
+   222→
+   223→  const fetchEnterprise = useCallback(async () => {
+   224→    if (!slug) return;
+   225→    try {
+   226→      const res = await fetch(`/api/enterprises/public/${slug}`);
+   227→      if (res.ok) {
+   228→        const data = await res.json();
+   229→        setEnterprise(data);
+   230→        // Dynamic browser title
+   231→        document.title = `${data.landingTitle || data.name} | Empreendimentos`;
+   232→      } else {
+   233→        setError('Empreendimento não encontrado.');
+   234→      }
+   235→    } catch {
+   236→      setError('Erro de conexão.');
+   237→    } finally {
+   238→      setLoading(false);
+   239→    }
+   240→  }, [slug]);
+   241→
+   242→  useEffect(() => { fetchEnterprise(); }, [fetchEnterprise]);
+   243→
+   244→  useEffect(() => {
+   245→    const onScroll = () => setScrolled(window.scrollY > 60);
+   246→    window.addEventListener('scroll', onScroll, { passive: true });
+   247→    return () => window.removeEventListener('scroll', onScroll);
+   248→  }, []);
+   249→
+   250→  // Fetch queue user for dynamic WhatsApp
+   251→  useEffect(() => {
+   252→    if (!slug) return;
+   253→    fetch(`/api/lead-queues/next-user?slug=${encodeURIComponent(slug)}`)
+   254→      .then((r) => r.json())
+   255→      .then((data) => {
+   256→        if (data.hasQueue && data.userPhone) {
+   257→          setQueueUser({ userId: data.userId, userName: data.userName, userPhone: data.userPhone });
+   258→        }
+   259→      })
+   260→      .catch(() => { /* silent — fallback to generic WhatsApp */ });
+   261→  }, [slug]);
+   262→
+   263→  // NEW: Floating WhatsApp bar — show after scrolling past hero
+   264→  useEffect(() => {
+   265→    const onScroll = () => {
+   266→      setShowFloatingWhatsApp(window.scrollY > window.innerHeight * 0.4);
+   267→    };
+   268→    window.addEventListener('scroll', onScroll, { passive: true });
+   269→    return () => window.removeEventListener('scroll', onScroll);
+   270→  }, []);
+   271→
+   272→  const whatsappNumber = queueUser?.userPhone
+   273→    ? queueUser.userPhone.replace(/\D/g, '')
+   274→    : null;
+   275→  const whatsappUrl = whatsappNumber
+   276→    ? `https://wa.me/${whatsappNumber.startsWith('55') ? whatsappNumber : '55' + whatsappNumber}?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`
+   277→    : `https://wa.me/?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`;
+   278→
+   279→  const handleCopyLink = async () => {
+   280→    try {
+   281→      await navigator.clipboard.writeText(window.location.href);
+   282→      setCopiedLink(true);
+   283→      setTimeout(() => setCopiedLink(false), 2000);
+   284→    } catch { /* silent */ }
+   285→  };
+   286→
+   287→  /* ── Form handler ─────────────────────────────────────── */
+   288→  const handleFormSubmit = async (ev: React.FormEvent) => {
+   289→    ev.preventDefault();
+   290→    setFormError('');
+   291→
+   292→    if (!formName.trim() || formName.trim().length < 2) {
+   293→      setFormError('Informe seu nome completo.');
+   294→      return;
+   295→    }
+   296→    const cleanPhone = formPhone.replace(/\D/g, '');
+   297→    if (cleanPhone.length < 10) {
+   298→      setFormError('Informe um telefone válido com DDD.');
+   299→      return;
+   300→    }
+   301→    const cleanEmail = formEmail.trim().toLowerCase();
+   302→    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+   303→      setFormError('Informe um e-mail válido.');
+   304→      return;
+   305→    }
+   306→
+   307→    // Validate required custom fields
+   308→    if (enterprise?.formFields) {
+   309→      for (const field of enterprise.formFields) {
+   310→        if (field.required && field.fieldType !== 'checkbox') {
+   311→          const val = customAnswers[field.id];
+   312→          if (!val || val.trim() === '') {
+   313→            setFormError(`O campo "${field.label}" é obrigatório.`);
+   314→            return;
+   315→          }
+   316→        }
+   317→      }
+   318→    }
+   319→
+   320→    setFormSubmitting(true);
+   321→    try {
+   322→      // Build clean custom answers (label -> value)
+   323→      const answersData: Record<string, string> = {};
+   324→      if (enterprise?.formFields) {
+   325→        for (const field of enterprise.formFields) {
+   326→          const val = customAnswers[field.id];
+   327→          if (val !== undefined && val !== null && String(val).trim() !== '') {
+   328→            answersData[field.label] = String(val).trim();
+   329→          }
+   330→        }
+   331→      }
+   332→
+   333→      const res = await fetch('/api/enterprises/public-lead', {
+   334→        method: 'POST',
+   335→        headers: { 'Content-Type': 'application/json' },
+   336→        body: JSON.stringify({
+   337→          name: formName.trim(),
+   338→          phone: cleanPhone,
+   339→          email: cleanEmail,
+   340→          slug: slug || undefined,
+   341→          customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined,
+   342→        }),
+   343→      });
+   344→
+   345→      const data = await res.json();
+   346→
+   347→      if (res.ok && data.success) {
+   348→        // Track pixel event
+   349→        if (typeof window !== 'undefined' && window.CRMPIXEL) {
+   350→          window.CRMPIXEL.track('lead_form_submit', { enterprise: enterprise?.name });
+   351→        }
+   352→
+   353→        // Redirect to success page
+   354→        const params = new URLSearchParams();
+   355→        params.set('empreendimento', enterprise?.name || '');
+   356→        params.set('nome', formName.trim());
+   357→        if (data.assignedUser?.userName) params.set('atendente', data.assignedUser.userName);
+   358→        if (data.assignedUser?.userPhone) params.set('telefone', data.assignedUser.userPhone);
+   359→
+   360→        window.location.href = `/empreendimentos/${slug}/cadastro-sucesso?${params.toString()}`;
+   361→      } else {
+   362→        setFormError(data.error || 'Erro ao enviar. Tente novamente.');
+   363→      }
+   364→    } catch {
+   365→      setFormError('Erro de conexão. Verifique sua internet e tente novamente.');
+   366→    } finally {
+   367→      setFormSubmitting(false);
+   368→    }
+   369→  };
+   370→
+   371→  /* ─── Phone mask ──────────────────────────────────────── */
+   372→  const handlePhoneChange = (value: string) => {
+   373→    const digits = value.replace(/\D/g, '').slice(0, 11);
+   374→    let masked = '';
+   375→    if (digits.length > 0) masked += `(${digits.slice(0, 2)}`;
+   376→    if (digits.length > 2) masked += `) ${digits.slice(2, 7)}`;
+   377→    if (digits.length > 7) masked += `-${digits.slice(7)}`;
+   378→    setFormPhone(masked);
+   379→  };
+   380→
+   381→  /* ─── Loading ─────────────────────────────────────────── */
+   382→  if (loading) {
+   383→    return (
+   384→      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
+   385→        <Loader2 className="h-8 w-8 text-[#C9A96E] animate-spin" />
+   386→      </div>
+   387→    );
+   388→  }
+   389→
+   390→  /* ─── Error ───────────────────────────────────────────── */
+   391→  if (error || !enterprise) {
+   392→    return (
+   393→      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center p-4">
+   394→        <div className="text-center max-w-md">
+   395→          <Building2 className="h-16 w-16 text-white/10 mx-auto mb-6" />
+   396→          <h1 className="text-2xl font-bold text-white mb-2">Não encontrado</h1>
+   397→          <p className="text-white/40 mb-8">{error || 'Este empreendimento não existe ou foi removido.'}</p>
+   398→          <a
+   399→            href="/empreendimentos"
+   400→            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-sm hover:bg-[#D4B87E] transition-colors"
+   401→          >
+   402→            <ArrowLeft className="h-4 w-4" />
+   403→            Ver todos os empreendimentos
+   404→          </a>
+   405→        </div>
+   406→      </div>
+   407→    );
+   408→  }
+   409→
+   410→  /* ─── Derived ─────────────────────────────────────────── */
+   411→  const e = enterprise;
+   412→  const images = e.images.length > 0 ? e.images : [];
+   413→  const heroImage = e.imageUrl || images[0]?.url || null;
+   414→  const info = e.cachedInfo;
+   415→
+   416→  const hasInfo = info && (
+   417→    info.location?.address || info.location?.neighborhood || info.location?.city ||
+   418→    info.builder || info.architecture || info.landscaping ||
+   419→    (info.differentials && info.differentials.length > 0) ||
+   420→    (info.apartmentTypes && info.apartmentTypes.length > 0) || info.summary
+   421→  );
+   422→
+   423→  const allText = [info?.summary, ...(info?.differentials || [])].filter(Boolean).join(' ');
+   424→  let status: string | null = null;
+   425→  if (/entregue|pronto para morar|habite-se/i.test(allText)) status = 'Entregue';
+   426→  else if (/em construção|construção/i.test(allText)) status = 'Em Construção';
+   427→  else if (/lançamento|pré-lançamento/i.test(allText)) status = 'Lançamento';
+   428→
+   429→  const priceMatch = info?.summary?.match(/a partir de\s*R\$\s*[\d.]+/i) ||
+   430→    info?.apartmentTypes?.[0]?.description?.match(/a partir de\s*R\$\s*[\d.]+/i);
+   431→  const deliveryMatch = allText.match(/entrega.*?(\d{1,2}\/[\d]{4}|outubro \d{4}|dezembro \d{4})/i);
+   432→
+   433→  const goNext = () => setActiveImgIdx((p) => (p + 1) % Math.max(images.length, 1));
+   434→  const goPrev = () => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1));
+   435→
+   436→  const displayTitle = e.landingTitle || e.name;
+   437→  const displaySubtitle = e.landingSubtitle || info?.summary?.slice(0, 120) || null;
+   438→
+   439→  // NEW: Determine if urgency badge should show
+   440→  const showUrgencyBadge = status === 'Lançamento' || status === 'Em Construção';
+   441→
+   442→  /* ================================================================
+   443→     Render
+   444→     ================================================================ */
+   445→  return (
+   446→    <div className="min-h-screen bg-[#0A0A0A] text-white overflow-x-hidden">
+   447→
+   448→      {/* ── Custom Keyframes ────────────────────────────── */}
+   449→      <style>{`
+   450→        @keyframes pulse-urgency {
+   451→          0%, 100% { opacity: 1; }
+   452→          50% { opacity: 0.6; }
+   453→        }
+   454→        .animate-pulse-urgency { animation: pulse-urgency 2s ease-in-out infinite; }
+   455→
+   456→        @keyframes slide-up-bar {
+   457→          from { transform: translateY(100%); opacity: 0; }
+   458→          to { transform: translateY(0); opacity: 1; }
+   459→        }
+   460→        .animate-slide-up-bar { animation: slide-up-bar 0.4s ease-out forwards; }
+   461→
+   462→        @keyframes fade-in-up {
+   463→          from { opacity: 0; transform: translateY(24px); }
+   464→          to { opacity: 1; transform: translateY(0); }
+   465→        }
+   466→        .animate-fade-in-up { animation: fade-in-up 0.6s ease-out forwards; }
+   467→      `}</style>
+   468→
+   469→      {/* ── Navigation ─────────────────────────────────── */}
+   470→      <nav
+   471→        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
+   472→          scrolled
+   473→            ? 'bg-[#0A0A0A]/90 backdrop-blur-xl border-b border-white/[0.06] shadow-2xl'
+   474→            : 'bg-transparent'
+   475→        }`}
+   476→      >
+   477→        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-20 flex items-center justify-between">
+   478→          <a href="/empreendimentos" className="flex items-center gap-3 group">
+   479→            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/20 group-hover:shadow-[#C9A96E]/40 transition-shadow">
+   480→              <Building2 className="h-4 w-4 text-white" />
+   481→            </div>
+   482→            <span className="text-base font-bold tracking-tight hidden sm:block">Empreendimentos</span>
+   483→          </a>
+   484→
+   485→          <div className="flex items-center gap-3">
+   486→            <button
+   487→              onClick={handleCopyLink}
+   488→              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+   489→            >
+   490→              {copiedLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+   491→              <span className="hidden sm:inline">{copiedLink ? 'Copiado!' : 'Compartilhar'}</span>
+   492→            </button>
+   493→            <a
+   494→              href="#cadastro"
+   495→              className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-semibold hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20"
+   496→            >
+   497→              Cadastre-se
+   498→            </a>
+   499→          </div>
+   500→        </div>
+   501→      </nav>
+   502→
+   503→      {/* ── Hero Section ───────────────────────────────── */}
+   504→      <section className="relative min-h-[75dvh] sm:min-h-[100dvh] flex items-end">
+   505→        {/* Background image */}
+   506→        {heroImage && (
+   507→          <div className="absolute inset-0">
+   508→            <img
+   509→              src={heroImage}
+   510→              alt={e.name}
+   511→              className="w-full h-full object-cover"
+   512→            />
+   513→            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/50 to-[#0A0A0A]/20" />
+   514→            <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/30 to-transparent" />
+   515→          </div>
+   516→        )}
+   517→
+   518→        {/* Decorative gold line */}
+   519→        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-32 bg-gradient-to-b from-[#C9A96E]/40 to-transparent" />
+   520→
+   521→        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pb-10 sm:pb-24 pt-24 sm:pt-32 w-full">
+   522→          {/* Breadcrumb */}
+   523→          <a
+   524→            href="/empreendimentos"
+   525→            className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-[#C9A96E] transition-colors mb-4 sm:mb-6 group"
+   526→          >
+   527→            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+   528→            Empreendimentos
+   529→          </a>
+   530→
+   531→          {/* Status + Region badges */}
+   532→          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
+   533→            {status && (
+   534→              <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border backdrop-blur-sm ${
+   535→                status === 'Entregue' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+   536→                status === 'Em Construção' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
+   537→                'bg-blue-500/20 text-blue-300 border-blue-500/30'
+   538→              }`}>
+   539→                <CheckCircle2 className="h-3 w-3" />
+   540→                {status}
+   541→              </span>
+   542→            )}
+   543→            {priceMatch && (
+   544→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+   545→                <DollarSign className="h-3 w-3" />
+   546→                {priceMatch[0]}
+   547→              </span>
+   548→            )}
+   549→            {deliveryMatch && (
+   550→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25">
+   551→                <Clock className="h-3 w-3" />
+   552→                Previsão: {deliveryMatch[1]}
+   553→              </span>
+   554→            )}
+   555→            {e.region && (
+   556→              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white/70 border border-white/10">
+   557→                <MapPin className="h-3 w-3" />
+   558→                {e.region}
+   559→              </span>
+   560→            )}
+   561→            {/* ★ NEW: Urgency Badge — only for Lançamento or Em Construção */}
+   562→            {showUrgencyBadge && (
+   563→              <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 animate-pulse-urgency">
+   564→                <span className="relative flex h-2 w-2">
+   565→                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+   566→                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400" />
+   567→                </span>
+   568→                Vagas limitadas
+   569→              </span>
+   570→            )}
+   571→          </div>
+   572→
+   573→          {/* Title */}
+   574→          <h1 className="text-3xl sm:text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1] max-w-4xl">
+   575→            {displayTitle}
+   576→          </h1>
+   577→
+   578→          {/* Subtitle */}
+   579→          {displaySubtitle && (
+   580→            <p className="mt-3 sm:mt-6 text-base sm:text-xl text-white/60 max-w-2xl leading-relaxed">
+   581→              {displaySubtitle}
+   582→            </p>
+   583→          )}
+   584→        </div>
+   585→
+   586→        {/* Scroll indicator */}
+   587→        <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce hidden sm:flex">
+   588→          <span className="text-[10px] text-white/30 uppercase tracking-widest">Scroll</span>
+   589→          <div className="w-px h-8 bg-gradient-to-b from-white/30 to-transparent" />
+   590→        </div>
+   591→      </section>
+   592→
+   593→      {/* ★ NEW: Statistics / Trust Counters Section ─────── */}
+   594→      <ScrollReveal>
+   595→        <section className="py-10 sm:py-20 border-t border-white/[0.04]">
+   596→          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   597→            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+   598→              {/* Stat 1 */}
+   599→              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
+   600→                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+   601→                <div className="relative">
+   602→                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
+   603→                    <CounterAnimation target={15} />+
+   604→                  </p>
+   605→                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">Anos de Experiência</p>
+   606→                </div>
+   607→              </div>
+   608→              {/* Stat 2 */}
+   609→              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
+   610→                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+   611→                <div className="relative">
+   612→                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
+   613→                    <CounterAnimation target={500} />+
+   614→                  </p>
+   615→                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">Imóveis Comercializados</p>
+   616→                </div>
+   617→              </div>
+   618→              {/* Stat 3 */}
+   619→              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
+   620→                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+   621→                <div className="relative">
+   622→                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
+   623→                    <CounterAnimation target={98} />%
+   624→                  </p>
+   625→                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">Clientes Satisfeitos</p>
+   626→                </div>
+   627→              </div>
+   628→              {/* Stat 4 */}
+   629→              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
+   630→                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+   631→                <div className="relative">
+   632→                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
+   633→                    R$ <CounterAnimation target={2} /> Bilhões+
+   634→                  </p>
+   635→                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">em Vendas</p>
+   636→                </div>
+   637→              </div>
+   638→            </div>
+   639→          </div>
+   640→        </section>
+   641→      </ScrollReveal>
+   642→
+   643→      {/* ── Gallery Section ────────────────────────────── */}
+   644→      <ScrollReveal>
+   645→        {images.length > 0 && (
+   646→          <section id="galeria" className="py-12 sm:py-28 border-t border-white/[0.04]">
+   647→            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   648→              <div className="flex items-center justify-between mb-6 sm:mb-10">
+   649→                <div>
+   650→                  <h2 className="text-2xl sm:text-3xl font-bold">Galeria</h2>
+   651→                  <p className="text-sm text-white/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''} disponíve{images.length !== 1 ? 'is' : 'l'}</p>
+   652→                </div>
+   653→                {images.length > 1 && (
+   654→                  <div className="flex items-center gap-2">
+   655→                    <button onClick={goPrev} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+   656→                      <ChevronLeft className="h-5 w-5" />
+   657→                    </button>
+   658→                    <button onClick={goNext} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+   659→                      <ChevronRight className="h-5 w-5" />
+   660→                    </button>
+   661→                  </div>
+   662→                )}
+   663→              </div>
+   664→
+   665→              {/* Main image */}
+   666→              <div
+   667→                className="relative aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
+   668→                onClick={() => setLightboxOpen(true)}
+   669→              >
+   670→                <img
+   671→                  src={images[activeImgIdx]?.url || heroImage || ''}
+   672→                  alt={images[activeImgIdx]?.altText || e.name}
+   673→                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+   674→                />
+   675→                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+   676→                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+   677→                  <div className="bg-black/50 backdrop-blur-sm rounded-full p-4">
+   678→                    <ZoomIn className="h-6 w-6 text-white" />
+   679→                  </div>
+   680→                </div>
+   681→                {images.length > 1 && (
+   682→                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full">
+   683→                    {activeImgIdx + 1} / {images.length}
+   684→                  </div>
+   685→                )}
+   686→              </div>
+   687→
+   688→              {/* Thumbnails */}
+   689→              {images.length > 1 && (
+   690→                <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
+   691→                  {images.map((img, idx) => (
+   692→                    <button
+   693→                      key={img.id}
+   694→                      onClick={() => setActiveImgIdx(idx)}
+   695→                      className={`flex-shrink-0 w-20 h-14 sm:w-28 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${
+   696→                        idx === activeImgIdx
+   697→                          ? 'border-[#C9A96E] ring-2 ring-[#C9A96E]/20'
+   698→                          : 'border-transparent opacity-50 hover:opacity-80'
+   699→                      }`}
+   700→                    >
+   701→                      <img src={img.url} alt={img.altText || ''} className="w-full h-full object-cover" />
+   702→                    </button>
+   703→                  ))}
+   704→                </div>
+   705→              )}
+   706→            </div>
+   707→          </section>
+   708→        )}
+   709→      </ScrollReveal>
+   710→
+   711→      {/* ── Details Section ────────────────────────────── */}
+   712→      <ScrollReveal>
+   713→        {hasInfo && info! && (
+   714→          <section className="py-12 sm:py-28 border-t border-white/[0.04]">
+   715→            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   716→              {/* Section header */}
+   717→              <div className="flex items-center gap-4 mb-8 sm:mb-12">
+   718→                <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+   719→                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight whitespace-nowrap">Detalhes do Empreendimento</h2>
+   720→                <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+   721→              </div>
+   722→
+   723→              {/* Summary — Sobre o Empreendimento */}
+   724→              {info.summary && (
+   725→                <div className="mb-8 sm:mb-12">
+   726→                  <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.08] via-[#C9A96E]/[0.03] to-transparent border border-[#C9A96E]/15 p-6 sm:p-8 lg:p-10">
+   727→                    <div className="absolute top-0 right-0 w-48 h-48 bg-[#C9A96E]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+   728→                    <div className="relative">
+   729→                      <div className="flex items-center gap-2.5 mb-4">
+   730→                        <div className="h-1.5 w-8 rounded-full bg-[#C9A96E]" />
+   731→                        <span className="text-xs font-semibold text-[#C9A96E] uppercase tracking-widest">Sobre o empreendimento</span>
+   732→                      </div>
+   733→                      <p className="text-sm sm:text-[15px] text-white/75 leading-[1.8] max-w-4xl">{info.summary}</p>
+   734→                    </div>
+   735→                  </div>
+   736→                </div>
+   737→              )}
+   738→
+   739→              {/* Info blocks — stacked, full-width, each with clear visual identity */}
+   740→              <div className="space-y-4 sm:space-y-5">
+   741→
+   742→                {/* Location */}
+   743→                {(info.location.address || info.location.neighborhood || info.location.city) && (
+   744→                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+   745→                    <div className="flex items-stretch">
+   746→                      {/* Icon strip */}
+   747→                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-blue-500/15 to-blue-500/5 flex items-center justify-center">
+   748→                        <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
+   749→                          <Navigation className="h-4 w-4 text-blue-400" />
+   750→                        </div>
+   751→                      </div>
+   752→                      {/* Content */}
+   753→                      <div className="flex-1 p-5 sm:p-6">
+   754→                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Localização</h3>
+   755→                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+   756→                          {info.location.address && (
+   757→                            <div>
+   758→                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Endereço</p>
+   759→                              <p className="text-sm text-white/70 leading-relaxed">{info.location.address}</p>
+   760→                            </div>
+   761→                          )}
+   762→                          {(info.location.neighborhood || info.location.city) && (
+   763→                            <div>
+   764→                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Região</p>
+   765→                              <p className="text-sm text-white/70 leading-relaxed">
+   766→                                {[info.location.neighborhood, info.location.city, info.location.state].filter(Boolean).join(', ')}
+   767→                              </p>
+   768→                            </div>
+   769→                          )}
+   770→                          {info.location.additionalInfo && (
+   771→                            <div className="sm:col-span-2">
+   772→                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Referências</p>
+   773→                              <p className="text-sm text-white/50 leading-relaxed">{info.location.additionalInfo}</p>
+   774→                            </div>
+   775→                          )}
+   776→                        </div>
+   777→                      </div>
+   778→                    </div>
+   779→                  </div>
+   780→                )}
+   781→
+   782→                {/* Builder */}
+   783→                {info.builder && (
+   784→                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+   785→                    <div className="flex items-stretch">
+   786→                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-orange-500/15 to-orange-500/5 flex items-center justify-center">
+   787→                        <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
+   788→                          <HardHat className="h-4 w-4 text-orange-400" />
+   789→                        </div>
+   790→                      </div>
+   791→                      <div className="flex-1 p-5 sm:p-6">
+   792→                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Construtora</h3>
+   793→                        <p className="text-sm sm:text-[15px] text-white/70 leading-relaxed max-w-3xl">{info.builder}</p>
+   794→                      </div>
+   795→                    </div>
+   796→                  </div>
+   797→                )}
+   798→
+   799→                {/* Architecture / Landscaping */}
+   800→                {(info.architecture || info.landscaping) && (
+   801→                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+   802→                    <div className="flex items-stretch">
+   803→                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-violet-500/15 to-violet-500/5 flex items-center justify-center">
+   804→                        <div className="h-9 w-9 rounded-xl bg-violet-500/20 flex items-center justify-center">
+   805→                          <Palette className="h-4 w-4 text-violet-400" />
+   806→                        </div>
+   807→                      </div>
+   808→                      <div className="flex-1 p-5 sm:p-6">
+   809→                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Projeto</h3>
+   810→                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+   811→                          {info.architecture && (
+   812→                            <div>
+   813→                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Arquitetura</p>
+   814→                              <p className="text-sm text-white/70 leading-relaxed">{info.architecture}</p>
+   815→                            </div>
+   816→                          )}
+   817→                          {info.landscaping && (
+   818→                            <div>
+   819→                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Paisagismo</p>
+   820→                              <p className="text-sm text-white/70 leading-relaxed">{info.landscaping}</p>
+   821→                            </div>
+   822→                          )}
+   823→                        </div>
+   824→                      </div>
+   825→                    </div>
+   826→                  </div>
+   827→                )}
+   828→
+   829→              </div>
+   830→
+   831→              {/* Apartment Types */}
+   832→              {info.apartmentTypes && info.apartmentTypes.length > 0 && (
+   833→                <div className="mt-10 sm:mt-14">
+   834→                  <div className="flex items-center gap-3 mb-6 sm:mb-8">
+   835→                    <div className="h-9 w-9 rounded-xl bg-emerald-500/15 flex items-center justify-center">
+   836→                      <Building2 className="h-4 w-4 text-emerald-400" />
+   837→                    </div>
+   838→                    <h3 className="text-lg sm:text-xl font-semibold">Tipos de Unidades</h3>
+   839→                    <span className="text-xs text-white/25 font-medium ml-auto">{info.apartmentTypes.length} tipo{info.apartmentTypes.length !== 1 ? 's' : ''} disponíve{info.apartmentTypes.length !== 1 ? 'is' : 'l'}</span>
+   840→                  </div>
+   841→                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   842→                    {info.apartmentTypes.map((apt, idx) => {
+   843→                      const priceInDesc = apt.description?.match(/R\$[\d.,]+/);
+   844→                      return (
+   845→                        <div
+   846→                          key={idx}
+   847→                          className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-emerald-500/20 hover:bg-white/[0.03] transition-all duration-300 overflow-hidden"
+   848→                        >
+   849→                          {/* Top accent bar */}
+   850→                          <div className="h-0.5 bg-gradient-to-r from-emerald-500/40 to-transparent" />
+   851→                          <div className="p-5 sm:p-6">
+   852→                            <div className="flex items-start justify-between gap-3 mb-4">
+   853→                              <h4 className="text-sm font-semibold text-white/90 leading-tight">{apt.name}</h4>
+   854→                              {priceInDesc && (
+   855→                                <span className="text-xs font-bold text-[#C9A96E] whitespace-nowrap flex-shrink-0 bg-[#C9A96E]/10 px-2.5 py-1 rounded-lg">
+   856→                                  {priceInDesc[0]}
+   857→                                </span>
+   858→                              )}
+   859→                            </div>
+   860→                            <div className="flex items-center gap-5 text-xs text-white/50 mb-2">
+   861→                              {apt.area && (
+   862→                                <span className="flex items-center gap-1.5">
+   863→                                  <Ruler className="h-3.5 w-3.5 text-white/30" />{apt.area}
+   864→                                </span>
+   865→                              )}
+   866→                              {apt.bedrooms && (
+   867→                                <span className="flex items-center gap-1.5">
+   868→                                  <BedDouble className="h-3.5 w-3.5 text-white/30" />{apt.bedrooms}
+   869→                                </span>
+   870→                              )}
+   871→                            </div>
+   872→                            {apt.description && (
+   873→                              <p className="text-xs text-white/40 mt-3 leading-relaxed">{apt.description}</p>
+   874→                            )}
+   875→                          </div>
+   876→                        </div>
+   877→                      );
+   878→                    })}
+   879→                  </div>
+   880→                </div>
+   881→              )}
+   882→
+   883→              {/* Differentials */}
+   884→              {info.differentials && info.differentials.length > 0 && (
+   885→                <div className="mt-10 sm:mt-14">
+   886→                  <div className="flex items-center gap-3 mb-6 sm:mb-8">
+   887→                    <div className="h-9 w-9 rounded-xl bg-[#C9A96E]/15 flex items-center justify-center">
+   888→                      <Sparkles className="h-4 w-4 text-[#C9A96E]" />
+   889→                    </div>
+   890→                    <h3 className="text-lg sm:text-xl font-semibold">Diferenciais</h3>
+   891→                  </div>
+   892→                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   893→                    {info.differentials.map((d, i) => (
+   894→                      <div
+   895→                        key={i}
+   896→                        className="flex items-center gap-3 px-4 sm:px-5 py-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:border-[#C9A96E]/20 transition-colors"
+   897→                      >
+   898→                        <CheckCircle2 className="h-4 w-4 text-[#C9A96E] flex-shrink-0" />
+   899→                        <span className="text-sm text-white/70">{d}</span>
+   900→                      </div>
+   901→                    ))}
+   902→                  </div>
+   903→                </div>
+   904→              )}
+   905→            </div>
+   906→          </section>
+   907→        )}
+   908→      </ScrollReveal>
+   909→
+   910→      {/* ── Fallback: Landing Description ──────────────── */}
+   911→      {!hasInfo && e.landingDescription && (
+   912→        <section className="py-12 sm:py-28 border-t border-white/[0.04]">
+   913→          <div className="max-w-3xl mx-auto px-4 sm:px-6">
+   914→            {e.landingTitle && (
+   915→              <h2 className="text-2xl sm:text-3xl font-bold mb-4">{e.landingTitle}</h2>
+   916→            )}
+   917→            {e.landingSubtitle && (
+   918→              <p className="text-lg text-[#C9A96E] mb-6">{e.landingSubtitle}</p>
+   919→            )}
+   920→            <p className="text-base text-white/60 leading-relaxed whitespace-pre-wrap">
+   921→              {e.landingDescription}
+   922→            </p>
+   923→          </div>
+   924→        </section>
+   925→      )}
+   926→
+   927→      {/* ★ NEW: Lead Magnet CTA ───────────────────────── */}
+   928→      <ScrollReveal>
+   929→        <section className="py-10 sm:py-16">
+   930→          <div className="max-w-5xl mx-auto px-4 sm:px-6">
+   931→            <div className="relative overflow-hidden rounded-2xl border border-[#C9A96E]/20">
+   932→              {/* Background gradient */}
+   933→              <div className="absolute inset-0 bg-gradient-to-r from-[#C9A96E]/[0.12] via-[#C9A96E]/[0.06] to-[#C9A96E]/[0.02]" />
+   934→              <div className="absolute top-0 right-0 w-64 h-64 bg-[#C9A96E]/[0.06] rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none" />
+   935→
+   936→              <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-8 p-6 sm:p-10">
+   937→                <div className="text-center sm:text-left">
+   938→                  <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#C9A96E] uppercase tracking-widest mb-3">
+   939→                    <Sparkles className="h-4 w-4" />
+   940→                    Material Exclusivo
+   941→                  </div>
+   942→                  <h3 className="text-lg sm:text-xl font-bold mb-2">
+   943→                    Receba plantas, valores e condições especiais
+   944→                  </h3>
+   945→                  <p className="text-sm text-white/50 max-w-lg">
+   946→                    Acesse o material completo do empreendimento diretamente no seu e-mail. Plantas atualizadas, tabela de preços e condições de pagamento exclusivas.
+   947→                  </p>
+   948→                </div>
+   949→                <a
+   950→                  href="#cadastro"
+   951→                  className="flex-shrink-0 inline-flex items-center gap-2.5 px-8 py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-sm hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/25"
+   952→                >
+   953→                  <Mail className="h-4 w-4" />
+   954→                  Quero Receber Agora
+   955→                </a>
+   956→              </div>
+   957→            </div>
+   958→          </div>
+   959→        </section>
+   960→      </ScrollReveal>
+   961→
+   962→      {/* ★ NEW: Social Proof / Testimonials Section ───── */}
+   963→      <ScrollReveal>
+   964→        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
+   965→          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   966→            {/* Section header */}
+   967→            <div className="flex items-center gap-4 mb-8 sm:mb-12">
+   968→              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+   969→              <div className="text-center">
+   970→                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">O que dizem nossos clientes</h2>
+   971→                <p className="text-sm text-white/40 mt-1">Depoimentos reais de quem já adquiriu conosco</p>
+   972→              </div>
+   973→              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+   974→            </div>
+   975→
+   976→            {/* Testimonials grid (desktop) / scroll (mobile) */}
+   977→            <div className="flex gap-5 sm:gap-6 overflow-x-auto pb-4 sm:pb-0 -mx-4 sm:mx-0 px-4 sm:px-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 snap-x snap-mandatory sm:snap-none">
+   978→              {testimonials.map((t, idx) => (
+   979→                <div
+   980→                  key={idx}
+   981→                  className="flex-shrink-0 w-[300px] sm:w-auto snap-start"
+   982→                >
+   983→                  <div className="h-full rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/15 p-6 sm:p-8 transition-colors duration-300">
+   984→                    {/* Gold quote mark */}
+   985→                    <div className="text-[#C9A96E]/30 text-5xl leading-none font-serif mb-2 select-none">&ldquo;</div>
+   986→
+   987→                    {/* Star rating */}
+   988→                    <div className="flex items-center gap-0.5 mb-4">
+   989→                      {Array.from({ length: 5 }).map((_, i) => (
+   990→                        <Star
+   991→                          key={i}
+   992→                          className={`h-4 w-4 ${i < t.rating ? 'text-[#C9A96E] fill-[#C9A96E]' : 'text-white/15'}`}
+   993→                        />
+   994→                      ))}
+   995→                    </div>
+   996→
+   997→                    {/* Quote text */}
+   998→                    <p className="text-sm text-white/65 leading-relaxed mb-6">{t.quote}</p>
+   999→
+  1000→                    {/* Author */}
+  1001→                    <div className="flex items-center gap-3 pt-4 border-t border-white/[0.06]">
+  1002→                      <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#C9A96E]/30 to-[#C9A96E]/10 flex items-center justify-center">
+  1003→                        <span className="text-sm font-bold text-[#C9A96E]">{t.name.charAt(0)}</span>
+  1004→                      </div>
+  1005→                      <div>
+  1006→                        <p className="text-sm font-semibold text-white/80">{t.name}</p>
+  1007→                        <p className="text-xs text-white/35">{t.role}</p>
+  1008→                      </div>
+  1009→                    </div>
+  1010→                  </div>
+  1011→                </div>
+  1012→              ))}
+  1013→            </div>
+  1014→          </div>
+  1015→        </section>
+  1016→      </ScrollReveal>
+  1017→
+  1018→      {/* ── Registration Form Section ───────────────────── */}
+  1019→      <ScrollReveal>
+  1020→        <section id="cadastro" className="py-12 sm:py-28 border-t border-white/[0.04]">
+  1021→          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+  1022→            <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-start">
+  1023→              {/* Left side — CTA text */}
+  1024→              <div className="order-2 lg:order-1">
+  1025→                <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-2xl bg-[#C9A96E]/20 flex items-center justify-center mb-4 sm:mb-6">
+  1026→                  <MessageSquare className="h-5 w-5 sm:h-7 sm:w-7 text-[#C9A96E]" />
+  1027→                </div>
+  1028→                <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">
+  1029→                  Interessado em <span className="text-[#C9A96E]">{e.name}</span>?
+  1030→                </h2>
+  1031→                <p className="text-white/50 max-w-lg text-sm sm:text-base leading-relaxed mb-6 sm:mb-8">
+  1032→                  Preencha o formulário ao lado e receba atendimento personalizado sobre este empreendimento. Nossa equipe entrará em contato com você em breve para agendar uma visita ou tirar todas as suas dúvidas.
+  1033→                </p>
+  1034→
+  1035→                {/* Quick WhatsApp */}
+  1036→                <a
+  1037→                  href={whatsappUrl}
+  1038→                  target="_blank"
+  1039→                  rel="noopener noreferrer"
+  1040→                  onClick={() => {
+  1041→                    if (typeof window !== 'undefined' && window.CRMPIXEL) {
+  1042→                      window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
+  1043→                    }
+  1044→                  }}
+  1045→                  className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
+  1046→                >
+  1047→                  <Phone className="h-4 w-4" />
+  1048→                  Prefere o WhatsApp? Fale agora
+  1049→                </a>
+  1050→              </div>
+  1051→
+  1052→              {/* Right side — Form */}
+  1053→              <div className="relative order-1 lg:order-2">
+  1054→                <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/10 via-transparent to-[#C9A96E]/5 rounded-3xl blur-xl" />
+  1055→                <form
+  1056→                  onSubmit={handleFormSubmit}
+  1057→                  className="relative z-10 rounded-2xl bg-white/[0.03] border border-white/[0.08] p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
+  1058→                >
+  1059→                  <div className="mb-2">
+  1060→                    <h3 className="text-xl font-bold">Cadastro</h3>
+  1061→                    <p className="text-sm text-white/40 mt-1">Preencha seus dados para receber atendimento</p>
+  1062→                  </div>
+  1063→
+  1064→                  {/* Error */}
+  1065→                  {formError && (
+  1066→                    <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+  1067→                      <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+  1068→                      <p className="text-sm text-red-300">{formError}</p>
+  1069→                    </div>
+  1070→                  )}
+  1071→
+  1072→                  {/* Name */}
+  1073→                  <div>
+  1074→                    <label htmlFor="form-name" className="block text-sm font-medium text-white/70 mb-2">
+  1075→                      Nome Completo <span className="text-red-400">*</span>
+  1076→                    </label>
+  1077→                    <div className="relative">
+  1078→                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+  1079→                      <input
+  1080→                        id="form-name"
+  1081→                        type="text"
+  1082→                        value={formName}
+  1083→                        onChange={(ev) => setFormName(ev.target.value)}
+  1084→                        placeholder="Seu nome completo"
+  1085→                        required
+  1086→                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+  1087→                      />
+  1088→                    </div>
+  1089→                  </div>
+  1090→
+  1091→                  {/* Phone */}
+  1092→                  <div>
+  1093→                    <label htmlFor="form-phone" className="block text-sm font-medium text-white/70 mb-2">
+  1094→                      Telefone <span className="text-red-400">*</span>
+  1095→                    </label>
+  1096→                    <div className="relative">
+  1097→                      <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+  1098→                      <input
+  1099→                        id="form-phone"
+  1100→                        type="tel"
+  1101→                        value={formPhone}
+  1102→                        onChange={(ev) => handlePhoneChange(ev.target.value)}
+  1103→                        placeholder="(11) 99999-9999"
+  1104→                        required
+  1105→                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+  1106→                      />
+  1107→                    </div>
+  1108→                  </div>
+  1109→
+  1110→                  {/* Email */}
+  1111→                  <div>
+  1112→                    <label htmlFor="form-email" className="block text-sm font-medium text-white/70 mb-2">
+  1113→                      E-mail <span className="text-red-400">*</span>
+  1114→                    </label>
+  1115→                    <div className="relative">
+  1116→                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+  1117→                      <input
+  1118→                        id="form-email"
+  1119→                        type="email"
+  1120→                        value={formEmail}
+  1121→                        onChange={(ev) => setFormEmail(ev.target.value)}
+  1122→                        placeholder="seuemail@exemplo.com"
+  1123→                        required
+  1124→                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+  1125→                      />
+  1126→                    </div>
+  1127→                  </div>
+  1128→
+  1129→                  {/* Dynamic custom fields */}
+  1130→                  {e.formFields && e.formFields.length > 0 && (
+  1131→                    <div className="space-y-4 pt-2">
+  1132→                      <div className="h-px bg-white/[0.06]" />
+  1133→                      {e.formFields.map((field) => {
+  1134→                        const val = customAnswers[field.id] || '';
+  1135→                        const parsedOptions = field.options ? (() => { try { return JSON.parse(field.options); } catch { return []; } })() : [];
+  1136→
+  1137→                        return (
+  1138→                          <div key={field.id}>
+  1139→                            <label htmlFor={`field-${field.id}`} className="block text-sm font-medium text-white/70 mb-2">
+  1140→                              {field.label}
+  1141→                              {field.required && <span className="text-red-400"> *</span>}
+  1142→                            </label>
+  1143→
+  1144→                            {field.fieldType === 'text' && (
+  1145→                              <input
+  1146→                                id={`field-${field.id}`}
+  1147→                                type="text"
+  1148→                                value={val}
+  1149→                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+  1150→                                placeholder={field.placeholder || undefined}
+  1151→                                required={field.required}
+  1152→                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+  1153→                              />
+  1154→                            )}
+  1155→
+  1156→                            {field.fieldType === 'number' && (
+  1157→                              <input
+  1158→                                id={`field-${field.id}`}
+  1159→                                type="number"
+  1160→                                value={val}
+  1161→                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+  1162→                                placeholder={field.placeholder || undefined}
+  1163→                                required={field.required}
+  1164→                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+  1165→                              />
+  1166→                            )}
+  1167→
+  1168→                            {field.fieldType === 'textarea' && (
+  1169→                              <textarea
+  1170→                                id={`field-${field.id}`}
+  1171→                                value={val}
+  1172→                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+  1173→                                placeholder={field.placeholder || undefined}
+  1174→                                required={field.required}
+  1175→                                rows={3}
+  1176→                                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all resize-none"
+  1177→                              />
+  1178→                            )}
+  1179→
+  1180→                            {field.fieldType === 'select' && parsedOptions.length > 0 && (
+  1181→                              <select
+  1182→                                id={`field-${field.id}`}
+  1183→                                value={val}
+  1184→                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+  1185→                                required={field.required}
+  1186→                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all appearance-none cursor-pointer"
+  1187→                                style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+  1188→                              >
+  1189→                                <option value="" disabled className="bg-[#1a1a1a]">{field.placeholder || 'Selecione uma opção...'}</option>
+  1190→                                {parsedOptions.map((opt: string, i: number) => (
+  1191→                                  <option key={i} value={opt} className="bg-[#1a1a1a]">{opt}</option>
+  1192→                                ))}
+  1193→                              </select>
+  1194→                            )}
+  1195→
+  1196→                            {field.fieldType === 'checkbox' && (
+  1197→                              <label htmlFor={`field-${field.id}`} className="flex items-center gap-3 cursor-pointer group py-1">
+  1198→                                <input
+  1199→                                  id={`field-${field.id}`}
+  1200→                                  type="checkbox"
+  1201→                                  checked={val === 'Sim'}
+  1202→                                  onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.checked ? 'Sim' : 'Não' }))}
+  1203→                                  className="h-4 w-4 rounded border-white/20 bg-white/[0.04] text-[#C9A96E] focus:ring-[#C9A96E]/20 cursor-pointer accent-[#C9A96E]"
+  1204→                                />
+  1205→                                <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">
+  1206→                                  {field.placeholder || field.label}
+  1207→                                </span>
+  1208→                              </label>
+  1209→                            )}
+  1210→                          </div>
+  1211→                        );
+  1212→                      })}
+  1213→                    </div>
+  1214→                  )}
+  1215→
+  1216→                  {/* Submit */}
+  1217→                  <button
+  1218→                    type="submit"
+  1219→                    disabled={formSubmitting}
+  1220→                    className="w-full flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-base hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+  1221→                  >
+  1222→                    {formSubmitting ? (
+  1223→                      <>
+  1224→                        <Loader2 className="h-5 w-5 animate-spin" />
+  1225→                        Enviando...
+  1226→                      </>
+  1227→                    ) : (
+  1228→                      <>
+  1229→                        <Send className="h-4 w-4" />
+  1230→                        Cadastrar e Receber Atendimento
+  1231→                      </>
+  1232→                    )}
+  1233→                  </button>
+  1234→
+  1235→                  {/* ★ NEW: Form Trust Signals */}
+  1236→                  <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 pt-1">
+  1237→                    <div className="flex items-center gap-1.5 text-xs text-white/30">
+  1238→                      <Shield className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+  1239→                      <span>Seus dados estão seguros</span>
+  1240→                    </div>
+  1241→                    <div className="flex items-center gap-1.5 text-xs text-white/30">
+  1242→                      <Mail className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+  1243→                      <span>Sem spam</span>
+  1244→                    </div>
+  1245→                    <div className="flex items-center gap-1.5 text-xs text-white/30">
+  1246→                      <Clock className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+  1247→                      <span>Atendimento em até 24h</span>
+  1248→                    </div>
+  1249→                  </div>
+  1250→
+  1251→                  <p className="text-xs text-white/25 text-center">
+  1252→                    Ao se cadastrar, você concorda em receber informações sobre este empreendimento.
+  1253→                  </p>
+  1254→                </form>
+  1255→              </div>
+  1256→            </div>
+  1257→          </div>
+  1258→        </section>
+  1259→      </ScrollReveal>
+  1260→
+  1261→      {/* ★ NEW: FAQ Section ───────────────────────────── */}
+  1262→      <ScrollReveal>
+  1263→        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
+  1264→          <div className="max-w-3xl mx-auto px-4 sm:px-6">
+  1265→            {/* Section header */}
+  1266→            <div className="text-center mb-8 sm:mb-12">
+  1267→              <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#C9A96E] uppercase tracking-widest mb-3">
+  1268→                <MessageSquare className="h-4 w-4" />
+  1269→                Dúvidas Frequentes
+  1270→              </div>
+  1271→              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Perguntas frequentes</h2>
+  1272→            </div>
+  1273→
+  1274→            {/* FAQ accordion */}
+  1275→            <div className="space-y-3">
+  1276→              {faqItems.map((item, idx) => (
+  1277→                <div
+  1278→                  key={idx}
+  1279→                  className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
+  1280→                    faqOpenIndex === idx
+  1281→                      ? 'border-[#C9A96E]/25 bg-[#C9A96E]/[0.04]'
+  1282→                      : 'border-white/[0.06] bg-white/[0.01] hover:border-white/[0.12]'
+  1283→                  }`}
+  1284→                >
+  1285→                  <button
+  1286→                    onClick={() => setFaqOpenIndex(faqOpenIndex === idx ? null : idx)}
+  1287→                    className="w-full flex items-center justify-between gap-4 p-5 sm:p-6 text-left"
+  1288→                  >
+  1289→                    <span className={`text-sm sm:text-[15px] font-semibold transition-colors ${
+  1290→                      faqOpenIndex === idx ? 'text-[#C9A96E]' : 'text-white/80'
+  1291→                    }`}>
+  1292→                      {item.question}
+  1293→                    </span>
+  1294→                    <ChevronDown
+  1295→                      className={`h-5 w-5 flex-shrink-0 transition-transform duration-300 ${
+  1296→                        faqOpenIndex === idx ? 'rotate-180 text-[#C9A96E]' : 'text-white/30'
+  1297→                      }`}
+  1298→                    />
+  1299→                  </button>
+  1300→                  <div
+  1301→                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+  1302→                      faqOpenIndex === idx ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+  1303→                    }`}
+  1304→                  >
+  1305→                    <div className="px-5 sm:px-6 pb-5 sm:pb-6">
+  1306→                      <div className="h-px bg-[#C9A96E]/15 mb-4" />
+  1307→                      <p className="text-sm text-white/60 leading-relaxed">{item.answer}</p>
+  1308→                    </div>
+  1309→                  </div>
+  1310→                </div>
+  1311→              ))}
+  1312→            </div>
+  1313→
+  1314→            {/* CTA after FAQ */}
+  1315→            <div className="mt-8 sm:mt-10 text-center">
+  1316→              <p className="text-sm text-white/40 mb-4">Ainda tem dúvidas?</p>
+  1317→              <a
+  1318→                href={whatsappUrl}
+  1319→                target="_blank"
+  1320→                rel="noopener noreferrer"
+  1321→                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
+  1322→              >
+  1323→                <Phone className="h-4 w-4" />
+  1324→                Fale com um consultor pelo WhatsApp
+  1325→              </a>
+  1326→            </div>
+  1327→          </div>
+  1328→        </section>
+  1329→      </ScrollReveal>
+  1330→
+  1331→      {/* ── Footer ─────────────────────────────────────── */}
+  1332→      <footer className="border-t border-white/[0.06]">
+  1333→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+  1334→          {/* Top row */}
+  1335→          <div className="py-8 sm:py-12 grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-10">
+  1336→            {/* Brand */}
+  1337→            <div>
+  1338→              <a href="/empreendimentos" className="flex items-center gap-3 mb-4 group">
+  1339→                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/15">
+  1340→                  <Building2 className="h-5 w-5 text-white" />
+  1341→                </div>
+  1342→                <span className="text-base font-bold tracking-tight">Empreendimentos</span>
+  1343→              </a>
+  1344→              <p className="text-sm text-white/30 leading-relaxed max-w-xs">
+  1345→                Encontre o imóvel ideal para você e sua família. Qualidade, confiança e atendimento personalizado.
+  1346→              </p>
+  1347→            </div>
+  1348→
+  1349→            {/* Quick links */}
+  1350→            <div>
+  1351→              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Navegação</h4>
+  1352→              <ul className="space-y-2.5">
+  1353→                <li>
+  1354→                  <a href="/empreendimentos" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+  1355→                    Todos os Empreendimentos
+  1356→                  </a>
+  1357→                </li>
+  1358→                <li>
+  1359→                  <a href="#galeria" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+  1360→                    Galeria
+  1361→                  </a>
+  1362→                </li>
+  1363→                <li>
+  1364→                  <a href="#cadastro" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+  1365→                    Cadastre-se
+  1366→                  </a>
+  1367→                </li>
+  1368→              </ul>
+  1369→            </div>
+  1370→
+  1371→            {/* Contact */}
+  1372→            <div>
+  1373→              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Contato</h4>
+  1374→              <div className="space-y-3">
+  1375→                <a
+  1376→                  href={whatsappUrl}
+  1377→                  target="_blank"
+  1378→                  rel="noopener noreferrer"
+  1379→                  className="flex items-center gap-2.5 text-sm text-white/30 hover:text-[#C9A96E] transition-colors"
+  1380→                >
+  1381→                  <div className="h-8 w-8 rounded-lg bg-[#25D366]/10 flex items-center justify-center flex-shrink-0">
+  1382→                    <Phone className="h-3.5 w-3.5 text-[#25D366]" />
+  1383→                  </div>
+  1384→                  WhatsApp
+  1385→                </a>
+  1386→              </div>
+  1387→            </div>
+  1388→          </div>
+  1389→
+  1390→          {/* Bottom bar */}
+  1391→          <div className="border-t border-white/[0.04] py-5 sm:py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+  1392→            <p className="text-xs text-white/20">
+  1393→              &copy; {new Date().getFullYear()} Todos os direitos reservados.
+  1394→            </p>
+  1395→            <p className="text-xs text-white/15">
+  1396→              Todos os valores e informações são sujeitos a alteração sem aviso prévio.
+  1397→            </p>
+  1398→          </div>
+  1399→        </div>
+  1400→      </footer>
+  1401→
+  1402→      {/* ★ NEW: Floating Sticky WhatsApp CTA (Mobile) ─── */}
+  1403→      {showFloatingWhatsApp && (
+  1404→        <div className="fixed bottom-0 left-0 right-0 z-50 sm:hidden animate-slide-up-bar">
+  1405→          <div className="bg-gradient-to-r from-[#C9A96E] to-[#A8893E] shadow-[0_-4px_20px_rgba(201,169,110,0.3)]">
+  1406→            <a
+  1407→              href={whatsappUrl}
+  1408→              target="_blank"
+  1409→              rel="noopener noreferrer"
+  1410→              onClick={() => {
+  1411→                if (typeof window !== 'undefined' && window.CRMPIXEL) {
+  1412→                  window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
+  1413→                }
+  1414→              }}
+  1415→              className="flex items-center justify-center gap-2.5 py-3.5 px-6 text-[#0A0A0A] font-semibold text-sm"
+  1416→            >
+  1417→              {/* WhatsApp SVG icon */}
+  1418→              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+  1419→                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+  1420→              </svg>
+  1421→              Fale com um consultor
+  1422→            </a>
+  1423→          </div>
+  1424→          {/* Safe area bottom for phones with home indicator */}
+  1425→          <div className="h-[env(safe-area-inset-bottom)]" />
+  1426→        </div>
+  1427→      )}
+  1428→
+  1429→      {/* ── Lightbox ───────────────────────────────────── */}
+  1430→      {lightboxOpen && (
+  1431→        <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-2 sm:p-0" onClick={() => setLightboxOpen(false)}>
+  1432→          <button
+  1433→            onClick={() => setLightboxOpen(false)}
+  1434→            className="absolute top-3 right-3 sm:top-5 sm:right-5 text-white/60 hover:text-white z-10 bg-white/10 backdrop-blur-sm rounded-full p-2 sm:p-2.5 transition-colors"
+  1435→          >
+  1436→            <X className="h-6 w-6" />
+  1437→          </button>
+  1438→          <div className="absolute top-3 left-3 sm:top-5 sm:left-5 text-white/60 text-xs sm:text-sm bg-white/10 backdrop-blur-sm px-3 py-1.5 sm:px-4 sm:py-2 rounded-full">
+  1439→            {activeImgIdx + 1} / {images.length}
+  1440→          </div>
+  1441→          <img
+  1442→            src={images[activeImgIdx]?.url}
+  1443→            alt={images[activeImgIdx]?.altText || ''}
+  1444→            className="max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] sm:max-h-[85vh] object-contain rounded-xl"
+  1445→            onClick={(ev) => ev.stopPropagation()}
+  1446→          />
+  1447→          {images.length > 1 && (
+  1448→            <>
+  1449→              <button
+  1450→                onClick={(ev) => { ev.stopPropagation(); goPrev(); }}
+  1451→                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"
+  1452→              >
+  1453→                <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
+  1454→              </button>
+  1455→              <button
+  1456→                onClick={(ev) => { ev.stopPropagation(); goNext(); }}
+  1457→                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"
+  1458→              >
+  1459→                <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
+  1460→              </button>
+  1461→            </>
+  1462→          )}
+  1463→        </div>
+  1464→      )}
+  1465→    </div>
+  1466→  );
+  1467→}
+  1468→
