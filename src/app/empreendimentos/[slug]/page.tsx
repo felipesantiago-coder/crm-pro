@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Building2, MapPin, ArrowLeft, ChevronLeft, ChevronRight,
   X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Share2, Copy, Check, User, Send, AlertCircle,
+  Shield, Star, ChevronDown,
 } from 'lucide-react';
 
 /* ================================================================
@@ -65,6 +66,129 @@ interface Enterprise {
 }
 
 /* ================================================================
+   Custom Components — Scroll Reveal & Counter Animation
+   ================================================================ */
+function ScrollReveal({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.unobserve(el);
+        }
+      },
+      { threshold: 0.08, rootMargin: '0px 0px -40px 0px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={`transition-all duration-700 ease-out ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+      } ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function CounterAnimation({ target, duration = 2000 }: { target: number; duration?: number }) {
+  const [count, setCount] = useState(0);
+  const ref = useRef<HTMLSpanElement>(null);
+  const hasAnimated = useRef(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !hasAnimated.current) {
+          hasAnimated.current = true;
+          const startTime = performance.now();
+          const animate = (currentTime: number) => {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            // Ease-out cubic
+            const eased = 1 - Math.pow(1 - progress, 3);
+            setCount(Math.floor(eased * target));
+            if (progress < 1) {
+              requestAnimationFrame(animate);
+            } else {
+              setCount(target);
+            }
+          };
+          requestAnimationFrame(animate);
+          observer.unobserve(el);
+        }
+      },
+      { threshold: 0.5 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [target, duration]);
+
+  return <span ref={ref}>{count}</span>;
+}
+
+/* ================================================================
+   FAQ Data
+   ================================================================ */
+const faqItems = [
+  {
+    question: 'Como funciona o atendimento personalizado?',
+    answer: 'Após preencher o formulário, um consultor exclusivo entrará em contato em até 24 horas. Você receberá atendimento individualizado com informações detalhadas sobre plantas, valores, condições de pagamento e agendamento de visita presencial ao empreendimento.',
+  },
+  {
+    question: 'Posso financiar o imóvel?',
+    answer: 'Sim! Oferecemos suporte completo para financiamento bancário. Trabalhamos com os principais bancos do mercado e nossa equipe auxilia em todo o processo, desde a simulação até a aprovação do crédito, garantindo as melhores condições para você.',
+  },
+  {
+    question: 'Quais documentos preciso para visitar o empreendimento?',
+    answer: 'Para agendar uma visita, basta preencher o formulário com seus dados. Para a visita presencial, recomendamos levar um documento de identificação com foto. Nosso consultor entrará em contato para confirmar o melhor horário e ponto de encontro.',
+  },
+  {
+    question: 'O atendimento é exclusivo para este empreendimento?',
+    answer: 'Sim, você terá um consultor dedicado que conhece todos os detalhes deste empreendimento. Nossa equipe é especializada e preparada para tirar todas as suas dúvidas sobre o projeto, localização, lazer, plantas e condições comerciais.',
+  },
+  {
+    question: 'Posso agendar uma visita presencial?',
+    answer: 'Com certeza! Após o cadastro, nosso consultor entrará em contato para agendar a visita no melhor horário para você. Oferecemos visitas presenciais guiadas ao canteiro de obras ou ao empreendimento já entregue, dependendo do status do projeto.',
+  },
+];
+
+/* ================================================================
+   Testimonials Data
+   ================================================================ */
+const testimonials = [
+  {
+    name: 'Ricardo M.',
+    role: 'Investidor Imobiliário',
+    quote: 'O atendimento foi excepcional. A equipe me ajudou a encontrar o apartamento perfeito para minha família. Todo o processo foi transparente e profissional, do primeiro contato à entrega das chaves.',
+    rating: 5,
+  },
+  {
+    name: 'Ana Carolina S.',
+    role: 'Advogada',
+    quote: 'Já tinha visitado vários empreendimentos, mas foi aqui que encontrei qualidade de verdade. As plantas são incríveis, o lazer é completo e a localização é privilegiada. Superou todas as minhas expectativas.',
+    rating: 5,
+  },
+  {
+    name: 'Dr. Paulo R.',
+    role: 'Médico',
+    quote: 'A localização é impecável e o investimento se justifica pela qualidade construtiva e infraestrutura do condomínio. Estou muito satisfeito com a aquisição e com todo o suporte que recebi durante o processo.',
+    rating: 5,
+  },
+];
+
+/* ================================================================
    Page
    ================================================================ */
 export default function LandingPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -85,6 +209,12 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+
+  // NEW: Floating WhatsApp bar visibility (mobile)
+  const [showFloatingWhatsApp, setShowFloatingWhatsApp] = useState(false);
+
+  // NEW: FAQ accordion state
+  const [faqOpenIndex, setFaqOpenIndex] = useState<number | null>(null);
 
   useEffect(() => {
     params.then((p) => setSlug(p.slug));
@@ -129,6 +259,15 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
       })
       .catch(() => { /* silent — fallback to generic WhatsApp */ });
   }, [slug]);
+
+  // NEW: Floating WhatsApp bar — show after scrolling past hero
+  useEffect(() => {
+    const onScroll = () => {
+      setShowFloatingWhatsApp(window.scrollY > window.innerHeight * 0.4);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const whatsappNumber = queueUser?.userPhone
     ? queueUser.userPhone.replace(/\D/g, '')
@@ -297,11 +436,36 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
   const displayTitle = e.landingTitle || e.name;
   const displaySubtitle = e.landingSubtitle || info?.summary?.slice(0, 120) || null;
 
+  // NEW: Determine if urgency badge should show
+  const showUrgencyBadge = status === 'Lançamento' || status === 'Em Construção';
+
   /* ================================================================
      Render
      ================================================================ */
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white overflow-x-hidden">
+
+      {/* ── Custom Keyframes ────────────────────────────── */}
+      <style>{`
+        @keyframes pulse-urgency {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
+        }
+        .animate-pulse-urgency { animation: pulse-urgency 2s ease-in-out infinite; }
+
+        @keyframes slide-up-bar {
+          from { transform: translateY(100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        .animate-slide-up-bar { animation: slide-up-bar 0.4s ease-out forwards; }
+
+        @keyframes fade-in-up {
+          from { opacity: 0; transform: translateY(24px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fade-in-up 0.6s ease-out forwards; }
+      `}</style>
+
       {/* ── Navigation ─────────────────────────────────── */}
       <nav
         className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
@@ -394,6 +558,16 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                 {e.region}
               </span>
             )}
+            {/* ★ NEW: Urgency Badge — only for Lançamento or Em Construção */}
+            {showUrgencyBadge && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 animate-pulse-urgency">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400" />
+                </span>
+                Vagas limitadas
+              </span>
+            )}
           </div>
 
           {/* Title */}
@@ -416,267 +590,322 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
         </div>
       </section>
 
-      {/* ── Gallery Section ────────────────────────────── */}
-      {images.length > 0 && (
-        <section id="galeria" className="py-12 sm:py-28 border-t border-white/[0.04]">
+      {/* ★ NEW: Statistics / Trust Counters Section ─────── */}
+      <ScrollReveal>
+        <section className="py-10 sm:py-20 border-t border-white/[0.04]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            <div className="flex items-center justify-between mb-6 sm:mb-10">
-              <div>
-                <h2 className="text-2xl sm:text-3xl font-bold">Galeria</h2>
-                <p className="text-sm text-white/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''} disponíve{images.length !== 1 ? 'is' : 'l'}</p>
-              </div>
-              {images.length > 1 && (
-                <div className="flex items-center gap-2">
-                  <button onClick={goPrev} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
-                    <ChevronLeft className="h-5 w-5" />
-                  </button>
-                  <button onClick={goNext} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
-                    <ChevronRight className="h-5 w-5" />
-                  </button>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+              {/* Stat 1 */}
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="relative">
+                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
+                    <CounterAnimation target={15} />+
+                  </p>
+                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">Anos de Experiência</p>
                 </div>
-              )}
+              </div>
+              {/* Stat 2 */}
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="relative">
+                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
+                    <CounterAnimation target={500} />+
+                  </p>
+                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">Imóveis Comercializados</p>
+                </div>
+              </div>
+              {/* Stat 3 */}
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="relative">
+                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
+                    <CounterAnimation target={98} />%
+                  </p>
+                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">Clientes Satisfeitos</p>
+                </div>
+              </div>
+              {/* Stat 4 */}
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-8 text-center overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-[#C9A96E]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="relative">
+                  <p className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#C9A96E] tracking-tight">
+                    R$ <CounterAnimation target={2} /> Bilhões+
+                  </p>
+                  <p className="text-xs sm:text-sm text-white/50 mt-2 sm:mt-3 font-medium">em Vendas</p>
+                </div>
+              </div>
             </div>
-
-            {/* Main image */}
-            <div
-              className="relative aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
-              onClick={() => setLightboxOpen(true)}
-            >
-              <img
-                src={images[activeImgIdx]?.url || heroImage || ''}
-                alt={images[activeImgIdx]?.altText || e.name}
-                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
-              />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="bg-black/50 backdrop-blur-sm rounded-full p-4">
-                  <ZoomIn className="h-6 w-6 text-white" />
-                </div>
-              </div>
-              {images.length > 1 && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full">
-                  {activeImgIdx + 1} / {images.length}
-                </div>
-              )}
-            </div>
-
-            {/* Thumbnails */}
-            {images.length > 1 && (
-              <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
-                {images.map((img, idx) => (
-                  <button
-                    key={img.id}
-                    onClick={() => setActiveImgIdx(idx)}
-                    className={`flex-shrink-0 w-20 h-14 sm:w-28 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${
-                      idx === activeImgIdx
-                        ? 'border-[#C9A96E] ring-2 ring-[#C9A96E]/20'
-                        : 'border-transparent opacity-50 hover:opacity-80'
-                    }`}
-                  >
-                    <img src={img.url} alt={img.altText || ''} className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         </section>
-      )}
+      </ScrollReveal>
+
+      {/* ── Gallery Section ────────────────────────────── */}
+      <ScrollReveal>
+        {images.length > 0 && (
+          <section id="galeria" className="py-12 sm:py-28 border-t border-white/[0.04]">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <div className="flex items-center justify-between mb-6 sm:mb-10">
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-bold">Galeria</h2>
+                  <p className="text-sm text-white/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''} disponíve{images.length !== 1 ? 'is' : 'l'}</p>
+                </div>
+                {images.length > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button onClick={goPrev} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <button onClick={goNext} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Main image */}
+              <div
+                className="relative aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
+                onClick={() => setLightboxOpen(true)}
+              >
+                <img
+                  src={images[activeImgIdx]?.url || heroImage || ''}
+                  alt={images[activeImgIdx]?.altText || e.name}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="bg-black/50 backdrop-blur-sm rounded-full p-4">
+                    <ZoomIn className="h-6 w-6 text-white" />
+                  </div>
+                </div>
+                {images.length > 1 && (
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full">
+                    {activeImgIdx + 1} / {images.length}
+                  </div>
+                )}
+              </div>
+
+              {/* Thumbnails */}
+              {images.length > 1 && (
+                <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
+                  {images.map((img, idx) => (
+                    <button
+                      key={img.id}
+                      onClick={() => setActiveImgIdx(idx)}
+                      className={`flex-shrink-0 w-20 h-14 sm:w-28 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${
+                        idx === activeImgIdx
+                          ? 'border-[#C9A96E] ring-2 ring-[#C9A96E]/20'
+                          : 'border-transparent opacity-50 hover:opacity-80'
+                      }`}
+                    >
+                      <img src={img.url} alt={img.altText || ''} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+      </ScrollReveal>
 
       {/* ── Details Section ────────────────────────────── */}
-      {hasInfo && info! && (
-        <section className="py-12 sm:py-28 border-t border-white/[0.04]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            {/* Section header */}
-            <div className="flex items-center gap-4 mb-8 sm:mb-12">
-              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight whitespace-nowrap">Detalhes do Empreendimento</h2>
-              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
-            </div>
-
-            {/* Summary — Sobre o Empreendimento */}
-            {info.summary && (
-              <div className="mb-8 sm:mb-12">
-                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.08] via-[#C9A96E]/[0.03] to-transparent border border-[#C9A96E]/15 p-6 sm:p-8 lg:p-10">
-                  <div className="absolute top-0 right-0 w-48 h-48 bg-[#C9A96E]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
-                  <div className="relative">
-                    <div className="flex items-center gap-2.5 mb-4">
-                      <div className="h-1.5 w-8 rounded-full bg-[#C9A96E]" />
-                      <span className="text-xs font-semibold text-[#C9A96E] uppercase tracking-widest">Sobre o empreendimento</span>
-                    </div>
-                    <p className="text-sm sm:text-[15px] text-white/75 leading-[1.8] max-w-4xl">{info.summary}</p>
-                  </div>
-                </div>
+      <ScrollReveal>
+        {hasInfo && info! && (
+          <section className="py-12 sm:py-28 border-t border-white/[0.04]">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              {/* Section header */}
+              <div className="flex items-center gap-4 mb-8 sm:mb-12">
+                <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight whitespace-nowrap">Detalhes do Empreendimento</h2>
+                <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
               </div>
-            )}
 
-            {/* Info blocks — stacked, full-width, each with clear visual identity */}
-            <div className="space-y-4 sm:space-y-5">
-
-              {/* Location */}
-              {(info.location.address || info.location.neighborhood || info.location.city) && (
-                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
-                  <div className="flex items-stretch">
-                    {/* Icon strip */}
-                    <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-blue-500/15 to-blue-500/5 flex items-center justify-center">
-                      <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                        <Navigation className="h-4 w-4 text-blue-400" />
+              {/* Summary — Sobre o Empreendimento */}
+              {info.summary && (
+                <div className="mb-8 sm:mb-12">
+                  <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.08] via-[#C9A96E]/[0.03] to-transparent border border-[#C9A96E]/15 p-6 sm:p-8 lg:p-10">
+                    <div className="absolute top-0 right-0 w-48 h-48 bg-[#C9A96E]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                    <div className="relative">
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <div className="h-1.5 w-8 rounded-full bg-[#C9A96E]" />
+                        <span className="text-xs font-semibold text-[#C9A96E] uppercase tracking-widest">Sobre o empreendimento</span>
                       </div>
-                    </div>
-                    {/* Content */}
-                    <div className="flex-1 p-5 sm:p-6">
-                      <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Localização</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
-                        {info.location.address && (
-                          <div>
-                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Endereço</p>
-                            <p className="text-sm text-white/70 leading-relaxed">{info.location.address}</p>
-                          </div>
-                        )}
-                        {(info.location.neighborhood || info.location.city) && (
-                          <div>
-                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Região</p>
-                            <p className="text-sm text-white/70 leading-relaxed">
-                              {[info.location.neighborhood, info.location.city, info.location.state].filter(Boolean).join(', ')}
-                            </p>
-                          </div>
-                        )}
-                        {info.location.additionalInfo && (
-                          <div className="sm:col-span-2">
-                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Referências</p>
-                            <p className="text-sm text-white/50 leading-relaxed">{info.location.additionalInfo}</p>
-                          </div>
-                        )}
-                      </div>
+                      <p className="text-sm sm:text-[15px] text-white/75 leading-[1.8] max-w-4xl">{info.summary}</p>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Builder */}
-              {info.builder && (
-                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
-                  <div className="flex items-stretch">
-                    <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-orange-500/15 to-orange-500/5 flex items-center justify-center">
-                      <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
-                        <HardHat className="h-4 w-4 text-orange-400" />
-                      </div>
-                    </div>
-                    <div className="flex-1 p-5 sm:p-6">
-                      <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Construtora</h3>
-                      <p className="text-sm sm:text-[15px] text-white/70 leading-relaxed max-w-3xl">{info.builder}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* Info blocks — stacked, full-width, each with clear visual identity */}
+              <div className="space-y-4 sm:space-y-5">
 
-              {/* Architecture / Landscaping */}
-              {(info.architecture || info.landscaping) && (
-                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
-                  <div className="flex items-stretch">
-                    <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-violet-500/15 to-violet-500/5 flex items-center justify-center">
-                      <div className="h-9 w-9 rounded-xl bg-violet-500/20 flex items-center justify-center">
-                        <Palette className="h-4 w-4 text-violet-400" />
+                {/* Location */}
+                {(info.location.address || info.location.neighborhood || info.location.city) && (
+                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                    <div className="flex items-stretch">
+                      {/* Icon strip */}
+                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-blue-500/15 to-blue-500/5 flex items-center justify-center">
+                        <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                          <Navigation className="h-4 w-4 text-blue-400" />
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex-1 p-5 sm:p-6">
-                      <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Projeto</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
-                        {info.architecture && (
-                          <div>
-                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Arquitetura</p>
-                            <p className="text-sm text-white/70 leading-relaxed">{info.architecture}</p>
-                          </div>
-                        )}
-                        {info.landscaping && (
-                          <div>
-                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Paisagismo</p>
-                            <p className="text-sm text-white/70 leading-relaxed">{info.landscaping}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Apartment Types */}
-            {info.apartmentTypes && info.apartmentTypes.length > 0 && (
-              <div className="mt-10 sm:mt-14">
-                <div className="flex items-center gap-3 mb-6 sm:mb-8">
-                  <div className="h-9 w-9 rounded-xl bg-emerald-500/15 flex items-center justify-center">
-                    <Building2 className="h-4 w-4 text-emerald-400" />
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-semibold">Tipos de Unidades</h3>
-                  <span className="text-xs text-white/25 font-medium ml-auto">{info.apartmentTypes.length} tipo{info.apartmentTypes.length !== 1 ? 's' : ''} disponíve{info.apartmentTypes.length !== 1 ? 'is' : 'l'}</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {info.apartmentTypes.map((apt, idx) => {
-                    const priceInDesc = apt.description?.match(/R\$[\d.,]+/);
-                    return (
-                      <div
-                        key={idx}
-                        className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-emerald-500/20 hover:bg-white/[0.03] transition-all duration-300 overflow-hidden"
-                      >
-                        {/* Top accent bar */}
-                        <div className="h-0.5 bg-gradient-to-r from-emerald-500/40 to-transparent" />
-                        <div className="p-5 sm:p-6">
-                          <div className="flex items-start justify-between gap-3 mb-4">
-                            <h4 className="text-sm font-semibold text-white/90 leading-tight">{apt.name}</h4>
-                            {priceInDesc && (
-                              <span className="text-xs font-bold text-[#C9A96E] whitespace-nowrap flex-shrink-0 bg-[#C9A96E]/10 px-2.5 py-1 rounded-lg">
-                                {priceInDesc[0]}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-5 text-xs text-white/50 mb-2">
-                            {apt.area && (
-                              <span className="flex items-center gap-1.5">
-                                <Ruler className="h-3.5 w-3.5 text-white/30" />{apt.area}
-                              </span>
-                            )}
-                            {apt.bedrooms && (
-                              <span className="flex items-center gap-1.5">
-                                <BedDouble className="h-3.5 w-3.5 text-white/30" />{apt.bedrooms}
-                              </span>
-                            )}
-                          </div>
-                          {apt.description && (
-                            <p className="text-xs text-white/40 mt-3 leading-relaxed">{apt.description}</p>
+                      {/* Content */}
+                      <div className="flex-1 p-5 sm:p-6">
+                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Localização</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+                          {info.location.address && (
+                            <div>
+                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Endereço</p>
+                              <p className="text-sm text-white/70 leading-relaxed">{info.location.address}</p>
+                            </div>
+                          )}
+                          {(info.location.neighborhood || info.location.city) && (
+                            <div>
+                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Região</p>
+                              <p className="text-sm text-white/70 leading-relaxed">
+                                {[info.location.neighborhood, info.location.city, info.location.state].filter(Boolean).join(', ')}
+                              </p>
+                            </div>
+                          )}
+                          {info.location.additionalInfo && (
+                            <div className="sm:col-span-2">
+                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Referências</p>
+                              <p className="text-sm text-white/50 leading-relaxed">{info.location.additionalInfo}</p>
+                            </div>
                           )}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Differentials */}
-            {info.differentials && info.differentials.length > 0 && (
-              <div className="mt-10 sm:mt-14">
-                <div className="flex items-center gap-3 mb-6 sm:mb-8">
-                  <div className="h-9 w-9 rounded-xl bg-[#C9A96E]/15 flex items-center justify-center">
-                    <Sparkles className="h-4 w-4 text-[#C9A96E]" />
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-semibold">Diferenciais</h3>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {info.differentials.map((d, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-3 px-4 sm:px-5 py-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:border-[#C9A96E]/20 transition-colors"
-                    >
-                      <CheckCircle2 className="h-4 w-4 text-[#C9A96E] flex-shrink-0" />
-                      <span className="text-sm text-white/70">{d}</span>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
+
+                {/* Builder */}
+                {info.builder && (
+                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                    <div className="flex items-stretch">
+                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-orange-500/15 to-orange-500/5 flex items-center justify-center">
+                        <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
+                          <HardHat className="h-4 w-4 text-orange-400" />
+                        </div>
+                      </div>
+                      <div className="flex-1 p-5 sm:p-6">
+                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Construtora</h3>
+                        <p className="text-sm sm:text-[15px] text-white/70 leading-relaxed max-w-3xl">{info.builder}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Architecture / Landscaping */}
+                {(info.architecture || info.landscaping) && (
+                  <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                    <div className="flex items-stretch">
+                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-violet-500/15 to-violet-500/5 flex items-center justify-center">
+                        <div className="h-9 w-9 rounded-xl bg-violet-500/20 flex items-center justify-center">
+                          <Palette className="h-4 w-4 text-violet-400" />
+                        </div>
+                      </div>
+                      <div className="flex-1 p-5 sm:p-6">
+                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Projeto</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+                          {info.architecture && (
+                            <div>
+                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Arquitetura</p>
+                              <p className="text-sm text-white/70 leading-relaxed">{info.architecture}</p>
+                            </div>
+                          )}
+                          {info.landscaping && (
+                            <div>
+                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Paisagismo</p>
+                              <p className="text-sm text-white/70 leading-relaxed">{info.landscaping}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
               </div>
-            )}
-          </div>
-        </section>
-      )}
+
+              {/* Apartment Types */}
+              {info.apartmentTypes && info.apartmentTypes.length > 0 && (
+                <div className="mt-10 sm:mt-14">
+                  <div className="flex items-center gap-3 mb-6 sm:mb-8">
+                    <div className="h-9 w-9 rounded-xl bg-emerald-500/15 flex items-center justify-center">
+                      <Building2 className="h-4 w-4 text-emerald-400" />
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-semibold">Tipos de Unidades</h3>
+                    <span className="text-xs text-white/25 font-medium ml-auto">{info.apartmentTypes.length} tipo{info.apartmentTypes.length !== 1 ? 's' : ''} disponíve{info.apartmentTypes.length !== 1 ? 'is' : 'l'}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {info.apartmentTypes.map((apt, idx) => {
+                      const priceInDesc = apt.description?.match(/R\$[\d.,]+/);
+                      return (
+                        <div
+                          key={idx}
+                          className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-emerald-500/20 hover:bg-white/[0.03] transition-all duration-300 overflow-hidden"
+                        >
+                          {/* Top accent bar */}
+                          <div className="h-0.5 bg-gradient-to-r from-emerald-500/40 to-transparent" />
+                          <div className="p-5 sm:p-6">
+                            <div className="flex items-start justify-between gap-3 mb-4">
+                              <h4 className="text-sm font-semibold text-white/90 leading-tight">{apt.name}</h4>
+                              {priceInDesc && (
+                                <span className="text-xs font-bold text-[#C9A96E] whitespace-nowrap flex-shrink-0 bg-[#C9A96E]/10 px-2.5 py-1 rounded-lg">
+                                  {priceInDesc[0]}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-5 text-xs text-white/50 mb-2">
+                              {apt.area && (
+                                <span className="flex items-center gap-1.5">
+                                  <Ruler className="h-3.5 w-3.5 text-white/30" />{apt.area}
+                                </span>
+                              )}
+                              {apt.bedrooms && (
+                                <span className="flex items-center gap-1.5">
+                                  <BedDouble className="h-3.5 w-3.5 text-white/30" />{apt.bedrooms}
+                                </span>
+                              )}
+                            </div>
+                            {apt.description && (
+                              <p className="text-xs text-white/40 mt-3 leading-relaxed">{apt.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Differentials */}
+              {info.differentials && info.differentials.length > 0 && (
+                <div className="mt-10 sm:mt-14">
+                  <div className="flex items-center gap-3 mb-6 sm:mb-8">
+                    <div className="h-9 w-9 rounded-xl bg-[#C9A96E]/15 flex items-center justify-center">
+                      <Sparkles className="h-4 w-4 text-[#C9A96E]" />
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-semibold">Diferenciais</h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {info.differentials.map((d, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-3 px-4 sm:px-5 py-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:border-[#C9A96E]/20 transition-colors"
+                      >
+                        <CheckCircle2 className="h-4 w-4 text-[#C9A96E] flex-shrink-0" />
+                        <span className="text-sm text-white/70">{d}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+      </ScrollReveal>
 
       {/* ── Fallback: Landing Description ──────────────── */}
       {!hasInfo && e.landingDescription && (
@@ -695,230 +924,409 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
         </section>
       )}
 
-      {/* ── Registration Form Section ───────────────────── */}
-      <section id="cadastro" className="py-12 sm:py-28 border-t border-white/[0.04]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-start">
-            {/* Left side — CTA text */}
-            <div className="order-2 lg:order-1">
-              <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-2xl bg-[#C9A96E]/20 flex items-center justify-center mb-4 sm:mb-6">
-                <MessageSquare className="h-5 w-5 sm:h-7 sm:w-7 text-[#C9A96E]" />
-              </div>
-              <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">
-                Interessado em <span className="text-[#C9A96E]">{e.name}</span>?
-              </h2>
-              <p className="text-white/50 max-w-lg text-sm sm:text-base leading-relaxed mb-6 sm:mb-8">
-                Preencha o formulário ao lado e receba atendimento personalizado sobre este empreendimento. Nossa equipe entrará em contato com você em breve para agendar uma visita ou tirar todas as suas dúvidas.
-              </p>
+      {/* ★ NEW: Lead Magnet CTA ───────────────────────── */}
+      <ScrollReveal>
+        <section className="py-10 sm:py-16">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6">
+            <div className="relative overflow-hidden rounded-2xl border border-[#C9A96E]/20">
+              {/* Background gradient */}
+              <div className="absolute inset-0 bg-gradient-to-r from-[#C9A96E]/[0.12] via-[#C9A96E]/[0.06] to-[#C9A96E]/[0.02]" />
+              <div className="absolute top-0 right-0 w-64 h-64 bg-[#C9A96E]/[0.06] rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none" />
 
-              {/* Quick WhatsApp */}
+              <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-8 p-6 sm:p-10">
+                <div className="text-center sm:text-left">
+                  <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#C9A96E] uppercase tracking-widest mb-3">
+                    <Sparkles className="h-4 w-4" />
+                    Material Exclusivo
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-bold mb-2">
+                    Receba plantas, valores e condições especiais
+                  </h3>
+                  <p className="text-sm text-white/50 max-w-lg">
+                    Acesse o material completo do empreendimento diretamente no seu e-mail. Plantas atualizadas, tabela de preços e condições de pagamento exclusivas.
+                  </p>
+                </div>
+                <a
+                  href="#cadastro"
+                  className="flex-shrink-0 inline-flex items-center gap-2.5 px-8 py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-sm hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/25"
+                >
+                  <Mail className="h-4 w-4" />
+                  Quero Receber Agora
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+      </ScrollReveal>
+
+      {/* ★ NEW: Social Proof / Testimonials Section ───── */}
+      <ScrollReveal>
+        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+            {/* Section header */}
+            <div className="flex items-center gap-4 mb-8 sm:mb-12">
+              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+              <div className="text-center">
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">O que dizem nossos clientes</h2>
+                <p className="text-sm text-white/40 mt-1">Depoimentos reais de quem já adquiriu conosco</p>
+              </div>
+              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+            </div>
+
+            {/* Testimonials grid (desktop) / scroll (mobile) */}
+            <div className="flex gap-5 sm:gap-6 overflow-x-auto pb-4 sm:pb-0 -mx-4 sm:mx-0 px-4 sm:px-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 snap-x snap-mandatory sm:snap-none">
+              {testimonials.map((t, idx) => (
+                <div
+                  key={idx}
+                  className="flex-shrink-0 w-[300px] sm:w-auto snap-start"
+                >
+                  <div className="h-full rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/15 p-6 sm:p-8 transition-colors duration-300">
+                    {/* Gold quote mark */}
+                    <div className="text-[#C9A96E]/30 text-5xl leading-none font-serif mb-2 select-none">&ldquo;</div>
+
+                    {/* Star rating */}
+                    <div className="flex items-center gap-0.5 mb-4">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star
+                          key={i}
+                          className={`h-4 w-4 ${i < t.rating ? 'text-[#C9A96E] fill-[#C9A96E]' : 'text-white/15'}`}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Quote text */}
+                    <p className="text-sm text-white/65 leading-relaxed mb-6">{t.quote}</p>
+
+                    {/* Author */}
+                    <div className="flex items-center gap-3 pt-4 border-t border-white/[0.06]">
+                      <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#C9A96E]/30 to-[#C9A96E]/10 flex items-center justify-center">
+                        <span className="text-sm font-bold text-[#C9A96E]">{t.name.charAt(0)}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white/80">{t.name}</p>
+                        <p className="text-xs text-white/35">{t.role}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </ScrollReveal>
+
+      {/* ── Registration Form Section ───────────────────── */}
+      <ScrollReveal>
+        <section id="cadastro" className="py-12 sm:py-28 border-t border-white/[0.04]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+            <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-start">
+              {/* Left side — CTA text */}
+              <div className="order-2 lg:order-1">
+                <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-2xl bg-[#C9A96E]/20 flex items-center justify-center mb-4 sm:mb-6">
+                  <MessageSquare className="h-5 w-5 sm:h-7 sm:w-7 text-[#C9A96E]" />
+                </div>
+                <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">
+                  Interessado em <span className="text-[#C9A96E]">{e.name}</span>?
+                </h2>
+                <p className="text-white/50 max-w-lg text-sm sm:text-base leading-relaxed mb-6 sm:mb-8">
+                  Preencha o formulário ao lado e receba atendimento personalizado sobre este empreendimento. Nossa equipe entrará em contato com você em breve para agendar uma visita ou tirar todas as suas dúvidas.
+                </p>
+
+                {/* Quick WhatsApp */}
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    if (typeof window !== 'undefined' && window.CRMPIXEL) {
+                      window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
+                    }
+                  }}
+                  className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
+                >
+                  <Phone className="h-4 w-4" />
+                  Prefere o WhatsApp? Fale agora
+                </a>
+              </div>
+
+              {/* Right side — Form */}
+              <div className="relative order-1 lg:order-2">
+                <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/10 via-transparent to-[#C9A96E]/5 rounded-3xl blur-xl" />
+                <form
+                  onSubmit={handleFormSubmit}
+                  className="relative z-10 rounded-2xl bg-white/[0.03] border border-white/[0.08] p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
+                >
+                  <div className="mb-2">
+                    <h3 className="text-xl font-bold">Cadastro</h3>
+                    <p className="text-sm text-white/40 mt-1">Preencha seus dados para receber atendimento</p>
+                  </div>
+
+                  {/* Error */}
+                  {formError && (
+                    <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+                      <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-red-300">{formError}</p>
+                    </div>
+                  )}
+
+                  {/* Name */}
+                  <div>
+                    <label htmlFor="form-name" className="block text-sm font-medium text-white/70 mb-2">
+                      Nome Completo <span className="text-red-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                      <input
+                        id="form-name"
+                        type="text"
+                        value={formName}
+                        onChange={(ev) => setFormName(ev.target.value)}
+                        placeholder="Seu nome completo"
+                        required
+                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Phone */}
+                  <div>
+                    <label htmlFor="form-phone" className="block text-sm font-medium text-white/70 mb-2">
+                      Telefone <span className="text-red-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                      <input
+                        id="form-phone"
+                        type="tel"
+                        value={formPhone}
+                        onChange={(ev) => handlePhoneChange(ev.target.value)}
+                        placeholder="(11) 99999-9999"
+                        required
+                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label htmlFor="form-email" className="block text-sm font-medium text-white/70 mb-2">
+                      E-mail <span className="text-red-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                      <input
+                        id="form-email"
+                        type="email"
+                        value={formEmail}
+                        onChange={(ev) => setFormEmail(ev.target.value)}
+                        placeholder="seuemail@exemplo.com"
+                        required
+                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Dynamic custom fields */}
+                  {e.formFields && e.formFields.length > 0 && (
+                    <div className="space-y-4 pt-2">
+                      <div className="h-px bg-white/[0.06]" />
+                      {e.formFields.map((field) => {
+                        const val = customAnswers[field.id] || '';
+                        const parsedOptions = field.options ? (() => { try { return JSON.parse(field.options); } catch { return []; } })() : [];
+
+                        return (
+                          <div key={field.id}>
+                            <label htmlFor={`field-${field.id}`} className="block text-sm font-medium text-white/70 mb-2">
+                              {field.label}
+                              {field.required && <span className="text-red-400"> *</span>}
+                            </label>
+
+                            {field.fieldType === 'text' && (
+                              <input
+                                id={`field-${field.id}`}
+                                type="text"
+                                value={val}
+                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                                placeholder={field.placeholder || undefined}
+                                required={field.required}
+                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                              />
+                            )}
+
+                            {field.fieldType === 'number' && (
+                              <input
+                                id={`field-${field.id}`}
+                                type="number"
+                                value={val}
+                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                                placeholder={field.placeholder || undefined}
+                                required={field.required}
+                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                              />
+                            )}
+
+                            {field.fieldType === 'textarea' && (
+                              <textarea
+                                id={`field-${field.id}`}
+                                value={val}
+                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                                placeholder={field.placeholder || undefined}
+                                required={field.required}
+                                rows={3}
+                                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all resize-none"
+                              />
+                            )}
+
+                            {field.fieldType === 'select' && parsedOptions.length > 0 && (
+                              <select
+                                id={`field-${field.id}`}
+                                value={val}
+                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                                required={field.required}
+                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all appearance-none cursor-pointer"
+                                style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                              >
+                                <option value="" disabled className="bg-[#1a1a1a]">{field.placeholder || 'Selecione uma opção...'}</option>
+                                {parsedOptions.map((opt: string, i: number) => (
+                                  <option key={i} value={opt} className="bg-[#1a1a1a]">{opt}</option>
+                                ))}
+                              </select>
+                            )}
+
+                            {field.fieldType === 'checkbox' && (
+                              <label htmlFor={`field-${field.id}`} className="flex items-center gap-3 cursor-pointer group py-1">
+                                <input
+                                  id={`field-${field.id}`}
+                                  type="checkbox"
+                                  checked={val === 'Sim'}
+                                  onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.checked ? 'Sim' : 'Não' }))}
+                                  className="h-4 w-4 rounded border-white/20 bg-white/[0.04] text-[#C9A96E] focus:ring-[#C9A96E]/20 cursor-pointer accent-[#C9A96E]"
+                                />
+                                <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">
+                                  {field.placeholder || field.label}
+                                </span>
+                              </label>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Submit */}
+                  <button
+                    type="submit"
+                    disabled={formSubmitting}
+                    className="w-full flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-base hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                  >
+                    {formSubmitting ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        Cadastrar e Receber Atendimento
+                      </>
+                    )}
+                  </button>
+
+                  {/* ★ NEW: Form Trust Signals */}
+                  <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 pt-1">
+                    <div className="flex items-center gap-1.5 text-xs text-white/30">
+                      <Shield className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+                      <span>Seus dados estão seguros</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-white/30">
+                      <Mail className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+                      <span>Sem spam</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-white/30">
+                      <Clock className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+                      <span>Atendimento em até 24h</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-white/25 text-center">
+                    Ao se cadastrar, você concorda em receber informações sobre este empreendimento.
+                  </p>
+                </form>
+              </div>
+            </div>
+          </div>
+        </section>
+      </ScrollReveal>
+
+      {/* ★ NEW: FAQ Section ───────────────────────────── */}
+      <ScrollReveal>
+        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6">
+            {/* Section header */}
+            <div className="text-center mb-8 sm:mb-12">
+              <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#C9A96E] uppercase tracking-widest mb-3">
+                <MessageSquare className="h-4 w-4" />
+                Dúvidas Frequentes
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Perguntas frequentes</h2>
+            </div>
+
+            {/* FAQ accordion */}
+            <div className="space-y-3">
+              {faqItems.map((item, idx) => (
+                <div
+                  key={idx}
+                  className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
+                    faqOpenIndex === idx
+                      ? 'border-[#C9A96E]/25 bg-[#C9A96E]/[0.04]'
+                      : 'border-white/[0.06] bg-white/[0.01] hover:border-white/[0.12]'
+                  }`}
+                >
+                  <button
+                    onClick={() => setFaqOpenIndex(faqOpenIndex === idx ? null : idx)}
+                    className="w-full flex items-center justify-between gap-4 p-5 sm:p-6 text-left"
+                  >
+                    <span className={`text-sm sm:text-[15px] font-semibold transition-colors ${
+                      faqOpenIndex === idx ? 'text-[#C9A96E]' : 'text-white/80'
+                    }`}>
+                      {item.question}
+                    </span>
+                    <ChevronDown
+                      className={`h-5 w-5 flex-shrink-0 transition-transform duration-300 ${
+                        faqOpenIndex === idx ? 'rotate-180 text-[#C9A96E]' : 'text-white/30'
+                      }`}
+                    />
+                  </button>
+                  <div
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                      faqOpenIndex === idx ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                    }`}
+                  >
+                    <div className="px-5 sm:px-6 pb-5 sm:pb-6">
+                      <div className="h-px bg-[#C9A96E]/15 mb-4" />
+                      <p className="text-sm text-white/60 leading-relaxed">{item.answer}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* CTA after FAQ */}
+            <div className="mt-8 sm:mt-10 text-center">
+              <p className="text-sm text-white/40 mb-4">Ainda tem dúvidas?</p>
               <a
                 href={whatsappUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => {
-                  if (typeof window !== 'undefined' && window.CRMPIXEL) {
-                    window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
-                  }
-                }}
-                className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
               >
                 <Phone className="h-4 w-4" />
-                Prefere o WhatsApp? Fale agora
+                Fale com um consultor pelo WhatsApp
               </a>
             </div>
-
-            {/* Right side — Form */}
-            <div className="relative order-1 lg:order-2">
-              <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/10 via-transparent to-[#C9A96E]/5 rounded-3xl blur-xl" />
-              <form
-                onSubmit={handleFormSubmit}
-                className="relative z-10 rounded-2xl bg-white/[0.03] border border-white/[0.08] p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
-              >
-                <div className="mb-2">
-                  <h3 className="text-xl font-bold">Cadastro</h3>
-                  <p className="text-sm text-white/40 mt-1">Preencha seus dados para receber atendimento</p>
-                </div>
-
-                {/* Error */}
-                {formError && (
-                  <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
-                    <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-red-300">{formError}</p>
-                  </div>
-                )}
-
-                {/* Name */}
-                <div>
-                  <label htmlFor="form-name" className="block text-sm font-medium text-white/70 mb-2">
-                    Nome Completo <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
-                    <input
-                      id="form-name"
-                      type="text"
-                      value={formName}
-                      onChange={(ev) => setFormName(ev.target.value)}
-                      placeholder="Seu nome completo"
-                      required
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Phone */}
-                <div>
-                  <label htmlFor="form-phone" className="block text-sm font-medium text-white/70 mb-2">
-                    Telefone <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
-                    <input
-                      id="form-phone"
-                      type="tel"
-                      value={formPhone}
-                      onChange={(ev) => handlePhoneChange(ev.target.value)}
-                      placeholder="(11) 99999-9999"
-                      required
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Email */}
-                <div>
-                  <label htmlFor="form-email" className="block text-sm font-medium text-white/70 mb-2">
-                    E-mail <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
-                    <input
-                      id="form-email"
-                      type="email"
-                      value={formEmail}
-                      onChange={(ev) => setFormEmail(ev.target.value)}
-                      placeholder="seuemail@exemplo.com"
-                      required
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Dynamic custom fields */}
-                {e.formFields && e.formFields.length > 0 && (
-                  <div className="space-y-4 pt-2">
-                    <div className="h-px bg-white/[0.06]" />
-                    {e.formFields.map((field) => {
-                      const val = customAnswers[field.id] || '';
-                      const parsedOptions = field.options ? (() => { try { return JSON.parse(field.options); } catch { return []; } })() : [];
-
-                      return (
-                        <div key={field.id}>
-                          <label htmlFor={`field-${field.id}`} className="block text-sm font-medium text-white/70 mb-2">
-                            {field.label}
-                            {field.required && <span className="text-red-400"> *</span>}
-                          </label>
-
-                          {field.fieldType === 'text' && (
-                            <input
-                              id={`field-${field.id}`}
-                              type="text"
-                              value={val}
-                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
-                              placeholder={field.placeholder || undefined}
-                              required={field.required}
-                              className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
-                            />
-                          )}
-
-                          {field.fieldType === 'number' && (
-                            <input
-                              id={`field-${field.id}`}
-                              type="number"
-                              value={val}
-                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
-                              placeholder={field.placeholder || undefined}
-                              required={field.required}
-                              className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
-                            />
-                          )}
-
-                          {field.fieldType === 'textarea' && (
-                            <textarea
-                              id={`field-${field.id}`}
-                              value={val}
-                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
-                              placeholder={field.placeholder || undefined}
-                              required={field.required}
-                              rows={3}
-                              className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all resize-none"
-                            />
-                          )}
-
-                          {field.fieldType === 'select' && parsedOptions.length > 0 && (
-                            <select
-                              id={`field-${field.id}`}
-                              value={val}
-                              onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
-                              required={field.required}
-                              className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all appearance-none cursor-pointer"
-                              style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
-                            >
-                              <option value="" disabled className="bg-[#1a1a1a]">{field.placeholder || 'Selecione uma opção...'}</option>
-                              {parsedOptions.map((opt: string, i: number) => (
-                                <option key={i} value={opt} className="bg-[#1a1a1a]">{opt}</option>
-                              ))}
-                            </select>
-                          )}
-
-                          {field.fieldType === 'checkbox' && (
-                            <label htmlFor={`field-${field.id}`} className="flex items-center gap-3 cursor-pointer group py-1">
-                              <input
-                                id={`field-${field.id}`}
-                                type="checkbox"
-                                checked={val === 'Sim'}
-                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.checked ? 'Sim' : 'Não' }))}
-                                className="h-4 w-4 rounded border-white/20 bg-white/[0.04] text-[#C9A96E] focus:ring-[#C9A96E]/20 cursor-pointer accent-[#C9A96E]"
-                              />
-                              <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">
-                                {field.placeholder || field.label}
-                              </span>
-                            </label>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Submit */}
-                <button
-                  type="submit"
-                  disabled={formSubmitting}
-                  className="w-full flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-base hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
-                >
-                  {formSubmitting ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      Enviando...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="h-4 w-4" />
-                      Cadastrar e Receber Atendimento
-                    </>
-                  )}
-                </button>
-
-                <p className="text-xs text-white/25 text-center">
-                  Ao se cadastrar, você concorda em receber informações sobre este empreendimento.
-                </p>
-              </form>
-            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </ScrollReveal>
 
       {/* ── Footer ─────────────────────────────────────── */}
       <footer className="border-t border-white/[0.06]">
@@ -991,9 +1399,36 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
         </div>
       </footer>
 
+      {/* ★ NEW: Floating Sticky WhatsApp CTA (Mobile) ─── */}
+      {showFloatingWhatsApp && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 sm:hidden animate-slide-up-bar">
+          <div className="bg-gradient-to-r from-[#C9A96E] to-[#A8893E] shadow-[0_-4px_20px_rgba(201,169,110,0.3)]">
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.CRMPIXEL) {
+                  window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, userId: queueUser?.userId });
+                }
+              }}
+              className="flex items-center justify-center gap-2.5 py-3.5 px-6 text-[#0A0A0A] font-semibold text-sm"
+            >
+              {/* WhatsApp SVG icon */}
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              Fale com um consultor
+            </a>
+          </div>
+          {/* Safe area bottom for phones with home indicator */}
+          <div className="h-[env(safe-area-inset-bottom)]" />
+        </div>
+      )}
+
       {/* ── Lightbox ───────────────────────────────────── */}
       {lightboxOpen && (
-        <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-2 sm:p-0" onClick={() => setLightboxOpen(false)}>
+        <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-2 sm:p-0" onClick={() => setLightboxOpen(false)}>
           <button
             onClick={() => setLightboxOpen(false)}
             className="absolute top-3 right-3 sm:top-5 sm:right-5 text-white/60 hover:text-white z-10 bg-white/10 backdrop-blur-sm rounded-full p-2 sm:p-2.5 transition-colors"
