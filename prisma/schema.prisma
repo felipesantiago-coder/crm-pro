@@ -77,14 +77,16 @@ model ClientTag {
 }
 
 model Reminder {
-  id          String   @id @default(cuid()) @map("id")
-  title       String   @map("title")
-  description String?  @map("description")
-  dueDate     DateTime  @map("dueDate")
-  notified    Boolean  @default(false) @map("notified")
-  clientId    String   @map("clientId")
-  createdAt   DateTime  @default(now()) @map("createdAt")
-  updatedAt   DateTime  @updatedAt @map("updatedAt")
+  id                    String   @id @default(cuid()) @map("id")
+  title                 String   @map("title")
+  description           String?  @map("description")
+  dueDate               DateTime  @map("dueDate")
+  dueTime               String?  @map("dueTime")
+  notified              Boolean  @default(false) @map("notified")
+  googleCalendarEventId String?  @map("googleCalendarEventId")
+  clientId              String   @map("clientId")
+  createdAt             DateTime  @default(now()) @map("createdAt")
+  updatedAt             DateTime  @updatedAt @map("updatedAt")
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
@@ -95,17 +97,38 @@ model Reminder {
 }
 
 model Enterprise {
-  id         String   @id @default(cuid()) @map("id")
-  name       String   @map("name")
-  region     String?  @map("region")
-  imageUrl   String?  @map("imageUrl")
-  pdfContent String?  @map("pdfContent")
-  createdAt  DateTime @default(now()) @map("createdAt")
-  updatedAt  DateTime @updatedAt @map("updatedAt")
+  id                String   @id @default(cuid()) @map("id")
+  name              String   @map("name")
+  slug              String?  @unique @map("slug")
+  region            String?  @map("region")
+  imageUrl          String?  @map("imageUrl")
+  pdfContent        String?  @map("pdfContent")
+  landingTitle      String?  @map("landingTitle")
+  landingSubtitle   String?  @map("landingSubtitle")
+  landingDescription String? @map("landingDescription")
+  cachedInfo        Json?    @map("cachedInfo")
+  createdAt         DateTime @default(now()) @map("createdAt")
+  updatedAt         DateTime @updatedAt @map("updatedAt")
 
-  clients Client[]
+  clients     Client[]
+  images      EnterpriseImage[]
+  formFields  LandingFormField[]
 
   @@map("enterprises")
+}
+
+model EnterpriseImage {
+  id        String  @id @default(cuid()) @map("id")
+  url       String  @map("url")
+  altText   String? @map("altText")
+  sortOrder Int     @default(0) @map("sortOrder")
+  enterpriseId String @map("enterpriseId")
+  createdAt  DateTime @default(now()) @map("createdAt")
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@index([enterpriseId])
+  @@map("enterprise_images")
 }
 
 model User {
@@ -124,6 +147,8 @@ model User {
   partnerOf           ClientPartner[]
   addedPartners       ClientPartner[]      @relation("AddedPartners")
   googleCalendarToken GoogleCalendarToken?
+  queueMemberships    LeadQueueMember[]
+  queueAssignments    LeadQueueAssignment[]
 
   @@map("users")
 }
@@ -174,6 +199,103 @@ model Schedule {
   @@map("schedules")
 }
 
+// ============================================================
+// TRACKING PIXEL — Visitor & Event tracking
+// ============================================================
+model TrackingVisitor {
+  id          String   @id @default(cuid()) @map("id")
+  visitorId   String   @unique @map("visitorId")
+  siteId      String   @map("siteId")
+  leadId      String?  @map("leadId")
+  firstSeenAt DateTime @default(now()) @map("firstSeenAt")
+  lastSeenAt  DateTime @updatedAt @map("lastSeenAt")
+  ip          String?  @map("ip")
+  userAgent   String?  @map("userAgent")
+  country     String?  @map("country")
+  city        String?  @map("city")
+  events      TrackingEvent[]
+  @@index([siteId])
+  @@index([leadId])
+  @@index([lastSeenAt])
+  @@map("tracking_visitors")
+}
+
+model TrackingEvent {
+  id          String   @id @default(cuid()) @map("id")
+  visitorId   String   @map("visitorId")
+  sessionId   String   @map("sessionId")
+  siteId      String   @map("siteId")
+  eventType   String   @map("eventType")
+  eventName   String?  @map("eventName")
+  pageUrl     String?  @map("pageUrl")
+  referrer    String?  @map("referrer")
+  utmSource   String?  @map("utmSource")
+  utmMedium   String?  @map("utmMedium")
+  utmCampaign String?  @map("utmCampaign")
+  utmContent  String?  @map("utmContent")
+  utmTerm     String?  @map("utmTerm")
+  metadata    Json?    @map("metadata")
+  createdAt   DateTime @default(now()) @map("createdAt")
+  visitor     TrackingVisitor @relation(fields: [visitorId], references: [visitorId], onDelete: Cascade)
+  @@index([siteId, eventType])
+  @@index([siteId, utmCampaign])
+  @@index([visitorId])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("tracking_events")
+}
+
+// ============================================================
+// LEAD QUEUE — Round-robin lead distribution for ad campaigns
+// ============================================================
+model LeadQueue {
+  id          String   @id @default(cuid()) @map("id")
+  name        String   @map("name")
+  description String?  @map("description")
+  isActive    Boolean  @default(true) @map("isActive")
+  isDefault   Boolean  @default(false) @map("isDefault")
+  currentIdx  Int      @default(0) @map("currentIdx")
+  createdAt   DateTime @default(now()) @map("createdAt")
+  updatedAt   DateTime @updatedAt @map("updatedAt")
+
+  members     LeadQueueMember[]
+  assignments LeadQueueAssignment[]
+
+  @@map("lead_queues")
+}
+
+model LeadQueueMember {
+  id       String  @id @default(cuid()) @map("id")
+  queueId  String  @map("queueId")
+  userId   String  @map("userId")
+  order    Int     @default(0) @map("order")
+  isActive Boolean @default(true) @map("isActive")
+
+  queue LeadQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([queueId, userId])
+  @@index([queueId])
+  @@map("lead_queue_members")
+}
+
+model LeadQueueAssignment {
+  id        String   @id @default(cuid()) @map("id")
+  queueId   String   @map("queueId")
+  userId    String   @map("userId")
+  leadId    String?  @map("leadId")
+  source    String   @map("source")
+  createdAt DateTime @default(now()) @map("createdAt")
+
+  queue LeadQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([queueId, createdAt])
+  @@index([userId])
+  @@index([leadId])
+  @@map("lead_queue_assignments")
+}
+
 model GoogleCalendarToken {
   id           String   @id @default(cuid()) @map("id")
   userId       String   @unique @map("userId")
@@ -186,4 +308,23 @@ model GoogleCalendarToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("google_calendar_tokens")
+}
+
+model LandingFormField {
+  id           String   @id @default(cuid()) @map("id")
+  enterpriseId String   @map("enterpriseId")
+  label        String   @map("label")
+  fieldType    String   @default("text") @map("fieldType")   // text | textarea | select | number | checkbox
+  placeholder  String?  @map("placeholder")
+  options      String?  @map("options")                        // JSON array for select fields
+  required     Boolean  @default(false) @map("required")
+  sortOrder    Int      @default(0) @map("sortOrder")
+  isActive     Boolean  @default(true) @map("isActive")
+  createdAt    DateTime @default(now()) @map("createdAt")
+  updatedAt    DateTime @updatedAt @map("updatedAt")
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@index([enterpriseId])
+  @@map("landing_form_fields")
 }

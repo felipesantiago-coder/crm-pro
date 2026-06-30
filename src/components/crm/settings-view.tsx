@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save, CalendarDays, Link2, Unlink, Megaphone, Eye, EyeOff, RefreshCw, Zap } from 'lucide-react';
+import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,449 +13,6 @@ import { useTheme } from 'next-themes';
 import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
 
-// ============================================================
-// Meta Ads Integration Card (Admin only)
-// ============================================================
-function MetaAdsCard() {
-  const [enabled, setEnabled] = useState(false);
-  const [verifyToken, setVerifyToken] = useState('');
-  const [appSecret, setAppSecret] = useState('');
-  const [showAppSecret, setShowAppSecret] = useState(false);
-  const [pageAccessToken, setPageAccessToken] = useState('');
-  const [showPageToken, setShowPageToken] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [webhookStatus, setWebhookStatus] = useState<any>(null);
-  const [leadCount, setLeadCount] = useState(0);
-  const [hasVerifyToken, setHasVerifyToken] = useState(false);
-  const [hasAppSecret, setHasAppSecret] = useState(false);
-  const [hasPageAccessToken, setHasPageAccessToken] = useState(false);
-  const [diagnosing, setDiagnosing] = useState(false);
-  const [diagnosis, setDiagnosis] = useState<any>(null);
-
-  const webhookUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/api/webhooks/meta-leads`
-    : '';
-
-  useEffect(() => {
-    loadConfig();
-  }, []);
-
-  async function loadConfig() {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/webhooks/meta-leads/config');
-      if (res.ok) {
-        const data = await res.json();
-        setEnabled(data.enabled);
-        setLeadCount(data.leadCount);
-        setHasVerifyToken(data.hasVerifyToken);
-        setHasAppSecret(data.hasAppSecret);
-        setHasPageAccessToken(data.hasPageAccessToken);
-      }
-    } catch {
-      // Silencioso — pode estar offline
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function checkWebhookStatus() {
-    try {
-      const res = await fetch('/api/webhooks/meta-leads');
-      if (res.ok) {
-        const data = await res.json();
-        setWebhookStatus(data);
-        toast.success(data.enabled ? 'Webhook ativo e pronto' : 'Webhook configurado mas desativado');
-      }
-    } catch {
-      toast.error('Erro ao verificar status do webhook');
-    }
-  }
-
-  async function runDiagnosis() {
-    setDiagnosing(true);
-    setDiagnosis(null);
-    try {
-      const res = await fetch('/api/webhooks/meta-leads/diagnose');
-      if (res.ok) {
-        const data = await res.json();
-        setDiagnosis(data);
-        const errCount = data.summary.errors;
-        const warnCount = data.summary.warnings;
-        if (errCount > 0) {
-          toast.error(`Diagnóstico: ${errCount} erro(s) encontrado(s)`);
-        } else if (warnCount > 0) {
-          toast.warning(`Diagnóstico: funcionando com ${warnCount} aviso(s)`);
-        } else {
-          toast.success('Diagnóstico: tudo OK!');
-        }
-      } else {
-        toast.error('Erro ao executar diagnóstico');
-      }
-    } catch {
-      toast.error('Falha de conexão ao executar diagnóstico');
-    } finally {
-      setDiagnosing(false);
-    }
-  }
-
-  async function saveConfig() {
-    setSaving(true);
-    try {
-      const res = await fetch('/api/webhooks/meta-leads/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          verifyToken: verifyToken || null,
-          appSecret: appSecret || null,
-          pageAccessToken: pageAccessToken || null,
-          enabled,
-        }),
-      });
-
-      if (res.ok) {
-        toast.success('Configurações do Meta Ads salvas com sucesso');
-        // Limpar campos sensíveis da tela — os valores já estão salvos no servidor
-        setVerifyToken('');
-        setAppSecret('');
-        setPageAccessToken('');
-        loadConfig();
-      } else {
-        const data = await res.json();
-        throw new Error(data.error || 'Erro ao salvar');
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar configurações');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function copyToClipboard(text: string, label: string) {
-    navigator.clipboard.writeText(text);
-    toast.success(`${label} copiado!`);
-  }
-
-  if (loading) {
-    return (
-      <Card className="hover:shadow-md transition-shadow duration-200">
-        <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className={`hover:shadow-md transition-shadow duration-200 ${
-      enabled
-        ? 'border-blue-200 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-950/20'
-        : ''
-    }`}>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base font-semibold flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-            <Megaphone className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-          </div>
-          Meta Ads — Lead Ads
-        </CardTitle>
-        <CardDescription>
-          Receba clientes gerados por anúncios do Facebook e Instagram diretamente no CRM
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Status */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {enabled ? (
-              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 gap-1">
-                <Zap className="h-3 w-3" />
-                Ativo
-              </Badge>
-            ) : (
-              <Badge className="bg-muted text-muted-foreground gap-1">
-                <Circle className="h-3 w-3" />
-                Inativo
-              </Badge>
-            )}
-            {leadCount > 0 && (
-              <span className="text-xs text-muted-foreground">
-                {leadCount} lead{leadCount !== 1 ? 's' : ''} recebido{leadCount !== 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch id="meta-enabled" checked={enabled} onCheckedChange={setEnabled} />
-            <Label htmlFor="meta-enabled" className="text-xs cursor-pointer">
-              {enabled ? 'Ativado' : 'Desativado'}
-            </Label>
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Webhook URL */}
-        <div className="space-y-2">
-          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            URL do Webhook
-          </Label>
-          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border">
-            <code className="flex-1 text-xs font-mono truncate text-foreground">
-              {webhookUrl}
-            </code>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 flex-shrink-0"
-              onClick={() => copyToClipboard(webhookUrl, 'URL do Webhook')}
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Cole esta URL no campo &quot;Callback URL&quot; ao configurar o webhook no Meta for Developers ou Ads Manager
-          </p>
-        </div>
-
-        {/* Verify Token */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Label htmlFor="meta-verify-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Token de Verificação
-            </Label>
-            {hasVerifyToken && (
-              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
-                <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
-                Configurado
-              </Badge>
-            )}
-          </div>
-          <Input
-            id="meta-verify-token"
-            placeholder={hasVerifyToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Ex: meu_token_secreto_123'}
-            value={verifyToken}
-            onChange={(e) => setVerifyToken(e.target.value)}
-            type="text"
-            className="font-mono text-sm"
-          />
-          <p className="text-[11px] text-muted-foreground">
-            Crie uma string aleatória segura (ex: <code className="bg-muted px-1 rounded">openssl rand -hex 16</code>).
-            Use o mesmo valor no campo &quot;Verify Token&quot; do Meta.
-          </p>
-        </div>
-
-        {/* App Secret */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Label htmlFor="meta-app-secret" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              App Secret (segurança)
-            </Label>
-            {hasAppSecret && (
-              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
-                <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
-                Configurado
-              </Badge>
-            )}
-          </div>
-          <div className="relative">
-            <Input
-              id="meta-app-secret"
-              placeholder={hasAppSecret ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Ex: a1b2c3d4e5f6...'}
-              value={appSecret}
-              onChange={(e) => setAppSecret(e.target.value)}
-              type={showAppSecret ? 'text' : 'password'}
-              className="font-mono text-sm pr-10"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
-              onClick={() => setShowAppSecret(!showAppSecret)}
-            >
-              {showAppSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </Button>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Encontrado em Meta for Developers → Seu App → Settings → Basic → App Secret.
-            Obrigatório para validar que os leads vieram realmente do Meta (HMAC-SHA256).
-          </p>
-        </div>
-
-        {/* Page Access Token */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Label htmlFor="meta-page-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Page Access Token (obrigatório)
-            </Label>
-            {hasPageAccessToken && (
-              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
-                <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
-                Configurado
-              </Badge>
-            )}
-          </div>
-          <div className="relative">
-            <Input
-              id="meta-page-token"
-              placeholder={hasPageAccessToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'EAAxxxxxxxxxxxxxxxxx...'}
-              value={pageAccessToken}
-              onChange={(e) => setPageAccessToken(e.target.value)}
-              type={showPageToken ? 'text' : 'password'}
-              className="font-mono text-sm pr-10"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
-              onClick={() => setShowPageToken(!showPageToken)}
-            >
-              {showPageToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </Button>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Necessário para buscar dados do lead (o Meta envia apenas o ID no webhook).
-            Para obter: acesse o <span className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer" onClick={() => window.open('https://developers.facebook.com/tools/explorer/', '_blank')}>Graph API Explorer</span>, selecione sua Página como Token User, marque a permissão <code className="bg-muted px-1 rounded">pages_read_engagement</code> e copie o token gerado.
-          </p>
-        </div>
-
-        <Separator />
-
-        {/* Botões */}
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={saveConfig}
-            disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
-          >
-            {saving ? (
-              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
-            ) : (
-              <><Save className="h-4 w-4 mr-2" /> Salvar Configurações</>
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={checkWebhookStatus}
-          >
-            <RefreshCw className="h-4 w-4 mr-1" />
-            Testar
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={runDiagnosis}
-            disabled={diagnosing}
-            className="border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-          >
-            {diagnosing ? (
-              <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Aguarde...</>
-            ) : (
-              <><Zap className="h-4 w-4 mr-1" /> Diagnosticar</>
-            )}
-          </Button>
-        </div>
-
-        {/* Painel de Diagnóstico */}
-        {diagnosis && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Diagnóstico
-              </span>
-              {diagnosis.status === 'healthy' && (
-                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                  Tudo OK
-                </Badge>
-              )}
-              {diagnosis.status === 'degraded' && (
-                <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                  Atenção
-                </Badge>
-              )}
-              {diagnosis.status === 'broken' && (
-                <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                  Problemas
-                </Badge>
-              )}
-            </div>
-            <div className="rounded-lg border space-y-1.5 p-3 bg-muted/30">
-              {diagnosis.checks.map((check: any, i: number) => (
-                <div key={i} className="flex items-start gap-2 text-xs">
-                  {check.status === 'ok' && (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mt-0.5 flex-shrink-0" />
-                  )}
-                  {check.status === 'warn' && (
-                    <Zap className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
-                  )}
-                  {check.status === 'error' && (
-                    <Circle className="h-3.5 w-3.5 text-red-500 mt-0.5 flex-shrink-0" />
-                  )}
-                  {check.status === 'skip' && (
-                    <Circle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                  )}
-                  <div className="min-w-0">
-                    <span className="font-medium">{check.name}: </span>
-                    <span className={check.status === 'error' ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}>
-                      {check.details}
-                    </span>
-                    {check.fix && (
-                      <p className="text-amber-600 dark:text-amber-400 mt-0.5">
-                        Solucao: {check.fix}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Tutorial colapsável */}
-        <div className="space-y-2">
-          <details className="group">
-            <summary className="text-xs font-medium text-blue-600 dark:text-blue-400 cursor-pointer hover:underline flex items-center gap-1">
-              Como configurar no Meta Ads
-            </summary>
-            <ol className="mt-2 text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
-              <li>
-                Acesse o{' '}
-                <span
-                  className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer inline-flex items-center gap-0.5"
-                  onClick={() => window.open('https://developers.facebook.com/apps/', '_blank')}
-                >
-                  Meta for Developers <ExternalLink className="h-2.5 w-2.5" />
-                </span>
-                {' '}e crie/abra seu App
-              </li>
-              <li>Vá em <strong>Settings → Basic</strong> e copie o <strong>App Secret</strong></li>
-              <li>No menu lateral, vá em <strong>Webhooks → Adicionar</strong></li>
-              <li>
-                Cole a <strong>URL do Webhook</strong> (acima) no campo Callback URL
-              </li>
-              <li>
-                Cole o <strong>Token de Verificação</strong> no campo Verify Token
-              </li>
-              <li>
-                Em &quot;Subscribe to&quot;, selecione <strong>leadgen</strong> (Lead Ads)
-              </li>
-              <li>
-                No <strong>Ads Manager</strong>, crie um formulário de Lead Ads
-              </li>
-              <li>
-                Ao publicar o anúncio, os leads serão criados automaticamente no CRM com stage <strong>LEAD</strong>
-              </li>
-            </ol>
-          </details>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
   const { data: session, update: updateSession } = useSession();
@@ -465,6 +22,7 @@ export function SettingsView() {
   // Perfil do usuário
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [userPhone, setUserPhone] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
 
   // Google Calendar
@@ -505,6 +63,11 @@ export function SettingsView() {
     if (session?.user) {
       setUserName(session.user.name || '');
       setUserEmail(session.user.email || '');
+      // Carregar phone da API (não fica na sessão)
+      fetch('/api/profile')
+        .then((r) => r.json())
+        .then((data) => { if (data.phone) setUserPhone(data.phone); })
+        .catch(() => {});
     }
   }, [session]);
 
@@ -520,11 +83,11 @@ export function SettingsView() {
       const res = await fetch('/api/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: userName.trim() }),
+        body: JSON.stringify({ name: userName.trim(), phone: userPhone }),
       });
 
       if (res.ok) {
-        toast.success('Nome atualizado com sucesso!');
+        toast.success('Perfil atualizado com sucesso!');
         // Atualizar a sessão para refletir o novo nome na sidebar
         await updateSession({ name: userName.trim() });
       } else {
@@ -532,7 +95,7 @@ export function SettingsView() {
         throw new Error(data.error || 'Erro ao salvar');
       }
     } catch {
-      toast.error('Erro ao atualizar nome');
+      toast.error('Erro ao atualizar perfil');
     } finally {
       setSavingProfile(false);
     }
@@ -611,11 +174,25 @@ export function SettingsView() {
               />
               <p className="text-xs text-muted-foreground">O email não pode ser alterado</p>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="user-phone" className="flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                Telefone
+              </Label>
+              <Input
+                id="user-phone"
+                placeholder="(11) 99999-9999"
+                value={userPhone}
+                onChange={(e) => setUserPhone(e.target.value)}
+                maxLength={20}
+              />
+              <p className="text-xs text-muted-foreground">Seu número de contato para a equipe</p>
+            </div>
             <Button onClick={saveProfile} disabled={savingProfile}>
               {savingProfile ? (
                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
               ) : (
-                <><Save className="h-4 w-4 mr-2" /> Salvar Nome</>
+                <><Save className="h-4 w-4 mr-2" /> Salvar Perfil</>
               )}
             </Button>
           </CardContent>
@@ -766,9 +343,6 @@ export function SettingsView() {
             )}
           </CardContent>
         </Card>
-
-        {/* ==================== META ADS (Admin) ==================== */}
-        {isAdmin && <MetaAdsCard />}
 
         {/* ==================== CONFIGURAÇÕES ADMIN ==================== */}
         {isAdmin && (

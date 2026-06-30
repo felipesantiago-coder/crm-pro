@@ -11,10 +11,12 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
+  Megaphone,
   LogOut,
   KeyRound,
   User,
   Trophy,
+  Building2,
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
@@ -45,10 +47,12 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
 
   const navItems: { view: CRMView; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
     { view: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
+    { view: 'enterprises', label: 'Empreendimentos', icon: <Building2 className="h-5 w-5" /> },
     { view: 'clients', label: 'Clientes', icon: <Users className="h-5 w-5" /> },
     { view: 'closed-deals', label: 'Negócios Finalizados', icon: <Trophy className="h-5 w-5" /> },
     { view: 'tags', label: 'Tags', icon: <Tags className="h-5 w-5" /> },
     { view: 'reminders', label: 'Lembretes', icon: <Bell className="h-5 w-5" /> },
+    { view: 'meta-ads', label: 'Anúncios Meta', icon: <Megaphone className="h-5 w-5" />, adminOnly: true },
     { view: 'admin', label: 'Administração', icon: <ShieldCheck className="h-5 w-5" />, adminOnly: true },
     { view: 'settings', label: 'Configurações', icon: <Settings className="h-5 w-5" /> },
   ];
@@ -203,7 +207,7 @@ export function CRMLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="min-h-screen flex bg-background overflow-x-hidden">
       {/* Desktop Sidebar */}
       <aside
         className={cn(
@@ -255,7 +259,7 @@ export function CRMLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Mobile Header + Sheet Sidebar */}
-      <div className="flex-1 lg:ml-0">
+      <div className="flex-1 lg:ml-0 min-w-0">
         <header className="lg:hidden sticky top-0 z-30 flex items-center h-14 px-4 border-b bg-card">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
@@ -302,7 +306,7 @@ export function CRMLayout({ children }: { children: React.ReactNode }) {
             sidebarCollapsed ? 'lg:ml-[68px]' : 'lg:ml-[260px]'
           )}
         >
-          <div className="p-4 sm:p-5 lg:p-6">{children}</div>
+          <div className="p-4 sm:p-5 lg:p-6 max-w-full overflow-x-hidden">{children}</div>
         </main>
       </div>
     </div>
