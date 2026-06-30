@@ -1,0 +1,279 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth-options';
+import { db } from '@/lib/db';
+
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = 'llama-3.1-8b-instant';
+
+// ============================================================
+// Types
+// ============================================================
+interface ExtractedInfo {
+  location: {
+    address: string | null;
+    neighborhood: string | null;
+    city: string | null;
+    state: string | null;
+    region: string | null;
+    additionalInfo: string | null;
+  };
+  builder: string | null;
+  architecture: string | null;
+  landscaping: string | null;
+  differentials: string[];
+  apartmentTypes: Array<{
+    name: string;
+    area: string | null;
+    bedrooms: string | null;
+    description: string | null;
+  }>;
+  summary: string | null;
+}
+
+const EMPTY_INFO: ExtractedInfo = {
+  location: { address: null, neighborhood: null, city: null, state: null, region: null, additionalInfo: null },
+  builder: null,
+  architecture: null,
+  landscaping: null,
+  differentials: [],
+  apartmentTypes: [],
+  summary: null,
+};
+
+// ============================================================
+// System prompt — structured JSON extraction
+// ============================================================
+const EXTRACTION_PROMPT = `Você é um assistente especializado em extrair informações de documentos de empreendimentos imobiliários no Brasil.
+
+Abaixo está o conteúdo de um documento (extraído de PDF/Markdown) sobre um empreendimento imobiliário. Sua tarefa é extrair APENAS as seguintes informações e retornar como JSON válido (sem markdown, sem code fences, apenas JSON puro):
+
+Campos a extrair:
+1. "location": objeto com:
+   - "address": endereço completo se encontrado (rua, número), null se não houver
+   - "neighborhood": bairro, null se não houver
+   - "city": cidade, null se não houver
+   - "state": estado (sigla), null se não houver
+   - "region": região ou zona (ex: "Zona Sul", "Litoral Norte"), null se não houver
+   - "additionalInfo": informações complementares de localização (ex: "próximo ao parque X", "frente para o mar"), null se não houver
+
+2. "builder": nome da construtora/incorporadora responsável, null se não houver
+
+3. "architecture": nome do escritório de arquitetura responsável, null se não houver
+
+4. "landscaping": nome do escritório de paisagismo responsável, null se não houver
+
+5. "differentials": array de strings com os diferenciais do empreendimento (ex: ["Piscina aquecida", "Arena 50m", "Coworking"]). Máximo 8 itens. Retorne [] se não houver.
+
+6. "apartmentTypes": array de objetos, cada um com:
+   - "name": tipo/nome do apartamento (ex: "Tipo 1", "Suíte Master", "Apartamento 2 quartos")
+   - "area": metragem formatada (ex: "65m²", "120,5 m²"), null se não houver
+   - "bedrooms": quantidade de quartos (ex: "2 quartos", "3 suítes"), null se não houver
+   - "description": descrição breve do tipo, null se não houver
+   Retorne [] se não houver informações de tipologias.
+
+7. "summary": resumo em UMA frase (máximo 120 caracteres) sobre o empreendimento. null se não houver informações suficientes.
+
+REGRAS IMPORTANTES:
+- Retorne APENAS o JSON, sem nenhum texto antes ou depois.
+- Não invente informações que não estejam claramente no documento.
+- Se uma informação não for encontrada, use null (nunca deixe em branco ou use string vazia).
+- Diferenciais devem ser curtos (máximo 5 palavras cada).
+- Para "area", use sempre o formato numérico+m² (ex: "75m²").
+- O JSON deve ser válido e bem formatado.`;
+
+// ============================================================
+// AI providers
+// ============================================================
+async function askGemini(systemText: string, userContent: string): Promise<string> {
+  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY não configurada');
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemText }] },
+      contents: [{ role: 'user', parts: [{ text: userContent }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gemini ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+async function askGroq(systemText: string, userContent: string): Promise<string> {
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY não configurada');
+
+  const url = 'https://api.groq.com/openai/v1/chat/completions';
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      temperature: 0.1,
+      max_tokens: 2048,
+      messages: [
+        { role: 'system', content: systemText },
+        { role: 'user', content: userContent },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Groq ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+function parseJSON(raw: string): ExtractedInfo {
+  let cleaned = raw.trim();
+
+  const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) cleaned = fenceMatch[1].trim();
+
+  const jsonStart = cleaned.indexOf('{');
+  const jsonEnd = cleaned.lastIndexOf('}');
+  if (jsonStart !== -1 && jsonEnd !== -1) {
+    cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+  }
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      location: {
+        address: parsed?.location?.address || null,
+        neighborhood: parsed?.location?.neighborhood || null,
+        city: parsed?.location?.city || null,
+        state: parsed?.location?.state || null,
+        region: parsed?.location?.region || null,
+        additionalInfo: parsed?.location?.additionalInfo || null,
+      },
+      builder: parsed?.builder || null,
+      architecture: parsed?.architecture || null,
+      landscaping: parsed?.landscaping || null,
+      differentials: Array.isArray(parsed?.differentials) ? parsed.differentials.filter(Boolean).slice(0, 8) : [],
+      apartmentTypes: Array.isArray(parsed?.apartmentTypes)
+        ? parsed.apartmentTypes.map((apt: any) => ({
+            name: apt?.name || 'Tipo',
+            area: apt?.area || null,
+            bedrooms: apt?.bedrooms || null,
+            description: apt?.description || null,
+          }))
+        : [],
+      summary: parsed?.summary || null,
+    };
+  } catch {
+    console.warn('[Extract Info] Failed to parse AI response as JSON, raw:', cleaned.substring(0, 200));
+    return EMPTY_INFO;
+  }
+}
+
+// ============================================================
+// Core extraction logic (reusable by cache-all)
+// ============================================================
+export async function extractAndCache(enterpriseId: string): Promise<ExtractedInfo> {
+  const enterprise = await db.enterprise.findUnique({
+    where: { id: enterpriseId },
+    select: { id: true, name: true, region: true, pdfContent: true },
+  });
+
+  if (!enterprise) return { ...EMPTY_INFO };
+
+  // If no content, return with region fallback
+  if (!enterprise.pdfContent || enterprise.pdfContent.trim().length < 20) {
+    const result: ExtractedInfo = {
+      ...EMPTY_INFO,
+      location: { ...EMPTY_INFO.location, region: enterprise.region || null },
+    };
+    await db.enterprise.update({
+      where: { id: enterpriseId },
+      data: { cachedInfo: result as any },
+    });
+    return result;
+  }
+
+  const content = enterprise.pdfContent.length > 12000
+    ? enterprise.pdfContent.substring(0, 12000) + '\n\n[Conteúdo truncado...]'
+    : enterprise.pdfContent;
+
+  const userMessage = `Empreendimento: "${enterprise.name}"${enterprise.region ? `\nRegião (banco de dados): ${enterprise.region}` : ''}\n\nConteúdo do documento:\n${content}`;
+
+  let rawReply = '';
+
+  // 1) Gemini
+  if (GEMINI_API_KEY) {
+    try {
+      rawReply = await askGemini(EXTRACTION_PROMPT, userMessage);
+    } catch (err) {
+      console.warn('[Extract Info] Gemini falhou:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  // 2) Fallback Groq
+  if (!rawReply && GROQ_API_KEY) {
+    try {
+      rawReply = await askGroq(EXTRACTION_PROMPT, userMessage);
+    } catch (err) {
+      console.error('[Extract Info] Groq também falhou:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  let info: ExtractedInfo;
+  if (!rawReply) {
+    info = {
+      ...EMPTY_INFO,
+      location: { ...EMPTY_INFO.location, region: enterprise.region || null },
+    };
+  } else {
+    info = parseJSON(rawReply);
+    if (!info.location.region && enterprise.region) {
+      info.location.region = enterprise.region;
+    }
+  }
+
+  // Save to cache
+  await db.enterprise.update({
+    where: { id: enterpriseId },
+    data: { cachedInfo: info as any },
+  });
+
+  return info;
+}
+
+// ============================================================
+// POST handler — extract for a single enterprise (still used by admin)
+// ============================================================
+export async function POST(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
+    const { enterpriseId } = await req.json();
+    if (!enterpriseId) {
+      return NextResponse.json({ error: 'enterpriseId é obrigatório' }, { status: 400 });
+    }
+
+    const info = await extractAndCache(enterpriseId);
+    return NextResponse.json(info);
+  } catch (error) {
+    console.error('[Extract Info] Error:', error);
+    return NextResponse.json(
+      { error: 'Erro ao extrair informações' },
+      { status: 500 },
+    );
+  }
+}

@@ -226,6 +226,14 @@ export default function ChangePasswordPage() {
                 </>
               )}
             </Button>
+
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: '/login' })}
+              className="w-full text-sm text-white/60 hover:text-white transition-colors py-1"
+            >
+              Sair e fazer login com outra conta
+            </button>
           </form>
         </CardContent>
       </Card>

@@ -428,8 +428,8 @@ export function EnterpriseManagement() {
                 {/* Template info */}
                 <div className="rounded-xl border bg-muted/50 p-4 space-y-3">
                   <p className="text-sm font-medium">Formato esperado do arquivo:</p>
-                  <div className="rounded-lg border bg-background overflow-hidden">
-                    <table className="w-full text-sm">
+                  <div className="rounded-lg border bg-background overflow-x-auto">
+                    <table className="w-full text-sm min-w-[300px]">
                       <thead>
                         <tr className="bg-emerald-50 dark:bg-emerald-950/30">
                           <th className="px-3 py-2 text-left font-semibold text-emerald-700 dark:text-emerald-400">Nome *</th>
