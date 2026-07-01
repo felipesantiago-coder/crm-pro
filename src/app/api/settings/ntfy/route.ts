@@ -111,9 +111,10 @@ export async function PUT(request: NextRequest) {
         // Regenerate on collision (practically impossible)
         const newTopic = generateNtfyTopic();
         const newToken = generateNtfyToken();
+        // Activate Ntfy and deactivate Telegram (mutual exclusion)
         await db.user.update({
           where: { id: user.id },
-          data: { ntfyTopic: newTopic, ntfyToken: newToken },
+          data: { ntfyTopic: newTopic, ntfyToken: newToken, telegramChatId: null },
         });
         const ntfyBaseUrl = (process.env.NTFY_BASE_URL || 'https://ntfy.sh').replace(/\/+$/, '');
         return NextResponse.json({
@@ -124,9 +125,10 @@ export async function PUT(request: NextRequest) {
         });
       }
 
+      // Activate Ntfy and deactivate Telegram (mutual exclusion)
       await db.user.update({
         where: { id: user.id },
-        data: { ntfyTopic, ntfyToken },
+        data: { ntfyTopic, ntfyToken, telegramChatId: null },
       });
 
       const ntfyBaseUrl = (process.env.NTFY_BASE_URL || 'https://ntfy.sh').replace(/\/+$/, '');
