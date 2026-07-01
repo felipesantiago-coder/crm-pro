@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
+import { notifyNewLead } from '@/lib/telegram';
 
 /**
  * PUBLIC endpoint — no auth required.
@@ -154,6 +155,27 @@ export async function POST(request: NextRequest) {
         description: `[Landing Page] Cadastro inicial${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? ` (slug: ${slug})` : ''}`,
       },
     });
+
+    // ── Send Telegram notification (fire-and-forget) ───────
+    if (createdByUserId && createdByUserId !== 'system') {
+      // Fetch assigned user's telegramChatId (may be null)
+      db.user.findUnique({
+        where: { id: createdByUserId },
+        select: { telegramChatId: true },
+      }).then((user) => {
+        if (user?.telegramChatId) {
+          notifyNewLead(user.telegramChatId, {
+            leadName: client.name,
+            leadPhone: client.phone || '',
+            leadEmail: client.email || '',
+            enterpriseName,
+            utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
+            utmSource: typeof utmSource === 'string' ? utmSource : null,
+            slug: slug || undefined,
+          }).catch(() => { /* silent */ });
+        }
+      }).catch(() => { /* silent */ });
+    }
 
     return NextResponse.json({
       success: true,
