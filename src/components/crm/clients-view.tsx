@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Search, Plus, Upload, Download, X, Tag, ChevronDown } from 'lucide-react';
+import { Search, Plus, Upload, Download, X, Tag, ChevronDown, Megaphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -30,6 +30,9 @@ interface Client {
   updatePeriod: number;
   lastInteractionAt: string | null;
   stage?: string;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
   createdAt: string;
   tags: Array<{ tagId: string; tag: { id: string; name: string; color: string } }>;
 }
@@ -53,6 +56,7 @@ export function ClientsView() {
   } = useCRMStore();
 
   const [filterStage, setFilterStage] = useState('');
+  const [filterCampaign, setFilterCampaign] = useState('');
 
   const [clients, setClients] = useState<Client[]>([]);
   const [total, setTotal] = useState(0);
@@ -60,6 +64,7 @@ export function ClientsView() {
   const [loading, setLoading] = useState(true);
   const [regions, setRegions] = useState<string[]>([]);
   const [tags, setTags] = useState<TagOption[]>([]);
+  const [campaigns, setCampaigns] = useState<{ name: string; count: number }[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -86,6 +91,7 @@ export function ClientsView() {
       if (filterRegion) params.set('region', filterRegion);
       filterTagIds.forEach((id) => params.append('tagId', id));
       if (filterStage) params.set('stage', filterStage);
+      if (filterCampaign) params.set('utmCampaign', filterCampaign);
       // Excluir negócios finalizados da lista principal (têm view dedicada)
       params.set('excludeClosed', 'true');
       params.set('page', page.toString());
@@ -100,7 +106,7 @@ export function ClientsView() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filterRegion, filterTagIds, filterStage, page]);
+  }, [debouncedSearch, filterRegion, filterTagIds, filterStage, filterCampaign, page]);
 
   useEffect(() => {
     fetchClients();
@@ -109,14 +115,17 @@ export function ClientsView() {
   useEffect(() => {
     async function fetchFilters() {
       try {
-        const [regionsRes, tagsRes] = await Promise.all([
+        const [regionsRes, tagsRes, campaignsRes] = await Promise.all([
           fetch('/api/clients/regions'),
           fetch('/api/tags'),
+          fetch('/api/clients/campaigns'),
         ]);
         const regionsData = await regionsRes.json();
         const tagsData = await tagsRes.json();
+        const campaignsData = await campaignsRes.json();
         setRegions(regionsData || []);
         setTags(tagsData);
+        setCampaigns(campaignsData || []);
       } catch {
         console.error('Error fetching filters');
       }
@@ -327,9 +336,36 @@ export function ClientsView() {
             <SelectItem value="CONTRATO_GERADO">Contrato Gerado</SelectItem>
           </SelectContent>
         </Select>
+        <Select
+          value={filterCampaign || 'all'}
+          onValueChange={(v) => {
+            setFilterCampaign(v === 'all' ? '' : v);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-full sm:w-[200px]">
+            <div className="flex items-center gap-1.5">
+              <Megaphone className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+              <SelectValue placeholder="Campanha" />
+            </div>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as Campanhas</SelectItem>
+            {campaigns.length === 0 ? (
+              <div className="px-2 py-3 text-center">
+                <p className="text-xs text-muted-foreground">Nenhuma campanha registrada</p>
+              </div>
+            ) : (
+              campaigns.map((c) => (
+                <SelectItem key={c.name} value={c.name}>
+                  <span className="truncate">{c.name}</span>
+                  <span className="ml-2 text-[10px] text-muted-foreground">({c.count})</span>
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
       </div>
-
-      {/* Client Grid */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
