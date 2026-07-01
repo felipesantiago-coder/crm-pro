@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle } from 'lucide-react';
+import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle, Bell, Shield, Eye, EyeOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +39,17 @@ export function SettingsView() {
   const [tgTesting, setTgTesting] = useState(false);
   const [tgSaving, setTgSaving] = useState(false);
 
+  // Ntfy
+  const [ntfyConnected, setNtfyConnected] = useState(false);
+  const [ntfyLoading, setNtfyLoading] = useState(true);
+  const [ntfyActivating, setNtfyActivating] = useState(false);
+  const [ntfyDeactivating, setNtfyDeactivating] = useState(false);
+  const [ntfyTesting, setNtfyTesting] = useState(false);
+  const [ntfyTopic, setNtfyTopic] = useState('');
+  const [ntfyToken, setNtfyToken] = useState('');
+  const [ntfySubscribeUrl, setNtfySubscribeUrl] = useState('');
+  const [showNtfyToken, setShowNtfyToken] = useState(false);
+
   useEffect(() => {
     // Verificar status da conexão Google Calendar
     fetch('/api/google-calendar/status')
@@ -57,6 +68,17 @@ export function SettingsView() {
       })
       .catch(() => {})
       .finally(() => setTgLoading(false));
+
+    // Verificar status do Ntfy
+    fetch('/api/settings/ntfy')
+      .then((r) => r.json())
+      .then((data) => {
+        setNtfyConnected(data.configured === true);
+        setNtfyTopic(data.ntfyTopic || '');
+        setNtfySubscribeUrl(data.subscribeUrl || '');
+      })
+      .catch(() => {})
+      .finally(() => setNtfyLoading(false));
 
     // Verificar feedback de conexão via URL params
     const params = new URLSearchParams(window.location.search);
@@ -213,6 +235,86 @@ export function SettingsView() {
     } finally {
       setTgTesting(false);
     }
+  }
+
+  // ── Ntfy handlers ────────────────────────────────────
+  async function activateNtfy() {
+    setNtfyActivating(true);
+    try {
+      const res = await fetch('/api/settings/ntfy', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'activate' }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setNtfyConnected(true);
+        setNtfyTopic(data.ntfyTopic || '');
+        setNtfySubscribeUrl(data.subscribeUrl || '');
+        if (!data.alreadyActive) {
+          // On first activation, the token is returned from a separate endpoint
+          // We fetch it by calling GET which doesn't expose the token for security.
+          // Instead, we get it from the activate response.
+          setNtfyToken(data.ntfyToken || '');
+        }
+        toast.success('Ntfy ativado! Inscreva-se no tópico usando o link e credenciais abaixo.');
+      } else {
+        toast.error(data.error || 'Erro ao ativar Ntfy');
+      }
+    } catch {
+      toast.error('Erro ao ativar Ntfy');
+    } finally {
+      setNtfyActivating(false);
+    }
+  }
+
+  async function deactivateNtfy() {
+    setNtfyDeactivating(true);
+    try {
+      const res = await fetch('/api/settings/ntfy', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deactivate' }),
+      });
+      if (res.ok) {
+        setNtfyConnected(false);
+        setNtfyTopic('');
+        setNtfyToken('');
+        setNtfySubscribeUrl('');
+        toast.success('Ntfy desativado');
+      }
+    } catch {
+      toast.error('Erro ao desativar Ntfy');
+    } finally {
+      setNtfyDeactivating(false);
+    }
+  }
+
+  async function testNtfy() {
+    setNtfyTesting(true);
+    try {
+      const res = await fetch('/api/ntfy/test', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || 'Notificação enviada!');
+      } else {
+        toast.error(data.error || 'Erro ao enviar teste');
+      }
+    } catch {
+      toast.error('Erro ao enviar notificação de teste');
+    } finally {
+      setNtfyTesting(false);
+    }
+  }
+
+  async function fetchNtfyCredentials() {
+    try {
+      const res = await fetch('/api/settings/ntfy/credentials');
+      if (res.ok) {
+        const data = await res.json();
+        setNtfyToken(data.ntfyToken || '');
+      }
+    } catch { /* silent */ }
   }
 
   return (
@@ -569,6 +671,241 @@ export function SettingsView() {
                     Alternativa: se o webhook estiver configurado, envie <code className="font-mono bg-muted px-1 rounded">/start {userEmail}</code> diretamente no bot do CRM.
                   </p>
                 </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ==================== NTFY NOTIFICAÇÕES ==================== */}
+        <Card className={`hover:shadow-md transition-shadow duration-200 ${
+          ntfyConnected
+            ? 'border-violet-200 dark:border-violet-800/50 bg-violet-50/50 dark:bg-violet-950/20'
+            : ''
+        }`}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Bell className="h-4 w-4 text-violet-500" />
+              Notificações Ntfy
+            </CardTitle>
+            <CardDescription>
+              Receba alertas de push instantâneos de novos leads (sem precisar instalar nada)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {ntfyLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Verificando...
+              </div>
+            ) : ntfyConnected ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 gap-1">
+                    <Link2 className="h-3 w-3" />
+                    Ativo
+                  </Badge>
+                  <Badge variant="outline" className="text-violet-600 dark:text-violet-400 gap-1">
+                    <Shield className="h-3 w-3" />
+                    Privado
+                  </Badge>
+                </div>
+
+                {/* Subscribe link */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    1. Abra o link para se inscrever
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-muted px-3 py-2 rounded-md truncate font-mono">
+                      {ntfySubscribeUrl}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(ntfySubscribeUrl, '_blank')}
+                      className="flex-shrink-0"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(ntfySubscribeUrl, 'Link')}
+                      className="flex-shrink-0"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Credentials */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    2. Credenciais de acesso (insira quando solicitado)
+                  </Label>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-16 flex-shrink-0">Usuário:</span>
+                      <code className="flex-1 text-xs bg-muted px-3 py-1.5 rounded-md font-mono">
+                        {ntfyTopic}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyToClipboard(ntfyTopic, 'Usuário')}
+                        className="h-7 w-7 p-0 flex-shrink-0"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    {ntfyToken ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground w-16 flex-shrink-0">Senha:</span>
+                        <code className="flex-1 text-xs bg-muted px-3 py-1.5 rounded-md font-mono truncate">
+                          {showNtfyToken ? ntfyToken : '••••••••••••••••••••••••••••'}
+                        </code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowNtfyToken(!showNtfyToken)}
+                          className="h-7 w-7 p-0 flex-shrink-0"
+                        >
+                          {showNtfyToken ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(ntfyToken, 'Senha')}
+                          className="h-7 w-7 p-0 flex-shrink-0"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={fetchNtfyCredentials}
+                        className="text-xs"
+                      >
+                        Mostrar credenciais
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* How it works */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Como funciona
+                  </h4>
+                  <ul className="text-xs text-muted-foreground space-y-2">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-violet-500 mt-0.5 flex-shrink-0" />
+                      <span><strong>Push instantâneo</strong> — Notificação no celular/computador sem instalar app</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-violet-500 mt-0.5 flex-shrink-0" />
+                      <span><strong>Tópico privado</strong> — Apenas você tem acesso com suas credenciais</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-violet-500 mt-0.5 flex-shrink-0" />
+                      <span><strong>Dados completos</strong> — Nome, telefone, e-mail, campanha e respostas do formulário</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-violet-500 mt-0.5 flex-shrink-0" />
+                      <span><strong>Botão de ação</strong> — Toque na notificação para abrir o CRM diretamente</span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Instructions for subscription */}
+                <div className="p-3 rounded-lg bg-violet-100/50 dark:bg-violet-900/20 space-y-2">
+                  <h4 className="text-xs font-semibold text-violet-700 dark:text-violet-300">
+                    Passo a passo da inscrição
+                  </h4>
+                  <ol className="text-xs text-violet-600 dark:text-violet-400 space-y-1.5 list-decimal list-inside">
+                    <li>Clique no link acima para abrir a página do tópico</li>
+                    <li>Quando solicitado, insira o <strong>Usuário</strong> e <strong>Senha</strong> mostrados acima</li>
+                    <li>Pronto! Você começará a receber notificações</li>
+                  </ol>
+                  <p className="text-[10px] text-violet-500 dark:text-violet-400 pt-1">
+                    Dica: Instale o app Ntfy (Android/iOS) para receber push notifications no celular. As credenciais só são pedidas uma vez.
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={testNtfy}
+                    disabled={ntfyTesting}
+                    className="text-violet-600 border-violet-200 hover:bg-violet-50 dark:text-violet-400 dark:border-violet-800/50 dark:hover:bg-violet-950/30"
+                  >
+                    {ntfyTesting ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enviando...</>
+                    ) : (
+                      <><Send className="h-4 w-4 mr-2" /> Enviar Teste</>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={deactivateNtfy}
+                    disabled={ntfyDeactivating}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    {ntfyDeactivating ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Desativando...</>
+                    ) : (
+                      <><Unlink className="h-4 w-4 mr-2" /> Desativar</>
+                    )}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-muted text-muted-foreground gap-1">
+                    <Circle className="h-3 w-3" />
+                    Não ativado
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Ative as notificações Ntfy para receber alertas instantâneos de novos leads
+                  diretamente no seu celular ou computador, sem precisar instalar o Telegram.
+                </p>
+                <div className="p-3 rounded-lg bg-muted/50 space-y-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    O que é o Ntfy?
+                  </h4>
+                  <ul className="text-xs text-muted-foreground space-y-1.5">
+                    <li className="flex items-start gap-2">
+                      <Bell className="h-3 w-3 mt-0.5 flex-shrink-0 text-violet-500" />
+                      <span>Serviço gratuito de notificações push — funciona no navegador ou no app (Android/iOS)</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Shield className="h-3 w-3 mt-0.5 flex-shrink-0 text-violet-500" />
+                      <span>Seu tópico é <strong>privado</strong> — protegido por credenciais únicas geradas automaticamente</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3 w-3 mt-0.5 flex-shrink-0 text-violet-500" />
+                      <span>Configuração em <strong>1 clique</strong> — ative aqui e abra o link gerado</span>
+                    </li>
+                  </ul>
+                </div>
+                <Button
+                  onClick={activateNtfy}
+                  disabled={ntfyActivating}
+                  className="bg-violet-600 hover:bg-violet-700 text-white"
+                >
+                  {ntfyActivating ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Ativando...</>
+                  ) : (
+                    <><Bell className="h-4 w-4 mr-2" /> Ativar Notificações Ntfy</>
+                  )}
+                </Button>
               </>
             )}
           </CardContent>
