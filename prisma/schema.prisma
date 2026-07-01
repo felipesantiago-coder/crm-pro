@@ -146,6 +146,8 @@ model User {
   role              String   @default("USER") @map("role")
   mustChangePassword Boolean @default(false) @map("mustChangePassword")
   telegramChatId    String?  @unique @map("telegramChatId")
+  ntfyTopic         String?  @unique @map("ntfyTopic")
+  ntfyToken         String?  @map("ntfyToken")
   createdAt         DateTime  @default(now()) @map("createdAt")
   updatedAt         DateTime  @updatedAt @map("updatedAt")
 
