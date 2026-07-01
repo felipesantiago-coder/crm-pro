@@ -238,6 +238,24 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
       .catch(() => { /* silent — fallback to generic WhatsApp */ });
   }, [slug]);
 
+  // Lightbox keyboard navigation & scroll lock (hook must be before conditional returns)
+  useEffect(() => {
+    if (!lightboxOpen || !enterprise) return;
+    const imgs = enterprise.images.length > 0 ? enterprise.images : [];
+    const len = Math.max(imgs.length, 1);
+    const h = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setLightboxOpen(false);
+      if (ev.key === 'ArrowRight') setActiveImgIdx((p) => (p + 1) % len);
+      if (ev.key === 'ArrowLeft') setActiveImgIdx((p) => (p - 1 + len) % len);
+    };
+    window.addEventListener('keydown', h);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', h);
+      document.body.style.overflow = '';
+    };
+  }, [lightboxOpen, enterprise]);
+
   // NEW: Floating WhatsApp bar — show after scrolling past hero
   useEffect(() => {
     const onScroll = () => {
@@ -411,24 +429,8 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
     info?.apartmentTypes?.[0]?.description?.match(/a partir de\s*R\$\s*[\d.]+/i);
   const deliveryMatch = allText.match(/entrega.*?(\d{1,2}\/[\d]{4}|outubro \d{4}|dezembro \d{4})/i);
 
-  const goNext = useCallback(() => setActiveImgIdx((p) => (p + 1) % Math.max(images.length, 1)), [images.length]);
-  const goPrev = useCallback(() => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1)), [images.length]);
-
-  /* ─── Lightbox keyboard navigation & scroll lock ──────── */
-  useEffect(() => {
-    if (!lightboxOpen) return;
-    const h = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') setLightboxOpen(false);
-      if (ev.key === 'ArrowRight') goNext();
-      if (ev.key === 'ArrowLeft') goPrev();
-    };
-    window.addEventListener('keydown', h);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', h);
-      document.body.style.overflow = '';
-    };
-  }, [lightboxOpen, goNext, goPrev]);
+  const goNext = () => setActiveImgIdx((p) => (p + 1) % Math.max(images.length, 1));
+  const goPrev = () => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1));
 
   const displayTitle = e.landingTitle || e.name;
   const displaySubtitle = e.landingSubtitle || info?.summary?.slice(0, 120) || null;
