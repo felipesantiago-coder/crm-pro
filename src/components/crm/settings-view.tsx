@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone } from 'lucide-react';
+import { Moon, Sun, Database, Wifi, WifiOff, CheckCircle2, Circle, Copy, ExternalLink, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,14 @@ export function SettingsView() {
   const [gcConnecting, setGcConnecting] = useState(false);
   const [gcDisconnecting, setGcDisconnecting] = useState(false);
 
+  // Telegram
+  const [tgConfigured, setTgConfigured] = useState(false);
+  const [tgConnected, setTgConnected] = useState(false);
+  const [tgChatId, setTgChatId] = useState('');
+  const [tgLoading, setTgLoading] = useState(true);
+  const [tgTesting, setTgTesting] = useState(false);
+  const [tgSaving, setTgSaving] = useState(false);
+
   useEffect(() => {
     // Verificar status da conexão Google Calendar
     fetch('/api/google-calendar/status')
@@ -38,6 +46,17 @@ export function SettingsView() {
       .then((data) => setGcConnected(data.connected === true))
       .catch(() => {})
       .finally(() => setGcLoading(false));
+
+    // Verificar status do Telegram
+    fetch('/api/settings/telegram')
+      .then((r) => r.json())
+      .then((data) => {
+        setTgConfigured(data.botConfigured === true);
+        setTgConnected(data.configured === true);
+        setTgChatId(data.telegramChatId || '');
+      })
+      .catch(() => {})
+      .finally(() => setTgLoading(false));
 
     // Verificar feedback de conexão via URL params
     const params = new URLSearchParams(window.location.search);
@@ -130,6 +149,69 @@ export function SettingsView() {
       toast.error('Erro ao desconectar Google Calendar');
     } finally {
       setGcDisconnecting(false);
+    }
+  }
+
+  async function saveTelegramChatId() {
+    if (!tgChatId.trim()) {
+      toast.error('Insira o Chat ID');
+      return;
+    }
+    setTgSaving(true);
+    try {
+      const res = await fetch('/api/settings/telegram', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'connect', chatId: tgChatId.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTgConnected(true);
+        toast.success('Telegram vinculado com sucesso!');
+      } else {
+        toast.error(data.error || 'Erro ao vincular Telegram');
+      }
+    } catch {
+      toast.error('Erro ao vincular Telegram');
+    } finally {
+      setTgSaving(false);
+    }
+  }
+
+  async function disconnectTelegram() {
+    setTgSaving(true);
+    try {
+      const res = await fetch('/api/settings/telegram', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'disconnect' }),
+      });
+      if (res.ok) {
+        setTgConnected(false);
+        setTgChatId('');
+        toast.success('Telegram desvinculado');
+      }
+    } catch {
+      toast.error('Erro ao desvincular Telegram');
+    } finally {
+      setTgSaving(false);
+    }
+  }
+
+  async function testTelegram() {
+    setTgTesting(true);
+    try {
+      const res = await fetch('/api/telegram/test', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || 'Notificação enviada!');
+      } else {
+        toast.error(data.error || 'Erro ao enviar teste');
+      }
+    } catch {
+      toast.error('Erro ao enviar notificação de teste');
+    } finally {
+      setTgTesting(false);
     }
   }
 
@@ -339,6 +421,154 @@ export function SettingsView() {
                     </p>
                   </div>
                 )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ==================== TELEGRAM NOTIFICAÇÕES ==================== */}
+        <Card className={`hover:shadow-md transition-shadow duration-200 ${
+          tgConnected
+            ? 'border-blue-200 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-950/20'
+            : ''
+        }`}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <MessageCircle className="h-4 w-4 text-blue-500" />
+              Notificações Telegram
+            </CardTitle>
+            <CardDescription>
+              Receba alertas instantâneos de novos leads no seu Telegram
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {tgLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Verificando...
+              </div>
+            ) : !tgConfigured ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 gap-1">
+                    <Circle className="h-3 w-3" />
+                    Bot não configurado
+                  </Badge>
+                </div>
+                <div className="p-3 rounded-lg bg-amber-100/50 dark:bg-amber-900/20">
+                  <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                    O bot do Telegram não está configurado. Peça ao administrador para adicionar a variável
+                    de ambiente <code className="font-mono bg-amber-200/50 dark:bg-amber-800/30 px-1 rounded">TELEGRAM_BOT_TOKEN</code> no Vercel.
+                  </p>
+                </div>
+              </>
+            ) : tgConnected ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 gap-1">
+                    <Link2 className="h-3 w-3" />
+                    Conectado
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">Chat ID: <code className="font-mono">{tgChatId}</code></span>
+                </div>
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Como funciona
+                  </h4>
+                  <ul className="text-xs text-muted-foreground space-y-2">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 mt-0.5 flex-shrink-0" />
+                      <span><strong>Novo lead</strong> — Você recebe uma notificação instantânea com nome, telefone, e-mail e campanha</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 mt-0.5 flex-shrink-0" />
+                      <span><strong>Dados da campanha</strong> — Se o lead veio de uma campanha Meta Ads, o nome da campanha aparece na notificação</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 mt-0.5 flex-shrink-0" />
+                      <span><strong>100% gratuito</strong> — Sem custos por mensagem, sem limites</span>
+                    </li>
+                  </ul>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={testTelegram}
+                    disabled={tgTesting}
+                    className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800/50 dark:hover:bg-blue-950/30"
+                  >
+                    {tgTesting ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enviando...</>
+                    ) : (
+                      <><Send className="h-4 w-4 mr-2" /> Enviar Teste</>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={disconnectTelegram}
+                    disabled={tgSaving}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    {tgSaving ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Desconectando...</>
+                    ) : (
+                      <><Unlink className="h-4 w-4 mr-2" /> Desconectar</>
+                    )}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-muted text-muted-foreground gap-1">
+                    <Unlink className="h-3 w-3" />
+                    Não conectado
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Vincule seu Telegram para receber notificações instantâneas quando novos leads chegarem
+                  das campanhas de anúncios.
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="tg-chat-id" className="text-xs">Seu Chat ID no Telegram</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="tg-chat-id"
+                      placeholder="Ex: 123456789"
+                      value={tgChatId}
+                      onChange={(e) => setTgChatId(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <Button
+                      onClick={saveTelegramChatId}
+                      disabled={tgSaving}
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
+                    >
+                      {tgSaving ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /></>
+                      ) : (
+                        <><Link2 className="h-4 w-4" /></>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 space-y-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Como obter seu Chat ID
+                  </h4>
+                  <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">
+                    <li>No Telegram, busque por <strong>@userinfobot</strong></li>
+                    <li>Envie qualquer mensagem para ele</li>
+                    <li>Ele responderá com seu <strong>Chat ID</strong> (um número)</li>
+                    <li>Cole o número acima e clique em vincular</li>
+                  </ol>
+                  <p className="text-[10px] text-muted-foreground pt-1">
+                    Alternativa: se o webhook estiver configurado, envie <code className="font-mono bg-muted px-1 rounded">/start {userEmail}</code> diretamente no bot do CRM.
+                  </p>
+                </div>
               </>
             )}
           </CardContent>
