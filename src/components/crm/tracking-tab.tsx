@@ -22,6 +22,8 @@ import {
   BarChart3,
   Activity,
   Trophy,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -218,6 +220,7 @@ export function TrackingTab() {
   const [data, setData] = useState<TrackingDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const fetchData = useCallback(async (p: string) => {
     setLoading(true);
@@ -235,6 +238,29 @@ export function TrackingTab() {
       setLoading(false);
     }
   }, []);
+
+  const handleReset = useCallback(async () => {
+    const confirmed = window.confirm(
+      'Tem certeza que deseja resetar TODOS os dados de tracking? Esta ação é irreversível e apagará todos os visitantes e eventos registrados.'
+    );
+    if (!confirmed) return;
+
+    setResetting(true);
+    try {
+      const res = await fetch('/api/tracking/reset', { method: 'DELETE' });
+      if (res.ok) {
+        const json = await res.json();
+        toast.success(`Tracking resetado: ${json.deletedVisitors} visitantes e ${json.deletedEvents} eventos removidos.`);
+        fetchData(period);
+      } else {
+        toast.error('Erro ao resetar tracking.');
+      }
+    } catch {
+      toast.error('Erro de conexão ao resetar tracking.');
+    } finally {
+      setResetting(false);
+    }
+  }, [period, fetchData]);
 
   useEffect(() => {
     fetchData(period);
@@ -428,18 +454,33 @@ export function TrackingTab() {
           <Activity className="h-5 w-5 text-[#C9A96E]" />
           <h2 className="text-lg font-semibold text-zinc-100">Tracking de Visitantes</h2>
         </div>
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-32 h-9 text-xs bg-white/5 border-white/10 text-zinc-300">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PERIOD_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 h-9 px-3"
+            onClick={handleReset}
+            disabled={resetting}
+          >
+            {resetting
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              : <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+            }
+            {resetting ? 'Resetando...' : 'Resetar Dados'}
+          </Button>
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-32 h-9 text-xs bg-white/5 border-white/10 text-zinc-300">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PERIOD_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* ── KPI Cards ── */}
