@@ -172,6 +172,11 @@ export async function POST(request: NextRequest) {
             utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
             utmSource: typeof utmSource === 'string' ? utmSource : null,
             slug: slug || undefined,
+            customAnswers: (customAnswers && typeof customAnswers === 'object')
+              ? Object.fromEntries(
+                  Object.entries(customAnswers).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''),
+                )
+              : undefined,
           }).catch(() => { /* silent */ });
         }
       }).catch(() => { /* silent */ });
