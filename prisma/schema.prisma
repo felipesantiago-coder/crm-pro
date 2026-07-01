@@ -23,6 +23,11 @@ model Client {
   createdBy         String    @map("createdBy")
   createdAt         DateTime  @default(now()) @map("createdAt")
   updatedAt         DateTime  @updatedAt @map("updatedAt")
+  utmSource         String?   @map("utmSource")
+  utmMedium         String?   @map("utmMedium")
+  utmCampaign       String?   @map("utmCampaign")
+  utmContent        String?   @map("utmContent")
+  utmTerm           String?   @map("utmTerm")
 
   tags         ClientTag[]
   reminders    Reminder[]
@@ -36,6 +41,7 @@ model Client {
   @@index([stage])
   @@index([region])
   @@index([enterpriseId])
+  @@index([utmCampaign])
   @@map("clients")
 }
 

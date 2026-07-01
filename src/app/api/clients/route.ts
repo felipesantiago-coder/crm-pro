@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
     const needsUpdate = searchParams.get('needsUpdate') === 'true';
+    const utmCampaign = searchParams.get('utmCampaign') || '';
 
     // ADMIN vê todos; USER vê apenas os que criou + os que é parceiro
     const isAdminUser = currentUser.role === 'ADMIN';
@@ -45,6 +46,10 @@ export async function GET(request: NextRequest) {
 
     if (region) {
       baseWhere.region = { contains: region, mode: 'insensitive' };
+    }
+
+    if (utmCampaign) {
+      baseWhere.utmCampaign = utmCampaign;
     }
 
     if (tagIds.length > 0) {
@@ -96,11 +101,12 @@ export async function GET(request: NextRequest) {
     if (tagFilters && tagFilters.length > 0) {
       andConditions.push(...tagFilters);
     }
-    if (baseWhere.OR || baseWhere.region || baseWhere.stage) {
+    if (baseWhere.OR || baseWhere.region || baseWhere.stage || baseWhere.utmCampaign) {
       const searchFilter: Record<string, unknown> = {};
       if (baseWhere.OR) searchFilter.OR = baseWhere.OR;
       if (baseWhere.region) searchFilter.region = baseWhere.region;
       if (baseWhere.stage) searchFilter.stage = baseWhere.stage;
+      if (baseWhere.utmCampaign) searchFilter.utmCampaign = baseWhere.utmCampaign;
       andConditions.push(searchFilter);
     }
     if (andConditions.length > 0) {
@@ -109,6 +115,7 @@ export async function GET(request: NextRequest) {
       delete where.region;
       delete where.tags;
       delete where.stage;
+      delete where.utmCampaign;
     }
 
     // Excluir negócios finalizados da listagem principal

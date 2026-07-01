@@ -158,6 +158,18 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
   // Tracking: form field focus timestamps
   const fieldFocusTime = useRef<Record<string, number>>({});
 
+  // Capture UTM params from URL once on mount (persists for form submission)
+  const utmParams = React.useMemo(() => {
+    if (typeof window === 'undefined') return {} as Record<string, string>;
+    const sp = new URLSearchParams(window.location.search);
+    const map: Record<string, string> = {};
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach((k) => {
+      const v = sp.get(k);
+      if (v) map[k] = v;
+    });
+    return map;
+  }, []);
+
   // Tracking: section visibility (IntersectionObserver)
   useEffect(() => {
     if (typeof window === 'undefined' || !window.CRMPIXEL) return;
@@ -335,6 +347,11 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
           email: cleanEmail,
           slug: slug || undefined,
           customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined,
+          utmSource: utmParams.utm_source || undefined,
+          utmMedium: utmParams.utm_medium || undefined,
+          utmCampaign: utmParams.utm_campaign || undefined,
+          utmContent: utmParams.utm_content || undefined,
+          utmTerm: utmParams.utm_term || undefined,
         }),
       });
 
