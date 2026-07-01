@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { notifyNewLead } from '@/lib/telegram';
+import { notifyNewLead as notifyNewLeadNtfy } from '@/lib/ntfy';
 
 /**
  * PUBLIC endpoint — no auth required.
@@ -158,26 +159,34 @@ export async function POST(request: NextRequest) {
 
     // ── Send Telegram notification (fire-and-forget) ───────
     if (createdByUserId && createdByUserId !== 'system') {
-      // Fetch assigned user's telegramChatId (may be null)
+      // Fetch assigned user's telegramChatId and ntfy config (may be null)
       db.user.findUnique({
         where: { id: createdByUserId },
-        select: { telegramChatId: true },
+        select: { telegramChatId: true, ntfyTopic: true, ntfyToken: true },
       }).then((user) => {
+        const leadData = {
+          leadName: client.name,
+          leadPhone: client.phone || '',
+          leadEmail: client.email || '',
+          enterpriseName,
+          utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
+          utmSource: typeof utmSource === 'string' ? utmSource : null,
+          slug: slug || undefined,
+          customAnswers: (customAnswers && typeof customAnswers === 'object')
+            ? Object.fromEntries(
+                Object.entries(customAnswers).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''),
+              )
+            : undefined,
+        };
+
+        // Telegram notification
         if (user?.telegramChatId) {
-          notifyNewLead(user.telegramChatId, {
-            leadName: client.name,
-            leadPhone: client.phone || '',
-            leadEmail: client.email || '',
-            enterpriseName,
-            utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
-            utmSource: typeof utmSource === 'string' ? utmSource : null,
-            slug: slug || undefined,
-            customAnswers: (customAnswers && typeof customAnswers === 'object')
-              ? Object.fromEntries(
-                  Object.entries(customAnswers).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''),
-                )
-              : undefined,
-          }).catch(() => { /* silent */ });
+          notifyNewLead(user.telegramChatId, leadData).catch(() => { /* silent */ });
+        }
+
+        // Ntfy notification
+        if (user?.ntfyTopic && user?.ntfyToken) {
+          notifyNewLeadNtfy(user.ntfyTopic, user.ntfyToken, leadData).catch(() => { /* silent */ });
         }
       }).catch(() => { /* silent */ });
     }
