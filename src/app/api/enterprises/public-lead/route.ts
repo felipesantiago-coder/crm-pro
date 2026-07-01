@@ -10,7 +10,7 @@ import { Prisma } from '@prisma/client';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, phone, email, slug, customAnswers } = body;
+    const { name, phone, email, slug, customAnswers, utmSource, utmMedium, utmCampaign, utmContent, utmTerm } = body;
 
     // ── Validate required fields ─────────────────────────────
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
@@ -138,7 +138,12 @@ export async function POST(request: NextRequest) {
         enterpriseId: enterpriseId || undefined,
         stage: 'LEAD',
         createdBy: createdByUserId,
-        notes: `[Landing Page] Cadastro realizado via formulário${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? `\nSlug: ${slug}` : ''}${customAnswersText}`,
+        utmSource: typeof utmSource === 'string' ? utmSource : undefined,
+        utmMedium: typeof utmMedium === 'string' ? utmMedium : undefined,
+        utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : undefined,
+        utmContent: typeof utmContent === 'string' ? utmContent : undefined,
+        utmTerm: typeof utmTerm === 'string' ? utmTerm : undefined,
+        notes: `[Landing Page] Cadastro realizado via formulário${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? `\nSlug: ${slug}` : ''}${utmCampaign ? `\nCampanha: ${utmCampaign}` : ''}${customAnswersText}`,
       },
     });
 

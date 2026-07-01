@@ -4,7 +4,7 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Phone, Mail, MapPin, Building2, Clock, AlertTriangle, MessageCircle, PhoneCall, Target, Eye, CalendarDays, CalendarCheck, FileText, Handshake, Trophy, Ban } from 'lucide-react';
+import { Phone, Mail, MapPin, Building2, Clock, AlertTriangle, MessageCircle, PhoneCall, Target, Eye, CalendarDays, CalendarCheck, FileText, Handshake, Trophy, Ban, Megaphone } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
 
 interface ClientTag {
@@ -48,6 +48,9 @@ interface ClientCardProps {
     updatePeriod?: number;
     lastInteractionAt?: string | null;
     stage?: string;
+    utmSource?: string | null;
+    utmMedium?: string | null;
+    utmCampaign?: string | null;
     createdAt: string;
     tags: ClientTag[];
   };
@@ -185,6 +188,12 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
                 </Badge>
               );
             })()}
+            {client.utmCampaign && (
+              <Badge className="text-[10px] px-2 py-0.5 gap-1 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/50">
+                <Megaphone className="h-3 w-3" />
+                {client.utmCampaign}
+              </Badge>
+            )}
           </div>
         )}
 
