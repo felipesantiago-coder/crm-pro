@@ -73,6 +73,7 @@ export interface LeadNotificationData {
   utmSource?: string | null;
   slug?: string;
   assignedUserName?: string;
+  customAnswers?: Record<string, string> | null;
 }
 
 /**
@@ -90,6 +91,18 @@ export async function notifyNewLead(
     ? `\n🏗️ <b>Empreendimento:</b> ${escapeHtml(data.enterpriseName)}`
     : '';
 
+  // Build custom answers block
+  let answersBlock = '';
+  if (data.customAnswers && Object.keys(data.customAnswers).length > 0) {
+    const lines = Object.entries(data.customAnswers)
+      .filter(([, v]) => v && String(v).trim() !== '')
+      .map(([k, v]) => `  • <b>${escapeHtml(k)}:</b> ${escapeHtml(String(v))}`)
+      .join('\n');
+    if (lines) {
+      answersBlock = `\n\n📋 <b>Respostas do formulário:</b>\n${lines}`;
+    }
+  }
+
   const text =
     `🚨 <b>Novo Lead Recebido!</b>\n\n` +
     `👤 <b>Nome:</b> ${escapeHtml(data.leadName)}\n` +
@@ -97,6 +110,7 @@ export async function notifyNewLead(
     `📧 <b>E-mail:</b> ${escapeHtml(data.leadEmail)}` +
     enterpriseLine +
     campaignLine +
+    answersBlock +
     `\n\n⏰ ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`;
 
   return sendTelegramMessage(telegramChatId, text);
