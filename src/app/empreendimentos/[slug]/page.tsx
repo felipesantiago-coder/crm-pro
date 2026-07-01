@@ -1160,7 +1160,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                   <MessageSquare className="h-5 w-5 sm:h-7 sm:w-7 text-[#C9A96E]" />
                 </div>
                 <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">
-                  Interessado em <span className="text-[#C9A96E]">{e.name}</span>?
+                  Interessado no <span className="text-[#C9A96E]">{e.name}</span>?
                 </h2>
                 <p className="text-white/50 max-w-lg text-sm sm:text-base leading-relaxed mb-6 sm:mb-8">
                   Preencha o formulário ao lado e receba atendimento personalizado sobre este empreendimento. Nossa equipe entrará em contato com você em breve para agendar uma visita ou tirar todas as suas dúvidas.
