@@ -54,14 +54,13 @@ async function sendNtfy(
   },
 ): Promise<boolean> {
   try {
-    // Basic auth: username = topic, password = token
-    const credentials = Buffer.from(`${topic}:${token}`).toString('base64');
-
+    // ntfy.sh public server: publishing is open by default.
+    // Privacy comes from the random topic name (e.g. crm-x8k2m9pq), not from auth.
+    // Sending invalid auth causes 401, so we don't send it.
     const res = await fetch(`${NTFY_BASE_URL}/${topic}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${credentials}`,
       },
       body: JSON.stringify(payload),
     });
