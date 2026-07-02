@@ -46,8 +46,12 @@ export default function ChangePasswordPage() {
     return null;
   }
 
-  const minLengthMet = newPassword.length >= 6;
+  const minLengthMet = newPassword.length >= 8;
+  const hasUppercase = /[A-Z]/.test(newPassword);
+  const hasLowercase = /[a-z]/.test(newPassword);
+  const hasNumber = /[0-9]/.test(newPassword);
   const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
+  const passwordValid = minLengthMet && hasUppercase && hasLowercase && hasNumber;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -57,8 +61,8 @@ export default function ChangePasswordPage() {
       return;
     }
 
-    if (newPassword.length < 6) {
-      toast.error('A nova senha deve ter no mínimo 6 caracteres.');
+    if (newPassword.length < 8) {
+      toast.error('A nova senha deve ter no mínimo 8 caracteres, com maiúscula, minúscula e número.');
       return;
     }
 
@@ -145,7 +149,7 @@ export default function ChangePasswordPage() {
                 <Input
                   id="newPassword"
                   type={showNew ? 'text' : 'password'}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Ex: Abc12345"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
@@ -161,16 +165,26 @@ export default function ChangePasswordPage() {
                   {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
                 {newPassword.length > 0 && (
-                  <span className={minLengthMet ? 'text-emerald-600' : 'text-red-500'}>
-                    {minLengthMet ? (
-                      <Check className="h-3.5 w-3.5 inline mr-1" />
-                    ) : (
-                      <X className="h-3.5 w-3.5 inline mr-1" />
-                    )}
-                    Mínimo 6 caracteres ({newPassword.length}/6)
-                  </span>
+                  <>
+                    <span className={minLengthMet ? 'text-emerald-600' : 'text-red-500'}>
+                      {minLengthMet ? <Check className="h-3.5 w-3.5 inline mr-1" /> : <X className="h-3.5 w-3.5 inline mr-1" />}
+                      8+ caracteres ({newPassword.length}/8)
+                    </span>
+                    <span className={hasUppercase ? 'text-emerald-600' : 'text-red-500'}>
+                      {hasUppercase ? <Check className="h-3.5 w-3.5 inline mr-1" /> : <X className="h-3.5 w-3.5 inline mr-1" />}
+                      Maiúscula
+                    </span>
+                    <span className={hasLowercase ? 'text-emerald-600' : 'text-red-500'}>
+                      {hasLowercase ? <Check className="h-3.5 w-3.5 inline mr-1" /> : <X className="h-3.5 w-3.5 inline mr-1" />}
+                      Minúscula
+                    </span>
+                    <span className={hasNumber ? 'text-emerald-600' : 'text-red-500'}>
+                      {hasNumber ? <Check className="h-3.5 w-3.5 inline mr-1" /> : <X className="h-3.5 w-3.5 inline mr-1" />}
+                      Número
+                    </span>
+                  </>
                 )}
               </div>
             </div>
@@ -211,7 +225,7 @@ export default function ChangePasswordPage() {
             </div>
             <Button
               type="submit"
-              disabled={loading || !minLengthMet || !passwordsMatch}
+              disabled={loading || !passwordValid || !passwordsMatch}
               className="w-full h-11 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold transition-all duration-200"
             >
               {loading ? (
