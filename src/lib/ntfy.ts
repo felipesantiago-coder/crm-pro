@@ -57,7 +57,7 @@ async function sendNtfy(
     // Basic auth: username = topic, password = token
     const credentials = Buffer.from(`${topic}:${token}`).toString('base64');
 
-    const res = await fetch(`${NTFY_BASE_URL}`, {
+    const res = await fetch(`${NTFY_BASE_URL}/${topic}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
