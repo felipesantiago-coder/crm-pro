@@ -120,12 +120,12 @@ export function ClientsView() {
           fetch('/api/tags'),
           fetch('/api/clients/campaigns'),
         ]);
-        const regionsData = await regionsRes.json();
-        const tagsData = await tagsRes.json();
-        const campaignsData = await campaignsRes.json();
-        setRegions(regionsData || []);
-        setTags(tagsData);
-        setCampaigns(campaignsData || []);
+        const regionsData = regionsRes.ok ? await regionsRes.json() : [];
+        const tagsData = tagsRes.ok ? await tagsRes.json() : [];
+        const campaignsData = campaignsRes.ok ? await campaignsRes.json() : [];
+        setRegions(Array.isArray(regionsData) ? regionsData : []);
+        setTags(Array.isArray(tagsData) ? tagsData : []);
+        setCampaigns(Array.isArray(campaignsData) ? campaignsData : []);
       } catch {
         console.error('Error fetching filters');
       }
