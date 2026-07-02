@@ -819,37 +819,6 @@ export function SettingsView() {
                         </div>
                       </div>
 
-                      {/* Credentials section */}
-                      <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
-                        <p className="text-sm font-semibold mb-3 flex items-center gap-2">
-                          <Shield className="h-4 w-4 text-violet-500" />
-                          Suas credenciais de acesso
-                        </p>
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground w-16 flex-shrink-0">Usuario:</span>
-                            <code className="flex-1 text-xs bg-muted px-3 py-1.5 rounded-md font-mono">{ntfyTopic}</code>
-                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(ntfyTopic, 'Usuario')} className="h-7 w-7 p-0 flex-shrink-0"><Copy className="h-3 w-3" /></Button>
-                          </div>
-                          {ntfyToken ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground w-16 flex-shrink-0">Senha:</span>
-                              <code className="flex-1 text-xs bg-muted px-3 py-1.5 rounded-md font-mono truncate">
-                                {showNtfyToken ? ntfyToken : '••••••••••••••••••••••••••••'}
-                              </code>
-                              <Button variant="ghost" size="sm" onClick={() => setShowNtfyToken(!showNtfyToken)} className="h-7 w-7 p-0 flex-shrink-0">
-                                {showNtfyToken ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => copyToClipboard(ntfyToken, 'Senha')} className="h-7 w-7 p-0 flex-shrink-0"><Copy className="h-3 w-3" /></Button>
-                            </div>
-                          ) : (
-                            <Button variant="outline" size="sm" onClick={fetchNtfyCredentials} className="text-xs">
-                              <Eye className="h-3.5 w-3.5 mr-1.5" /> Mostrar senha
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-
                       {/* Visual Step-by-Step Tutorial */}
                       <div className="p-4 rounded-xl bg-violet-50/50 dark:bg-violet-950/10 border border-violet-100 dark:border-violet-900/20">
                         <p className="text-sm font-semibold mb-4 flex items-center gap-2">
@@ -877,8 +846,8 @@ export function SettingsView() {
                               <div className="w-px flex-1 bg-violet-200 dark:bg-violet-800/40 mt-1" />
                             </div>
                             <div className="pb-4">
-                              <p className="text-sm font-medium">Quando solicitado, insira o <strong>Usuario</strong> e a <strong>Senha</strong></p>
-                              <p className="text-xs text-muted-foreground mt-0.5">Copie as credenciais da secao acima e cole na pagina que abriu</p>
+                              <p className="text-sm font-medium">Clique em <strong>"Subscribe to topic"</strong> na pagina que abriu</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Se estiver no celular, use o app Ntfy e adicione o topico <code className="bg-muted px-1 rounded text-[10px] font-mono">{ntfyTopic}</code></p>
                             </div>
                           </div>
                           <div className="flex gap-3">
@@ -891,7 +860,7 @@ export function SettingsView() {
                               <p className="text-sm font-medium">Pronto! Voce ja recebera as notificacoes</p>
                               <p className="text-xs text-muted-foreground mt-0.5">Use o botao "Testar" acima para confirmar que esta funcionando</p>
                               <p className="text-[10px] text-violet-500 dark:text-violet-400 mt-1">
-                                Dica: Instale o app Ntfy (Android/iOS) para receber push notifications no celular. As credenciais so sao pedidas uma vez.
+                                Dica: Instale o app Ntfy (Android/iOS) para receber push notifications direto no celular.
                               </p>
                             </div>
                           </div>
@@ -917,8 +886,8 @@ export function SettingsView() {
                           <div className="flex items-start gap-2">
                             <Shield className="h-4 w-4 text-violet-500 mt-0.5 flex-shrink-0" />
                             <div>
-                              <p className="text-xs font-medium">Topico privado</p>
-                              <p className="text-[10px] text-muted-foreground">Protegido por credenciais unicas</p>
+                              <p className="text-xs font-medium">Topico exclusivo</p>
+                              <p className="text-[10px] text-muted-foreground">Nome aleatorio impossivel de adivinhar</p>
                             </div>
                           </div>
                           <div className="flex items-start gap-2">
