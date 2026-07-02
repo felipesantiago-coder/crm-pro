@@ -117,10 +117,3 @@ BEGIN
   END IF;
 END $$;
 
--- 4) Marcar migrações como aplicadas no _prisma_migrations
-INSERT INTO "_prisma_migrations" ("id", "checksum", "finished_at", "migration_name", "logs", "rolled_back_at", "started_at", "applied_steps_count")
-VALUES
-  ('0196180a-0001-7000-8000-000000000001', '0000000000', NOW(), '20260702_add_utm_fields_to_clients', '', NULL, NOW(), 1),
-  ('0196180a-0002-7000-8000-000000000002', '0000000000', NOW(), '20260702_add_telegram_chat_id', '', NULL, NOW(), 1),
-  ('0196180a-0003-7000-8000-000000000003', '0000000000', NOW(), '20260702_add_ntfy_fields_to_users', '', NULL, NOW(), 1)
-ON CONFLICT DO NOTHING;
