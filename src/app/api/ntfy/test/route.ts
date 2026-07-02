@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
-import { sendNtfyTest } from '@/lib/ntfy';
+
+const NTFY_BASE_URL = (process.env.NTFY_BASE_URL || 'https://ntfy.sh').replace(/\/+$/, '');
 
 /**
  * POST /api/ntfy/test
@@ -31,16 +32,34 @@ export async function POST() {
       );
     }
 
-    const sent = await sendNtfyTest(user.ntfyTopic, user.ntfyToken, user.name);
+    // Send directly with full error details
+    const credentials = Buffer.from(`${user.ntfyTopic}:${user.ntfyToken}`).toString('base64');
+    const body = {
+      topic: user.ntfyTopic,
+      title: '✅ Notificações Ntfy Ativas!',
+      body: `Olá, **${user.name}**! 🔔\n\nSuas notificações Ntfy estão ativas!\nVocê receberá alertas aqui sempre que um novo lead for cadastrado via landing page.\n\n_${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}_`,
+      priority: 3,
+      tags: ['white_check_mark'],
+    };
 
-    if (sent) {
+    const res = await fetch(`${NTFY_BASE_URL}/${user.ntfyTopic}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${credentials}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (res.status === 200 || res.status === 402) {
       return NextResponse.json({ success: true, message: 'Notificação de teste enviada!' });
-    } else {
-      return NextResponse.json(
-        { error: 'Falha ao enviar notificação. Verifique se você se inscreveu no tópico com as credenciais corretas.' },
-        { status: 500 },
-      );
     }
+
+    const errorText = await res.text().catch(() => 'sem detalhes');
+    return NextResponse.json(
+      { error: `Ntfy retornou status ${res.status}: ${errorText}` },
+      { status: 500 },
+    );
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('[Ntfy Test] Error:', msg, error);
