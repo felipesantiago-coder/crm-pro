@@ -13,6 +13,10 @@ import {
   Search,
   Lock,
   Building2,
+  Check,
+  X,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,6 +71,7 @@ export function AdminPanel() {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [newRole, setNewRole] = useState('USER');
   const [creating, setCreating] = useState(false);
 
@@ -105,8 +110,17 @@ export function AdminPanel() {
       toast.error('Preencha todos os campos obrigatórios.');
       return;
     }
-    if (newPassword.length < 6) {
-      toast.error('A senha deve ter no mínimo 6 caracteres.');
+    const pwMin = newPassword.length >= 8;
+    const pwUpper = /[A-Z]/.test(newPassword);
+    const pwLower = /[a-z]/.test(newPassword);
+    const pwNumber = /[0-9]/.test(newPassword);
+    if (!pwMin || !pwUpper || !pwLower || !pwNumber) {
+      const missing: string[] = [];
+      if (!pwMin) missing.push('mínimo 8 caracteres');
+      if (!pwUpper) missing.push('1 letra maiúscula');
+      if (!pwLower) missing.push('1 letra minúscula');
+      if (!pwNumber) missing.push('1 número');
+      toast.error(`Senha fraca. Faltam: ${missing.join(', ')}`);
       return;
     }
 
@@ -279,14 +293,42 @@ export function AdminPanel() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="new-password">Senha *</Label>
-                    <Input
-                      id="new-password"
-                      type="password"
-                      placeholder="Mínimo 6 caracteres"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      disabled={creating}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="new-password"
+                        type={showNewPassword ? 'text' : 'password'}
+                        placeholder="Ex: Abc12345"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        disabled={creating}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        tabIndex={-1}
+                      >
+                        {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Mínimo 8 caracteres com:
+                    </p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                      <span className={newPassword.length >= 8 ? 'text-emerald-600' : 'text-muted-foreground'}>
+                        {newPassword.length >= 8 ? <Check className="h-3 w-3 inline mr-0.5" /> : <X className="h-3 w-3 inline mr-0.5" />}8+ caracteres
+                      </span>
+                      <span className={/[A-Z]/.test(newPassword) ? 'text-emerald-600' : 'text-muted-foreground'}>
+                        {/[A-Z]/.test(newPassword) ? <Check className="h-3 w-3 inline mr-0.5" /> : <X className="h-3 w-3 inline mr-0.5" />}Maiúscula
+                      </span>
+                      <span className={/[a-z]/.test(newPassword) ? 'text-emerald-600' : 'text-muted-foreground'}>
+                        {/[a-z]/.test(newPassword) ? <Check className="h-3 w-3 inline mr-0.5" /> : <X className="h-3 w-3 inline mr-0.5" />}Minúscula
+                      </span>
+                      <span className={/[0-9]/.test(newPassword) ? 'text-emerald-600' : 'text-muted-foreground'}>
+                        {/[0-9]/.test(newPassword) ? <Check className="h-3 w-3 inline mr-0.5" /> : <X className="h-3 w-3 inline mr-0.5" />}Número
+                      </span>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="new-role">Perfil</Label>
@@ -311,7 +353,7 @@ export function AdminPanel() {
                   </Button>
                   <Button
                     onClick={handleCreateUser}
-                    disabled={creating || !newName || !newEmail || !newPassword}
+                    disabled={creating || !newName || !newEmail || !newPassword || newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)}
                     className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
                   >
                     {creating ? (
