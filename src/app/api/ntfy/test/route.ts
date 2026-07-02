@@ -42,7 +42,8 @@ export async function POST() {
       );
     }
   } catch (error) {
-    console.error('[Ntfy Test] Error:', error);
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[Ntfy Test] Error:', msg, error);
+    return NextResponse.json({ error: `Erro interno: ${msg}` }, { status: 500 });
   }
 }
