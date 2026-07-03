@@ -70,7 +70,7 @@ const enterprisesCatalog: Record<string, EnterpriseCatalogEntry> = {
     deliveryDate: 'Abril de 2029',
     price: 'Aceita FGTS — enquadramento Minha Casa Minha Vida',
     totalUnits: 291,
-    floors: 19,
+    floors: 13,
     parkingSpots: null,
     differentials: [
       'Piscina',
