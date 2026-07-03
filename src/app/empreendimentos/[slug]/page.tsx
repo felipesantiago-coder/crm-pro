@@ -6,7 +6,7 @@ import {
   X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Copy, Check, User, Send, AlertCircle,
-  Shield, ChevronDown, CalendarDays, TrendingUp,
+  Shield, ChevronDown, CalendarDays, TrendingUp, Users, Layers, Car,
 } from 'lucide-react';
 
 /* ================================================================
@@ -41,12 +41,19 @@ interface ExtractedInfo {
   builder: string | null;
   architecture: string | null;
   landscaping: string | null;
+  status: string | null;
+  deliveryDate: string | null;
+  price: string | null;
+  totalUnits: number | null;
+  floors: number | null;
+  parkingSpots: number | null;
   differentials: string[];
   apartmentTypes: Array<{
     name: string;
     area: string | null;
     bedrooms: string | null;
     description: string | null;
+    price: string | null;
   }>;
   summary: string | null;
 }
@@ -437,14 +444,31 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
   );
 
   const allText = [info?.summary, ...(info?.differentials || [])].filter(Boolean).join(' ');
-  let status: string | null = null;
-  if (/entregue|pronto para morar|habite-se/i.test(allText)) status = 'Entregue';
-  else if (/em construção|construção/i.test(allText)) status = 'Em Construção';
-  else if (/lançamento|pré-lançamento/i.test(allText)) status = 'Lançamento';
 
-  const priceMatch = info?.summary?.match(/a partir de\s*R\$\s*[\d.]+/i) ||
-    info?.apartmentTypes?.[0]?.description?.match(/a partir de\s*R\$\s*[\d.]+/i);
-  const deliveryMatch = allText.match(/entrega.*?(\d{1,2}\/[\d]{4}|outubro \d{4}|dezembro \d{4})/i);
+  // Status: prefer dedicated field from AI extraction, fallback to regex on text
+  let status: string | null = info?.status || null;
+  if (!status) {
+    if (/entregue|pronto para morar|habite-se/i.test(allText)) status = 'Entregue';
+    else if (/em construção|construção/i.test(allText)) status = 'Em Construção';
+    else if (/lançamento|pré-lançamento/i.test(allText)) status = 'Lançamento';
+  }
+
+  // Price: prefer dedicated field, fallback to regex on summary
+  const priceText = info?.price || (() => {
+    const m = info?.summary?.match(/a partir de\s*R\$\s*[\d.]+/i) ||
+      info?.apartmentTypes?.[0]?.description?.match(/a partir de\s*R\$\s*[\d.]+/i);
+    return m ? m[0] : null;
+  })();
+
+  // Delivery: prefer dedicated field, fallback to broader regex
+  const deliveryText = (() => {
+    if (info?.deliveryDate) return info.deliveryDate;
+    if (status === 'Entregue') return 'Já entregue';
+    // Broader regex: capture various date formats after "entrega" mentions
+    const m = allText.match(/entrega[^A-Z]*(?:prevista\s*(?:para\s*)?)?([^.;\n]{3,40}?)(?:\.|;|\n|$)/i)
+      || allText.match(/(\d{1,2}\/\d{2,4}|\d{4})\s*$/);
+    return m ? m[1].trim() : null;
+  })();
 
   const goNext = () => setActiveImgIdx((p) => (p + 1) % Math.max(images.length, 1));
   const goPrev = () => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1));
@@ -464,8 +488,6 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
   const areaRange = maxArea > 0
     ? (minArea === maxArea ? `${maxArea}m²` : `${minArea} a ${maxArea}m²`)
     : null;
-  const priceText = priceMatch ? priceMatch[0] : null;
-  const deliveryText = deliveryMatch ? deliveryMatch[1] : (status === 'Entregue' ? 'Já entregue' : null);
 
   /* ================================================================
      Render
@@ -568,10 +590,10 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                 {status}
               </span>
             )}
-            {priceMatch && (
+            {priceText && (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 max-w-[200px] sm:max-w-none">
                 <DollarSign className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate">{priceMatch[0]}</span>
+                <span className="truncate">{priceText}</span>
               </span>
             )}
             {status === 'Entregue' && (
@@ -580,10 +602,10 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                 <span>Já entregue</span>
               </span>
             )}
-            {deliveryMatch && status !== 'Entregue' && (
+            {deliveryText && status !== 'Entregue' && (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 max-w-[200px] sm:max-w-none">
                 <Clock className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate">Previsão: {deliveryMatch[1]}</span>
+                <span className="truncate">Previsão: {deliveryText}</span>
               </span>
             )}
             {e.region && (
@@ -848,6 +870,45 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                   </div>
                   <p className={`text-sm font-semibold ${status === 'Entregue' ? 'text-emerald-400' : 'text-white/85'}`}>{deliveryText || 'A definir'}</p>
                 </div>
+
+              {/* Unidades — only show when data exists */}
+              {info?.totalUnits != null && info.totalUnits > 0 && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-cyan-500/15 flex items-center justify-center">
+                      <Users className="h-4 w-4 text-cyan-400" />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Unidades</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white/85">{info.totalUnits} {info.totalUnits === 1 ? 'unidade' : 'unidades'}</p>
+                </div>
+              )}
+
+              {/* Pavimentos — only show when data exists */}
+              {info?.floors != null && info.floors > 0 && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-indigo-500/15 flex items-center justify-center">
+                      <Layers className="h-4 w-4 text-indigo-400" />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Pavimentos</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white/85">{info.floors} {info.floors === 1 ? 'pavimento' : 'pavimentos'}</p>
+                </div>
+              )}
+
+              {/* Vagas — only show when data exists */}
+              {info?.parkingSpots != null && info.parkingSpots > 0 && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-teal-500/15 flex items-center justify-center">
+                      <Car className="h-4 w-4 text-teal-400" />
+                    </div>
+                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Vagas</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white/85">{info.parkingSpots} {info.parkingSpots === 1 ? 'vaga' : 'vagas'}</p>
+                </div>
+              )}
 
               {/* Endereço */}
               <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0 sm:col-span-2 lg:col-span-2">

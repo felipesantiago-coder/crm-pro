@@ -23,12 +23,19 @@ interface ExtractedInfo {
   builder: string | null;
   architecture: string | null;
   landscaping: string | null;
+  status: string | null;
+  deliveryDate: string | null;
+  price: string | null;
+  totalUnits: number | null;
+  floors: number | null;
+  parkingSpots: number | null;
   differentials: string[];
   apartmentTypes: Array<{
     name: string;
     area: string | null;
     bedrooms: string | null;
     description: string | null;
+    price: string | null;
   }>;
   summary: string | null;
 }
@@ -38,6 +45,12 @@ const EMPTY_INFO: ExtractedInfo = {
   builder: null,
   architecture: null,
   landscaping: null,
+  status: null,
+  deliveryDate: null,
+  price: null,
+  totalUnits: null,
+  floors: null,
+  parkingSpots: null,
   differentials: [],
   apartmentTypes: [],
   summary: null,
@@ -65,16 +78,29 @@ Campos a extrair:
 
 4. "landscaping": nome do escritório de paisagismo responsável, null se não houver
 
-5. "differentials": array de strings com os diferenciais do empreendimento (ex: ["Piscina aquecida", "Arena 50m", "Coworking"]). Máximo 8 itens. Retorne [] se não houver.
+5. "status": status atual do empreendimento. Use EXATAMENTE um destes valores: "Lançamento", "Em Construção" ou "Entregue". Derive do contexto geral do documento (ex: menções a "pré-lançamento", "obras em andamento", "pronto para morar", "habite-se concedido"). null se não for possível determinar.
 
-6. "apartmentTypes": array de objetos, cada um com:
+6. "deliveryDate": data ou previsão de entrega EXATAMENTE como encontrada no texto. NÃO reformatar. Exemplos aceitáveis: "Dezembro/2026", "2º semestre de 2027", "3º trimestre 2026", "12/2026", "junho de 2026", "2028". null se não houver.
+
+7. "price": menor preço ou faixa de preço EXATAMENTE como encontrada no texto. NÃO reformatar. Exemplos: "a partir de R$ 350.000", "R$ 480.000 a R$ 720.000", "R$ 1.200.000". null se não houver.
+
+8. "totalUnits": número total de unidades do empreendimento (inteiro). null se não houver.
+
+9. "floors": número de andares/pavimentos do empreendimento (inteiro). null se não houver.
+
+10. "parkingSpots": número total de vagas de garagem (inteiro). null se não houver.
+
+11. "differentials": array de strings com os diferenciais do empreendimento (ex: ["Piscina aquecida", "Arena 50m", "Coworking"]). Máximo 10 itens. Inclua TODOS os diferenciais mencionados no documento (lazer, infraestrutura, segurança, sustentabilidade, etc). Retorne [] se não houver.
+
+12. "apartmentTypes": array de objetos, cada um com:
    - "name": tipo/nome do apartamento (ex: "Tipo 1", "Suíte Master", "Apartamento 2 quartos")
    - "area": metragem formatada (ex: "65m²", "120,5 m²"), null se não houver
    - "bedrooms": quantidade de quartos (ex: "2 quartos", "3 suítes"), null se não houver
    - "description": descrição breve do tipo, null se não houver
+   - "price": preço ou faixa de preço deste tipo EXATAMENTE como no texto, null se não houver
    Retorne [] se não houver informações de tipologias.
 
-7. "summary": resumo em UMA frase (máximo 120 caracteres) sobre o empreendimento. null se não houver informações suficientes.
+13. "summary": resumo em UMA frase (máximo 200 caracteres) sobre o empreendimento, incluindo dados-chave como tipo de unidades, metragem e preço se disponíveis. null se não houver informações suficientes.
 
 REGRAS IMPORTANTES:
 - Retorne APENAS o JSON, sem nenhum texto antes ou depois.
@@ -82,6 +108,7 @@ REGRAS IMPORTANTES:
 - Se uma informação não for encontrada, use null (nunca deixe em branco ou use string vazia).
 - Diferenciais devem ser curtos (máximo 5 palavras cada).
 - Para "area", use sempre o formato numérico+m² (ex: "75m²").
+- Para "deliveryDate" e "price", preserve EXATAMENTE o formato original do texto. Isso é essencial.
 - O JSON deve ser válido e bem formatado.`;
 
 // ============================================================
@@ -163,13 +190,21 @@ function parseJSON(raw: string): ExtractedInfo {
       builder: parsed?.builder || null,
       architecture: parsed?.architecture || null,
       landscaping: parsed?.landscaping || null,
-      differentials: Array.isArray(parsed?.differentials) ? parsed.differentials.filter(Boolean).slice(0, 8) : [],
+      status: (parsed?.status === 'Lançamento' || parsed?.status === 'Em Construção' || parsed?.status === 'Entregue')
+        ? parsed.status : null,
+      deliveryDate: parsed?.deliveryDate || null,
+      price: parsed?.price || null,
+      totalUnits: typeof parsed?.totalUnits === 'number' ? parsed.totalUnits : null,
+      floors: typeof parsed?.floors === 'number' ? parsed.floors : null,
+      parkingSpots: typeof parsed?.parkingSpots === 'number' ? parsed.parkingSpots : null,
+      differentials: Array.isArray(parsed?.differentials) ? parsed.differentials.filter(Boolean).slice(0, 10) : [],
       apartmentTypes: Array.isArray(parsed?.apartmentTypes)
         ? parsed.apartmentTypes.map((apt: any) => ({
             name: apt?.name || 'Tipo',
             area: apt?.area || null,
             bedrooms: apt?.bedrooms || null,
             description: apt?.description || null,
+            price: apt?.price || null,
           }))
         : [],
       summary: parsed?.summary || null,
