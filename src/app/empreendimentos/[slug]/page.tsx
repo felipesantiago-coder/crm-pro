@@ -824,27 +824,31 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
                   {areaRange && <p className="text-xs text-white/40 mt-1">{areaRange}</p>}
                 </div>
 
-              {/* Arquitetura */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              {/* Arquitetura — only show when data exists */}
+              {info?.architecture && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
                       <Palette className="h-4 w-4 text-violet-400" />
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Arquitetura</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info?.architecture || '—'}</p>
+                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info.architecture}</p>
                 </div>
+              )}
 
-              {/* Paisagismo */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              {/* Paisagismo — only show when data exists */}
+              {info?.landscaping && (
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
                       <Sparkles className="h-4 w-4 text-emerald-400" />
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Paisagismo</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info?.landscaping || '—'}</p>
+                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info.landscaping}</p>
                 </div>
+              )}
 
               {/* Preço */}
               <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
