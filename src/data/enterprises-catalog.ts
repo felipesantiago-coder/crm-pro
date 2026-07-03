@@ -56,25 +56,65 @@ const enterprisesCatalog: Record<string, EnterpriseCatalogEntry> = {
   // ── Residencial Vitta ────────────────────────────────────
   'residencial-vitta': {
     location: {
-      address: null,          // ex: "Rua Exemplo, 123"
-      neighborhood: null,     // ex: "Centro"
-      city: null,             // ex: "São Paulo"
-      state: null,            // ex: "SP"
-      region: null,           // ex: "Zona Sul"
-      additionalInfo: null,   // ex: "Próximo ao parque X"
+      address: 'QNM 29, Área Especial C',
+      neighborhood: 'Ceilândia Sul',
+      city: 'Brasília',
+      state: 'DF',
+      region: 'Ceilândia',
+      additionalInfo: 'Em frente ao Hospital Regional de Ceilândia',
     },
-    builder: null,            // ex: "Incorporadora XYZ"
-    architecture: null,       // ex: "Escritório Arq. Silva"
-    landscaping: null,        // ex: "Paisagismo & Cia"
-    status: null,             // "Lançamento" | "Em Construção" | "Entregue"
-    deliveryDate: null,       // ex: "Dezembro/2026", "2º semestre de 2027"
-    price: null,              // ex: "a partir de R$ 350.000"
-    totalUnits: null,         // ex: 48
-    floors: null,             // ex: 12
-    parkingSpots: null,       // ex: 96
-    differentials: [],        // ex: ["Piscina aquecida", "Arena 50m", "Coworking"]
-    apartmentTypes: [],       // ex: [{ name: "Tipo 1", area: "65m²", bedrooms: "2 quartos", price: null }]
-    summary: null,            // ex: "Residencial Vitta — 2 a 3 quartos a partir de R$ 500.000"
+    builder: 'Grupo Attos, Habitar Empreendimentos, HC Construtora',
+    architecture: null,
+    landscaping: null,
+    status: 'Lançamento',
+    deliveryDate: 'Abril de 2029',
+    price: 'Aceita FGTS — enquadramento Minha Casa Minha Vida',
+    totalUnits: 291,
+    floors: 19,
+    parkingSpots: null,
+    differentials: [
+      'Piscina',
+      'Academia equipada',
+      'Coworking',
+      '3 salões de jogos',
+      'Brinquedoteca',
+      'Pet place',
+      'Salão de festas',
+      'Churrasqueira',
+      'Medição individual de água e energia',
+      '6 lojas comerciais no térreo',
+    ],
+    apartmentTypes: [
+      {
+        name: '1 Quarto',
+        area: '32m²',
+        bedrooms: '1 quarto',
+        description: 'Sala, cozinha, 1 quarto, 1 banheiro, área de serviço',
+        price: null,
+      },
+      {
+        name: '2 Quartos',
+        area: '48m²',
+        bedrooms: '2 quartos',
+        description: 'Sala, cozinha, 2 quartos, 1 banheiro, área de serviço',
+        price: null,
+      },
+      {
+        name: '2 Quartos Suíte + Varanda',
+        area: '52m²',
+        bedrooms: '2 quartos (1 suíte)',
+        description: 'Sala, cozinha, 2 quartos com 1 suíte, varanda, banheiro social, área de serviço',
+        price: null,
+      },
+      {
+        name: 'Garden',
+        area: '105m²',
+        bedrooms: null,
+        description: 'Unidade no térreo com área privativa de solo adjacente',
+        price: null,
+      },
+    ],
+    summary: 'Residencial Vitta — 291 unidades de 32m² a 105m² em Ceilândia Sul, Brasília. Aceita FGTS. Entrega em abril de 2029.',
   },
 
   // ── Add more enterprises below ──────────────────────────
