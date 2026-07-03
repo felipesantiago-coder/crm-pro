@@ -112,56 +112,116 @@ REGRAS IMPORTANTES:
 - O JSON deve ser válido e bem formatado.`;
 
 // ============================================================
-// AI providers
+// Helpers
 // ============================================================
+
+/** Abort a fetch after `ms` milliseconds */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
+/** Sleep helper */
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// ============================================================
+// AI providers (with retry)
+// ============================================================
+const AI_TIMEOUT_MS = 30_000; // 30s per attempt
+const MAX_RETRIES = 2;
+
 async function askGemini(systemText: string, userContent: string): Promise<string> {
   if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY não configurada');
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemText }] },
-      contents: [{ role: 'user', parts: [{ text: userContent }] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
-    }),
+  const body = JSON.stringify({
+    system_instruction: { parts: [{ text: systemText }] },
+    contents: [{ role: 'user', parts: [{ text: userContent }] }],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
   });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Gemini ${res.status}: ${errText}`);
-  }
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await withTimeout(
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        }),
+        AI_TIMEOUT_MS,
+        'Gemini',
+      );
 
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Gemini ${res.status}: ${errText.slice(0, 300)}`);
+      }
+
+      const data = await res.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      if (!text) throw new Error('Gemini retornou resposta vazia');
+
+      return text;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[Extract Info] Gemini attempt ${attempt}/${MAX_RETRIES} failed:`, lastError.message);
+      if (attempt < MAX_RETRIES) await sleep(1000 * attempt); // 1s, 2s
+    }
+  }
+  throw lastError || new Error('Gemini falhou');
 }
 
 async function askGroq(systemText: string, userContent: string): Promise<string> {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY não configurada');
 
   const url = 'https://api.groq.com/openai/v1/chat/completions';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      temperature: 0.1,
-      max_tokens: 2048,
-      messages: [
-        { role: 'system', content: systemText },
-        { role: 'user', content: userContent },
-      ],
-    }),
+  const body = JSON.stringify({
+    model: GROQ_MODEL,
+    temperature: 0.1,
+    max_tokens: 4096,
+    messages: [
+      { role: 'system', content: systemText },
+      { role: 'user', content: userContent },
+    ],
   });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Groq ${res.status}: ${errText}`);
-  }
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await withTimeout(
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
+          body,
+        }),
+        AI_TIMEOUT_MS,
+        'Groq',
+      );
 
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Groq ${res.status}: ${errText.slice(0, 300)}`);
+      }
+
+      const data = await res.json();
+      const text = data.choices?.[0]?.message?.content || '';
+
+      if (!text) throw new Error('Groq retornou resposta vazia');
+
+      return text;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[Extract Info] Groq attempt ${attempt}/${MAX_RETRIES} failed:`, lastError.message);
+      if (attempt < MAX_RETRIES) await sleep(1000 * attempt);
+    }
+  }
+  throw lastError || new Error('Groq falhou');
 }
 
 function parseJSON(raw: string): ExtractedInfo {
@@ -239,29 +299,31 @@ export async function extractAndCache(enterpriseId: string): Promise<ExtractedIn
     return result;
   }
 
-  const content = enterprise.pdfContent.length > 12000
-    ? enterprise.pdfContent.substring(0, 12000) + '\n\n[Conteúdo truncado...]'
+  // Increased from 12000 to 30000 to avoid truncating delivery dates
+  // and other info that typically appear at the end of documents
+  const content = enterprise.pdfContent.length > 30000
+    ? enterprise.pdfContent.substring(0, 30000) + '\n\n[Conteúdo truncado...]'
     : enterprise.pdfContent;
 
   const userMessage = `Empreendimento: "${enterprise.name}"${enterprise.region ? `\nRegião (banco de dados): ${enterprise.region}` : ''}\n\nConteúdo do documento:\n${content}`;
 
   let rawReply = '';
 
-  // 1) Gemini
+  // 1) Try Gemini first (better quality)
   if (GEMINI_API_KEY) {
     try {
       rawReply = await askGemini(EXTRACTION_PROMPT, userMessage);
     } catch (err) {
-      console.warn('[Extract Info] Gemini falhou:', err instanceof Error ? err.message : err);
+      console.warn('[Extract Info] Gemini failed after retries:', err instanceof Error ? err.message : err);
     }
   }
 
-  // 2) Fallback Groq
+  // 2) Fallback to Groq
   if (!rawReply && GROQ_API_KEY) {
     try {
       rawReply = await askGroq(EXTRACTION_PROMPT, userMessage);
     } catch (err) {
-      console.error('[Extract Info] Groq também falhou:', err instanceof Error ? err.message : err);
+      console.error('[Extract Info] Groq also failed after retries:', err instanceof Error ? err.message : err);
     }
   }
 
