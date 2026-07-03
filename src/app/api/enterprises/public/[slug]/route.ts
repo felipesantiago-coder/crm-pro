@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { extractAndCache } from '../../extract-info/route';
 
 export async function GET(
   _request: Request,
@@ -16,6 +17,7 @@ export async function GET(
         slug: true,
         region: true,
         imageUrl: true,
+        pdfContent: true,
         landingTitle: true,
         landingSubtitle: true,
         landingDescription: true,
@@ -48,7 +50,21 @@ export async function GET(
       return NextResponse.json({ error: 'Empreendimento não encontrado' }, { status: 404 });
     }
 
-    return NextResponse.json(enterprise);
+    // Lazy extraction fallback: if cachedInfo is null but pdfContent exists,
+    // extract now so the landing page always has data.
+    if (!enterprise.cachedInfo && enterprise.pdfContent && enterprise.pdfContent.trim().length >= 20) {
+      try {
+        const info = await extractAndCache(enterprise.id);
+        enterprise.cachedInfo = info as any;
+      } catch (err) {
+        console.warn(`[Enterprise Public] Lazy extraction failed for "${enterprise.name}":`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    // Strip pdfContent from response — it's internal only
+    const { pdfContent: _pdfContent, ...publicData } = enterprise as any;
+
+    return NextResponse.json(publicData);
   } catch (error) {
     console.error('[Enterprise Public] Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
