@@ -68,7 +68,7 @@ const enterprisesCatalog: Record<string, EnterpriseCatalogEntry> = {
     landscaping: null,
     status: 'Lançamento',
     deliveryDate: 'Abril de 2029',
-    price: 'Aceita FGTS — enquadramento Minha Casa Minha Vida',
+    price: 'A consultar',
     totalUnits: 291,
     floors: 13,
     parkingSpots: null,
@@ -114,7 +114,7 @@ const enterprisesCatalog: Record<string, EnterpriseCatalogEntry> = {
         price: null,
       },
     ],
-    summary: 'Residencial Vitta — 291 unidades de 32m² a 105m² em Ceilândia Sul, Brasília. Aceita FGTS. Entrega em abril de 2029.',
+    summary: 'Residencial Vitta — 291 unidades de 32m² a 105m² em Ceilândia Sul. Entrega em abril de 2029.',
   },
 
   // ── Quattre Torre Istambul ──────────────────────────────
