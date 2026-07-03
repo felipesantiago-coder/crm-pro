@@ -107,12 +107,17 @@ export async function POST(
       data: { pdfContent: extractedText, cachedInfo: Prisma.DbNull },
     });
 
-
-
-    // Auto-extract in background (fire-and-forget)
-    extractAndCache(id).catch((err) => {
-      console.warn(`[ENTERPRISE KB] Auto-extract falhou para "${enterprise.name}":`, err instanceof Error ? err.message : err);
-    });
+    // Await extraction — fire-and-forget is unreliable in serverless (Vercel)
+    // because the function may be killed after the response is sent.
+    let extractionOk = false;
+    let extractionError: string | null = null;
+    try {
+      await extractAndCache(id);
+      extractionOk = true;
+    } catch (err) {
+      extractionError = err instanceof Error ? err.message : 'Erro desconhecido';
+      console.warn(`[ENTERPRISE KB] Auto-extract falhou para "${enterprise.name}":`, extractionError);
+    }
 
     return NextResponse.json({
       success: true,
@@ -120,6 +125,8 @@ export async function POST(
       fileType: ext === '.pdf' ? 'PDF' : ext === '.md' || ext === '.markdown' ? 'Markdown' : 'Texto',
       extractedChars: extractedText.length,
       extractedPreview: extractedText.slice(0, 200) + (extractedText.length > 200 ? '...' : ''),
+      extractionStatus: extractionOk ? 'completed' : 'failed',
+      extractionError: extractionError,
     });
   } catch (error) {
     console.error('[ENTERPRISE KB] Erro no upload:', error);
