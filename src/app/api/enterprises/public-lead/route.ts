@@ -176,13 +176,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // ── Send notification (fire-and-forget) ───────
+    // ── Send Telegram notification (fire-and-forget) ───────
     if (createdByUserId && createdByUserId !== 'system') {
-      // Fetch assigned user's notification config (may be null)
+      // Fetch assigned user's telegramChatId and ntfy config (may be null)
       db.user.findUnique({
         where: { id: createdByUserId },
-        select: { id: true, telegramChatId: true, ntfyTopic: true, ntfyToken: true },
-      }).then(async (primaryUser) => {
+        select: { telegramChatId: true, ntfyTopic: true, ntfyToken: true },
+      }).then((user) => {
         const leadData = {
           leadName: client.name,
           leadPhone: client.phone || '',
@@ -192,46 +192,20 @@ export async function POST(request: NextRequest) {
           utmSource: typeof utmSource === 'string' ? utmSource : null,
           slug: slug || undefined,
           customAnswers: (customAnswers && typeof customAnswers === 'object')
-            ? (Object.fromEntries(
+            ? Object.fromEntries(
                 Object.entries(customAnswers).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''),
-              ) as Record<string, string>)
+              ) as Record<string, string>
             : undefined,
         };
 
-        let notified = false;
-
-        // Try primary user's Telegram
-        if (primaryUser?.telegramChatId) {
-          const ok = await notifyNewLead(primaryUser.telegramChatId, leadData).catch(() => false);
-          if (ok) notified = true;
+        // Telegram notification
+        if (user?.telegramChatId) {
+          notifyNewLead(user.telegramChatId, leadData).catch((err) => console.warn('[Public Lead] Falha na notificação:', err));
         }
 
-        // Try primary user's Ntfy
-        if (primaryUser?.ntfyTopic && primaryUser?.ntfyToken) {
-          const ok = await notifyNewLeadNtfy(primaryUser.ntfyTopic, primaryUser.ntfyToken, leadData).catch(() => false);
-          if (ok) notified = true;
-        }
-
-        // If primary user has NO notification channel, fallback to all admins
-        if (!notified && !primaryUser?.telegramChatId && !primaryUser?.ntfyTopic) {
-          const admins = await db.user.findMany({
-            where: { role: 'ADMIN' },
-            select: { id: true, telegramChatId: true, ntfyTopic: true, ntfyToken: true, name: true },
-          });
-
-          for (const admin of admins) {
-            if (admin.id === createdByUserId) continue;
-            if (admin.telegramChatId) {
-              await notifyNewLead(admin.telegramChatId, leadData).catch(() => {});
-            }
-            if (admin.ntfyTopic && admin.ntfyToken) {
-              await notifyNewLeadNtfy(admin.ntfyTopic, admin.ntfyToken, leadData).catch(() => {});
-            }
-          }
-
-          if (admins.length > 0) {
-            console.log(`[Public Lead] Lead notificado para admins (fallback — usuário ${createdByUserId} sem canal ativo)`);
-          }
+        // Ntfy notification
+        if (user?.ntfyTopic && user?.ntfyToken) {
+          notifyNewLeadNtfy(user.ntfyTopic, user.ntfyToken, leadData).catch((err) => console.warn('[Public Lead] Falha na notificação:', err));
         }
       }).catch(() => { /* silent */ });
     }
