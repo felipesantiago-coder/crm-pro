@@ -3,7 +3,8 @@ import { db } from '@/lib/db';
 
 /**
  * PUBLIC endpoint — no auth required.
- * Returns the next user in the default queue (or a specific queue) for the landing page.
+ * Returns the next user in the queue for the landing page.
+ * Supports lookup by: queueId (direct), slug (enterprise-linked queue), or default queue.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -13,25 +14,61 @@ export async function GET(request: NextRequest) {
 
     // Find the queue
     let queue;
+
     if (queueId) {
+      // Direct queue ID lookup
       queue = await db.leadQueue.findUnique({
         where: { id: queueId, isActive: true },
         include: {
           members: {
             where: { isActive: true },
-            include: { user: { select: { id: true, name: true } } },
+            include: { user: { select: { id: true, name: true, phone: true } } },
             orderBy: { order: 'asc' },
           },
         },
       });
+    } else if (slug) {
+      // Slug lookup: try to find a queue linked to this enterprise's slug first.
+      // The queue name convention is the enterprise slug, but we also check description
+      // and fall back to default queue if no slug-specific queue exists.
+      queue = await db.leadQueue.findFirst({
+        where: {
+          OR: [
+            { name: { equals: slug, mode: 'insensitive' } },
+            { description: { equals: slug, mode: 'insensitive' } },
+          ],
+          isActive: true,
+        },
+        include: {
+          members: {
+            where: { isActive: true },
+            include: { user: { select: { id: true, name: true, phone: true } } },
+            orderBy: { order: 'asc' },
+          },
+        },
+      });
+
+      // Fall back to default queue if no slug-specific queue found
+      if (!queue) {
+        queue = await db.leadQueue.findFirst({
+          where: { isDefault: true, isActive: true },
+          include: {
+            members: {
+              where: { isActive: true },
+              include: { user: { select: { id: true, name: true, phone: true } } },
+              orderBy: { order: 'asc' },
+            },
+          },
+        });
+      }
     } else {
-      // Use default queue
+      // No queueId, no slug — use default queue
       queue = await db.leadQueue.findFirst({
         where: { isDefault: true, isActive: true },
         include: {
           members: {
             where: { isActive: true },
-            include: { user: { select: { id: true, name: true } } },
+            include: { user: { select: { id: true, name: true, phone: true } } },
             orderBy: { order: 'asc' },
           },
         },
@@ -55,6 +92,7 @@ export async function GET(request: NextRequest) {
       hasQueue: true,
       userId: member.userId,
       userName: member.user.name,
+      userPhone: member.user.phone,
     });
   } catch (error) {
     console.error('[Queue Next User] Erro:', error);

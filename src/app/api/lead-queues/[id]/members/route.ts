@@ -126,7 +126,51 @@ export async function DELETE(
       return NextResponse.json({ error: 'memberId é obrigatório' }, { status: 400 });
     }
 
+    // Get the deleted member's order before removing
+    const member = await db.leadQueueMember.findUnique({
+      where: { id: memberId, queueId: id },
+      select: { order: true },
+    });
+
+    if (!member) {
+      return NextResponse.json({ error: 'Membro não encontrado nesta fila' }, { status: 404 });
+    }
+
     await db.leadQueueMember.delete({ where: { id: memberId, queueId: id } });
+
+    // Re-index remaining members to close gaps and keep sequential order.
+    // This prevents currentIdx from pointing to wrong members after removal.
+    const remaining = await db.leadQueueMember.findMany({
+      where: { queueId: id },
+      select: { id: true, order: true },
+      orderBy: { order: 'asc' },
+    });
+
+    if (remaining.length > 0) {
+      // Batch update orders sequentially (0, 1, 2, ...)
+      const updates = remaining.map((m, idx) =>
+        db.leadQueueMember.update({
+          where: { id: m.id },
+          data: { order: idx },
+        })
+      );
+      await db.$transaction(updates);
+    }
+
+    // Adjust currentIdx if it was pointing past the new end of the list
+    if (remaining.length > 0) {
+      const queue = await db.leadQueue.findUnique({
+        where: { id },
+        select: { currentIdx: true },
+      });
+      if (queue && queue.currentIdx >= remaining.length) {
+        await db.leadQueue.update({
+          where: { id },
+          data: { currentIdx: queue.currentIdx % remaining.length },
+        });
+      }
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[Queue Member] Erro:', error);
