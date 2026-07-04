@@ -271,8 +271,8 @@ export async function PATCH(
           });
           const clientName = client?.name || 'Cliente';
           await updateCalendarEvent({
-            userId: schedule.createdBy,
-            eventId: schedule.googleCalendarEventId,
+            userId: schedule.createdBy!,
+            eventId: schedule.googleCalendarEventId!,
             summary: `Visita CRM Pro — ${clientName}`,
             status: status as 'COMPLETED' | 'CANCELLED',
           });
@@ -338,7 +338,7 @@ export async function DELETE(
     if (schedule.googleCalendarEventId) {
       after(async () => {
         try {
-          await deleteCalendarEvent(schedule.createdBy, schedule.googleCalendarEventId);
+          await deleteCalendarEvent(schedule.createdBy!, schedule.googleCalendarEventId!);
         } catch (err) {
           console.error('[GOOGLE CALENDAR] Erro ao excluir evento (não afeta o agendamento):', err);
         }

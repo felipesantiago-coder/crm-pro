@@ -62,7 +62,7 @@ export async function PUT(
             // Marcar como concluído no Google Calendar
             await updateCalendarEvent({
               userId: currentUser.id,
-              eventId: existing.googleCalendarEventId,
+              eventId: existing.googleCalendarEventId!,
               summary: `[CONCLUÍDO] ${newTitle}`,
               description: `✅ Lembrete concluído no CRM Pro — ${clientName}\n\n${newDescription || ''}`,
             });
@@ -73,7 +73,7 @@ export async function PUT(
 
             await updateCalendarEvent({
               userId: currentUser.id,
-              eventId: existing.googleCalendarEventId,
+              eventId: existing.googleCalendarEventId!,
               summary: `Lembrete CRM Pro — ${newTitle}`,
               description: newDescription
                 ? `Lembrete do CRM Pro para ${clientName}\n\n${newDescription}`

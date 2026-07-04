@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     // Validação com Zod
     const result = createUserSchema.safeParse(body);
     if (!result.success) {
-      const firstError = result.error.errors[0];
+      const firstError = result.error.issues[0];
       return NextResponse.json(
         { error: firstError.message },
         { status: 400 }
