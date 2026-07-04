@@ -14,7 +14,7 @@ interface SupabaseRealtimeProviderProps {
 function handleRealtimeEvent(
   table: string,
   payload: RealtimePostgresChangesPayload<Record<string, unknown>>,
-  setNotificationReminders: (reminders: Array<{ id: string; title: string }>) => void
+  setNotificationReminders: (reminders: any) => void
 ) {
   const { eventType, new: newData, old: oldData } = payload
 
@@ -69,7 +69,7 @@ function handleRealtimeEvent(
 }
 
 async function fetchNotificationCount(
-  setNotificationReminders: (reminders: Array<{ id: string; title: string }>) => void
+  setNotificationReminders: (reminders: any) => void
 ) {
   try {
     const res = await fetch('/api/reminders/check')
@@ -111,7 +111,7 @@ export function SupabaseRealtimeProvider({ children }: SupabaseRealtimeProviderP
         params: { eventsPerSecond: 10 },
       },
     })
-    clientRef.current = supabase
+    clientRef.current = supabase as any
 
     const tables = ['clients', 'tags', 'client_tags', 'reminders', 'user_settings']
     const channels: RealtimeChannel[] = []
@@ -122,7 +122,7 @@ export function SupabaseRealtimeProvider({ children }: SupabaseRealtimeProviderP
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table },
-          (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+          (payload: any) => {
             handleRealtimeEvent(table, payload, setNotificationReminders)
           }
         )

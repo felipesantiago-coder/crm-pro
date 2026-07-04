@@ -472,12 +472,12 @@ export function DashboardView() {
                 className="text-[10px] h-7 px-2 border-green-200 dark:border-green-800/50 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30"
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.open(getWhatsAppUrl(schedule.client.phone), '_blank', 'noopener,noreferrer');
+                  window.open(getWhatsAppUrl(schedule.client.phone ?? '') || undefined, '_blank', 'noopener,noreferrer');
                 }}
               >
                 <MessageCircle className="h-3 w-3" />
               </Button>
-              <a href={getPhoneCallUrl(schedule.client.phone)} onClick={(e) => e.stopPropagation()}>
+              <a href={getPhoneCallUrl(schedule.client.phone ?? '') || undefined} onClick={(e) => e.stopPropagation()}>
                 <Button
                   size="sm"
                   variant="outline"

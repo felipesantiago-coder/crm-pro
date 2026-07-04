@@ -54,7 +54,7 @@ export async function PUT(request: NextRequest) {
     const { verifyToken, appSecret, pageAccessToken, enabled } = body;
 
     // Upsert cada configuração individualmente
-    const upserts = [];
+    const upserts: Promise<unknown>[] = [];
 
     if (verifyToken !== undefined) {
       upserts.push(

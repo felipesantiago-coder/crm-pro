@@ -24,6 +24,7 @@ interface Client {
   email: string | null;
   region: string | null;
   enterprise: string | null;
+  notes: string | null;
   updatePeriod: number;
   lastInteractionAt: string | null;
   stage: string;

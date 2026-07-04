@@ -109,8 +109,8 @@ export async function POST(request: NextRequest) {
   const rawEvents: unknown[] = Array.isArray(body) ? body : [body];
 
   // Normalize pixel snake_case → camelCase and validate
-  const events: TrackingPayload[] = rawEvents
-    .map((e: unknown) => {
+  const events = rawEvents
+    .map((e: unknown): TrackingPayload | null => {
       if (typeof e !== 'object' || e === null) return null;
       const r = e as Record<string, unknown>;
       // Map pixel's snake_case fields to the camelCase schema
@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
             utmCampaign: utmCampaign ?? null,
             utmContent: utmContent ?? null,
             utmTerm: utmTerm ?? null,
-            metadata: metadata ?? null,
+            metadata: (metadata ?? undefined) as any,
           },
         });
 

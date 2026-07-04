@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
         utmCampaign: utmCampaign ?? null,
         utmContent: utmContent ?? null,
         utmTerm: utmTerm ?? null,
-        metadata: metadata ?? null,
+        metadata: (metadata ?? undefined) as any,
       },
     });
 
