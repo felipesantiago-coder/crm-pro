@@ -42,6 +42,8 @@ model Client {
   @@index([region])
   @@index([enterpriseId])
   @@index([utmCampaign])
+  @@index([phone])
+  @@index([email])
   @@map("clients")
 }
 

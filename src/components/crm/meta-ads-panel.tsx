@@ -93,7 +93,7 @@ interface AnalysisResponse {
 // ============================================================
 const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   LEAD: { label: 'Lead', color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900/30' },
-  CONTATO: { label: 'Contato', color: 'text-cyan-700 dark:text-cyan-400', bg: 'bg-cyan-100 dark:bg-cyan-900/30' },
+  PROSPECT: { label: 'Prospect', color: 'text-cyan-700 dark:text-cyan-400', bg: 'bg-cyan-100 dark:bg-cyan-900/30' },
   VISITA: { label: 'Visita', color: 'text-purple-700 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900/30' },
   NEGOCIACAO: { label: 'Negociação', color: 'text-amber-700 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
   PROPOSTA: { label: 'Proposta', color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
@@ -151,7 +151,7 @@ function MiniBarChart({ data, height = 80 }: { data: ChartPoint[]; height?: numb
 // Funnel Visualization
 // ============================================================
 function FunnelVisualization({ byStage }: { byStage: Record<string, number> }) {
-  const funnelStages = ['LEAD', 'CONTATO', 'VISITA', 'NEGOCIACAO', 'PROPOSTA', 'FECHADO'];
+  const funnelStages = ['LEAD', 'PROSPECT', 'VISITA', 'NEGOCIACAO', 'PROPOSTA', 'FECHADO'];
   const data = funnelStages
     .map((s) => ({ stage: s, count: byStage[s] || 0 }))
     .filter((d) => d.count > 0);
@@ -218,7 +218,7 @@ function OverviewTab({ metrics, chartData, topCampaigns, topRegions, onRefresh }
   }
 
   const totalLeads = metrics.totalLeads;
-  const stageOrder = ['LEAD', 'CONTATO', 'VISITA', 'NEGOCIACAO', 'PROPOSTA', 'FECHADO', 'PERDIDO'];
+  const stageOrder = ['LEAD', 'PROSPECT', 'VISITA', 'NEGOCIACAO', 'PROPOSTA', 'FECHADO', 'PERDIDO'];
 
   return (
     <div className="space-y-6">

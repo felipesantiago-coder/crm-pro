@@ -10,6 +10,17 @@ const nextConfig: NextConfig = {
 
   reactStrictMode: true,
 
+  // Allow Supabase Storage images in next/image
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
+        pathname: '/storage/v1/object/public/**',
+      },
+    ],
+  },
+
   // Headers de segurança para produção
   async headers() {
     return [
