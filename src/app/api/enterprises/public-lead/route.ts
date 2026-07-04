@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { notifyNewLead } from '@/lib/telegram';
 import { notifyNewLead as notifyNewLeadNtfy } from '@/lib/ntfy';
+import { rateLimit } from '@/lib/rate-limit';
 
 /**
  * PUBLIC endpoint — no auth required.
@@ -10,6 +11,10 @@ import { notifyNewLead as notifyNewLeadNtfy } from '@/lib/ntfy';
  * Creates a Client record and optionally assigns it via the lead queue.
  */
 export async function POST(request: NextRequest) {
+  // Rate limit: 5 submissions per minute per IP (prevent form abuse)
+  const rateLimitResult = rateLimit(request, { maxRequests: 5, windowSeconds: 60, keyPrefix: 'public-lead' });
+  if (rateLimitResult) return rateLimitResult;
+
   try {
     const body = await request.json();
     const { name, phone, email, slug, customAnswers, utmSource, utmMedium, utmCampaign, utmContent, utmTerm } = body;
