@@ -339,6 +339,10 @@ export function EnterpriseManagement() {
 
   async function handleBatchImport() {
     if (!batchFile) return;
+    if (batchFile.size > 5 * 1024 * 1024) {
+      toast.error('Arquivo muito grande. Máximo 5MB.');
+      return;
+    }
     setBatchImporting(true);
     setBatchResults(null);
     try {

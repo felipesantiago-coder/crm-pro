@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth-options';
+import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 
 // Accepts a single enterprise update: { id, cachedInfo }
 // Or batch: { updates: Array<{ id, cachedInfo }> }
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    const { error } = await requireAdmin();
+    if (error) return error;
 
     const body = await request.json();
 
@@ -31,8 +28,7 @@ export async function POST(request: NextRequest) {
           const ent = await db.enterprise.findUnique({ where: { id: item.id }, select: { name: true } });
           results.push({ id: item.id, name: ent?.name || '?', success: true });
         } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Erro desconhecido';
-          results.push({ id: item.id, name: '?', success: false, error: msg });
+          results.push({ id: item.id, name: item.name || '?', success: false, error: 'Erro ao atualizar registro.' });
         }
       }
 

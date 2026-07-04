@@ -52,12 +52,21 @@ export async function PUT(
       return NextResponse.json({ error: 'Empreendimento não encontrado' }, { status: 404 });
     }
 
+    const updateData: Record<string, unknown> = {};
+    if (name !== undefined) {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        return NextResponse.json({ error: 'Nome não pode ser vazio.' }, { status: 400 });
+      }
+      updateData.name = trimmed;
+    }
+    if (region !== undefined) {
+      updateData.region = region?.trim() || null;
+    }
+
     const updated = await db.enterprise.update({
       where: { id },
-      data: {
-        ...(name !== undefined ? { name: name.trim() } : {}),
-        ...(region !== undefined ? { region: region?.trim() || null } : {}),
-      },
+      data: updateData,
       include: {
         _count: { select: { clients: true } },
       },
@@ -82,13 +91,14 @@ export async function DELETE(
 
     const { id } = await params;
 
-    // Set enterpriseId to null on all linked clients first
-    await db.client.updateMany({
-      where: { enterpriseId: id },
-      data: { enterpriseId: null },
-    });
-
-    await db.enterprise.delete({ where: { id } });
+    // Set enterpriseId to null on all linked clients and delete enterprise atomically
+    await db.$transaction([
+      db.client.updateMany({
+        where: { enterpriseId: id },
+        data: { enterpriseId: null },
+      }),
+      db.enterprise.delete({ where: { id } }),
+    ]);
 
     return NextResponse.json({ message: 'Empreendimento excluído com sucesso' });
   } catch (error) {
