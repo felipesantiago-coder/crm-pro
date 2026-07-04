@@ -780,7 +780,7 @@ export function EnterpriseManagement() {
                   <input
                     ref={(el) => { fileInputRefs.current[enterprise.id] = el; }}
                     type="file"
-                    accept=".webp,image/webp,image/*"
+                    accept="image/webp,image/jpeg,image/png,image/avif,image/heic,image/heif,.webp,.jpg,.jpeg,.png,.avif,.heic,.heif"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -1087,7 +1087,7 @@ export function EnterpriseManagement() {
               <label className="cursor-pointer">
                 <input
                   type="file"
-                  accept=".webp,image/webp,image/*"
+                  accept="image/webp,image/jpeg,image/png,image/avif,image/heic,image/heif,.webp,.jpg,.jpeg,.png,.avif,.heic,.heif"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
