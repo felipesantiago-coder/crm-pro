@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth-options';
+import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    const { error } = await requireAdmin();
+    if (error) return error;
 
     const body = await request.json();
     const { id, slug } = body;
@@ -57,6 +55,9 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(enterprise);
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json({ error: 'Já existe um empreendimento com este slug.' }, { status: 409 });
+    }
     console.error('[Landing Slug] Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }

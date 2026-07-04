@@ -4,7 +4,6 @@ import { db } from '@/lib/db';
 /**
  * PUBLIC endpoint — no auth required.
  * Returns the next user in the default queue (or a specific queue) for the landing page.
- * The response includes the user's phone number for the WhatsApp CTA.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -20,7 +19,7 @@ export async function GET(request: NextRequest) {
         include: {
           members: {
             where: { isActive: true },
-            include: { user: { select: { id: true, name: true, phone: true } } },
+            include: { user: { select: { id: true, name: true } } },
             orderBy: { order: 'asc' },
           },
         },
@@ -32,7 +31,7 @@ export async function GET(request: NextRequest) {
         include: {
           members: {
             where: { isActive: true },
-            include: { user: { select: { id: true, name: true, phone: true } } },
+            include: { user: { select: { id: true, name: true } } },
             orderBy: { order: 'asc' },
           },
         },
@@ -56,7 +55,6 @@ export async function GET(request: NextRequest) {
       hasQueue: true,
       userId: member.userId,
       userName: member.user.name,
-      userPhone: member.user.phone,
     });
   } catch (error) {
     console.error('[Queue Next User] Erro:', error);

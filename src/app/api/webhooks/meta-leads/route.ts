@@ -183,7 +183,7 @@ export async function GET(request: NextRequest) {
 
     if (!config.verifyToken) {
       return NextResponse.json(
-        { error: 'Webhook não configurado. Configure o verify_token nas Configurações do CRM.' },
+        { error: 'Forbidden' },
         { status: 403 }
       );
     }
@@ -198,16 +198,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Token inválido' }, { status: 403 });
   }
 
-  // Endpoint de health check simples (para o usuário testar se está ativo)
-  const config = await getMetaConfig();
-  return NextResponse.json({
-    status: 'ok',
-    webhook: 'meta-leads',
-    enabled: config.enabled,
-    message: config.enabled
-      ? 'Webhook ativo e pronto para receber leads do Meta Ads'
-      : 'Webhook configurado mas desativado. Ative nas Configurações do CRM.',
-  });
+  // Non-verification GET — return generic response
+  return NextResponse.json({ status: 'ok' });
 }
 
 // ============================================================
@@ -229,7 +221,7 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.text();
 
     if (!config.appSecret) {
-      return NextResponse.json({ error: 'App Secret não configurado' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     if (!isValidSignature(rawBody, signature, config.appSecret)) {

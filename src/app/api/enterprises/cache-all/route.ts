@@ -1,15 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth-options';
+import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 import { extractAndCache } from '../extract-info/route';
 
 export async function POST() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    const { error } = await requireAdmin();
+    if (error) return error;
 
     // Find all enterprises with pdfContent
     const enterprises = await db.enterprise.findMany({

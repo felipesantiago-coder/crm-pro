@@ -84,19 +84,19 @@ export function GalleryManager({
         toast.error(`Máximo de ${MAX_IMAGES} imagens`);
         break;
       }
-      if (!file.type.match(/^image\/(webp|jpeg|png|avif)$/)) {
+      if (!file.type.match(/^image\/(webp|jpeg|png|avif|heic|heif)$/)) {
         toast.error(`"${file.name}" — tipo inválido (use WebP, JPEG, PNG ou AVIF)`);
         continue;
       }
       if (file.size > MAX_FILE_SIZE) {
-        toast.error(`"${file.name}" — muito grande (máx. 5MB)`);
+        toast.error(`"${file.name}" — muito grande (máx. 10MB)`);
         continue;
       }
     }
 
     const validFiles = fileArray.filter(
       (f) =>
-        f.type.match(/^image\/(webp|jpeg|png|avif)$/) &&
+        f.type.match(/^image\/(webp|jpeg|png|avif|heic|heif)$/) &&
         f.size <= MAX_FILE_SIZE &&
         images.length + fileArray.indexOf(f) < MAX_IMAGES,
     );
@@ -337,7 +337,7 @@ export function GalleryManager({
                           Clique ou arraste fotos aqui
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          WebP, JPEG, PNG ou AVIF — máx. 5MB cada
+                          WebP, JPEG, PNG, AVIF ou HEIC — máx. 10MB cada
                         </p>
                         <p className="text-[10px] text-muted-foreground/60 mt-0.5">
                           {MAX_IMAGES - images.length} vaga{MAX_IMAGES - images.length !== 1 ? 's' : ''} restante{MAX_IMAGES - images.length !== 1 ? 's' : ''}

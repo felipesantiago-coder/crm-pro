@@ -377,6 +377,7 @@ export default function LandingPage({ params }: { params: Promise<{ slug: string
         const params = new URLSearchParams();
         params.set('empreendimento', enterprise?.name || '');
         params.set('nome', formName.trim());
+        params.set('slug', slug);
         if (data.assignedUser?.userName) params.set('atendente', data.assignedUser.userName);
         if (data.assignedUser?.userPhone) params.set('telefone', data.assignedUser.userPhone);
 

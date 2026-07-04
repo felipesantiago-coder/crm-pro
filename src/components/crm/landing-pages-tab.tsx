@@ -124,7 +124,7 @@ export function LandingPagesTab() {
   }
 
   function copyLink(slug: string, id: string) {
-    navigator.clipboard.writeText(`${baseUrl}/empreendimentos/${slug}`);
+    navigator.clipboard.writeText(`${baseUrl}/empreendimentos/${slug}`).catch(() => toast.error('Falha ao copiar link'));
     setCopiedId(id);
     toast.success('Link copiado!');
     setTimeout(() => setCopiedId(null), 2000);

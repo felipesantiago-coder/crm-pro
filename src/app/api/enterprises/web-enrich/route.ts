@@ -393,7 +393,7 @@ export async function POST(request: NextRequest) {
           name: searchName,
           status: 'error',
           searchResults: 0,
-          message: err.message || 'Erro desconhecido.',
+          message: 'Erro ao processar empreendimento.',
         });
       }
 

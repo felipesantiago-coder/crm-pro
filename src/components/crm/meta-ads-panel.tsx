@@ -967,8 +967,8 @@ function ConfigTab() {
       if (res.ok) {
         const data = await res.json();
         setDiagnosis(data);
-        const errCount = data.summary.errors;
-        const warnCount = data.summary.warnings;
+        const errCount = data.summary?.errors ?? 0;
+        const warnCount = data.summary?.warnings ?? 0;
         if (errCount > 0) {
           toast.error(`Diagnóstico: ${errCount} erro(s) encontrado(s)`);
         } else if (warnCount > 0) {
@@ -1017,9 +1017,13 @@ function ConfigTab() {
     }
   }
 
-  function copyToClipboard(text: string, label: string) {
-    navigator.clipboard.writeText(text);
-    toast.success(`${label} copiado!`);
+  async function copyToClipboard(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copiado!`);
+    } catch {
+      toast.error('Falha ao copiar');
+    }
   }
 
   if (loading) {
