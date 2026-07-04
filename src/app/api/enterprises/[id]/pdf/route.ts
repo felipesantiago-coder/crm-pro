@@ -65,8 +65,9 @@ export async function POST(
     if (ext === '.pdf') {
       // Extrair texto do PDF
       try {
-        const pdfParse = (await import('pdf-parse')).default;
-        const pdfData = await pdfParse(buffer);
+        const { PDFParse } = await import('pdf-parse');
+        const parser = new PDFParse({ data: new Uint8Array(buffer) });
+        const pdfData = await parser.getText();
         extractedText = (pdfData.text || '').trim();
 
         if (!extractedText || extractedText.length < 20) {

@@ -196,7 +196,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           const text = (entry.target.textContent || '').toLowerCase();
           for (const [key, name] of Object.entries(sectionNames)) {
             if (text.includes(key)) {
-              window.CRMPIXEL.trackSectionView(name);
+              window.CRMPIXEL?.trackSectionView(name);
               break;
             }
           }
@@ -212,7 +212,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     if (typeof window === 'undefined' || !window.CRMPIXEL) return;
     const handler = (e: MouseEvent) => {
       if ((e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth) && e.relatedTarget === null) {
-        window.CRMPIXEL.trackExitIntent();
+        window.CRMPIXEL?.trackExitIntent();
       }
     };
     document.addEventListener('mouseleave', handler);

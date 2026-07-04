@@ -50,7 +50,7 @@ export async function GET(
     }
 
     // Buscar interações separadamente com fallback se tabela não existir
-    let interactions = [];
+    let interactions: Record<string, unknown>[] = [];
     try {
       interactions = await db.interaction.findMany({
         where: { clientId: id },
@@ -61,7 +61,7 @@ export async function GET(
     }
 
     // Buscar agendamentos separadamente com fallback se tabela não existir
-    let schedules = [];
+    let schedules: Record<string, unknown>[] = [];
     try {
       schedules = await db.schedule.findMany({
         where: { clientId: id },
@@ -107,7 +107,7 @@ export async function PUT(
     const body = await request.json();
     const { name, phone, email, region, enterprise, enterpriseId, notes, tagIds, updatePeriod } = body;
 
-    const existingClient = await db.client.findUnique({ where: { id } });
+    const existingClient = await db.client.findUnique({ where: { id }, include: { partners: true } });
     if (!existingClient) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
@@ -174,7 +174,7 @@ export async function PATCH(
     });
     if (!currentUser) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
 
-    const existingClient = await db.client.findUnique({ where: { id } });
+    const existingClient = await db.client.findUnique({ where: { id }, include: { partners: true } });
     if (!existingClient) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }

@@ -82,7 +82,7 @@ export function FormFieldManager({ enterpriseId, enterpriseName, onClose }: Prop
 
     setSaving(true);
     try {
-      let options = null;
+      let options: string | null = null;
       if (newType === 'select' && newOptionsText.trim()) {
         const arr = newOptionsText.split('\n').map((s) => s.trim()).filter(Boolean);
         if (arr.length === 0) {
@@ -160,7 +160,7 @@ export function FormFieldManager({ enterpriseId, enterpriseName, onClose }: Prop
       return;
     }
 
-    let options = undefined;
+    let options: string | undefined = undefined;
     const field = fields.find((f) => f.id === id);
     if (field?.fieldType === 'select' && editOptionsText !== undefined) {
       const arr = editOptionsText.split('\n').map((s) => s.trim()).filter(Boolean);
