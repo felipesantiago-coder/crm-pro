@@ -144,7 +144,7 @@ export async function notifyTeamPartnerAdded(params: {
     const newPartner = await db.clientPartner.findFirst({
       where: { clientId: params.clientId },
       orderBy: { createdAt: 'desc' },
-      include: { user: { select: { email: true, name: true } } },
+      include: { user: { select: { email: true, name: true, phone: true } } },
     });
     if (newPartner) {
       await notifyPartnerAdded({
@@ -155,9 +155,9 @@ export async function notifyTeamPartnerAdded(params: {
         addedBy: params.addedByName,
         clientId: params.clientId,
       });
-      if (newPartner.user.email) {
+      if (newPartner.user.phone) {
         await sendWhatsApp({
-          phone: newPartner.user.email,
+          phone: newPartner.user.phone,
           message: `🤝 *Você foi adicionado como parceiro!*\n\n` +
             `👤 Cliente: ${clientName}\n` +
             `👤 Adicionado por: ${params.addedByName}\n\n` +

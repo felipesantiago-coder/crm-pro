@@ -219,7 +219,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[Public Lead] Erro:', error);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      return NextResponse.json({ error: 'Erro ao processar cadastro.' }, { status: 409 });
+      return NextResponse.json({ error: 'Cadastro já realizado com esses dados.' }, { status: 409 });
     }
     return NextResponse.json({ error: 'Erro interno do servidor.' }, { status: 500 });
   }

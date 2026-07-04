@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import crypto from 'crypto';
+import { notifyNewLead as notifyNewLeadTelegram } from '@/lib/telegram';
+import { notifyNewLead as notifyNewLeadNtfy } from '@/lib/ntfy';
 
 // ============================================================
 // Meta Lead Ads Webhook
@@ -346,15 +348,39 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // 6. Buscar o primeiro usuário admin para atribuir createdBy
+        // 6. Assign via lead queue (round-robin distribution, same as landing page)
+        let assignedUser: { assigned: boolean; userId: string; userName: string; userPhone?: string } | null = null;
         let creatorId: string | undefined;
+
         try {
-          const admin = await db.user.findFirst({
-            where: { role: 'ADMIN' },
-            orderBy: { createdAt: 'asc' },
-          });
-          creatorId = admin?.id;
-        } catch {}
+          const assignRes = await fetch(
+            `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/lead-queues/assign`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                source: `meta_ads:${campaignName || adName}`,
+              }),
+            },
+          );
+          if (assignRes.ok) {
+            assignedUser = await assignRes.json();
+            if (assignedUser?.assigned) {
+              creatorId = assignedUser.userId;
+            }
+          }
+        } catch { /* queue assignment failed, fall through to admin fallback */ }
+
+        // Fallback: first admin user
+        if (!creatorId) {
+          try {
+            const admin = await db.user.findFirst({
+              where: { role: 'ADMIN' },
+              orderBy: { createdAt: 'asc' },
+            });
+            creatorId = admin?.id;
+          } catch {}
+        }
 
         // 7. Criar o cliente
         try {
@@ -378,6 +404,36 @@ export async function POST(request: NextRequest) {
               description: `[Meta Ads] Cliente criado automaticamente via lead do anúncio "${adName}"${campaignName ? ` (campanha: ${campaignName})` : ''}. Origem: Facebook/Instagram Lead Ads.`,
             },
           });
+
+          // Send notifications (fire-and-forget)
+          if (creatorId) {
+            db.user.findUnique({
+              where: { id: creatorId },
+              select: { telegramChatId: true, ntfyTopic: true, ntfyToken: true },
+            }).then((user) => {
+              const leadData = {
+                leadName: newClient.name,
+                leadPhone: newClient.phone || '',
+                leadEmail: newClient.email || '',
+                enterpriseName: undefined as string | undefined,
+                utmCampaign: campaignName || null,
+                utmSource: 'meta_ads',
+                slug: undefined as string | undefined,
+                customAnswers: undefined as Record<string, string> | undefined,
+              };
+
+              if (user?.telegramChatId) {
+                notifyNewLeadTelegram(user.telegramChatId, leadData).catch((err) =>
+                  console.warn('[Meta Webhook] Falha na notificação Telegram:', err),
+                );
+              }
+              if (user?.ntfyTopic && user?.ntfyToken) {
+                notifyNewLeadNtfy(user.ntfyTopic, user.ntfyToken, leadData).catch((err) =>
+                  console.warn('[Meta Webhook] Falha na notificação Ntfy:', err),
+                );
+              }
+            }).catch(() => { /* silent */ });
+          }
 
           results.push({
             success: true,

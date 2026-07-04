@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { isAdmin } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   _request: NextRequest,
@@ -91,7 +92,31 @@ export async function DELETE(
 
     const { id } = await params;
 
-    // Set enterpriseId to null on all linked clients and delete enterprise atomically
+    // 1. Clean up images from Supabase Storage before deleting DB records
+    try {
+      const images = await db.enterpriseImage.findMany({
+        where: { enterpriseId: id },
+        select: { url: true },
+      });
+      if (images.length > 0) {
+        const paths: string[] = [];
+        for (const img of images) {
+          try {
+            const url = new URL(img.url);
+            const storagePath = url.pathname.split('/enterprise-images/')[1];
+            if (storagePath) paths.push(storagePath);
+          } catch { /* skip malformed URLs */ }
+        }
+        if (paths.length > 0) {
+          await supabaseServer.storage.from('enterprise-images').remove(paths);
+        }
+      }
+    } catch (storageErr) {
+      console.warn('[Enterprise DELETE] Erro ao limpar imagens do Storage:', storageErr);
+      // Continue with DB deletion even if storage cleanup fails
+    }
+
+    // 2. Set enterpriseId to null on all linked clients and delete enterprise atomically
     await db.$transaction([
       db.client.updateMany({
         where: { enterpriseId: id },
