@@ -167,6 +167,70 @@ async function findExistingClient(phone: string | null, email: string | null) {
   });
 }
 
+/**
+ * Envia notificação de novo lead para o usuário atribuído.
+ * Se o usuário atribuído não tem Telegram/Ntfy configurado, faz fallback
+ * notificando TODOS os admins que tiverem algum canal ativo.
+ * Fire-and-forget — erros são apenas logados.
+ */
+function sendLeadNotification(
+  primaryUserId: string,
+  data: {
+    leadName: string;
+    leadPhone: string;
+    leadEmail: string;
+    enterpriseName?: string | undefined;
+    utmCampaign?: string | null;
+    utmSource?: string | null;
+    slug?: string | undefined;
+    customAnswers?: Record<string, string> | undefined;
+  },
+) {
+  db.user
+    .findUnique({
+      where: { id: primaryUserId },
+      select: { id: true, telegramChatId: true, ntfyTopic: true, ntfyToken: true },
+    })
+    .then(async (primaryUser) => {
+      let notified = false;
+
+      // Try primary user's Telegram
+      if (primaryUser?.telegramChatId) {
+        const ok = await notifyNewLeadTelegram(primaryUser.telegramChatId, data).catch(() => false);
+        if (ok) notified = true;
+      }
+
+      // Try primary user's Ntfy
+      if (primaryUser?.ntfyTopic && primaryUser?.ntfyToken) {
+        const ok = await notifyNewLeadNtfy(primaryUser.ntfyTopic, primaryUser.ntfyToken, data).catch(() => false);
+        if (ok) notified = true;
+      }
+
+      // If primary user has NO notification channel configured, notify all admins as fallback
+      if (!notified && !primaryUser?.telegramChatId && !primaryUser?.ntfyTopic) {
+        const admins = await db.user.findMany({
+          where: { role: 'ADMIN' },
+          select: { id: true, telegramChatId: true, ntfyTopic: true, ntfyToken: true, name: true },
+        });
+
+        for (const admin of admins) {
+          if (admin.id === primaryUserId) continue; // Already tried this user
+          if (admin.telegramChatId) {
+            await notifyNewLeadTelegram(admin.telegramChatId, data).catch(() => {});
+          }
+          if (admin.ntfyTopic && admin.ntfyToken) {
+            await notifyNewLeadNtfy(admin.ntfyTopic, admin.ntfyToken, data).catch(() => {});
+          }
+        }
+
+        if (admins.length > 0) {
+          console.log(`[Meta Webhook] Lead notificado para admins (fallback — usuário ${primaryUserId} sem canal ativo)`);
+        }
+      }
+    })
+    .catch(() => { /* silent — notification must never block */ });
+}
+
 // ============================================================
 // GET — Verificação do Webhook (hub.challenge)
 // O Meta envia esta requisição quando você configura o webhook
@@ -348,10 +412,12 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // 6. Assign via lead queue (round-robin distribution, same as landing page)
-        let assignedUser: { assigned: boolean; userId: string; userName: string; userPhone?: string } | null = null;
+        // 6. Find a creator (queue or admin fallback) — resolve BEFORE creating anything
+        let assignedUser: { assigned: boolean; userId: string; userName: string; userPhone?: string; queueId?: string } | null = null;
         let creatorId: string | undefined;
+        let assignedQueueId: string | undefined;
 
+        // Resolve queue assignment
         try {
           const assignRes = await fetch(
             `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/lead-queues/assign`,
@@ -367,6 +433,7 @@ export async function POST(request: NextRequest) {
             assignedUser = await assignRes.json();
             if (assignedUser?.assigned) {
               creatorId = assignedUser.userId;
+              assignedQueueId = assignedUser.queueId;
             }
           }
         } catch { /* queue assignment failed, fall through to admin fallback */ }
@@ -382,6 +449,18 @@ export async function POST(request: NextRequest) {
           } catch {}
         }
 
+        // If no creator at all (no queue, no admin), skip this lead
+        if (!creatorId) {
+          console.warn(`[Meta Webhook] Nenhum usuário encontrado para receber o lead ${leadgenId}. Pulando.`);
+          results.push({
+            success: false,
+            clientName: name,
+            reason: 'no_user_available',
+            leadId: leadgenId,
+          });
+          continue;
+        }
+
         // 7. Criar o cliente
         try {
           const newClient = await db.client.create({
@@ -392,10 +471,27 @@ export async function POST(request: NextRequest) {
               region: region || undefined,
               stage: 'LEAD',
               updatePeriod: 1, // Lead novo — acompanhar diariamente
-              createdBy: creatorId || 'system',
+              createdBy: creatorId,
               notes: `[Meta Ads] Lead recebido automaticamente.\nAnúncio: ${adName}${campaignName ? `\nCampanha: ${campaignName}` : ''}\nFormulário: ${formName}\nLead ID: ${leadgenId}`,
             },
           });
+
+          // Update assignment with the actual lead ID (link assignment to client)
+          if (assignedQueueId) {
+            try {
+              await db.leadQueueAssignment.updateMany({
+                where: {
+                  queueId: assignedQueueId,
+                  userId: creatorId,
+                  leadId: null,
+                  source: `meta_ads:${campaignName || adName}`,
+                },
+                data: { leadId: newClient.id },
+              });
+            } catch (updateErr) {
+              console.warn(`[Meta Webhook] Falha ao vincular lead ID na atribuição:`, updateErr);
+            }
+          }
 
           // Criar interação inicial
           await db.interaction.create({
@@ -405,35 +501,17 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          // Send notifications (fire-and-forget)
-          if (creatorId) {
-            db.user.findUnique({
-              where: { id: creatorId },
-              select: { telegramChatId: true, ntfyTopic: true, ntfyToken: true },
-            }).then((user) => {
-              const leadData = {
-                leadName: newClient.name,
-                leadPhone: newClient.phone || '',
-                leadEmail: newClient.email || '',
-                enterpriseName: undefined as string | undefined,
-                utmCampaign: campaignName || null,
-                utmSource: 'meta_ads',
-                slug: undefined as string | undefined,
-                customAnswers: undefined as Record<string, string> | undefined,
-              };
-
-              if (user?.telegramChatId) {
-                notifyNewLeadTelegram(user.telegramChatId, leadData).catch((err) =>
-                  console.warn('[Meta Webhook] Falha na notificação Telegram:', err),
-                );
-              }
-              if (user?.ntfyTopic && user?.ntfyToken) {
-                notifyNewLeadNtfy(user.ntfyTopic, user.ntfyToken, leadData).catch((err) =>
-                  console.warn('[Meta Webhook] Falha na notificação Ntfy:', err),
-                );
-              }
-            }).catch(() => { /* silent */ });
-          }
+          // 8. Send notifications — try the assigned user first, then ALL admins as fallback
+          sendLeadNotification(creatorId, {
+            leadName: newClient.name,
+            leadPhone: newClient.phone || '',
+            leadEmail: newClient.email || '',
+            enterpriseName: undefined,
+            utmCampaign: campaignName || null,
+            utmSource: 'meta_ads',
+            slug: undefined,
+            customAnswers: undefined,
+          });
 
           results.push({
             success: true,
@@ -452,7 +530,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 8. Incrementar contador de leads recebidos
+    // 9. Incrementar contador de leads recebidos
     const successCount = results.filter((r) => r.success).length;
     if (successCount > 0) {
       try {
