@@ -200,7 +200,7 @@ export function FormFieldManager({ enterpriseId, enterpriseName, onClose }: Prop
     setEditLabel(field.label);
     setEditPlaceholder(field.placeholder || '');
     setEditRequired(field.required);
-    setEditOptionsText(field.options ? JSON.parse(field.options).join('\n') : '');
+    setEditOptionsText(field.options ? parseOptions(field.options).join('\n') : '');
   }
 
   /* ── Move order ──────────────────────────────────────── */

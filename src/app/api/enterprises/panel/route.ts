@@ -1,14 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth-options';
+import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    const { error } = await requireAdmin();
+    if (error) return error;
 
     const enterprises = await db.enterprise.findMany({
       select: {

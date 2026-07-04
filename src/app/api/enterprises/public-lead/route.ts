@@ -14,12 +14,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, phone, email, slug, customAnswers, utmSource, utmMedium, utmCampaign, utmContent, utmTerm } = body;
 
+    // ── Validate slug format ───────────────────────────────
+    if (slug && !/^[a-z0-9-]{1,100}$/.test(slug)) {
+      return NextResponse.json({ error: 'Dados inválidos.' }, { status: 400 });
+    }
+
     // ── Validate required fields ─────────────────────────────
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
       return NextResponse.json(
         { error: 'Nome completo é obrigatório (mínimo 2 caracteres).' },
         { status: 400 },
       );
+    }
+    if (name.trim().length > 200) {
+      return NextResponse.json({ error: 'Nome muito longo.' }, { status: 400 });
     }
 
     const cleanPhone = (phone || '').replace(/\D/g, '');
@@ -29,6 +37,9 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    if (cleanPhone.length > 15) {
+      return NextResponse.json({ error: 'Telefone inválido.' }, { status: 400 });
+    }
 
     const cleanEmail = (email || '').trim().toLowerCase();
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
@@ -36,6 +47,9 @@ export async function POST(request: NextRequest) {
         { error: 'E-mail é obrigatório e deve ser válido.' },
         { status: 400 },
       );
+    }
+    if (cleanEmail.length > 254) {
+      return NextResponse.json({ error: 'E-mail inválido.' }, { status: 400 });
     }
 
     // ── Find enterprise by slug ──────────────────────────────
@@ -181,12 +195,12 @@ export async function POST(request: NextRequest) {
 
         // Telegram notification
         if (user?.telegramChatId) {
-          notifyNewLead(user.telegramChatId, leadData).catch(() => { /* silent */ });
+          notifyNewLead(user.telegramChatId, leadData).catch((err) => console.warn('[Public Lead] Falha na notificação:', err));
         }
 
         // Ntfy notification
         if (user?.ntfyTopic && user?.ntfyToken) {
-          notifyNewLeadNtfy(user.ntfyTopic, user.ntfyToken, leadData).catch(() => { /* silent */ });
+          notifyNewLeadNtfy(user.ntfyTopic, user.ntfyToken, leadData).catch((err) => console.warn('[Public Lead] Falha na notificação:', err));
         }
       }).catch(() => { /* silent */ });
     }
@@ -204,7 +218,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[Public Lead] Erro:', error);
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return NextResponse.json({ error: 'Erro ao processar cadastro.' }, { status: 409 });
     }
     return NextResponse.json({ error: 'Erro interno do servidor.' }, { status: 500 });
