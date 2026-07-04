@@ -22,12 +22,19 @@ interface ExtractedInfo {
   builder: string | null;
   architecture: string | null;
   landscaping: string | null;
+ status: string | null;
+  deliveryDate: string | null;
+  price: string | null;
+  totalUnits: number | null;
+  floors: number | null;
+  parkingSpots: number | null;
   differentials: string[];
   apartmentTypes: Array<{
     name: string;
     area: string | null;
     bedrooms: string | null;
     description: string | null;
+    price: string | null;
   }>;
   summary: string | null;
 }
@@ -179,7 +186,7 @@ function parseAIResponse(text: string): ExtractedInfo | null {
 
     const parsed = JSON.parse(jsonStr);
 
-    // Validate and fill defaults
+    // Validate and fill defaults (dedicated fields default to null — web search doesn't extract them)
     return {
       location: {
         address: parsed.location?.address || null,
@@ -192,6 +199,12 @@ function parseAIResponse(text: string): ExtractedInfo | null {
       builder: parsed.builder || null,
       architecture: parsed.architecture || null,
       landscaping: parsed.landscaping || null,
+      status: null,
+      deliveryDate: null,
+      price: null,
+      totalUnits: null,
+      floors: null,
+      parkingSpots: null,
       differentials: Array.isArray(parsed.differentials) ? parsed.differentials.slice(0, 8) : [],
       apartmentTypes: Array.isArray(parsed.apartmentTypes)
         ? parsed.apartmentTypes.map((a: any) => ({
@@ -213,33 +226,43 @@ function parseAIResponse(text: string): ExtractedInfo | null {
 // Merge with existing cachedInfo (PDF-based)
 // ============================================================
 function mergeWithExisting(
-  existing: ExtractedInfo | null,
+  existing: Record<string, any> | null,
   webData: ExtractedInfo
-): ExtractedInfo {
-  if (!existing) return webData;
+): Record<string, any> {
+  if (!existing) return webData as unknown as Record<string, any>;
 
-  return {
-    location: {
-      address: webData.location.address || existing.location.address,
-      neighborhood: webData.location.neighborhood || existing.location.neighborhood,
-      city: webData.location.city || existing.location.city,
-      state: webData.location.state || existing.location.state,
-      region: webData.location.region || existing.location.region,
-      additionalInfo: webData.location.additionalInfo || existing.location.additionalInfo,
-    },
-    builder: webData.builder || existing.builder,
-    architecture: webData.architecture || existing.architecture,
-    landscaping: webData.landscaping || existing.landscaping,
-    differentials:
-      webData.differentials.length > 0
-        ? [...new Set([...webData.differentials, ...existing.differentials])].slice(0, 10)
-        : existing.differentials,
-    apartmentTypes:
-      webData.apartmentTypes.length > 0
-        ? webData.apartmentTypes
-        : existing.apartmentTypes,
-    summary: webData.summary || existing.summary,
+  // Preserve all existing fields (including dedicated fields not in web-enrich scope)
+  const merged: Record<string, any> = { ...existing };
+
+  // Location — merge field by field
+  merged.location = {
+    ...(existing.location || {}),
+    address: webData.location.address || existing.location?.address || null,
+    neighborhood: webData.location.neighborhood || existing.location?.neighborhood || null,
+    city: webData.location.city || existing.location?.city || null,
+    state: webData.location.state || existing.location?.state || null,
+    region: webData.location.region || existing.location?.region || null,
+    additionalInfo: webData.location.additionalInfo || existing.location?.additionalInfo || null,
   };
+
+  // Simple string fields — web wins if non-null
+  if (webData.builder) merged.builder = webData.builder;
+  if (webData.architecture) merged.architecture = webData.architecture;
+  if (webData.landscaping) merged.landscaping = webData.landscaping;
+  if (webData.summary) merged.summary = webData.summary;
+
+  // Differentials — merge and deduplicate
+  if (webData.differentials.length > 0) {
+    const existingDiffs: string[] = Array.isArray(merged.differentials) ? merged.differentials : [];
+    merged.differentials = [...new Set([...webData.differentials, ...existingDiffs])].slice(0, 10);
+  }
+
+  // Apartment types — web wins if non-empty
+  if (webData.apartmentTypes.length > 0) {
+    merged.apartmentTypes = webData.apartmentTypes;
+  }
+
+  return merged;
 }
 
 // ============================================================
@@ -357,8 +380,8 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Merge with existing cachedInfo
-        const existingInfo = enterprise.cachedInfo as ExtractedInfo | null;
+        // Merge with existing cachedInfo (preserves dedicated fields like status, price, etc.)
+        const existingInfo = enterprise.cachedInfo as Record<string, any> | null;
         const finalInfo = mergeWithExisting(existingInfo, webInfo);
 
         // Determine if this is a full or partial enrichment
