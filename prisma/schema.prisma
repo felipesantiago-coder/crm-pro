@@ -44,6 +44,11 @@ model Client {
   @@index([utmCampaign])
   @@index([phone])
   @@index([email])
+  @@index([name])
+  @@index([createdAt(sort: Desc)])
+  @@index([lastInteractionAt])
+  @@index([enterprise])
+  @@index([updatePeriod])
   @@map("clients")
 }
 
@@ -101,6 +106,7 @@ model Reminder {
   @@index([clientId])
   @@index([dueDate])
   @@index([notified, dueDate])
+  @@index([notified])
   @@map("reminders")
 }
 
@@ -122,6 +128,8 @@ model Enterprise {
   images      EnterpriseImage[]
   formFields  LandingFormField[]
 
+  @@index([name])
+  @@index([region])
   @@map("enterprises")
 }
 
@@ -136,6 +144,7 @@ model EnterpriseImage {
   enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
 
   @@index([enterpriseId])
+  @@index([sortOrder])
   @@map("enterprise_images")
 }
 
@@ -207,6 +216,8 @@ model Schedule {
 
   @@index([clientId])
   @@index([status])
+  @@index([scheduledDate])
+  @@index([createdBy])
   @@map("schedules")
 }
 
