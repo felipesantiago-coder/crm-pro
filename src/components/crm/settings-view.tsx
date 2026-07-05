@@ -229,7 +229,8 @@ export function SettingsView() {
       const res = await fetch('/api/telegram/test', { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        toast.success(data.message || 'Notificação enviada!');
+        const suffix = data.hasImage ? ' (com imagem do empreendimento)' : ' (sem imagem — nenhum empreendimento com capa cadastrado)';
+        toast.success(data.message || `Notificação enviada${suffix}`);
       } else {
         toast.error(data.error || 'Erro ao enviar teste');
       }

@@ -168,22 +168,6 @@ export async function notifyNewLead(
 }
 
 /**
- * Sends a test notification (for the settings page).
- */
-export async function sendTestNotification(
-  telegramChatId: string,
-  userName: string,
-): Promise<boolean> {
-  const text =
-    `✅ <b>Notificações do Telegram ativas!</b>\n\n` +
-    `Olá, ${escapeHtml(userName)}! 🔔\n\n` +
-    `Você receberá notificações aqui sempre que um novo lead for cadastrado via landing page.\n\n` +
-    `⏰ ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`;
-
-  return sendTelegramMessage(telegramChatId, text);
-}
-
-/**
  * Checks if the Telegram bot token is configured.
  */
 export function isTelegramConfigured(): boolean {
