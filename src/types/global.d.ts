@@ -1,5 +1,3 @@
-/* eslint-disable no-var */
-
 // Tracking pixel loaded by the landing page script.
 interface CRMPIXEL {
   track(event: string, data?: Record<string, unknown>): void;

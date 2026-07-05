@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useState, useMemo } from 'react';
+import React, { Suspense, useMemo } from 'react';
 import {
   CheckCircle2, Phone, ArrowLeft, Building2, MessageSquare,
   Loader2, User, Sparkles, ShieldCheck, Clock,
@@ -84,32 +84,17 @@ function ConfettiAnimation() {
 /* ─── Inner Content ─────────────────────────────────────── */
 function CadastroSucessoContent() {
   const searchParams = useSearchParams();
-  const [enterpriseName, setEnterpriseName] = useState('');
-  const [enterpriseSlug, setEnterpriseSlug] = useState('');
-  const [clientName, setClientName] = useState('');
-  const [assignedUser, setAssignedUser] = useState<AssignedUser | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const name = searchParams.get('empreendimento') || '';
-    const slug = searchParams.get('slug') || '';
-    const user = searchParams.get('atendente');
-    const phone = searchParams.get('telefone');
-    const client = searchParams.get('nome');
-
-    setEnterpriseName(decodeURIComponent(name));
-    setEnterpriseSlug(decodeURIComponent(slug));
-    setClientName(decodeURIComponent(client || ''));
-
-    if (user && phone) {
-      setAssignedUser({
-        userId: '',
-        userName: decodeURIComponent(user),
-        userPhone: decodeURIComponent(phone),
-      });
-    }
-    setLoading(false);
-  }, [searchParams]);
+  // Derivar valores diretamente dos searchParams (sem useEffect + setState)
+  const enterpriseName = decodeURIComponent(searchParams.get('empreendimento') || '');
+  const enterpriseSlug = decodeURIComponent(searchParams.get('slug') || '');
+  const clientName = decodeURIComponent(searchParams.get('nome') || '');
+  const rawUser = searchParams.get('atendente');
+  const rawPhone = searchParams.get('telefone');
+  const assignedUser: AssignedUser | null =
+    rawUser && rawPhone
+      ? { userId: '', userName: decodeURIComponent(rawUser), userPhone: decodeURIComponent(rawPhone) }
+      : null;
 
   const whatsappNumber = assignedUser?.userPhone
     ? assignedUser.userPhone.replace(/\D/g, '')
@@ -122,14 +107,6 @@ function CadastroSucessoContent() {
   const backUrl = enterpriseSlug
     ? `/empreendimentos/${enterpriseSlug}`
     : '/empreendimentos';
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 text-[#C9A96E] animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white flex flex-col overflow-x-hidden">

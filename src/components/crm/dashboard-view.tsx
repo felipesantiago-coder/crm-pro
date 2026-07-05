@@ -254,7 +254,6 @@ export function DashboardView() {
     future.sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
 
     return { pastSchedules: past.slice(0, 5), futureSchedules: future.slice(0, 10), todaySchedules: todayList };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allSchedules]);
 
   const pendingSchedulesCount = allSchedules.filter((s) => s.status === 'PENDING' && !isPast(new Date(s.scheduledDate))).length;
