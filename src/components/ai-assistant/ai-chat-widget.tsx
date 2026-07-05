@@ -122,7 +122,7 @@ const SUGGESTION_CATEGORIES: { title: string; icon: React.ReactNode; items: Sugg
       },
       {
         icon: <FileText className="h-3.5 w-3.5" />,
-        text: 'O que são landing pages no CRM?',
+        text: 'Como funcionam as parcerias entre usuários?',
       },
     ],
   },
