@@ -19,6 +19,15 @@ import {
   Search,
   MessageSquare,
   Trash2,
+  Zap,
+  BarChart3,
+  Target,
+  Settings,
+  GraduationCap,
+  TrendingUp,
+  LayoutDashboard,
+  FileText,
+  Megaphone,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -38,43 +47,82 @@ interface ChatMessage {
 interface Suggestion {
   icon: React.ReactNode;
   text: string;
-  category?: string;
 }
 
 const SUGGESTION_CATEGORIES: { title: string; icon: React.ReactNode; items: Suggestion[] }[] = [
   {
-    title: 'Buscar dados',
-    icon: <Search className="h-3.5 w-3.5" />,
+    title: 'Acesso rápido',
+    icon: <Zap className="h-3.5 w-3.5" />,
     items: [
+      {
+        icon: <LayoutDashboard className="h-3.5 w-3.5" />,
+        text: 'Resumo do meu dia',
+      },
       {
         icon: <Users className="h-3.5 w-3.5" />,
         text: 'Quais clientes são LEADs?',
       },
       {
         icon: <CalendarDays className="h-3.5 w-3.5" />,
-        text: 'Tenho agendamentos para hoje?',
+        text: 'Tenho visitas para hoje?',
       },
       {
         icon: <Bell className="h-3.5 w-3.5" />,
-        text: 'Quais lembretes estão pendentes?',
+        text: 'Lembretes pendentes',
       },
     ],
   },
   {
-    title: 'Aprender a usar',
-    icon: <HelpCircle className="h-3.5 w-3.5" />,
+    title: 'Configurar notificações',
+    icon: <Settings className="h-3.5 w-3.5" />,
     items: [
       {
         icon: <MessageSquare className="h-3.5 w-3.5" />,
-        text: 'Como funciona o funil de clientes?',
+        text: 'Como configurar notificações no Telegram?',
+      },
+      {
+        icon: <Bell className="h-3.5 w-3.5" />,
+        text: 'Quero usar o Ntfy para notificações',
+      },
+      {
+        icon: <HelpCircle className="h-3.5 w-3.5" />,
+        text: 'Quais formas de notificação existem?',
+      },
+    ],
+  },
+  {
+    title: 'Aprenda a usar',
+    icon: <GraduationCap className="h-3.5 w-3.5" />,
+    items: [
+      {
+        icon: <Target className="h-3.5 w-3.5" />,
+        text: 'Como funciona o funil de vendas?',
       },
       {
         icon: <CalendarDays className="h-3.5 w-3.5" />,
-        text: 'Como criar um agendamento de visita?',
+        text: 'Como agendar uma visita?',
       },
       {
+        icon: <BarChart3 className="h-3.5 w-3.5" />,
+        text: 'Como conectar o Google Calendar?',
+      },
+    ],
+  },
+  {
+    title: 'Explore mais',
+    icon: <TrendingUp className="h-3.5 w-3.5" />,
+    items: [
+      {
         icon: <Users className="h-3.5 w-3.5" />,
-        text: 'Quais funcionalidades o CRM tem?',
+        text: 'O que você pode fazer por mim?',
+      },
+      {
+        icon: <Megaphone className="h-3.5 w-3.5" />,
+        text: 'Como funciona o painel de Meta Ads?',
+      },
+      {
+        icon: <FileText className="h-3.5 w-3.5" />,
+        text: 'O que são landing pages no CRM?',
       },
     ],
   },
@@ -103,8 +151,10 @@ export function AIChatWidget() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [greetingDone, setGreetingDone] = useState(false);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -118,6 +168,13 @@ export function AIChatWidget() {
     }
   }, [open]);
 
+  // Dismiss the "new" badge after first open
+  useEffect(() => {
+    if (open && !greetingDone) {
+      setGreetingDone(true);
+    }
+  }, [open, greetingDone]);
+
   async function sendMessage(text: string) {
     if (!text.trim() || loading) return;
 
@@ -126,6 +183,7 @@ export function AIChatWidget() {
     setMessages(updatedMessages);
     setInput('');
     setLoading(true);
+    setDismissed(true);
 
     try {
       const res = await fetch('/api/ai-assistant', {
@@ -145,7 +203,7 @@ export function AIChatWidget() {
       const errorMessage = err instanceof Error ? err.message : 'Erro inesperado';
       setMessages(prev => [
         ...prev,
-        { role: 'assistant', content: `⚠️ ${errorMessage}. Tente novamente em instantes.` },
+        { role: 'assistant', content: `Desculpe, ${errorMessage.toLowerCase()}. Tente novamente em instantes.` },
       ]);
     } finally {
       setLoading(false);
@@ -166,16 +224,19 @@ export function AIChatWidget() {
   // -- Render: Welcome Screen (no messages yet) --
   function renderWelcome() {
     return (
-      <div className="flex flex-col h-full px-3 py-2 gap-3 overflow-y-auto">
+      <div className="flex flex-col h-full px-3 py-2 gap-2.5 overflow-y-auto">
         {/* Hero */}
-        <div className="flex flex-col items-center text-center gap-2 pt-2 pb-1">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-600/20 flex items-center justify-center">
-            <Sparkles className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+        <div className="flex flex-col items-center text-center gap-2 pt-3 pb-1">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-emerald-400/30 to-teal-500/30 animate-pulse" />
+            <div className="relative h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-600/20 flex items-center justify-center border border-emerald-500/20">
+              <Sparkles className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+            </div>
           </div>
           <div>
-            <p className="font-semibold text-sm">Assistente IA do CRM Pro</p>
-            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed max-w-[260px]">
-              Pergunte sobre seus clientes, agendamentos, lembretes ou tire dúvidas sobre como usar o sistema.
+            <p className="font-bold text-sm">Olá! Sou seu assistente IA</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed max-w-[280px]">
+              Posso buscar dados, agendamentos, te ajudar a configurar notificações e explicar qualquer funcionalidade do CRM.
             </p>
           </div>
         </div>
@@ -185,8 +246,10 @@ export function AIChatWidget() {
           {[
             { icon: <Search className="h-3 w-3" />, label: 'Buscar clientes' },
             { icon: <CalendarDays className="h-3 w-3" />, label: 'Agendamentos' },
-            { icon: <Bell className="h-3 w-3" />, label: 'Lembretes' },
-            { icon: <HelpCircle className="h-3 w-3" />, label: 'Ajuda do CRM' },
+            { icon: <Bell className="h-3 w-3" />, label: 'Notificações' },
+            { icon: <HelpCircle className="h-3 w-3" />, label: 'Tutoriais' },
+            { icon: <BarChart3 className="h-3 w-3" />, label: 'Meta Ads' },
+            { icon: <Target className="h-3 w-3" />, label: 'Funil' },
           ].map(({ icon, label }) => (
             <span
               key={label}
@@ -199,7 +262,7 @@ export function AIChatWidget() {
         </div>
 
         {/* Suggestion categories */}
-        <div className="flex flex-col gap-3 flex-1">
+        <div className="flex flex-col gap-2.5 flex-1 overflow-y-auto">
           {SUGGESTION_CATEGORIES.map((cat) => (
             <div key={cat.title}>
               <div className="flex items-center gap-1.5 mb-1.5 px-1">
@@ -208,7 +271,7 @@ export function AIChatWidget() {
                   {cat.title}
                 </span>
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 {cat.items.map((item) => (
                   <button
                     key={item.text}
@@ -228,7 +291,7 @@ export function AIChatWidget() {
 
         {/* Hint */}
         <p className="text-[10px] text-muted-foreground/60 text-center pb-1">
-          Digite qualquer pergunta ou clique em uma sugestão acima
+          Clique em uma sugestão ou digite sua pergunta
         </p>
       </div>
     );
@@ -278,6 +341,7 @@ export function AIChatWidget() {
   }
 
   const hasMessages = messages.length > 0;
+  const showBadge = !dismissed && !open;
 
   return (
     <>
@@ -292,8 +356,36 @@ export function AIChatWidget() {
         )}
         title="Assistente IA"
       >
+        {!open && !greetingDone && (
+          <span className="absolute -top-1 -right-1 flex h-4 w-4">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500 text-[9px] font-bold text-white items-center justify-center">
+              1
+            </span>
+          </span>
+        )}
+        {showBadge && (
+          <span className="absolute -top-1.5 -left-1.5 flex h-5 w-5 z-10">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-40" />
+            <span className="relative inline-flex rounded-full h-5 w-5 bg-emerald-500 items-center justify-center">
+              <Sparkles className="h-3 w-3 text-white" />
+            </span>
+          </span>
+        )}
         <Sparkles className="h-6 w-6" />
       </button>
+
+      {/* Tooltip on first load */}
+      {showBadge && (
+        <div
+          className="fixed z-50 bottom-[4.5rem] right-5 sm:right-5 max-w-[220px] bg-card border shadow-lg rounded-xl px-3 py-2.5 animate-in fade-in-0 slide-in-from-bottom-2 duration-300 pointer-events-none"
+        >
+          <p className="text-xs font-medium text-foreground leading-snug">
+            Precisa de ajuda? Pergunte sobre notificações, clientes ou qualquer funcionalidade!
+          </p>
+          <div className="absolute -bottom-1.5 right-6 w-3 h-3 bg-card border-r border-b rotate-45" />
+        </div>
+      )}
 
       {/* Chat Panel */}
       <div
@@ -317,7 +409,7 @@ export function AIChatWidget() {
             <div>
               <h3 className="font-semibold text-sm leading-tight">Assistente IA</h3>
               <p className="text-[10px] text-emerald-100/80 leading-tight">
-                {hasMessages ? `${messages.length} mensagens` : 'Clientes, agendamentos, lembretes e ajuda'}
+                {hasMessages ? `${messages.length} mensagens` : 'Pergunte qualquer coisa sobre o CRM'}
               </p>
             </div>
           </div>
@@ -354,10 +446,10 @@ export function AIChatWidget() {
         {hasMessages && !loading && (
           <div className="flex gap-1.5 px-3 py-2 overflow-x-auto flex-shrink-0 border-t bg-muted/20">
             {[
-              'Meus clientes',
-              'Agendamentos hoje',
-              'Lembretes pendentes',
-              'Como usar o CRM',
+              'Resumo do meu dia',
+              'Configurar notificações',
+              'Como funciona o funil?',
+              'O que você pode fazer?',
             ].map((s) => (
               <button
                 key={s}
@@ -378,7 +470,7 @@ export function AIChatWidget() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Pergunte sobre clientes, agendamentos, como usar o CRM..."
+              placeholder="Pergunte sobre clientes, notificações, como usar o CRM..."
               className="min-h-[40px] max-h-[120px] resize-none text-sm rounded-xl"
               rows={1}
               disabled={loading}
