@@ -1,6 +1,6 @@
 import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { ensureDbConnection } from '@/lib/db';
+import { db } from '@/lib/db';
 import { verifyPassword } from '@/lib/auth';
 
 export const authOptions: NextAuthOptions = {
@@ -28,13 +28,10 @@ export const authOptions: NextAuthOptions = {
           mustChangePassword: boolean;
         } | null = null;
 
-        // ensureDbConnection already handles Supabase cold-start retries
-        // (2s, 3s, 4s delays). No need for a second retry loop here —
-        // the nested retries were causing Vercel function timeouts.
+        // Retry is automatic via Prisma client extension in db.ts
         try {
           console.log('[AUTH] Authenticating:', email);
-          const client = await ensureDbConnection(3);
-          user = await client.user.findUnique({
+          user = await db.user.findUnique( {
             where: { email },
             select: {
               id: true,
@@ -84,8 +81,7 @@ export const authOptions: NextAuthOptions = {
         // o valor atual de mustChangePassword, evitando que um valor
         // antigo congelado no JWT prenda o usuário na tela de troca de senha.
         try {
-          const client = await ensureDbConnection(2);
-          const fresh = await client.user.findUnique({
+          const fresh = await db.user.findUnique( {
             where: { id: token.id as string },
             select: { mustChangePassword: true, role: true },
           });

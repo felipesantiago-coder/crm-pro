@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { db, ensureDbConnection } from "@/lib/db";
+import { db } from "@/lib/db";
 
 export async function GET() {
   try {
-    // Wake up the database and verify connection is alive
-    await ensureDbConnection();
+    // Retry is automatic via Prisma client extension in db.ts
     await db.$queryRaw`SELECT 1 as ok`;
 
     return NextResponse.json({
