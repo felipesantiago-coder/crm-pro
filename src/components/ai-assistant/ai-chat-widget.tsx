@@ -78,15 +78,15 @@ const SUGGESTION_CATEGORIES: { title: string; icon: React.ReactNode; items: Sugg
     items: [
       {
         icon: <MessageSquare className="h-3.5 w-3.5" />,
-        text: 'Como configurar notificações no Telegram?',
+        text: 'Como receber leads no Telegram pelo celular?',
       },
       {
         icon: <Bell className="h-3.5 w-3.5" />,
-        text: 'Quero usar o Ntfy para notificações',
+        text: 'Quero configurar notificações no Ntfy',
       },
       {
         icon: <HelpCircle className="h-3.5 w-3.5" />,
-        text: 'Quais formas de notificação existem?',
+        text: 'Qual a melhor forma de receber notificações?',
       },
     ],
   },
