@@ -62,6 +62,47 @@ async function sendTelegramMessage(
   }
 }
 
+/**
+ * Sends a photo with optional HTML caption via Telegram.
+ * Falls back to sendMessage if the photo URL is unavailable or sendPhoto fails.
+ */
+async function sendTelegramPhoto(
+  chatId: string,
+  photoUrl: string,
+  caption: string,
+  options?: {
+    parseMode?: 'HTML' | 'Markdown' | 'MarkdownV2';
+  },
+): Promise<boolean> {
+  if (!BOT_TOKEN) {
+    console.warn('[Telegram] TELEGRAM_BOT_TOKEN not configured — skipping notification');
+    return false;
+  }
+
+  try {
+    const res = await fetch(`${TELEGRAM_API}/sendPhoto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        photo: photoUrl,
+        caption,
+        parse_mode: options?.parseMode || 'HTML',
+      }),
+    });
+
+    const data: TelegramMessageResponse = await res.json();
+    if (!data.ok) {
+      console.warn(`[Telegram] sendPhoto failed (${data.description}), falling back to sendMessage`, { chatId });
+      return false; // caller will fallback to sendMessage
+    }
+    return true;
+  } catch (error) {
+    console.warn('[Telegram] Error sending photo, falling back to sendMessage:', error);
+    return false; // caller will fallback to sendMessage
+  }
+}
+
 // ── Notification Formatters ──────────────────────────────────
 
 export interface LeadNotificationData {
@@ -69,6 +110,8 @@ export interface LeadNotificationData {
   leadPhone: string;
   leadEmail: string;
   enterpriseName?: string | null;
+  /** Cover image URL of the enterprise (sent as photo in Telegram) */
+  enterpriseImageUrl?: string | null;
   utmCampaign?: string | null;
   utmSource?: string | null;
   slug?: string;
@@ -112,6 +155,14 @@ export async function notifyNewLead(
     campaignLine +
     answersBlock +
     `\n\n⏰ ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`;
+
+  // If we have an enterprise cover image, try sendPhoto first; fallback to sendMessage
+  if (data.enterpriseImageUrl) {
+    const photoSent = await sendTelegramPhoto(telegramChatId, data.enterpriseImageUrl, text);
+    if (photoSent) return true;
+    // Fallback: send as text-only message
+    console.warn('[Telegram] sendPhoto failed, sending as text message instead');
+  }
 
   return sendTelegramMessage(telegramChatId, text);
 }

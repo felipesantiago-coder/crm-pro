@@ -61,16 +61,18 @@ export async function POST(request: NextRequest) {
     let enterpriseId: string | null = null;
     let enterpriseName: string | null = null;
     let enterpriseRegion: string | null = null;
+    let enterpriseImageUrl: string | null = null;
 
     if (slug) {
       const enterprise = await db.enterprise.findUnique({
         where: { slug },
-        select: { id: true, name: true, region: true },
+        select: { id: true, name: true, region: true, imageUrl: true },
       });
       if (enterprise) {
         enterpriseId = enterprise.id;
         enterpriseName = enterprise.name;
         enterpriseRegion = enterprise.region;
+        enterpriseImageUrl = enterprise.imageUrl;
       }
     }
 
@@ -188,6 +190,7 @@ export async function POST(request: NextRequest) {
           leadPhone: client.phone || '',
           leadEmail: client.email || '',
           enterpriseName,
+          enterpriseImageUrl,
           utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
           utmSource: typeof utmSource === 'string' ? utmSource : null,
           slug: slug || undefined,
