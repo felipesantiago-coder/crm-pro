@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Moon, Sun, CheckCircle2, Circle, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle, Bell, Shield, Eye, EyeOff, Search, Smartphone, ArrowRight, Check, Copy, ExternalLink } from 'lucide-react';
+import { Moon, Sun, CheckCircle2, Circle, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle, Bell, Shield, Eye, EyeOff, Search, ArrowRight, Check, Copy, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,6 +40,10 @@ export function SettingsView() {
   const [tgChatId, setTgChatId] = useState('');
   const [tgTesting, setTgTesting] = useState(false);
   const [tgSaving, setTgSaving] = useState(false);
+  const [tgDeepLink, setTgDeepLink] = useState<string | null>(null);
+  const [tgBotUsername, setTgBotUsername] = useState<string | null>(null);
+  const [showManualChatId, setShowManualChatId] = useState(false);
+  const [tgPollInterval, setTgPollInterval] = useState<NodeJS.Timeout | null>(null);
   // Ntfy
   const [ntfyConnected, setNtfyConnected] = useState(false);
   const [ntfyActivating, setNtfyActivating] = useState(false);
@@ -66,6 +70,8 @@ export function SettingsView() {
       setTgConfigured(tgData.botConfigured === true);
       setTgConnected(tgData.configured === true);
       setTgChatId(tgData.telegramChatId || '');
+      setTgDeepLink(tgData.deepLink || null);
+      setTgBotUsername(tgData.botUsername || null);
       setNtfyConnected(ntfyData.configured === true);
       setNtfyTopic(ntfyData.ntfyTopic || '');
       setNtfySubscribeUrl(ntfyData.subscribeUrl || '');
@@ -233,6 +239,53 @@ export function SettingsView() {
       setTgTesting(false);
     }
   }
+
+  /** Abre o deep link do Telegram e inicia polling para detectar quando o usuário se conectou */
+  function openTelegramDeepLink() {
+    if (!tgDeepLink) return;
+
+    // Abrir o Telegram
+    window.open(tgDeepLink, '_blank');
+
+    // Iniciar polling para detectar quando o webhook vinculou o chat ID
+    const poll = setInterval(async () => {
+      try {
+        const res = await fetch('/api/settings/telegram');
+        const data = await res.json();
+        if (data.configured && data.telegramChatId) {
+          clearInterval(poll);
+          setTgConnected(true);
+          setTgChatId(data.telegramChatId);
+          setNtfyConnected(false);
+          setNtfyTopic('');
+          setNtfyToken('');
+          setNtfySubscribeUrl('');
+          setNotifChannel('telegram');
+          toast.success('Telegram conectado com sucesso!');
+          // Limpar referência do interval
+          setTgPollInterval(null);
+        }
+      } catch {
+        // Silencioso — continua polling
+      }
+    }, 3000); // verifica a cada 3 segundos
+
+    // Timeout de segurança: para o polling após 5 minutos
+    setTimeout(() => {
+      clearInterval(poll);
+      setTgPollInterval(null);
+    }, 5 * 60 * 1000);
+
+    setTgPollInterval(poll as unknown as NodeJS.Timeout);
+    toast.info('Abra o Telegram e envie /start para o bot. Esta tela detectará automaticamente.');
+  }
+
+  // Limpar polling ao desmontar
+  useEffect(() => {
+    return () => {
+      if (tgPollInterval) clearInterval(tgPollInterval);
+    };
+  }, [tgPollInterval]);
 
   // ── Ntfy handlers ────────────────────────────────────
   async function activateNtfy() {
@@ -683,82 +736,95 @@ export function SettingsView() {
                       </div>
                     </div>
                   ) : (
-                    /* ── Telegram: Setup Tutorial ─────────────── */
+                    /* ── Telegram: One-Click Connect ────────── */
                     <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="tg-chat-id" className="text-sm font-medium">Seu Chat ID</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            id="tg-chat-id"
-                            placeholder="Ex: 123456789"
-                            value={tgChatId}
-                            onChange={(e) => setTgChatId(e.target.value)}
-                            className="font-mono text-sm"
-                          />
-                          <Button
-                            onClick={saveTelegramChatId}
-                            disabled={tgSaving || !tgChatId.trim()}
-                            className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
-                          >
-                            {tgSaving ? <><Loader2 className="h-4 w-4 animate-spin" /></> : <><Link2 className="h-4 w-4 mr-1.5" /> Vincular</>}
-                          </Button>
-                        </div>
-                      </div>
-
-                      <Separator />
-
-                      {/* Visual Step-by-Step */}
-                      <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
-                        <p className="text-sm font-semibold mb-4 flex items-center gap-2">
-                          <Smartphone className="h-4 w-4 text-blue-500" />
-                          Passo a passo para configurar
-                        </p>
-                        <div className="space-y-4">
-                          {/* Step 1 */}
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">1</div>
-                              <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
-                            </div>
-                            <div className="pb-4">
-                              <p className="text-sm font-medium">Abra o Telegram e busque por <strong>@userinfobot</strong></p>
-                              <p className="text-xs text-muted-foreground mt-0.5">Ele e um bot oficial que diz qual e o seu Chat ID</p>
-                            </div>
-                          </div>
-                          {/* Step 2 */}
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">2</div>
-                              <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
-                            </div>
-                            <div className="pb-4">
-                              <p className="text-sm font-medium">Envie qualquer mensagem para ele</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">Pode ser um "oi" — ele respondera automaticamente</p>
-                            </div>
-                          </div>
-                          {/* Step 3 */}
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">3</div>
-                              <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
-                            </div>
-                            <div className="pb-4">
-                              <p className="text-sm font-medium">Copie o <strong>Chat ID</strong> que ele respondeu</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">Sera um numero, por exemplo: <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-[11px]">7123456789</code></p>
-                            </div>
-                          </div>
-                          {/* Step 4 */}
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                                <Check className="h-4 w-4" />
-                              </div>
+                      {/* Botão principal de conexão */}
+                      {tgDeepLink ? (
+                        <div className="p-5 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30">
+                          <div className="flex items-start gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <MessageCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                             </div>
                             <div>
-                              <p className="text-sm font-medium">Cole o numero acima e clique em <strong>Vincular</strong></p>
-                              <p className="text-xs text-muted-foreground mt-0.5">Pronto! Voce recebera todas as notificacoes por aqui</p>
+                              <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">Conectar com 1 clique</p>
+                              <p className="text-xs text-blue-600/80 dark:text-blue-400/80 mt-0.5">
+                                Clique no botão abaixo, envie <code className="bg-blue-100 dark:bg-blue-900/40 px-1 py-0.5 rounded font-mono text-[11px]">/start</code> no Telegram e pronto. Nenhuma cópia de Chat ID necessária.
+                              </p>
                             </div>
                           </div>
+                          <Button
+                            onClick={openTelegramDeepLink}
+                            disabled={!!tgPollInterval}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium h-11 text-sm"
+                          >
+                            {tgPollInterval ? (
+                              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Aguardando conexão no Telegram...</>
+                            ) : (
+                              <><MessageCircle className="h-4 w-4 mr-2" /> Abrir Telegram e conectar</>
+                            )}
+                          </Button>
+                          {tgPollInterval && (
+                            <p className="text-[11px] text-muted-foreground text-center mt-2">
+                              Detectando automaticamente... Volte para esta tela após enviar /start no bot.
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            Não foi possível gerar o link de conexão automática. Use o método manual abaixo.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Fallback manual (colapsável) */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setShowManualChatId(!showManualChatId)}
+                          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+                        >
+                          <span>{showManualChatId ? 'Ocultar' : 'Método manual'} (Chat ID)</span>
+                          <span className={`transition-transform ${showManualChatId ? 'rotate-90' : ''}`}>›</span>
+                        </button>
+                        {showManualChatId && (
+                          <div className="mt-3 space-y-3 p-4 rounded-xl bg-muted/30 border border-border/50">
+                            <div className="space-y-2">
+                              <Label htmlFor="tg-chat-id" className="text-sm font-medium">Seu Chat ID</Label>
+                              <div className="flex gap-2">
+                                <Input
+                                  id="tg-chat-id"
+                                  placeholder="Ex: 123456789"
+                                  value={tgChatId}
+                                  onChange={(e) => setTgChatId(e.target.value)}
+                                  className="font-mono text-sm"
+                                />
+                                <Button
+                                  onClick={saveTelegramChatId}
+                                  disabled={tgSaving || !tgChatId.trim()}
+                                  className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
+                                >
+                                  {tgSaving ? <><Loader2 className="h-4 w-4 animate-spin" /></> : <><Link2 className="h-4 w-4 mr-1.5" /> Vincular</>}
+                                </Button>
+                              </div>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              Busque <strong>@userinfobot</strong> no Telegram, envie qualquer mensagem e copie o número que ele respondeu.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* O que receberá */}
+                      <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/20">
+                        <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-3">O que voce recebera</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {['Nome e telefone do lead', 'E-mail do lead', 'Nome do empreendimento', 'Campanha Meta Ads', 'Respostas do formulario'].map((item) => (
+                            <div key={item} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <CheckCircle2 className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                              <span>{item}</span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
