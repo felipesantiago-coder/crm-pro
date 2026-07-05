@@ -67,7 +67,7 @@ const enterprisesCatalog: Record<string, EnterpriseCatalogEntry> = {
     architecture: null,
     landscaping: null,
     status: 'Lançamento',
-    deliveryDate: 'Abril de 2029',
+    deliveryDate: 'Agosto de 2029',
     price: 'A consultar',
     totalUnits: 291,
     floors: 13,
@@ -114,7 +114,7 @@ const enterprisesCatalog: Record<string, EnterpriseCatalogEntry> = {
         price: null,
       },
     ],
-    summary: 'Residencial Vitta — 291 unidades de 32m² a 105m² em Ceilândia Sul. Entrega em abril de 2029.',
+    summary: 'Residencial Vitta — 291 unidades de 32m² a 105m² em Ceilândia Sul. Entrega em agosto de 2029.',
   },
 
   // ── Quattre Torre Istambul ──────────────────────────────
