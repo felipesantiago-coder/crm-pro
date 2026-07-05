@@ -223,7 +223,7 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
               <Button
                 size="sm"
                 variant="outline"
-                className="flex-1 h-8 text-[11px] gap-1.5 border-green-200 dark:border-green-800/50 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30 hover:text-green-700 dark:hover:text-green-300"
+                className="flex-1 h-9 text-[11px] gap-1.5 border-green-200 dark:border-green-800/50 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30 hover:text-green-700 dark:hover:text-green-300"
                 onClick={(e) => handleContactAction(e, whatsappUrl)}
               >
                 <MessageCircle className="h-3.5 w-3.5" />
@@ -234,7 +234,7 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
               <Button
                 size="sm"
                 variant="outline"
-                className="flex-1 h-8 text-[11px] gap-1.5 border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:text-blue-700 dark:hover:text-blue-300"
+                className="flex-1 h-9 text-[11px] gap-1.5 border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:text-blue-700 dark:hover:text-blue-300"
                 onClick={(e) => handleContactAction(e, phoneUrl)}
               >
                 <PhoneCall className="h-3.5 w-3.5" />

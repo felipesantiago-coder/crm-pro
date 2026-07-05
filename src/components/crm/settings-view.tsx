@@ -895,7 +895,7 @@ export function SettingsView() {
                             <div className="pb-4">
                               <p className="text-sm font-medium">Clique no link abaixo para abrir seu topico</p>
                               <div className="flex items-center gap-2 mt-1.5">
-                                <code className="text-xs bg-muted px-3 py-1.5 rounded-md font-mono truncate max-w-[300px]">{ntfySubscribeUrl}</code>
+                                <code className="text-xs bg-muted px-3 py-1.5 rounded-md font-mono truncate max-w-[180px] sm:max-w-[300px]">{ntfySubscribeUrl}</code>
                                 <Button variant="ghost" size="sm" onClick={() => { window.open(ntfySubscribeUrl, '_blank'); }} className="h-7 w-7 p-0 flex-shrink-0"><ExternalLink className="h-3.5 w-3.5" /></Button>
                                 <Button variant="ghost" size="sm" onClick={() => copyToClipboard(ntfySubscribeUrl, 'Link')} className="h-7 w-7 p-0 flex-shrink-0"><Copy className="h-3.5 w-3.5" /></Button>
                               </div>

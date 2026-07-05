@@ -300,7 +300,7 @@ export function RemindersView() {
           </Button>
         </div>
       ) : (
-        <div className="space-y-3 max-h-[calc(100vh-320px)] overflow-y-auto pr-1">
+        <div className="space-y-3 max-h-[calc(100vh-16rem)] sm:max-h-[calc(100vh-20rem)] overflow-y-auto pr-1">
           {filteredReminders.map((reminder) => {
             const isOverdue =
               !reminder.notified && isPast(new Date(reminder.dueDate));
@@ -404,21 +404,21 @@ export function RemindersView() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-10 w-10"
                               onClick={() => handleMarkDone(reminder)}
                               title="Marcar como concluído"
                             >
-                              <Check className="h-3.5 w-3.5 text-emerald-500" />
+                              <Check className="h-4 w-4 text-emerald-500" />
                             </Button>
                           )}
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-10 w-10"
                             onClick={() => openDeleteDialog(reminder)}
                             title="Excluir"
                           >
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
                       </div>

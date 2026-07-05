@@ -195,7 +195,7 @@ export function ClientsView() {
       )}
 
       {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col md:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -214,7 +214,7 @@ export function ClientsView() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-full sm:w-[180px]">
+          <SelectTrigger className="w-full md:w-[180px]">
             <SelectValue placeholder="Região" />
           </SelectTrigger>
           <SelectContent>
@@ -324,7 +324,7 @@ export function ClientsView() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-full sm:w-[200px]">
+          <SelectTrigger className="w-full md:w-[200px]">
             <SelectValue placeholder="Etapa" />
           </SelectTrigger>
           <SelectContent>
@@ -344,7 +344,7 @@ export function ClientsView() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-full sm:w-[200px]">
+          <SelectTrigger className="w-full md:w-[200px]">
             <div className="flex items-center gap-1.5">
               <Megaphone className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
               <SelectValue placeholder="Campanha" />

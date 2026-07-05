@@ -478,7 +478,7 @@ export function AdminPanel() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                                  className="h-10 w-10 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
                                   onClick={() => setDeletingUser(user)}
                                 >
                                   <Trash2 className="h-4 w-4" />

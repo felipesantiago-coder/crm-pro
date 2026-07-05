@@ -332,7 +332,7 @@ function OverviewTab({ metrics, chartData, topCampaigns, topRegions, onRefresh }
                   return (
                     <div key={c.name} className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium truncate max-w-[200px]">{c.name}</span>
+                        <span className="text-xs font-medium truncate max-w-[120px] sm:max-w-[200px]">{c.name}</span>
                         <span className="text-xs text-muted-foreground font-mono">{c.count}</span>
                       </div>
                       <div className="h-2 rounded-full bg-muted overflow-hidden">
@@ -370,7 +370,7 @@ function OverviewTab({ metrics, chartData, topCampaigns, topRegions, onRefresh }
                   return (
                     <div key={r.region} className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium truncate max-w-[200px]">{r.region}</span>
+                        <span className="text-xs font-medium truncate max-w-[120px] sm:max-w-[200px]">{r.region}</span>
                         <span className="text-xs text-muted-foreground font-mono">{r.count}</span>
                       </div>
                       <div className="h-2 rounded-full bg-muted overflow-hidden">
@@ -1389,7 +1389,7 @@ export function MetaAdsPanel() {
           </Select>
         </div>
         {/* Desktop tabs */}
-        <TabsList className="hidden lg:grid lg:grid-cols-7 lg:max-w-3xl w-full gap-1 p-0.5">
+        <TabsList className="hidden xl:grid xl:grid-cols-7 xl:max-w-3xl w-full gap-1 p-0.5">
           <TabsTrigger value="overview" className="text-sm gap-1.5 whitespace-nowrap">
             <BarChart3 className="h-3.5 w-3.5" />
             Visão Geral

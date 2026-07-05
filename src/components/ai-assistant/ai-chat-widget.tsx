@@ -276,7 +276,7 @@ export function AIChatWidget() {
                   <button
                     key={item.text}
                     onClick={() => sendMessage(item.text)}
-                    className="flex items-center gap-2.5 text-left text-xs px-3 py-2 rounded-lg border bg-muted/40 hover:bg-muted transition-colors text-foreground group"
+                    className="flex items-center gap-2.5 text-left text-xs px-3 py-3 rounded-lg border bg-muted/40 hover:bg-muted transition-colors text-foreground group"
                   >
                     <span className="flex-shrink-0 text-muted-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                       {item.icon}
@@ -416,25 +416,25 @@ export function AIChatWidget() {
           <div className="flex items-center gap-0.5">
             <button
               onClick={() => setExpanded(!expanded)}
-              className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
+              className="p-2.5 rounded-lg hover:bg-white/20 transition-colors"
               title={expanded ? 'Reduzir' : 'Expandir'}
             >
-              {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
             {hasMessages && (
               <button
                 onClick={clearChat}
-                className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
+                className="p-2.5 rounded-lg hover:bg-white/20 transition-colors"
                 title="Nova conversa"
               >
-                <RotateCcw className="h-3.5 w-3.5" />
+                <RotateCcw className="h-4 w-4" />
               </button>
             )}
             <button
               onClick={() => setOpen(false)}
-              className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"
+              className="p-2.5 rounded-lg hover:bg-white/20 transition-colors"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>

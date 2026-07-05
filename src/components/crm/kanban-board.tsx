@@ -415,12 +415,12 @@ export function KanbanBoard() {
       </div>
 
       {/* Kanban columns */}
-      <div className="relative">
+      <div className="relative px-5">
         {/* Scroll buttons */}
         <Button
           variant="outline"
           size="icon"
-          className="absolute -left-4 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full shadow-md bg-background border"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-9 w-9 rounded-full shadow-md bg-background border"
           onClick={() => handleScroll('left')}
         >
           <ChevronLeft className="h-4 w-4" />
@@ -428,7 +428,7 @@ export function KanbanBoard() {
         <Button
           variant="outline"
           size="icon"
-          className="absolute -right-4 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full shadow-md bg-background border"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-9 w-9 rounded-full shadow-md bg-background border"
           onClick={() => handleScroll('right')}
         >
           <ChevronRight className="h-4 w-4" />
@@ -479,7 +479,7 @@ export function KanbanBoard() {
 
                   {/* Column body */}
                   <div className="px-3 pb-3">
-                    <div className="space-y-2 max-h-[calc(100vh-260px)] overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-[calc(100vh-14rem)] sm:max-h-[calc(100vh-16.25rem)] overflow-y-auto pr-1">
                       {clients.length === 0 ? (
                         <div className="py-6 text-center">
                           <p className="text-xs text-muted-foreground/60">

@@ -619,7 +619,7 @@ export function DashboardView() {
 
   return (
     <div className="space-y-6">
-      <div className="sticky top-0 z-20 -mt-4 sm:-mt-5 lg:-mt-6 pt-4 sm:pt-5 lg:pt-6 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="sticky top-14 lg:top-0 z-20 -mt-4 sm:-mt-5 lg:-mt-6 pt-4 sm:pt-5 lg:pt-6 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
@@ -860,7 +860,7 @@ export function DashboardView() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
                       <Badge className="text-[10px] bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400 hidden sm:inline-flex">
                         {client.updatePeriod}d
                       </Badge>
