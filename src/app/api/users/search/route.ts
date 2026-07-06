@@ -14,8 +14,9 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q') || '';
+    const includeSelf = searchParams.get('includeSelf') === 'true';
 
-    // Buscar o usuário atual para excluir da busca
+    // Buscar o usuário atual (para excluir da busca, a menos que includeSelf=true)
     const currentUser = await db.user.findUnique({
       where: { email: session.user.email },
       select: { id: true },
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     const users = await db.user.findMany({
       where: {
-        id: { not: currentUser?.id },
+        ...(includeSelf ? {} : { id: { not: currentUser?.id } }),
         ...(query
           ? {
               OR: [

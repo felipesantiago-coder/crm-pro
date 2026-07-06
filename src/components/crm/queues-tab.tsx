@@ -90,7 +90,7 @@ export function QueuesTab() {
     try {
       const [qRes, uRes] = await Promise.all([
         fetch('/api/lead-queues'),
-        fetch('/api/users/search?q='),
+        fetch('/api/users/search?q=&includeSelf=true'),
       ]);
       if (qRes.ok) setQueues(await qRes.json());
       if (uRes.ok) setSystemUsers(await uRes.json());
