@@ -33,9 +33,10 @@ function getClientSecret(): string {
 }
 
 function getRedirectUri(): string {
-  const uri = process.env.GOOGLE_REDIRECT_URI;
-  if (!uri) throw new Error('GOOGLE_REDIRECT_URI não configurada');
-  return uri;
+  // Prioriza GOOGLE_REDIRECT_URI se configurada; caso contrário, deriva de NEXTAUTH_URL
+  if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
+  const base = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || '';
+  return `${base}/api/google-calendar/callback`;
 }
 
 // ─── OAuth URL ────────────────────────────────────────────────

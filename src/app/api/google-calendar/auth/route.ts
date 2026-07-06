@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
+import { getAuthUrl } from '@/lib/google-calendar';
 import crypto from 'crypto';
 
 // GET /api/google-calendar/auth — Inicia o fluxo OAuth do Google Calendar
@@ -11,10 +12,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const redirectUri = `${process.env.NEXTAUTH_URL || ''}/api/google-calendar/callback`;
-
-    if (!clientId) {
+    if (!process.env.GOOGLE_CLIENT_ID) {
       return NextResponse.json(
         { error: 'Google Calendar não configurado. Contate o administrador.' },
         { status: 500 }
@@ -24,17 +22,8 @@ export async function GET() {
     // Gerar state com userId + random hex para proteção CSRF
     const state = `${session.user.id}:${crypto.randomBytes(16).toString('hex')}`;
 
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      response_type: 'code',
-      scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
-      access_type: 'offline',
-      prompt: 'consent',
-      state,
-    });
-
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    // Usa getAuthUrl da lib para garantir redirect_uri consistente com o callback
+    const authUrl = getAuthUrl(state);
 
     return NextResponse.json({ url: authUrl });
   } catch (error) {

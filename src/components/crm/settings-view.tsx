@@ -147,7 +147,14 @@ export function SettingsView() {
   async function connectGoogleCalendar() {
     setGcConnecting(true);
     try {
-      window.location.href = '/api/google-calendar/auth';
+      const res = await fetch('/api/google-calendar/auth');
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error(data.error || 'Erro ao iniciar conexão com Google Calendar');
+        setGcConnecting(false);
+      }
     } catch {
       toast.error('Erro ao iniciar conexão com Google Calendar');
       setGcConnecting(false);
@@ -556,6 +563,15 @@ export function SettingsView() {
                   Conecte sua conta Google para que os agendamentos de visita sejam automaticamente
                   criados no seu Google Calendar com lembretes configurados.
                 </p>
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">Como funciona:</p>
+                  <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                    <li>Clique em <strong>"Conectar Google Calendar"</strong></li>
+                    <li>Você será redirecionado para a tela de login do Google</li>
+                    <li>Escolha a conta Google e permita o acesso ao Calendar</li>
+                    <li>Pronto! Todos os agendamentos novos serão sincronizados automaticamente</li>
+                  </ol>
+                </div>
                 <Button
                   onClick={connectGoogleCalendar}
                   disabled={gcConnecting}
@@ -567,14 +583,6 @@ export function SettingsView() {
                     <><Link2 className="h-4 w-4 mr-2" /> Conectar Google Calendar</>
                   )}
                 </Button>
-                {!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && (
-                  <div className="p-3 rounded-lg bg-amber-100/50 dark:bg-amber-900/20">
-                    <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
-                      As variáveis de ambiente do Google Calendar não estão configuradas.
-                      Consulte o tutorial para configurar as credenciais OAuth 2.0.
-                    </p>
-                  </div>
-                )}
               </>
             )}
           </CardContent>

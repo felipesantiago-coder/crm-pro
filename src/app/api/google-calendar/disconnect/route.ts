@@ -22,6 +22,21 @@ export async function POST() {
       data: { googleCalendarEventId: null },
     });
 
+    // Limpar googleCalendarEventId dos lembretes vinculados a clientes deste usuário
+    const userClientIds = await db.client.findMany({
+      where: { createdBy: session.user.id },
+      select: { id: true },
+    });
+    if (userClientIds.length > 0) {
+      await db.reminder.updateMany({
+        where: {
+          clientId: { in: userClientIds.map(c => c.id) },
+          googleCalendarEventId: { not: null },
+        },
+        data: { googleCalendarEventId: null },
+      });
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[Google Calendar] Disconnect error:', error);
