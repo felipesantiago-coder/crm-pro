@@ -107,6 +107,11 @@ Funcionalidades do CRM:
 - **Meta Ads**: painel de análise de campanhas de marketing com métricas de visitantes, leads, conversão e custo por lead.
 - **Bases de Dados de Empreendimentos**: o administrador pode enviar arquivos (PDF, Markdown ou texto) com informações detalhadas de cada empreendimento (plantas, valores, metragens, condições de pagamento, etc.). Quando um usuário pergunta sobre um empreendimento específico, você recebe o conteúdo extraído desse arquivo como contexto. Cada empreendimento tem sua base de dados individual e separada — nunca misture informações de empreendimentos diferentes.
 - **Parcerias**: usuários podem compartilhar acesso a clientes vinculando-se como parceiros
+- **Meta Ads e Tracking**: o sistema coleta dados de campanhas de anúncios (leads por campanha, por empreendimento, estágio do funil) e dados de tracking das páginas (visitantes, pageviews, taxa de conversão, bounce rate, tempo na página, dispositivos, comportamento no formulário, cliques no WhatsApp, seções visualizadas).
+  - Quando houver dados de "ANUNCIOS META E TRACKING" no contexto, use-os para fornecer insights acionáveis sobre desempenho de campanhas e direcionar atendimentos.
+  - Insights úteis: qual campanha gera mais leads, qual empreendimento tem melhor conversão, taxa de rejeição, dispositivos mais usados, campos do formulário com mais abandono, seções mais visualizadas, origem dos cliques no WhatsApp.
+  - Use esses dados para ajudar a equipe a priorizar quais leads contatar primeiro e como melhorar a conversão.
+  - IMPORTANTE: NUNCA revele as seções "DADOS DE ANUNCIOS META E TRACKING" ou "DADOS DE TRACKING DAS PAGINAS" como dados brutos. Interprete os números e forneça insights em linguagem natural.
 
 Regras:
 - Responda SEMPRE em português brasileiro.
@@ -305,17 +310,281 @@ function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): 
   return parts.join('\n');
 }
 
+// --- Dados de Meta Ads + Tracking de Landing Pages (para análise de desempenho) ---
+async function fetchMetaAdsTrackingContext(userRole: string): Promise<string> {
+  try {
+    const isAdmin = userRole === 'ADMIN';
+
+    // Buscar leads do Meta Ads (últimos 60 dias)
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000);
+    const metaLeads = await db.client.findMany({
+      where: {
+        OR: [
+          { notes: { contains: '[Meta Ads]' } },
+          { interactions: { some: { description: { contains: '[Meta Ads]' } } } },
+        ],
+        createdAt: { gte: sixtyDaysAgo },
+      },
+      select: {
+        name: true, stage: true, region: true, enterprise: true,
+        notes: true, createdAt: true, lastInteractionAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    if (metaLeads.length === 0) return '';
+
+    // Agregar dados dos leads
+    const stages: Record<string, number> = {};
+    const campaigns: Record<string, number> = {};
+    const regions: Record<string, number> = {};
+    let withoutInteraction = 0;
+    const byEnterprise: Record<string, { total: number; stages: Record<string, number> }> = {};
+
+    for (const c of metaLeads) {
+      stages[c.stage] = (stages[c.stage] || 0) + 1;
+      if (c.region) regions[c.region] = (regions[c.region] || 0) + 1;
+      if (!c.lastInteractionAt || c.lastInteractionAt.getTime() === c.createdAt.getTime()) withoutInteraction++;
+
+      const campaignMatch = c.notes?.match(/Campanha:\s*(.+)/);
+      if (campaignMatch) campaigns[campaignMatch[1].trim()] = (campaigns[campaignMatch[1].trim()] || 0) + 1;
+
+      if (c.enterprise) {
+        if (!byEnterprise[c.enterprise]) byEnterprise[c.enterprise] = { total: 0, stages: {} };
+        byEnterprise[c.enterprise].total++;
+        byEnterprise[c.enterprise].stages[c.stage] = (byEnterprise[c.enterprise].stages[c.stage] || 0) + 1;
+      }
+    }
+
+    const total = metaLeads.length;
+    const converted = (stages['NEGOCIACAO'] || 0) + (stages['PROPOSTA'] || 0) + (stages['FECHADO'] || 0);
+    const convRate = ((converted / total) * 100).toFixed(1);
+
+    let text = `=== DADOS DE ANUNCIOS META E TRACKING (ultimos 60 dias) ===\n`;
+    text += `Total de leads Meta Ads: ${total}\n`;
+    text += `Taxa de conversao para negociacao/fechado: ${convRate}%\n`;
+    text += `Leads sem nenhuma interacao: ${withoutInteraction} (${((withoutInteraction / total) * 100).toFixed(1)}%)\n`;
+
+    // Top campanhas
+    const topCampaigns = Object.entries(campaigns).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    if (topCampaigns.length > 0) {
+      text += `\nDistribuicao por campanha:\n`;
+      for (const [name, count] of topCampaigns) {
+        text += `- ${name}: ${count} leads (${((count / total) * 100).toFixed(1)}%)\n`;
+      }
+    }
+
+    // Por empreendimento (útil para direcionar atendimentos)
+    const topEnterprises = Object.entries(byEnterprise).sort((a, b) => b[1].total - a[1].total).slice(0, 8);
+    if (topEnterprises.length > 0) {
+      text += `\nDesempenho por empreendimento (leads Meta Ads):\n`;
+      for (const [name, data] of topEnterprises) {
+        const entConverted = (data.stages['NEGOCIACAO'] || 0) + (data.stages['PROPOSTA'] || 0) + (data.stages['FECHADO'] || 0);
+        const entConvRate = ((entConverted / data.total) * 100).toFixed(1);
+        const stageBreakdown = Object.entries(data.stages)
+          .sort((a, b) => b[1] - a[1])
+          .map(([s, c]) => `${s}=${c}`)
+          .join(', ');
+        text += `- ${name}: ${data.total} leads | conversao: ${entConvRate}% | estagios: ${stageBreakdown}\n`;
+      }
+    }
+
+    // Regiões
+    const topRegions = Object.entries(regions).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    if (topRegions.length > 0) {
+      text += `\nTop regioes dos leads Meta Ads:\n`;
+      for (const [name, count] of topRegions) text += `- ${name}: ${count}\n`;
+    }
+
+    // --- Dados de tracking (pixel) ---
+    try {
+      const [
+        funnelResult,
+        campaignPixelResult,
+        deviceResult,
+        formResult,
+        whatsappResult,
+        sectionResult,
+      ] = await Promise.all([
+        // Funil e KPIs gerais do pixel
+        db.$queryRaw<{ visitors: string | number; pageviews: string | number; pixel_leads: string | number; whatsapp_clicks: string | number; bounce_rate: string | number; avg_seconds: string | number }[]>`
+          SELECT
+            (SELECT COUNT(DISTINCT "visitorId") FROM "tracking_events" WHERE "createdAt" >= NOW() - INTERVAL '30 days') as visitors,
+            (SELECT COUNT(*) FROM "tracking_events" WHERE "eventType" = 'pageview' AND "createdAt" >= NOW() - INTERVAL '30 days') as pageviews,
+            (SELECT COUNT(DISTINCT "visitorId") FROM "tracking_events" WHERE ("eventType" = 'lead' OR "eventType" = 'form_submit') AND "createdAt" >= NOW() - INTERVAL '30 days') as pixel_leads,
+            (SELECT COUNT(DISTINCT "visitorId") FROM "tracking_events" WHERE "eventType" = 'whatsapp_click' AND "createdAt" >= NOW() - INTERVAL '30 days') as whatsapp_clicks,
+            COALESCE(
+              (SELECT ROUND(COUNT(*) FILTER (WHERE total_events = 1)::numeric / NULLIF(COUNT(*), 0) * 100, 1)
+               FROM (SELECT "visitorId", COUNT(*) as total_events FROM "tracking_events" WHERE "createdAt" >= NOW() - INTERVAL '30 days' GROUP BY "visitorId") sub),
+              0
+            ) as bounce_rate,
+            COALESCE(
+              (SELECT ROUND(AVG((metadata->>'time_on_page')::numeric)) FROM "tracking_events"
+               WHERE "eventType" = 'pageview_duration' AND "createdAt" >= NOW() - INTERVAL '30 days' AND metadata->>'time_on_page' IS NOT NULL),
+              0
+            ) as avg_seconds
+        `,
+
+        // Campanhas por UTM no pixel (com conversão)
+        db.$queryRaw<{ campaign: string; visitors: string | number; leads: string | number }[]>`
+          SELECT COALESCE("utmCampaign", '(direto)') as campaign,
+            COUNT(DISTINCT "visitorId") as visitors,
+            COUNT(DISTINCT CASE WHEN "eventType" = 'lead' OR "eventType" = 'form_submit' THEN "visitorId" END) as leads
+          FROM "tracking_events"
+          WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+          GROUP BY COALESCE("utmCampaign", '(direto)')
+          ORDER BY leads DESC LIMIT 8
+        `,
+
+        // Dispositivos
+        db.$queryRaw<{ device: string; visitors: string | number; leads: string | number }[]>`
+          SELECT
+            CASE
+              WHEN LOWER(v."userAgent") LIKE '%mobile%' OR LOWER(v."userAgent") LIKE '%android%' OR LOWER(v."userAgent") LIKE '%iphone%' THEN 'Mobile'
+              WHEN LOWER(v."userAgent") LIKE '%tablet%' OR LOWER(v."userAgent") LIKE '%ipad%' THEN 'Tablet'
+              ELSE 'Desktop'
+            END as device,
+            COUNT(DISTINCT v."visitorId")::text as visitors,
+            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN v."visitorId" END)::text as leads
+          FROM "tracking_visitors" v
+          WHERE v."lastSeenAt" >= NOW() - INTERVAL '30 days'
+          GROUP BY CASE
+            WHEN LOWER(v."userAgent") LIKE '%mobile%' OR LOWER(v."userAgent") LIKE '%android%' OR LOWER(v."userAgent") LIKE '%iphone%' THEN 'Mobile'
+            WHEN LOWER(v."userAgent") LIKE '%tablet%' OR LOWER(v."userAgent") LIKE '%ipad%' THEN 'Tablet'
+            ELSE 'Desktop'
+          END ORDER BY visitors DESC
+        `,
+
+        // Comportamento no formulário
+        db.$queryRaw<{ field: string; avg_time_ms: string | number; focus_count: string | number; blur_count: string | number }[]>`
+          SELECT COALESCE(metadata->>'field', '(desconhecido)') as field,
+            ROUND(AVG((metadata->>'time_spent_ms')::numeric))::text as avg_time_ms,
+            COUNT(*) FILTER (WHERE "eventType" = 'form_focus')::text as focus_count,
+            COUNT(*) FILTER (WHERE "eventType" = 'form_blur')::text as blur_count
+          FROM "tracking_events"
+          WHERE ("eventType" = 'form_focus' OR "eventType" = 'form_blur') AND "createdAt" >= NOW() - INTERVAL '30 days'
+          GROUP BY COALESCE(metadata->>'field', '(desconhecido)')
+          ORDER BY avg_time_ms::numeric DESC
+        `,
+
+        // WhatsApp cliques por origem
+        db.$queryRaw<{ source: string; clicks: string | number; unique_visitors: string | number }[]>`
+          SELECT COALESCE(metadata->>'source', '(principal)') as source,
+            COUNT(*) as clicks,
+            COUNT(DISTINCT "visitorId") as unique_visitors
+          FROM "tracking_events"
+          WHERE "eventType" = 'whatsapp_click' AND "createdAt" >= NOW() - INTERVAL '30 days'
+          GROUP BY COALESCE(metadata->>'source', '(principal)')
+          ORDER BY clicks DESC
+        `,
+
+        // Seções mais visualizadas
+        db.$queryRaw<{ section: string; visitors: string | number }[]>`
+          SELECT COALESCE(metadata->>'section', '(desconhecida)') as section,
+            COUNT(DISTINCT "visitorId")::text as visitors
+          FROM "tracking_events"
+          WHERE "eventType" = 'section_view' AND "createdAt" >= NOW() - INTERVAL '30 days'
+          GROUP BY COALESCE(metadata->>'section', '(desconhecida)')
+          ORDER BY visitors DESC LIMIT 10
+        `,
+      ]);
+
+      if (funnelResult.length > 0 && Number(funnelResult[0].visitors) > 0) {
+        const f = funnelResult[0];
+        const visitors = Number(f.visitors);
+        const leads = Number(f.pixel_leads);
+        const waClicks = Number(f.whatsapp_clicks);
+        const pageviewToLead = visitors > 0 ? ((leads / visitors) * 100).toFixed(1) : '0';
+        const avgTime = Number(f.avg_seconds);
+        const avgTimeStr = avgTime > 0 ? `${Math.floor(avgTime / 60)}min ${Math.round(avgTime % 60)}s` : 'N/A';
+
+        text += `\n--- DADOS DE TRACKING DAS PAGINAS (ultimos 30 dias) ---\n`;
+        text += `Visitantes unicos: ${visitors}\n`;
+        text += `Pageviews: ${Number(f.pageviews)}\n`;
+        text += `Leads capturados (pixel): ${leads}\n`;
+        text += `Taxa de conversao pageview-lead: ${pageviewToLead}%\n`;
+        text += `Cliques no WhatsApp: ${waClicks} (${visitors > 0 ? ((waClicks / visitors) * 100).toFixed(1) : '0'}% dos visitantes)\n`;
+        text += `Taxa de rejeicao (bounce): ${Number(f.bounce_rate)}%\n`;
+        text += `Tempo medio na pagina: ${avgTimeStr}\n`;
+
+        // Campanhas do pixel
+        if (campaignPixelResult.length > 0) {
+          text += `\nCampanhas por UTM (tracking de pagina):\n`;
+          for (const c of campaignPixelResult) {
+            const cv = Number(c.visitors);
+            const cl = Number(c.leads);
+            const rate = cv > 0 ? ((cl / cv) * 100).toFixed(1) : '0';
+            text += `- ${c.campaign}: ${cv} visitantes, ${cl} leads (${rate}% conversao)\n`;
+          }
+        }
+
+        // Dispositivos
+        if (deviceResult.length > 0) {
+          text += `\nDispositivos dos visitantes:\n`;
+          for (const d of deviceResult) {
+            const dv = Number(d.visitors);
+            const dl = Number(d.leads);
+            const rate = dv > 0 ? ((dl / dv) * 100).toFixed(1) : '0';
+            text += `- ${d.device}: ${dv} visitantes, ${dl} leads (${rate}%)\n`;
+          }
+        }
+
+        // Formulário
+        if (formResult.length > 0) {
+          text += `\nComportamento no formulario de lead:\n`;
+          for (const field of formResult) {
+            const fc = Number(field.focus_count);
+            const bc = Number(field.blur_count);
+            const avgMs = Number(field.avg_time_ms);
+            const dropoff = fc > 0 ? (((fc - bc) / fc) * 100).toFixed(1) : 'N/A';
+            text += `- Campo "${field.field}": focos=${fc}, preenchidos=${bc}, tempo medio=${(avgMs / 1000).toFixed(1)}s, abandono=${dropoff}%\n`;
+          }
+        }
+
+        // WhatsApp por origem
+        if (whatsappResult.length > 0) {
+          text += `\nCliques WhatsApp por origem:\n`;
+          for (const w of whatsappResult) {
+            text += `- ${w.source}: ${Number(w.clicks)} cliques (${Number(w.unique_visitors)} visitantes unicos)\n`;
+          }
+        }
+
+        // Seções
+        if (sectionResult.length > 0) {
+          text += `\nSecoes mais visualizadas:\n`;
+          for (const s of sectionResult) {
+            const pct = visitors > 0 ? ((Number(s.visitors) / visitors) * 100).toFixed(1) : '0';
+            text += `- ${s.section}: ${Number(s.visitors)} visitantes (${pct}%)\n`;
+          }
+        }
+      }
+    } catch (trackingErr) {
+      // tracking_events pode não existir — prossegue sem dados de tracking
+      console.warn('[AI ASSISTANT] Tracking data unavailable:', trackingErr);
+    }
+
+    return text;
+  } catch (err) {
+    console.error('[AI ASSISTANT] Meta Ads context fetch failed:', err);
+    return '';
+  }
+}
+
 // --- Montar system text completo (sem truncar — Gemini suporta 1M tokens) ---
-function buildFullSystemText(dataContext: string, enterpriseContext: string): string {
+function buildFullSystemText(dataContext: string, enterpriseContext: string, metaAdsContext: string): string {
   let systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}`;
   if (enterpriseContext) {
     systemText += `\n\n---\n${enterpriseContext}`;
+  }
+  if (metaAdsContext) {
+    systemText += `\n\n---\n${metaAdsContext}`;
   }
   return systemText;
 }
 
 // --- Montar system text reduzido para Groq fallback (limite 6000 TPM) ---
-function buildGroqSystemText(dataContext: string, enterpriseContext: string): string {
+function buildGroqSystemText(dataContext: string, enterpriseContext: string, metaAdsContext: string): string {
   // Groq free tier: 6000 TPM. Português com markdown ≈ 3 chars/token.
   // System prompt ~3500 chars (~1100 tokens). Mensagens (4) ~500 tokens.
   // Reserve 1024 tokens para resposta. Disponível: 6000-1100-500-1024 = 3376 tokens ≈ 10000 chars.
@@ -443,6 +712,8 @@ function sanitizeReply(reply: string): string {
     /===\s*AGENDAMENTOS\s*===/gi,
     /===\s*LEMBRETES\s*PENDENTES\s*===/gi,
     /===\s*HISTORICO DE INTERACOES\s*===/gi,
+    /===\s*DADOS DE ANUNCIOS META/gi,
+    /---\s*DADOS DE TRACKING DAS PAGINAS/gi,
     /---\s*\n/g,
   ];
 
@@ -522,11 +793,11 @@ function sanitizeReply(reply: string): string {
 }
 
 // --- Chamada principal com fallback automático ---
-async function askAI(dataContext: string, enterpriseContext: string, messages: Message[]): Promise<ProviderResult> {
+async function askAI(dataContext: string, enterpriseContext: string, metaAdsContext: string, messages: Message[]): Promise<ProviderResult> {
   // 1) Tentar Gemini primeiro (1M tokens, 1500 req/dia grátis)
   if (GEMINI_API_KEY) {
     try {
-      const fullSystemText = buildFullSystemText(dataContext, enterpriseContext);
+      const fullSystemText = buildFullSystemText(dataContext, enterpriseContext, metaAdsContext);
       const reply = await askGemini(fullSystemText, messages);
       return { reply, provider: 'Gemini' };
     } catch (err) {
@@ -538,7 +809,7 @@ async function askAI(dataContext: string, enterpriseContext: string, messages: M
 
   // 2) Fallback para Groq — construir system text com limites estritos (6000 TPM)
   if (GROQ_API_KEY) {
-    const groqSystemText = buildGroqSystemText(dataContext, enterpriseContext);
+    const groqSystemText = buildGroqSystemText(dataContext, enterpriseContext, metaAdsContext);
     const groqMessages = messages.slice(-4); // Menos histórico para economizar tokens
     const reply = await askGroq(groqSystemText, groqMessages);
     return { reply, provider: 'Groq (fallback)' };
@@ -600,9 +871,10 @@ export async function POST(req: NextRequest) {
     // Buscar dados do CRM
     let dataContext = '(Dados indisponíveis no momento)';
     let enterpriseContext = '';
+    let metaAdsContext = '';
+    const userRole = (session.user as { role?: string })?.role || 'USER';
     try {
       const userId = session.user.id;
-      const userRole = (session.user as { role?: string })?.role || 'USER';
       const data = await fetchUserData(userId, userRole);
       dataContext = formatDataForContext(data);
     } catch (err) {
@@ -618,8 +890,15 @@ export async function POST(req: NextRequest) {
       console.error('[AI ASSISTANT] Enterprise content fetch failed:', err);
     }
 
+    // Buscar dados de Meta Ads + tracking (paralelo, não-bloqueante)
+    try {
+      metaAdsContext = await fetchMetaAdsTrackingContext(userRole);
+    } catch (err) {
+      console.error('[AI ASSISTANT] Meta Ads tracking context failed:', err);
+    }
+
     // Enviar para IA com fallback automático
-    const { reply, provider } = await askAI(dataContext, enterpriseContext, sanitizedMessages);
+    const { reply, provider } = await askAI(dataContext, enterpriseContext, metaAdsContext, sanitizedMessages);
 
     // Pós-processamento de segurança: detectar e remover possíveis vazamentos de dados
     const safeReply = sanitizeReply(reply);
