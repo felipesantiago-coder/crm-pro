@@ -1,152 +1,85 @@
 'use client'
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { createClient, RealtimeChannel } from '@supabase/supabase-js'
-import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
+import React, { useEffect, useRef, useCallback } from 'react'
 import { useCRMStore } from '@/store/crm-store'
 import { toast } from 'sonner'
 import { Bell, Database } from 'lucide-react'
 
-interface SupabaseRealtimeProviderProps {
+interface DataSyncProviderProps {
   children: React.ReactNode
 }
 
-function handleRealtimeEvent(
-  table: string,
-  payload: RealtimePostgresChangesPayload<Record<string, unknown>>,
-  setNotificationReminders: (reminders: any) => void
-) {
-  const { eventType, new: newData, old: oldData } = payload
-
-  switch (table) {
-    case 'clients': {
-      if (eventType === 'INSERT') {
-        const name = (newData as Record<string, string>)?.name || 'Cliente'
-        toast.success(`Novo cliente: ${name}`, {
-          icon: <Database className="h-4 w-4 text-emerald-500" />,
-        })
-      } else if (eventType === 'UPDATE') {
-        const name = (newData as Record<string, string>)?.name || 'Cliente'
-        toast.info(`Cliente atualizado: ${name}`, {
-          icon: <Database className="h-4 w-4 text-blue-500" />,
-        })
-      } else if (eventType === 'DELETE') {
-        const name = (oldData as Record<string, string>)?.name || 'Cliente'
-        toast.warning(`Cliente removido: ${name}`)
-      }
-      break
-    }
-
-    case 'reminders': {
-      if (eventType === 'INSERT') {
-        const title = (newData as Record<string, string>)?.title || 'Lembrete'
-        toast.success(`Novo lembrete: ${title}`, {
-          icon: <Bell className="h-4 w-4 text-amber-500" />,
-        })
-      }
-      fetchNotificationCount(setNotificationReminders)
-      break
-    }
-
-    case 'tags': {
-      if (eventType === 'INSERT') {
-        const name = (newData as Record<string, string>)?.name || 'Tag'
-        toast.success(`Nova tag criada: ${name}`)
-      } else if (eventType === 'DELETE') {
-        const name = (oldData as Record<string, string>)?.name || 'Tag'
-        toast.warning(`Tag removida: ${name}`)
-      }
-      break
-    }
-
-    case 'user_settings': {
-      if (eventType === 'UPDATE') {
-        toast.info('Configurações atualizadas em tempo real')
-      }
-      break
-    }
-  }
-}
-
-async function fetchNotificationCount(
-  setNotificationReminders: (reminders: any) => void
-) {
-  try {
-    const res = await fetch('/api/reminders/check')
-    const data = await res.json()
-    setNotificationReminders(data || [])
-  } catch {
-    // Silencioso
-  }
-}
-
 /**
- * Provider global que escuta mudanças em tempo real do Supabase
- * em todas as tabelas do CRM (clients, tags, reminders, user_settings).
- * Atualiza automaticamente a UI quando dados são modificados por qualquer
- * dispositivo/sessão conectada ao mesmo Supabase project.
+ * Provider de sincronização de dados via polling.
+ * Substitui o Supabase Realtime (WebSocket) que não funcionava por falta de
+ * políticas RLS para a chave anon. Mantém os usuários atualizados verificando
+ * periodicamente novos clientes e lembretes pendentes.
+ *
+ * - A cada 30s: busca lembretes pendentes para notificação
+ * - A cada 30s: verifica se há clientes novos desde a última checagem
+ * - Toasts informativos quando detecta mudanças
  */
-export function SupabaseRealtimeProvider({ children }: SupabaseRealtimeProviderProps) {
-  const [connected, setConnected] = useState(false)
-  const channelsRef = useRef<RealtimeChannel[]>([])
-  const clientRef = useRef<ReturnType<typeof createClient> | null>(null)
+export function SupabaseRealtimeProvider({ children }: DataSyncProviderProps) {
   const { setNotificationReminders } = useCRMStore()
+  const knownClientIdsRef = useRef<Set<string>>(new Set())
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const isSupabaseConfigured = !!(
-    typeof window !== 'undefined' &&
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  )
+  const fetchNotificationReminders = useCallback(async () => {
+    try {
+      const res = await fetch('/api/reminders/check')
+      if (res.ok) {
+        const data = await res.json()
+        setNotificationReminders(data || [])
+      }
+    } catch {
+      // silencioso
+    }
+  }, [setNotificationReminders])
+
+  const checkForNewClients = useCallback(async () => {
+    try {
+      const res = await fetch('/api/clients/recent')
+      if (!res.ok) return
+
+      const recent: Array<{ id: string; name: string; createdAt: string }> = await res.json()
+
+      for (const client of recent) {
+        if (!knownClientIdsRef.current.has(client.id)) {
+          // Verifica se o cliente foi criado nos últimos 60s (evita toasts de clientes antigos na primeira carga)
+          const age = Date.now() - new Date(client.createdAt).getTime()
+          if (age < 60_000) {
+            toast.success(`Novo cliente: ${client.name}`, {
+              icon: <Database className="h-4 w-4 text-emerald-500" />,
+              duration: 5000,
+            })
+          }
+        }
+      }
+
+      // Atualiza o set de IDs conhecidos
+      knownClientIdsRef.current = new Set(recent.map((c) => c.id))
+    } catch {
+      // silencioso
+    }
+  }, [])
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      return
-    }
+    // Carga inicial
+    fetchNotificationReminders()
+    checkForNewClients()
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      realtime: {
-        params: { eventsPerSecond: 10 },
-      },
-    })
-    clientRef.current = supabase as any
-
-    const tables = ['clients', 'tags', 'client_tags', 'reminders', 'user_settings']
-    const channels: RealtimeChannel[] = []
-
-    for (const table of tables) {
-      const channel = supabase
-        .channel(`crm-realtime-${table}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table },
-          (payload: any) => {
-            handleRealtimeEvent(table, payload, setNotificationReminders)
-          }
-        )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            setConnected(true)
-          }
-        })
-
-      channels.push(channel)
-    }
-
-    channelsRef.current = channels
+    // Polling a cada 30 segundos
+    intervalRef.current = setInterval(() => {
+      fetchNotificationReminders()
+      checkForNewClients()
+    }, 30_000)
 
     return () => {
-      channels.forEach((ch) => ch.unsubscribe())
-      supabase.removeAllChannels()
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
     }
-  }, [isSupabaseConfigured, setNotificationReminders])
-
-  // Se não tem Supabase configurado, renderiza children sem real-time
-  if (!isSupabaseConfigured) {
-    return <>{children}</>
-  }
+  }, [fetchNotificationReminders, checkForNewClients])
 
   return <>{children}</>
 }
