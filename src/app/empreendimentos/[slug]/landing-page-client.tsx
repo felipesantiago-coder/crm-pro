@@ -476,7 +476,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const goPrev = () => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1));
 
   const displayTitle = e.landingTitle || e.name;
-  const displaySubtitle = e.landingSubtitle || info?.summary?.slice(0, 120) || null;
+  const displaySubtitle = e.landingSubtitle || info?.summary || null;
 
   // NEW: Determine if urgency badge should show
   const showUrgencyBadge = status === 'Lançamento' || status === 'Em Construção';
@@ -598,7 +598,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             {priceText && (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 max-w-[200px] sm:max-w-none">
                 <DollarSign className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate">{priceText}</span>
+                <span className="truncate" title={priceText}>{priceText}</span>
               </span>
             )}
             {status === 'Entregue' && (
@@ -610,13 +610,13 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             {deliveryText && status !== 'Entregue' && (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 max-w-[200px] sm:max-w-none">
                 <Clock className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate">Previsão: {deliveryText}</span>
+                <span className="truncate" title={"Previsão: " + deliveryText}>Previsão: {deliveryText}</span>
               </span>
             )}
             {e.region && (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white/70 border border-white/10 max-w-[180px] sm:max-w-none">
                 <MapPin className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate">{e.region}</span>
+                <span className="truncate" title={e.region}>{e.region}</span>
               </span>
             )}
             {/* ★ NEW: Urgency Badge — only for Lançamento or Em Construção */}
@@ -840,7 +840,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Arquitetura</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info.architecture}</p>
+                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2" title={info.architecture}>{info.architecture}</p>
                 </div>
               )}
 
@@ -853,7 +853,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Paisagismo</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info.landscaping}</p>
+                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2" title={info.landscaping}>{info.landscaping}</p>
                 </div>
               )}
 
@@ -929,7 +929,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Endereço</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info?.location?.address || '—'}</p>
+                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2" title={info?.location?.address || ''}>{info?.location?.address || '—'}</p>
                   {info?.location?.additionalInfo && (
                     <p className="text-xs text-white/40 mt-1">{info.location.additionalInfo}</p>
                   )}
