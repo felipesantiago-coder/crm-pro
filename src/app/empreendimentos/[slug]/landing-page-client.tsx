@@ -476,7 +476,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const goPrev = () => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1));
 
   const displayTitle = e.landingTitle || e.name;
-  const displaySubtitle = e.landingSubtitle || info?.summary || null;
+  const displaySubtitle = e.landingSubtitle || null;
 
   // NEW: Determine if urgency badge should show
   const showUrgencyBadge = status === 'Lançamento' || status === 'Em Construção';

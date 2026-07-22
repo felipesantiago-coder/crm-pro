@@ -154,19 +154,19 @@ function SkeletonCard() {
       <CardContent className="p-5">
         <div className="flex items-center justify-between">
           <div className="space-y-2 flex-1">
-            <div className="h-3 w-24 animate-pulse bg-white/5 rounded" />
-            <div className="h-7 w-16 animate-pulse bg-white/5 rounded" />
+            <div className="h-3 w-24 animate-pulse bg-muted rounded" />
+            <div className="h-7 w-16 animate-pulse bg-muted rounded" />
           </div>
-          <div className="h-11 w-11 animate-pulse bg-white/5 rounded-xl" />
+          <div className="h-11 w-11 animate-pulse bg-muted rounded-xl" />
         </div>
-        <div className="mt-3 h-2 w-20 animate-pulse bg-white/5 rounded" />
+        <div className="mt-3 h-2 w-20 animate-pulse bg-muted rounded" />
       </CardContent>
     </Card>
   );
 }
 
 function SkeletonBlock({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse bg-white/5 rounded-xl', className)} />;
+  return <div className={cn('animate-pulse bg-muted rounded-xl', className)} />;
 }
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -198,14 +198,14 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
 
 function CodeBlock({ code, language }: { code: string; language?: string }) {
   return (
-    <div className="relative group rounded-lg bg-black/40 border border-white/5 overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/5">
+    <div className="relative group rounded-lg bg-card border border-border overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
         <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
           {language ?? 'code'}
         </span>
         <CopyButton text={code} label="Código" />
       </div>
-      <pre className="p-3 text-xs leading-relaxed text-zinc-300 overflow-x-auto">
+      <pre className="p-3 text-xs leading-relaxed text-foreground/70 overflow-x-auto">
         <code>{code}</code>
       </pre>
     </div>
@@ -269,10 +269,10 @@ export function TrackingTab() {
   // ── Loading State ──
   if (loading && !data) {
     return (
-      <div className="space-y-6" style={{ backgroundColor: '#0A0A0A' }}>
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div className="h-6 w-48 animate-pulse bg-white/5 rounded" />
-          <div className="h-9 w-32 animate-pulse bg-white/5 rounded" />
+          <div className="h-6 w-48 animate-pulse bg-muted rounded" />
+          <div className="h-9 w-32 animate-pulse bg-muted rounded" />
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -289,11 +289,11 @@ export function TrackingTab() {
   // ── Empty State ──
   if (data && data.metrics.totalVisitors === 0) {
     return (
-      <div className="space-y-6" style={{ backgroundColor: '#0A0A0A' }}>
+      <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div />
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-32 h-9 text-xs bg-white/5 border-white/10">
+            <SelectTrigger className="w-32 h-9 text-xs bg-muted border-border">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -306,12 +306,12 @@ export function TrackingTab() {
           </Select>
         </div>
 
-        <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+        <Card className="border-border">
           <CardContent className="py-16 px-6 text-center">
             <div className="mx-auto mb-4 h-16 w-16 rounded-2xl bg-[#C9A96E]/10 flex items-center justify-center">
               <MousePointerClick className="h-8 w-8 text-[#C9A96E]" />
             </div>
-            <h3 className="text-lg font-semibold text-zinc-100 mb-2">
+            <h3 className="text-lg font-semibold mb-2">
               Nenhum dado de tracking ainda
             </h3>
             <p className="text-sm text-muted-foreground max-w-lg mx-auto mb-6 leading-relaxed">
@@ -319,12 +319,12 @@ export function TrackingTab() {
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto text-left">
-              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+              <div className="rounded-xl border bg-muted/50 p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#C9A96E]/20 text-xs font-bold text-[#C9A96E]">
                     1
                   </span>
-                  <span className="text-sm font-medium text-zinc-200">Migration</span>
+                  <span className="text-sm font-medium">Migration</span>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Execute a SQL migration para criar as tabelas{' '}
@@ -339,12 +339,12 @@ export function TrackingTab() {
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+              <div className="rounded-xl border bg-muted/50 p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#C9A96E]/20 text-xs font-bold text-[#C9A96E]">
                     2
                   </span>
-                  <span className="text-sm font-medium text-zinc-200">Pixel Script</span>
+                  <span className="text-sm font-medium">Pixel Script</span>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Adicione o script do pixel no{' '}
@@ -355,12 +355,12 @@ export function TrackingTab() {
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+              <div className="rounded-xl border bg-muted/50 p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#C9A96E]/20 text-xs font-bold text-[#C9A96E]">
                     3
                   </span>
-                  <span className="text-sm font-medium text-zinc-200">UTM Params</span>
+                  <span className="text-sm font-medium">UTM Params</span>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Adicione parâmetros UTM nas URLs dos seus anúncios:{' '}
@@ -447,12 +447,12 @@ export function TrackingTab() {
 
   // ── Main render ──
   return (
-    <div className="space-y-6" style={{ backgroundColor: '#0A0A0A' }}>
+    <div className="space-y-6">
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-2">
           <Activity className="h-5 w-5 text-[#C9A96E]" />
-          <h2 className="text-lg font-semibold text-zinc-100">Tracking de Visitantes</h2>
+          <h2 className="text-lg font-semibold text-foreground">Tracking de Visitantes</h2>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -469,7 +469,7 @@ export function TrackingTab() {
             {resetting ? 'Resetando...' : 'Resetar Dados'}
           </Button>
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-32 h-9 text-xs bg-white/5 border-white/10 text-zinc-300">
+            <SelectTrigger className="w-32 h-9 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -488,8 +488,7 @@ export function TrackingTab() {
         {kpis.map((kpi) => (
           <Card
             key={kpi.label}
-            className="border-white/5 hover:border-[#C9A96E]/20 transition-colors"
-            style={{ backgroundColor: '#0A0A0A' }}
+            className="border hover:border-[#C9A96E]/20 transition-colors"
           >
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
@@ -497,7 +496,7 @@ export function TrackingTab() {
                   <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                     {kpi.label}
                   </p>
-                  <p className="text-2xl font-bold text-zinc-100 tracking-tight">{kpi.value}</p>
+                  <p className="text-2xl font-bold text-foreground tracking-tight">{kpi.value}</p>
                 </div>
                 <div className={cn('h-11 w-11 rounded-xl flex items-center justify-center shrink-0', kpi.iconBg)}>
                   {kpi.icon}
@@ -510,9 +509,9 @@ export function TrackingTab() {
       </div>
 
       {/* ── Section 1: Funil de Conversão ── */}
-      <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+      <Card className="border">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-[#C9A96E]" />
             Funil de Conversão
           </CardTitle>
@@ -535,7 +534,7 @@ export function TrackingTab() {
                             idx === 0 ? 'bg-[#C9A96E]' : idx === 1 ? 'bg-[#D4A843]' : 'bg-[#E5A820]'
                           )}
                         />
-                        <span className="text-sm font-medium text-zinc-200">
+                        <span className="text-sm font-medium">
                           {FUNNEL_LABELS[stage.stage] ?? stage.stage}
                         </span>
                       </div>
@@ -543,7 +542,7 @@ export function TrackingTab() {
                         {!isFirst && (
                           <Badge
                             variant="secondary"
-                            className="h-5 px-1.5 text-[10px] font-medium bg-white/5 text-muted-foreground"
+                            className="h-5 px-1.5 text-[10px] font-medium bg-muted text-muted-foreground"
                           >
                             {fmtPct(stage.rate)}
                           </Badge>
@@ -577,7 +576,7 @@ export function TrackingTab() {
                   {/* Arrow between stages */}
                   {idx < data.funnel.length - 1 && (
                     <div className="flex justify-center py-0.5">
-                      <svg width="12" height="16" viewBox="0 0 12 16" fill="none" className="text-white/15">
+                      <svg width="12" height="16" viewBox="0 0 12 16" fill="none" className="text-muted-foreground/30">
                         <path d="M6 0L11 6H1L6 0Z" fill="currentColor" />
                         <path d="M6 16L1 10H11L6 16Z" fill="currentColor" />
                       </svg>
@@ -589,7 +588,7 @@ export function TrackingTab() {
           </div>
 
           {/* Funnel conversion summary */}
-          <div className="mt-5 pt-4 border-t border-white/5 flex flex-wrap items-center justify-center gap-6 text-center">
+          <div className="mt-5 pt-4 border-t flex flex-wrap items-center justify-center gap-6 text-center">
             {data.funnel.length >= 3 && (
               <>
                 <div>
@@ -600,7 +599,7 @@ export function TrackingTab() {
                     {fmtPct(data.funnel[1].rate)}
                   </p>
                 </div>
-                <div className="h-6 w-px bg-white/10" />
+                <div className="h-6 w-px bg-border" />
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
                     Engajamento → Lead
@@ -611,7 +610,7 @@ export function TrackingTab() {
                       : '0.0%'}
                   </p>
                 </div>
-                <div className="h-6 w-px bg-white/10" />
+                <div className="h-6 w-px bg-border" />
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
                     Conversão Total
@@ -628,10 +627,10 @@ export function TrackingTab() {
 
       {/* ── Section 2: Tendência Diária (Mini Bar Chart) ── */}
       {last14.length > 0 && (
-        <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+        <Card className="border">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-[#C9A96E]" />
                 Tendência Diária
               </CardTitle>
@@ -698,9 +697,9 @@ export function TrackingTab() {
 
       {/* ── Section 3: Performance por Campanha ── */}
       {sortedCampaigns.length > 0 && sortedCampaigns.some((c) => c.campaign !== '(none)') && (
-        <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+        <Card className="border">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
               <Trophy className="h-4 w-4 text-[#C9A96E]" />
               Performance por Campanha
             </CardTitle>
@@ -709,7 +708,7 @@ export function TrackingTab() {
             <div className="overflow-x-auto -mx-4 sm:mx-0">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-white/5">
+                  <tr className="border-b">
                     <th className="text-left py-2 px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                       Campanha
                     </th>
@@ -732,7 +731,7 @@ export function TrackingTab() {
                       <tr
                         key={row.campaign}
                         className={cn(
-                          'border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors',
+                          'border-b hover:bg-muted/50 transition-colors',
                           idx < 3 && 'bg-[#C9A96E]/[0.03]'
                         )}
                       >
@@ -749,15 +748,15 @@ export function TrackingTab() {
                                 {idx + 1}
                               </span>
                             )}
-                            <span className="text-zinc-200 font-medium truncate max-w-[200px]">
+                            <span className="font-medium truncate max-w-[200px]">
                               {row.campaign}
                             </span>
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 text-right text-zinc-400 tabular-nums">
+                        <td className="py-2.5 px-3 text-right text-muted-foreground tabular-nums">
                           {fmt.format(row.visitors)}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-medium text-zinc-100 tabular-nums">
+                        <td className="py-2.5 px-3 text-right font-medium tabular-nums">
                           {fmt.format(row.leads)}
                         </td>
                         <td className="py-2.5 px-3 text-right tabular-nums">
@@ -769,7 +768,7 @@ export function TrackingTab() {
                                 ? 'bg-emerald-500/10 text-emerald-400'
                                 : row.conversionRate >= 2
                                   ? 'bg-amber-500/10 text-amber-400'
-                                  : 'bg-white/5 text-muted-foreground'
+                                  : 'bg-muted text-muted-foreground'
                             )}
                           >
                             {fmtPct(row.conversionRate)}
@@ -794,10 +793,9 @@ export function TrackingTab() {
               ? 'border-amber-500/20'
               : 'border-rose-500/20'
         )}
-        style={{ backgroundColor: '#0A0A0A' }}
-      >
+>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
             {data.metaDiscrepancy.matchRate >= 80 ? (
               <ShieldCheck className="h-4 w-4 text-emerald-400" />
             ) : data.metaDiscrepancy.matchRate >= 50 ? (
@@ -811,11 +809,11 @@ export function TrackingTab() {
         <CardContent className="px-6 pb-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Pixel Leads */}
-            <div className="rounded-xl bg-white/[0.02] border border-white/5 p-4 text-center">
+            <div className="rounded-xl bg-muted/50 border p-4 text-center">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
                 Pixel Leads
               </p>
-              <p className="text-2xl font-bold text-zinc-100 tabular-nums">
+              <p className="text-2xl font-bold tabular-nums">
                 {fmt.format(data.metaDiscrepancy.pixelLeads)}
               </p>
               <p className="text-[10px] text-muted-foreground mt-1">
@@ -824,11 +822,11 @@ export function TrackingTab() {
             </div>
 
             {/* CRM Meta Leads */}
-            <div className="rounded-xl bg-white/[0.02] border border-white/5 p-4 text-center">
+            <div className="rounded-xl bg-muted/50 border p-4 text-center">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
                 CRM Meta Leads
               </p>
-              <p className="text-2xl font-bold text-zinc-100 tabular-nums">
+              <p className="text-2xl font-bold tabular-nums">
                 {fmt.format(data.metaDiscrepancy.crmMetaLeads)}
               </p>
               <p className="text-[10px] text-muted-foreground mt-1">
@@ -862,7 +860,7 @@ export function TrackingTab() {
               >
                 {fmtPct(data.metaDiscrepancy.matchRate)}
               </p>
-              <div className="mt-2 h-1.5 bg-white/5 rounded-full overflow-hidden">
+              <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
                 <div
                   className={cn(
                     'h-full rounded-full transition-all duration-700',
@@ -888,15 +886,15 @@ export function TrackingTab() {
       </Card>
 
       {/* ── Section 5: Pixel Setup Instructions ── */}
-      <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+      <Card className="border">
         <CardContent className="p-0">
           <button
             onClick={() => setSetupOpen(!setupOpen)}
-            className="w-full flex items-center justify-between p-5 hover:bg-white/[0.02] transition-colors rounded-t-xl"
+            className="w-full flex items-center justify-between p-5 hover:bg-muted/50 transition-colors rounded-t-xl"
           >
             <div className="flex items-center gap-2">
               <FileCode className="h-4 w-4 text-[#C9A96E]" />
-              <span className="text-sm font-semibold text-zinc-100">Instruções de Setup do Pixel</span>
+              <span className="text-sm font-semibold">Instruções de Setup do Pixel</span>
             </div>
             {setupOpen ? (
               <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -906,12 +904,12 @@ export function TrackingTab() {
           </button>
 
           {setupOpen && (
-            <div className="px-5 pb-5 space-y-5 border-t border-white/5 pt-5">
+            <div className="px-5 pb-5 space-y-5 border-t pt-5">
               {/* Client-side pixel */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <Globe className="h-3.5 w-3.5 text-[#C9A96E]" />
-                  <h4 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider">
                     1. Client-side — Embed no &lt;head&gt;
                   </h4>
                 </div>
@@ -932,7 +930,7 @@ export function TrackingTab() {
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <Zap className="h-3.5 w-3.5 text-[#C9A96E]" />
-                  <h4 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider">
                     2. Server-side — Evento de lead
                   </h4>
                 </div>
@@ -960,7 +958,7 @@ export function TrackingTab() {
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
-                  <h4 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider">
                     3. UTM Parameters nas URLs dos Anúncios
                   </h4>
                 </div>
