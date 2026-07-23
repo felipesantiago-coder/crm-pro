@@ -334,6 +334,24 @@ model GoogleCalendarToken {
   @@map("google_calendar_tokens")
 }
 
+// ============================================================
+// META AD ACCOUNTS — Multi-campaign management via Marketing API
+// ============================================================
+model MetaAdAccount {
+  id             String   @id @default(cuid()) @map("id")
+  label          String   @map("label")
+  adAccountId    String   @map("adAccountId")         // Meta Ad Account ID (act_xxxxx)
+  accessToken    String   @map("accessToken")         // System User Token com ads_read
+  isActive       Boolean  @default(true) @map("isActive")
+  lastSyncedAt   DateTime? @map("lastSyncedAt")
+  createdAt      DateTime @default(now()) @map("createdAt")
+  updatedAt      DateTime @updatedAt @map("updatedAt")
+
+  @@unique([adAccountId])
+  @@index([isActive])
+  @@map("meta_ad_accounts")
+}
+
 model LandingFormField {
   id           String   @id @default(cuid()) @map("id")
   enterpriseId String   @map("enterpriseId")

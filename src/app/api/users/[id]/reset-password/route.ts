@@ -51,8 +51,6 @@ export async function POST(
       data: {
         passwordHash: hashedPassword,
         mustChangePassword: true,
-        passwordResetToken: null,
-        passwordResetExpires: null,
       },
     });
 
