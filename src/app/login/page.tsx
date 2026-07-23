@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2, LogIn } from 'lucide-react';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -127,6 +128,14 @@ export default function LoginPage() {
                 </>
               )}
             </Button>
+            <div className="pt-2 text-center">
+              <Link
+                href="/forgot-password"
+                className="text-sm text-white/80 hover:text-white transition-colors"
+              >
+                Esqueceu sua senha?
+              </Link>
+            </div>
           </form>
         </CardContent>
       </Card>
