@@ -12,11 +12,13 @@ import {
   Loader2,
   Search,
   Lock,
+  KeyRound,
   Building2,
   Check,
   X,
   Eye,
   EyeOff,
+  Copy,
   MessageSquare,
   Bell,
   CalendarDays,
@@ -88,6 +90,12 @@ export function AdminPanel() {
   // Delete dialog
   const [deletingUser, setDeletingUser] = useState<UserItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Reset password dialog
+  const [resetUser, setResetUser] = useState<UserItem | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [newTempPassword, setNewTempPassword] = useState('');
+  const [passwordCopied, setPasswordCopied] = useState(false);
 
   // Notification status
   const [notifStatus, setNotifStatus] = useState<NotificationStatus[]>([]);
@@ -168,6 +176,29 @@ export function AdminPanel() {
       toast.error('Erro ao criar usuário.');
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!resetUser) return;
+    setResetting(true);
+    setNewTempPassword('');
+    setPasswordCopied(false);
+    try {
+      const res = await fetch(`/api/users/${resetUser.id}/reset-password`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Erro ao redefinir senha.');
+        return;
+      }
+      setNewTempPassword(data.tempPassword);
+      fetchUsers();
+    } catch {
+      toast.error('Erro ao redefinir senha.');
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -524,9 +555,18 @@ export function AdminPanel() {
                             })()}
                           </div>
                         </div>
-                        <div className="flex-shrink-0">
+                        <div className="flex items-center gap-1 flex-shrink-0">
                           {user.id !== session?.user?.id && (
-                            <AlertDialog
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-10 w-10 text-muted-foreground hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+                                onClick={() => { setResetUser(user); setNewTempPassword(''); setPasswordCopied(false); }}
+                              >
+                                <KeyRound className="h-4 w-4" />
+                              </Button>
+                              <AlertDialog
                               open={deletingUser?.id === user.id}
                               onOpenChange={(open) => !open && setDeletingUser(null)}
                             >
@@ -566,6 +606,7 @@ export function AdminPanel() {
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>
+                            </>
                           )}
                         </div>
                       </div>
@@ -575,6 +616,78 @@ export function AdminPanel() {
               )}
             </CardContent>
           </Card>
+
+          {/* Reset Password Dialog */}
+          <Dialog
+            open={!!resetUser}
+            onOpenChange={(open) => { if (!open) { setResetUser(null); setNewTempPassword(''); setPasswordCopied(false); } }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Redefinir Senha</DialogTitle>
+                <DialogDescription>
+                  {newTempPassword
+                    ? `Nova senha gerada para "${resetUser?.name}"`
+                    : `Deseja gerar uma nova senha temporária para "${resetUser?.name}"? No próximo acesso, o usuário será obrigado a criar uma nova senha.`}
+                </DialogDescription>
+              </DialogHeader>
+              {newTempPassword ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-muted p-4">
+                    <p className="text-xs text-muted-foreground mb-2">Senha temporária (copie e repasse ao usuário):</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-lg font-mono font-semibold tracking-wider text-foreground">
+                        {newTempPassword}
+                      </code>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9 flex-shrink-0"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(newTempPassword);
+                          setPasswordCopied(true);
+                          setTimeout(() => setPasswordCopied(false), 2000);
+                        }}
+                      >
+                        {passwordCopied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    O usuário precisará alterar esta senha no primeiro acesso.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground py-2">
+                  A senha atual será substituída. O usuário precisará definir uma nova senha no próximo login.
+                </p>
+              )}
+              <DialogFooter>
+                {newTempPassword ? (
+                  <Button onClick={() => { setResetUser(null); setNewTempPassword(''); }} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold">
+                    Entendi
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={() => setResetUser(null)} disabled={resetting}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={handleResetPassword}
+                      disabled={resetting}
+                      className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+                    >
+                      {resetting ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Gerando...</>
+                      ) : (
+                        <><KeyRound className="h-4 w-4 mr-2" />Redefinir Senha</>
+                      )}
+                    </Button>
+                  </>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="enterprises">
