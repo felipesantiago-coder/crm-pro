@@ -20,7 +20,8 @@ import { notifyNewLead as notifyNewLeadNtfy } from '@/lib/ntfy';
 
 /**
  * Recupera o verify_token e app_secret das configurações do sistema.
- * Se não existirem, retorna null.
+ * O pageAccessToken é buscado primeiro da tabela MetaAdAccount (conta ativa),
+ * com fallback para UserSettings (compatibilidade com config antiga).
  */
 async function getMetaConfig() {
   const settings = await db.userSettings.findMany({
@@ -36,11 +37,25 @@ async function getMetaConfig() {
     map[s.key] = s.value;
   });
 
+  // Buscar pageAccessToken da MetaAdAccount ativa (fonte primária)
+  let pageAccessTokenFromAccount: string | null = null;
+  try {
+    const activeAccount = await db.metaAdAccount.findFirst({
+      where: { isActive: true },
+      select: { pageAccessToken: true },
+    });
+    if (activeAccount?.pageAccessToken) {
+      pageAccessTokenFromAccount = activeAccount.pageAccessToken;
+    }
+  } catch {
+    // Tabela pode não existir ainda em upgrade antigo
+  }
+
   return {
     verifyToken: map['meta_webhook_verify_token'] || null,
     appSecret: map['meta_app_secret'] || null,
     enabled: map['meta_webhook_enabled'] === 'true',
-    pageAccessToken: map['meta_page_access_token'] || null,
+    pageAccessToken: pageAccessTokenFromAccount || map['meta_page_access_token'] || null,
   };
 }
 
@@ -284,6 +299,7 @@ export async function POST(request: NextRequest) {
         const formName = leadData.form_name || '';
 
         // O Meta envia apenas o ID — buscar dados via Graph API
+        // Token vem da MetaAdAccount (aba Contas) ou fallback UserSettings
         if (fieldData.length === 0 && config.pageAccessToken) {
           const fetched = await fetchLeadData(leadgenId, config.pageAccessToken);
           if (fetched) {

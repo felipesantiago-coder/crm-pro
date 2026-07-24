@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, RefreshCw, Eye, EyeOff, CheckCircle2, Circle,
   Loader2, Pencil, ExternalLink, Wallet, Building2, AlertCircle,
+  Link2, Unlink, ShieldCheck, Webhook,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ interface Account {
   lastSyncedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  hasPageAccessToken: boolean;
 }
 
 export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => void }) {
@@ -31,12 +33,18 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [editingPageToken, setEditingPageToken] = useState<string | null>(null);
+  const [pageTokenValue, setPageTokenValue] = useState('');
+  const [savingPageToken, setSavingPageToken] = useState(false);
+  const [showPageToken, setShowPageToken] = useState(false);
 
   // Form state
   const [formLabel, setFormLabel] = useState('');
   const [formAdAccountId, setFormAdAccountId] = useState('');
   const [formToken, setFormToken] = useState('');
+  const [formPageToken, setFormPageToken] = useState('');
   const [showToken, setShowToken] = useState(false);
+  const [showFormPageToken, setShowFormPageToken] = useState(false);
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
@@ -74,6 +82,7 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
           label: formLabel.trim() || undefined,
           adAccountId: formAdAccountId.trim(),
           accessToken: formToken.trim(),
+          pageAccessToken: formPageToken.trim() || undefined,
         }),
       });
 
@@ -84,6 +93,7 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
         setFormLabel('');
         setFormAdAccountId('');
         setFormToken('');
+        setFormPageToken('');
         fetchAccounts();
         onAccountsChanged?.();
       } else {
@@ -112,6 +122,30 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
     }
   }
 
+  async function savePageToken(accountId: string) {
+    setSavingPageToken(true);
+    try {
+      const res = await fetch('/api/meta-ads/accounts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: accountId, pageAccessToken: pageTokenValue.trim() }),
+      });
+      if (res.ok) {
+        toast.success('Page Access Token salvo');
+        setEditingPageToken(null);
+        setPageTokenValue('');
+        fetchAccounts();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Erro ao salvar');
+      }
+    } catch {
+      toast.error('Falha de conexão');
+    } finally {
+      setSavingPageToken(false);
+    }
+  }
+
   async function deleteAccount(id: string) {
     if (!confirm('Remover esta conta? Os dados de campanhas não serão afetados, mas as métricas em tempo real pararão de atualizar.'))
       return;
@@ -134,6 +168,9 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
     }
   }
 
+  // Find the first active account with pageAccessToken (used by webhook)
+  const webhookAccount = accounts.find((a) => a.isActive && a.hasPageAccessToken);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -148,7 +185,7 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
         <div>
           <h2 className="text-lg font-semibold">Contas de Anúncios</h2>
           <p className="text-sm text-muted-foreground">
-            Conecte suas contas do Meta Ads para gerenciar campanhas
+            Conecte suas contas do Meta Ads para gerenciar campanhas e receber leads via webhook
           </p>
         </div>
         <Button
@@ -160,6 +197,32 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
           Adicionar Conta
         </Button>
       </div>
+
+      {/* Webhook status banner */}
+      <Card className="border-dashed">
+        <CardContent className="p-3">
+          <div className="flex items-center gap-2 text-xs">
+            <Webhook className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <span className="text-muted-foreground">
+              {webhookAccount ? (
+                <>
+                  Webhook de leads usando token da conta <strong className="text-foreground">{webhookAccount.label}</strong>
+                  <Badge className="ml-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px]">
+                    <ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> Ativo
+                  </Badge>
+                </>
+              ) : (
+                <>
+                  Nenhuma conta com Page Access Token. O webhook usa o token da aba <strong className="text-foreground">Config</strong> (legado).
+                  <Badge className="ml-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px]">
+                    Legado
+                  </Badge>
+                </>
+              )}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Add Form */}
       {showForm && (
@@ -189,7 +252,7 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Access Token *</Label>
+              <Label className="text-xs">Access Token (System User) *</Label>
               <div className="relative">
                 <Input
                   type={showToken ? 'text' : 'password'}
@@ -209,6 +272,30 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
                 </Button>
               </div>
             </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">
+                Page Access Token{' '}
+                <span className="text-muted-foreground">(para buscar dados de leads via webhook)</span>
+              </Label>
+              <div className="relative">
+                <Input
+                  type={showFormPageToken ? 'text' : 'password'}
+                  placeholder="Opcional — usado pelo webhook para buscar nome, email, telefone do lead"
+                  value={formPageToken}
+                  onChange={(e) => setFormPageToken(e.target.value)}
+                  className="font-mono text-sm pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                  onClick={() => setShowFormPageToken(!showFormPageToken)}
+                >
+                  {showFormPageToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+            </div>
             <div className="flex gap-2">
               <Button onClick={handleSave} disabled={saving} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
                 {saving ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Conectando...</> : 'Conectar'}
@@ -217,7 +304,7 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
             </div>
             <details className="group">
               <summary className="text-[11px] text-blue-600 dark:text-blue-400 cursor-pointer hover:underline">
-                Como obter o Token?
+                Como obter os Tokens?
               </summary>
               <ol className="mt-1.5 text-[11px] text-muted-foreground space-y-1 list-decimal list-inside">
                 <li>Acesse o <strong>Meta Business Settings</strong></li>
@@ -225,6 +312,7 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
                 <li>Atribua permissões de <strong>ads_read</strong> e <strong>pages_read_engagement</strong></li>
                 <li>Gere um <strong>System User Token</strong> com essas permissões</li>
                 <li>Copie o <strong>Ad Account ID</strong> em Business Settings → Accounts</li>
+                <li>Para o <strong>Page Access Token</strong>, use o Graph API Explorer com permissão <code>leads_retrieval</code></li>
               </ol>
             </details>
           </CardContent>
@@ -245,9 +333,9 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
           {accounts.map((account) => (
             <Card key={account.id} className={!account.isActive ? 'opacity-60' : ''}>
               <CardContent className="p-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm truncate">{account.label}</span>
                       {account.isActive ? (
                         <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px]">
@@ -258,6 +346,11 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
                           <Circle className="h-2.5 w-2.5 mr-0.5" /> Inativa
                         </Badge>
                       )}
+                      {account.hasPageAccessToken && (
+                        <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[10px]">
+                          <Link2 className="h-2.5 w-2.5 mr-0.5" /> Webhook
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                       <span className="font-mono">{account.adAccountId}</span>
@@ -265,6 +358,65 @@ export function AccountsTab({ onAccountsChanged }: { onAccountsChanged?: () => v
                         <span>Sinc: {format(parseISO(account.lastSyncedAt), "dd/MM HH:mm", { locale: ptBR })}</span>
                       )}
                     </div>
+
+                    {/* Page Access Token section */}
+                    {editingPageToken === account.id ? (
+                      <div className="mt-3 p-2.5 rounded-md border bg-muted/30 space-y-2">
+                        <Label className="text-[11px] text-muted-foreground">Page Access Token (para webhook de leads)</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            type={showPageToken ? 'text' : 'password'}
+                            placeholder="EAAxxx..."
+                            value={pageTokenValue}
+                            onChange={(e) => setPageTokenValue(e.target.value)}
+                            className="font-mono text-xs h-8"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 flex-shrink-0"
+                            onClick={() => setShowPageToken(!showPageToken)}
+                          >
+                            {showPageToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={() => savePageToken(account.id)}
+                            disabled={savingPageToken}
+                          >
+                            {savingPageToken ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Salvar'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs"
+                            onClick={() => { setEditingPageToken(null); setPageTokenValue(''); }}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-[11px] text-muted-foreground hover:text-foreground"
+                          onClick={() => {
+                            setEditingPageToken(account.id);
+                            setPageTokenValue('');
+                          }}
+                        >
+                          {account.hasPageAccessToken ? (
+                            <><ShieldCheck className="h-3 w-3 mr-1" /> Page Token configurado</>
+                          ) : (
+                            <><Link2 className="h-3 w-3 mr-1" /> Configurar Page Token</>
+                          )}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <Switch

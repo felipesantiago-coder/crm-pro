@@ -8,6 +8,7 @@ const accountSchema = z.object({
   label: z.string().min(1, 'Label obrigatório'),
   adAccountId: z.string().min(1, 'ID da conta obrigatório'),
   accessToken: z.string().min(10, 'Token inválido'),
+  pageAccessToken: z.string().optional(),
 });
 
 // GET — List all ad accounts
@@ -26,10 +27,21 @@ export async function GET() {
         lastSyncedAt: true,
         createdAt: true,
         updatedAt: true,
-        // NEVER expose accessToken in list
+        pageAccessToken: true,
       },
     });
-    return NextResponse.json({ accounts });
+    // Never expose the actual token; return hasPageAccessToken boolean
+    const mapped = accounts.map((a) => ({
+      id: a.id,
+      label: a.label,
+      adAccountId: a.adAccountId,
+      isActive: a.isActive,
+      lastSyncedAt: a.lastSyncedAt,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+      hasPageAccessToken: !!a.pageAccessToken,
+    }));
+    return NextResponse.json({ accounts: mapped });
   } catch (err) {
     console.error('[META-ADS-ACCOUNTS] Erro ao listar:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
@@ -49,7 +61,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: msg }, { status: 400 });
     }
 
-    const { label, adAccountId, accessToken } = parsed.data;
+    const { label, adAccountId, accessToken, pageAccessToken } = parsed.data;
 
     // Validate token by fetching account info
     let accountInfo;
@@ -71,11 +83,13 @@ export async function POST(request: NextRequest) {
         label: finalLabel,
         adAccountId,
         accessToken,
+        pageAccessToken: pageAccessToken || null,
         lastSyncedAt: new Date(),
       },
       update: {
         label: finalLabel,
         accessToken,
+        pageAccessToken: pageAccessToken || null,
         lastSyncedAt: new Date(),
       },
     });
@@ -88,6 +102,7 @@ export async function POST(request: NextRequest) {
         adAccountId: account.adAccountId,
         isActive: account.isActive,
         lastSyncedAt: account.lastSyncedAt,
+        hasPageAccessToken: !!account.pageAccessToken,
         metaName: accountInfo.name,
         businessName: accountInfo.businessName,
         accountStatus: accountInfo.accountStatus,
@@ -107,17 +122,18 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH — Toggle active status or update label
+// PATCH — Toggle active status, update label, or update pageAccessToken
 export async function PATCH(request: NextRequest) {
   const { error } = await requireAdmin();
   if (error) return error;
 
   try {
     const body = await request.json();
-    const { id, isActive, label } = body as {
+    const { id, isActive, label, pageAccessToken } = body as {
       id: string;
       isActive?: boolean;
       label?: string;
+      pageAccessToken?: string;
     };
 
     if (!id) {
@@ -127,6 +143,7 @@ export async function PATCH(request: NextRequest) {
     const data: any = { updatedAt: new Date() };
     if (typeof isActive === 'boolean') data.isActive = isActive;
     if (label) data.label = label;
+    if (pageAccessToken !== undefined) data.pageAccessToken = pageAccessToken || null;
 
     const account = await db.metaAdAccount.update({
       where: { id },

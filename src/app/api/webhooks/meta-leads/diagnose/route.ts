@@ -407,6 +407,51 @@ export async function GET() {
     }
 
     // ─────────────────────────────────────────────────
+    // CHECK 7 — Contas de anúncios (MetaAdAccount)
+    // Verifica se há contas configuradas na aba Contas
+    // ─────────────────────────────────────────────────
+    try {
+      const adAccounts = await db.metaAdAccount.findMany({
+        select: {
+          id: true,
+          label: true,
+          adAccountId: true,
+          isActive: true,
+          pageAccessToken: true,
+          lastSyncedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (adAccounts.length === 0) {
+        checks.push({
+          name: 'Contas de anúncios (aba Contas)',
+          status: 'warn',
+          details: 'Nenhuma conta de anúncios cadastrada. A aba Campanhas não mostrará dados.',
+          fix: 'Vá na aba "Contas" e adicione sua conta do Meta Ads.',
+        });
+      } else {
+        const activeCount = adAccounts.filter((a) => a.isActive).length;
+        const withPageToken = adAccounts.filter((a) => a.pageAccessToken).length;
+        const labels = adAccounts.map((a) => `${a.label} (${a.adAccountId})${a.isActive ? '' : ' [inativa]'}`).join(', ');
+
+        checks.push({
+          name: 'Contas de anúncios (aba Contas)',
+          status: activeCount > 0 ? 'ok' : 'warn',
+          details: `${adAccounts.length} conta(s), ${activeCount} ativa(s), ${withPageToken} com Page Token. Contas: ${labels}.`,
+          fix: activeCount === 0 ? 'Ative pelo menos uma conta na aba "Contas".' : (withPageToken === 0 ? 'Nenhuma conta tem Page Access Token. O webhook usará o token da aba Config (legado).' : undefined),
+        });
+      }
+    } catch (adAccountErr: unknown) {
+      const errMsg = adAccountErr instanceof Error ? adAccountErr.message : 'Erro desconhecido';
+      checks.push({
+        name: 'Contas de anúncios (aba Contas)',
+        status: 'error',
+        details: `Erro ao buscar contas: ${errMsg}`,
+      });
+    }
+
+    // ─────────────────────────────────────────────────
     // Resumo final
     // ─────────────────────────────────────────────────
     const okCount = checks.filter((c) => c.status === 'ok').length;
