@@ -1,2 +1,2 @@
--- AlterTable: Add pageAccessToken to meta_ad_accounts
-ALTER TABLE "meta_ad_accounts" ADD COLUMN "pageAccessToken" TEXT;
+-- AlterTable: Add pageAccessToken to meta_ad_accounts (idempotent)
+ALTER TABLE "meta_ad_accounts" ADD COLUMN IF NOT EXISTS "pageAccessToken" TEXT;
