@@ -1006,6 +1006,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   </div>
 
                 {/* Builder */}
+                {info?.builder && (
                 <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
                     <div className="flex items-stretch">
                       <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-orange-500/15 to-orange-500/5 flex items-center justify-center">
@@ -1015,12 +1016,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                       </div>
                       <div className="flex-1 p-5 sm:p-6">
                         <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Construtora</h3>
-                        <p className="text-sm sm:text-[15px] text-white/70 leading-relaxed max-w-3xl">{info?.builder || 'Informações em breve'}</p>
+                        <p className="text-sm sm:text-[15px] text-white/70 leading-relaxed max-w-3xl">{info.builder}</p>
                       </div>
                     </div>
                   </div>
+                  )}
 
                 {/* Architecture / Landscaping */}
+                {(info?.architecture || info?.landscaping) && (
                 <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
                     <div className="flex items-stretch">
                       <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-violet-500/15 to-violet-500/5 flex items-center justify-center">
@@ -1031,22 +1034,28 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                       <div className="flex-1 p-5 sm:p-6">
                         <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Projeto</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+                          {info?.architecture && (
                           <div>
                             <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Arquitetura</p>
-                            <p className="text-sm text-white/70 leading-relaxed">{info?.architecture || 'Em breve'}</p>
+                            <p className="text-sm text-white/70 leading-relaxed">{info.architecture}</p>
                           </div>
+                          )}
+                          {info?.landscaping && (
                           <div>
                             <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Paisagismo</p>
-                            <p className="text-sm text-white/70 leading-relaxed">{info?.landscaping || 'Em breve'}</p>
+                            <p className="text-sm text-white/70 leading-relaxed">{info.landscaping}</p>
                           </div>
+                          )}
                         </div>
                       </div>
                     </div>
                   </div>
+                  )}
 
               </div>
 
               {/* Apartment Types */}
+              {info?.apartmentTypes && info.apartmentTypes.length > 0 && (
               <div className="mt-10 sm:mt-14">
                   <div className="flex items-center gap-3 mb-6 sm:mb-8">
                     <div className="h-9 w-9 rounded-xl bg-emerald-500/15 flex items-center justify-center">
@@ -1094,12 +1103,12 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                       );
                     })}
                   </div>
-                  {(!info?.apartmentTypes || info.apartmentTypes.length === 0) && (
-                    <p className="text-sm text-white/30 text-center py-8">Plantas e tipos de unidades serão disponibilizadas em breve.</p>
-                  )}
+
                 </div>
+              )}
 
               {/* Differentials */}
+              {info?.differentials && info.differentials.length > 0 && (
               <div className="mt-10 sm:mt-14">
                   <div className="flex items-center gap-3 mb-6 sm:mb-8">
                     <div className="h-9 w-9 rounded-xl bg-[#C9A96E]/15 flex items-center justify-center">
@@ -1118,10 +1127,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                       </div>
                     ))}
                   </div>
-                {(!info?.differentials || info.differentials.length === 0) && (
-                  <p className="text-sm text-white/30 text-center py-8">Diferenciais serão informados em breve.</p>
-                )}
+
                 </div>
+              )}
             </div>
           </section>
       </ScrollReveal>
