@@ -17,6 +17,8 @@ import {
   X,
   Eye,
   EyeOff,
+  MessageSquare,
+  CalendarDays,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -60,11 +62,20 @@ interface UserItem {
   createdAt: string;
 }
 
+interface NotificationStatus {
+  id: string;
+  telegramConnected: boolean;
+  googleCalendarConnected: boolean;
+}
+
 export function AdminPanel() {
   const { data: session } = useSession();
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+
+  // Notification status
+  const [notifStatus, setNotifStatus] = useState<NotificationStatus[]>([]);
 
   // New user dialog
   const [newUserOpen, setNewUserOpen] = useState(false);
@@ -81,13 +92,13 @@ export function AdminPanel() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch('/api/users');
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(data);
-      } else {
-        toast.error('Erro ao carregar usuários');
-      }
+      const [uRes, nRes] = await Promise.all([
+        fetch('/api/users'),
+        fetch('/api/admin/notification-status'),
+      ]);
+      if (uRes.ok) setUsers(await uRes.json());
+      else toast.error('Erro ao carregar usuários');
+      if (nRes.ok) setNotifStatus(await nRes.json());
     } catch {
       toast.error('Erro ao carregar usuários');
     } finally {
@@ -467,6 +478,38 @@ export function AdminPanel() {
                           <p className="text-xs text-muted-foreground">
                             Criado em {format(new Date(user.createdAt), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                           </p>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            {(() => {
+                              const ns = notifStatus.find((n) => n.id === user.id);
+                              if (!ns) return null;
+                              return (
+                                <>
+                                  <span
+                                    className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                      ns.telegramConnected
+                                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                        : 'bg-muted text-muted-foreground/60'
+                                    }`}
+                                    title={ns.telegramConnected ? 'Telegram conectado' : 'Telegram não conectado'}
+                                  >
+                                    <MessageSquare className="h-2.5 w-2.5" />
+                                    Telegram
+                                  </span>
+                                  <span
+                                    className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                      ns.googleCalendarConnected
+                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                        : 'bg-muted text-muted-foreground/60'
+                                    }`}
+                                    title={ns.googleCalendarConnected ? 'Google Calendar conectado' : 'Google Calendar não conectado'}
+                                  >
+                                    <CalendarDays className="h-2.5 w-2.5" />
+                                    Calendar
+                                  </span>
+                                </>
+                              );
+                            })()}
+                          </div>
                         </div>
                         <div className="flex-shrink-0">
                           {user.id !== session?.user?.id && (
