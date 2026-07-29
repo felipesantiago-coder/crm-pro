@@ -24,21 +24,24 @@ export async function GET() {
 
     const isAdminUser = currentUser.role === 'ADMIN';
 
-    // Build access filter
-    const accessClause = isAdminUser
-      ? ''
-      : `AND (c."created_by" = '${currentUser.id}' OR EXISTS (
-           SELECT 1 FROM client_partners cp WHERE cp."client_id" = c.id AND cp."user_id" = '${currentUser.id}'
-         ))`;
-
-    const campaigns = await db.$queryRaw<Array<{ utmCampaign: string; count: bigint }>>`
-      SELECT c."utmCampaign", COUNT(*)::bigint as count
-      FROM "clients" c
-      WHERE c."utmCampaign" IS NOT NULL AND c."utmCampaign" != ''
-      ${accessClause}
-      GROUP BY c."utmCampaign"
-      ORDER BY count DESC
-    `;
+    const campaigns = isAdminUser
+      ? await db.$queryRaw<Array<{ utmCampaign: string; count: bigint }>>`
+          SELECT c."utmCampaign", COUNT(*)::bigint as count
+          FROM "clients" c
+          WHERE c."utmCampaign" IS NOT NULL AND c."utmCampaign" != ''
+          GROUP BY c."utmCampaign"
+          ORDER BY count DESC
+        `
+      : await db.$queryRaw<Array<{ utmCampaign: string; count: bigint }>>`
+          SELECT c."utmCampaign", COUNT(*)::bigint as count
+          FROM "clients" c
+          WHERE c."utmCampaign" IS NOT NULL AND c."utmCampaign" != ''
+            AND (c."created_by" = ${currentUser.id} OR EXISTS (
+              SELECT 1 FROM client_partners cp WHERE cp."client_id" = c.id AND cp."user_id" = ${currentUser.id}
+            ))
+          GROUP BY c."utmCampaign"
+          ORDER BY count DESC
+        `;
 
     return NextResponse.json(campaigns.map(c => ({
       name: c.utmCampaign,

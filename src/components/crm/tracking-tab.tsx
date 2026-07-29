@@ -154,19 +154,19 @@ function SkeletonCard() {
       <CardContent className="p-5">
         <div className="flex items-center justify-between">
           <div className="space-y-2 flex-1">
-            <div className="h-3 w-24 animate-pulse bg-white/5 rounded" />
-            <div className="h-7 w-16 animate-pulse bg-white/5 rounded" />
+            <div className="h-3 w-24 animate-pulse bg-muted/50 rounded" />
+            <div className="h-7 w-16 animate-pulse bg-muted/50 rounded" />
           </div>
-          <div className="h-11 w-11 animate-pulse bg-white/5 rounded-xl" />
+          <div className="h-11 w-11 animate-pulse bg-muted/50 rounded-xl" />
         </div>
-        <div className="mt-3 h-2 w-20 animate-pulse bg-white/5 rounded" />
+        <div className="mt-3 h-2 w-20 animate-pulse bg-muted/50 rounded" />
       </CardContent>
     </Card>
   );
 }
 
 function SkeletonBlock({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse bg-white/5 rounded-xl', className)} />;
+  return <div className={cn('animate-pulse bg-muted/50 rounded-xl', className)} />;
 }
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -198,14 +198,14 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
 
 function CodeBlock({ code, language }: { code: string; language?: string }) {
   return (
-    <div className="relative group rounded-lg bg-black/40 border border-white/5 overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/5">
+    <div className="relative group rounded-lg bg-popover/80 border border-border/50 overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50">
         <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
           {language ?? 'code'}
         </span>
         <CopyButton text={code} label="Código" />
       </div>
-      <pre className="p-3 text-xs leading-relaxed text-zinc-300 overflow-x-auto">
+      <pre className="p-3 text-xs leading-relaxed text-foreground/70 overflow-x-auto">
         <code>{code}</code>
       </pre>
     </div>
@@ -269,10 +269,10 @@ export function TrackingTab() {
   // ── Loading State ──
   if (loading && !data) {
     return (
-      <div className="space-y-6" style={{ backgroundColor: '#0A0A0A' }}>
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div className="h-6 w-48 animate-pulse bg-white/5 rounded" />
-          <div className="h-9 w-32 animate-pulse bg-white/5 rounded" />
+          <div className="h-6 w-48 animate-pulse bg-muted/50 rounded" />
+          <div className="h-9 w-32 animate-pulse bg-muted/50 rounded" />
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -289,11 +289,11 @@ export function TrackingTab() {
   // ── Empty State ──
   if (data && data.metrics.totalVisitors === 0) {
     return (
-      <div className="space-y-6" style={{ backgroundColor: '#0A0A0A' }}>
+      <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div />
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-32 h-9 text-xs bg-white/5 border-white/10">
+            <SelectTrigger className="w-32 h-9 text-xs bg-muted/50 border-border">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -306,7 +306,7 @@ export function TrackingTab() {
           </Select>
         </div>
 
-        <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+        <Card className="border-border/50">
           <CardContent className="py-16 px-6 text-center">
             <div className="mx-auto mb-4 h-16 w-16 rounded-2xl bg-[#C9A96E]/10 flex items-center justify-center">
               <MousePointerClick className="h-8 w-8 text-[#C9A96E]" />
@@ -319,7 +319,7 @@ export function TrackingTab() {
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto text-left">
-              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#C9A96E]/20 text-xs font-bold text-[#C9A96E]">
                     1
@@ -339,7 +339,7 @@ export function TrackingTab() {
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#C9A96E]/20 text-xs font-bold text-[#C9A96E]">
                     2
@@ -355,7 +355,7 @@ export function TrackingTab() {
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#C9A96E]/20 text-xs font-bold text-[#C9A96E]">
                     3
@@ -404,42 +404,42 @@ export function TrackingTab() {
     {
       label: 'Visitantes Únicos',
       value: fmt.format(data.metrics.totalVisitors),
-      icon: <Users className="h-5 w-5 text-white" />,
+      icon: <Users className="h-5 w-5 text-foreground" />,
       iconBg: 'bg-gradient-to-br from-[#C9A96E] to-[#A8894F]',
       subtitle: `${fmt.format(data.metrics.avgEventsPerVisitor)} eventos/visitante`,
     },
     {
       label: 'Pageviews',
       value: fmt.format(data.metrics.totalPageviews),
-      icon: <Eye className="h-5 w-5 text-white" />,
+      icon: <Eye className="h-5 w-5 text-foreground" />,
       iconBg: 'bg-gradient-to-br from-blue-500 to-blue-700',
       subtitle: `de ${fmt.format(data.metrics.totalVisitors)} visitantes`,
     },
     {
       label: 'Eventos',
       value: fmt.format(data.metrics.totalEvents),
-      icon: <Zap className="h-5 w-5 text-white" />,
+      icon: <Zap className="h-5 w-5 text-foreground" />,
       iconBg: 'bg-gradient-to-br from-amber-500 to-orange-600',
       subtitle: `${data.byEventType.length} tipos registrados`,
     },
     {
       label: 'Leads Rastreados',
       value: fmt.format(data.metrics.uniqueLeads),
-      icon: <Target className="h-5 w-5 text-white" />,
+      icon: <Target className="h-5 w-5 text-foreground" />,
       iconBg: 'bg-gradient-to-br from-emerald-500 to-teal-600',
       subtitle: 'visitantes vinculados ao CRM',
     },
     {
       label: 'Taxa de Conversão',
       value: fmtPct(data.metrics.conversionRate),
-      icon: <TrendingUp className="h-5 w-5 text-white" />,
+      icon: <TrendingUp className="h-5 w-5 text-foreground" />,
       iconBg: 'bg-gradient-to-br from-violet-500 to-purple-700',
       subtitle: 'visitante → lead',
     },
     {
       label: 'Taxa de Rejeição',
       value: fmtPct(data.metrics.bounceRate),
-      icon: <ArrowDownRight className="h-5 w-5 text-white" />,
+      icon: <ArrowDownRight className="h-5 w-5 text-foreground" />,
       iconBg: 'bg-gradient-to-br from-rose-500 to-pink-700',
       subtitle: 'só 1 pageview, sem interação',
     },
@@ -447,7 +447,7 @@ export function TrackingTab() {
 
   // ── Main render ──
   return (
-    <div className="space-y-6" style={{ backgroundColor: '#0A0A0A' }}>
+    <div className="space-y-6">
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -469,7 +469,7 @@ export function TrackingTab() {
             {resetting ? 'Resetando...' : 'Resetar Dados'}
           </Button>
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-32 h-9 text-xs bg-white/5 border-white/10 text-zinc-300">
+            <SelectTrigger className="w-32 h-9 text-xs bg-muted/50 border-border text-foreground/70">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -488,8 +488,8 @@ export function TrackingTab() {
         {kpis.map((kpi) => (
           <Card
             key={kpi.label}
-            className="border-white/5 hover:border-[#C9A96E]/20 transition-colors"
-            style={{ backgroundColor: '#0A0A0A' }}
+            className="border-border/50 hover:border-[#C9A96E]/20 transition-colors"
+           
           >
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
@@ -510,7 +510,7 @@ export function TrackingTab() {
       </div>
 
       {/* ── Section 1: Funil de Conversão ── */}
-      <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+      <Card className="border-border/50">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
             <BarChart3 className="h-4 w-4 text-[#C9A96E]" />
@@ -543,7 +543,7 @@ export function TrackingTab() {
                         {!isFirst && (
                           <Badge
                             variant="secondary"
-                            className="h-5 px-1.5 text-[10px] font-medium bg-white/5 text-muted-foreground"
+                            className="h-5 px-1.5 text-[10px] font-medium bg-muted/50 text-muted-foreground"
                           >
                             {fmtPct(stage.rate)}
                           </Badge>
@@ -567,7 +567,7 @@ export function TrackingTab() {
                         )}
                         style={{ width: `${widthPercent}%`, minWidth: '80px' }}
                       >
-                        <span className="text-xs font-bold text-black/60 drop-shadow-sm">
+                        <span className="text-xs font-bold text-foreground/60 drop-shadow-sm">
                           {isFirst ? '100%' : fmtPct(stage.rate)}
                         </span>
                       </div>
@@ -589,7 +589,7 @@ export function TrackingTab() {
           </div>
 
           {/* Funnel conversion summary */}
-          <div className="mt-5 pt-4 border-t border-white/5 flex flex-wrap items-center justify-center gap-6 text-center">
+          <div className="mt-5 pt-4 border-t border-border/50 flex flex-wrap items-center justify-center gap-6 text-center">
             {data.funnel.length >= 3 && (
               <>
                 <div>
@@ -628,7 +628,7 @@ export function TrackingTab() {
 
       {/* ── Section 2: Tendência Diária (Mini Bar Chart) ── */}
       {last14.length > 0 && (
-        <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+        <Card className="border-border/50">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
@@ -698,7 +698,7 @@ export function TrackingTab() {
 
       {/* ── Section 3: Performance por Campanha ── */}
       {sortedCampaigns.length > 0 && sortedCampaigns.some((c) => c.campaign !== '(none)') && (
-        <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+        <Card className="border-border/50">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
               <Trophy className="h-4 w-4 text-[#C9A96E]" />
@@ -709,7 +709,7 @@ export function TrackingTab() {
             <div className="overflow-x-auto -mx-4 sm:mx-0">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-white/5">
+                  <tr className="border-b border-border/50">
                     <th className="text-left py-2 px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                       Campanha
                     </th>
@@ -732,7 +732,7 @@ export function TrackingTab() {
                       <tr
                         key={row.campaign}
                         className={cn(
-                          'border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors',
+                          'border-b border-border/30 hover:bg-muted/20 transition-colors',
                           idx < 3 && 'bg-[#C9A96E]/[0.03]'
                         )}
                       >
@@ -769,7 +769,7 @@ export function TrackingTab() {
                                 ? 'bg-emerald-500/10 text-emerald-400'
                                 : row.conversionRate >= 2
                                   ? 'bg-amber-500/10 text-amber-400'
-                                  : 'bg-white/5 text-muted-foreground'
+                                  : 'bg-muted/50 text-muted-foreground'
                             )}
                           >
                             {fmtPct(row.conversionRate)}
@@ -794,7 +794,7 @@ export function TrackingTab() {
               ? 'border-amber-500/20'
               : 'border-rose-500/20'
         )}
-        style={{ backgroundColor: '#0A0A0A' }}
+       
       >
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
@@ -811,7 +811,7 @@ export function TrackingTab() {
         <CardContent className="px-6 pb-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Pixel Leads */}
-            <div className="rounded-xl bg-white/[0.02] border border-white/5 p-4 text-center">
+            <div className="rounded-xl bg-muted/20 border border-border/50 p-4 text-center">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
                 Pixel Leads
               </p>
@@ -824,7 +824,7 @@ export function TrackingTab() {
             </div>
 
             {/* CRM Meta Leads */}
-            <div className="rounded-xl bg-white/[0.02] border border-white/5 p-4 text-center">
+            <div className="rounded-xl bg-muted/20 border border-border/50 p-4 text-center">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
                 CRM Meta Leads
               </p>
@@ -862,7 +862,7 @@ export function TrackingTab() {
               >
                 {fmtPct(data.metaDiscrepancy.matchRate)}
               </p>
-              <div className="mt-2 h-1.5 bg-white/5 rounded-full overflow-hidden">
+              <div className="mt-2 h-1.5 bg-muted/50 rounded-full overflow-hidden">
                 <div
                   className={cn(
                     'h-full rounded-full transition-all duration-700',
@@ -888,11 +888,11 @@ export function TrackingTab() {
       </Card>
 
       {/* ── Section 5: Pixel Setup Instructions ── */}
-      <Card className="border-white/5" style={{ backgroundColor: '#0A0A0A' }}>
+      <Card className="border-border/50">
         <CardContent className="p-0">
           <button
             onClick={() => setSetupOpen(!setupOpen)}
-            className="w-full flex items-center justify-between p-5 hover:bg-white/[0.02] transition-colors rounded-t-xl"
+            className="w-full flex items-center justify-between p-5 hover:bg-muted/20 transition-colors rounded-t-xl"
           >
             <div className="flex items-center gap-2">
               <FileCode className="h-4 w-4 text-[#C9A96E]" />
@@ -906,7 +906,7 @@ export function TrackingTab() {
           </button>
 
           {setupOpen && (
-            <div className="px-5 pb-5 space-y-5 border-t border-white/5 pt-5">
+            <div className="px-5 pb-5 space-y-5 border-t border-border/50 pt-5">
               {/* Client-side pixel */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
