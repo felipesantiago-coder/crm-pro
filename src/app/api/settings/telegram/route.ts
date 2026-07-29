@@ -80,10 +80,10 @@ export async function PUT(request: NextRequest) {
         );
       }
 
-      // Connect Telegram and deactivate Ntfy (mutual exclusion)
+      // Connect Telegram
       await db.user.update({
         where: { id: user.id },
-        data: { telegramChatId: String(chatId), ntfyTopic: null, ntfyToken: null },
+        data: { telegramChatId: String(chatId) },
       });
       return NextResponse.json({ success: true, telegramChatId: String(chatId) });
     }

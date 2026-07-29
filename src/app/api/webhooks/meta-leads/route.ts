@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import crypto from 'crypto';
-import { notifyNewLead as notifyNewLeadTelegram } from '@/lib/telegram';
-import { notifyNewLead as notifyNewLeadNtfy } from '@/lib/ntfy';
+import { notifyNewLead } from '@/lib/telegram';
 
 // ============================================================
 // Meta Lead Ads Webhook
@@ -409,7 +408,7 @@ export async function POST(request: NextRequest) {
           if (creatorId) {
             db.user.findUnique({
               where: { id: creatorId },
-              select: { telegramChatId: true, ntfyTopic: true, ntfyToken: true },
+              select: { telegramChatId: true },
             }).then((user) => {
               const leadData = {
                 leadName: newClient.name,
@@ -423,15 +422,11 @@ export async function POST(request: NextRequest) {
               };
 
               if (user?.telegramChatId) {
-                notifyNewLeadTelegram(user.telegramChatId, leadData).catch((err) =>
+                notifyNewLead(user.telegramChatId, leadData).catch((err) =>
                   console.warn('[Meta Webhook] Falha na notificação Telegram:', err),
                 );
               }
-              if (user?.ntfyTopic && user?.ntfyToken) {
-                notifyNewLeadNtfy(user.ntfyTopic, user.ntfyToken, leadData).catch((err) =>
-                  console.warn('[Meta Webhook] Falha na notificação Ntfy:', err),
-                );
-              }
+
             }).catch(() => { /* silent */ });
           }
 

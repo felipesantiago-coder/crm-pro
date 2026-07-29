@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { notifyNewLead } from '@/lib/telegram';
-import { notifyNewLead as notifyNewLeadNtfy } from '@/lib/ntfy';
 import { rateLimit } from '@/lib/rate-limit';
 
 /**
@@ -178,10 +177,10 @@ export async function POST(request: NextRequest) {
 
     // ── Send Telegram notification (fire-and-forget) ───────
     if (createdByUserId && createdByUserId !== 'system') {
-      // Fetch assigned user's telegramChatId and ntfy config (may be null)
+      // Fetch assigned user's telegramChatId (may be null)
       db.user.findUnique({
         where: { id: createdByUserId },
-        select: { telegramChatId: true, ntfyTopic: true, ntfyToken: true },
+        select: { telegramChatId: true },
       }).then((user) => {
         const leadData = {
           leadName: client.name,
@@ -203,10 +202,6 @@ export async function POST(request: NextRequest) {
           notifyNewLead(user.telegramChatId, leadData).catch((err) => console.warn('[Public Lead] Falha na notificação:', err));
         }
 
-        // Ntfy notification
-        if (user?.ntfyTopic && user?.ntfyToken) {
-          notifyNewLeadNtfy(user.ntfyTopic, user.ntfyToken, leadData).catch((err) => console.warn('[Public Lead] Falha na notificação:', err));
-        }
       }).catch(() => { /* silent */ });
     }
 

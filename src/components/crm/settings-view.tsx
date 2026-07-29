@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Moon, Sun, CheckCircle2, Circle, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle, Bell, Shield, Eye, EyeOff, Search, Smartphone, ArrowRight, Check, Copy, ExternalLink } from 'lucide-react';
+import { Moon, Sun, CheckCircle2, Circle, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle, Bell, Smartphone, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,24 +31,13 @@ export function SettingsView() {
   const [gcConnecting, setGcConnecting] = useState(false);
   const [gcDisconnecting, setGcDisconnecting] = useState(false);
 
-  // Notificações (canal único: Telegram ou Ntfy)
-  const [notifChannel, setNotifChannel] = useState<'telegram' | 'ntfy' | null>(null);
+  // Notificações (Telegram)
   const [notifLoading, setNotifLoading] = useState(true);
-  // Telegram
   const [tgConfigured, setTgConfigured] = useState(false);
   const [tgConnected, setTgConnected] = useState(false);
   const [tgChatId, setTgChatId] = useState('');
   const [tgTesting, setTgTesting] = useState(false);
   const [tgSaving, setTgSaving] = useState(false);
-  // Ntfy
-  const [ntfyConnected, setNtfyConnected] = useState(false);
-  const [ntfyActivating, setNtfyActivating] = useState(false);
-  const [ntfyDeactivating, setNtfyDeactivating] = useState(false);
-  const [ntfyTesting, setNtfyTesting] = useState(false);
-  const [ntfyTopic, setNtfyTopic] = useState('');
-  const [ntfyToken, setNtfyToken] = useState('');
-  const [ntfySubscribeUrl, setNtfySubscribeUrl] = useState('');
-  const [showNtfyToken, setShowNtfyToken] = useState(false);
 
   useEffect(() => {
     // Verificar status da conexão Google Calendar
@@ -58,21 +47,14 @@ export function SettingsView() {
       .catch(() => {})
       .finally(() => setGcLoading(false));
 
-    // Verificar status das notificações (Telegram + Ntfy em paralelo)
-    Promise.all([
-      fetch('/api/settings/telegram').then((r) => r.json()).catch(() => ({})),
-      fetch('/api/settings/ntfy').then((r) => r.json()).catch(() => ({})),
-    ]).then(([tgData, ntfyData]) => {
-      setTgConfigured(tgData.botConfigured === true);
-      setTgConnected(tgData.configured === true);
-      setTgChatId(tgData.telegramChatId || '');
-      setNtfyConnected(ntfyData.configured === true);
-      setNtfyTopic(ntfyData.ntfyTopic || '');
-      setNtfySubscribeUrl(ntfyData.subscribeUrl || '');
-      // Determine active channel
-      if (tgData.configured) setNotifChannel('telegram');
-      else if (ntfyData.configured) setNotifChannel('ntfy');
-    })
+    // Verificar status das notificações (Telegram)
+    fetch('/api/settings/telegram')
+      .then((r) => r.json())
+      .then((tgData) => {
+        setTgConfigured(tgData.botConfigured === true);
+        setTgConnected(tgData.configured === true);
+        setTgChatId(tgData.telegramChatId || '');
+      })
       .catch(() => {})
       .finally(() => setNotifLoading(false));
 
@@ -180,11 +162,6 @@ export function SettingsView() {
       const data = await res.json();
       if (res.ok) {
         setTgConnected(true);
-        setNtfyConnected(false);
-        setNtfyTopic('');
-        setNtfyToken('');
-        setNtfySubscribeUrl('');
-        setNotifChannel('telegram');
         toast.success('Telegram vinculado com sucesso!');
       } else {
         toast.error(data.error || 'Erro ao vincular Telegram');
@@ -207,7 +184,6 @@ export function SettingsView() {
       if (res.ok) {
         setTgConnected(false);
         setTgChatId('');
-        setNotifChannel(null);
         toast.success('Notificações desativadas');
       }
     } catch {
@@ -232,87 +208,6 @@ export function SettingsView() {
     } finally {
       setTgTesting(false);
     }
-  }
-
-  // ── Ntfy handlers ────────────────────────────────────
-  async function activateNtfy() {
-    setNtfyActivating(true);
-    try {
-      const res = await fetch('/api/settings/ntfy', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'activate' }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setNtfyConnected(true);
-        setTgConnected(false);
-        setTgChatId('');
-        setNtfyTopic(data.ntfyTopic || '');
-        setNtfySubscribeUrl(data.subscribeUrl || '');
-        setNotifChannel('ntfy');
-        if (!data.alreadyActive) {
-          setNtfyToken(data.ntfyToken || '');
-        }
-        toast.success('Ntfy ativado! Siga os passos abaixo para concluir.');
-      } else {
-        toast.error(data.error || 'Erro ao ativar Ntfy');
-      }
-    } catch {
-      toast.error('Erro ao ativar Ntfy');
-    } finally {
-      setNtfyActivating(false);
-    }
-  }
-
-  async function deactivateNtfy() {
-    setNtfyDeactivating(true);
-    try {
-      const res = await fetch('/api/settings/ntfy', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deactivate' }),
-      });
-      if (res.ok) {
-        setNtfyConnected(false);
-        setNtfyTopic('');
-        setNtfyToken('');
-        setNtfySubscribeUrl('');
-        setNotifChannel(null);
-        toast.success('Notificações desativadas');
-      }
-    } catch {
-      toast.error('Erro ao desativar Ntfy');
-    } finally {
-      setNtfyDeactivating(false);
-    }
-  }
-
-  async function testNtfy() {
-    setNtfyTesting(true);
-    try {
-      const res = await fetch('/api/ntfy/test', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(data.message || 'Notificação enviada!');
-      } else {
-        toast.error(data.error || 'Erro ao enviar teste');
-      }
-    } catch {
-      toast.error('Erro ao enviar notificação de teste');
-    } finally {
-      setNtfyTesting(false);
-    }
-  }
-
-  async function fetchNtfyCredentials() {
-    try {
-      const res = await fetch('/api/settings/ntfy/credentials');
-      if (res.ok) {
-        const data = await res.json();
-        setNtfyToken(data.ntfyToken || '');
-      }
-    } catch { /* silent */ }
   }
 
   return (
@@ -528,10 +423,8 @@ export function SettingsView() {
 
         {/* ==================== NOTIFICAÇÕES DE LEADS ==================== */}
         <Card className={`hover:shadow-md transition-shadow duration-200 col-span-1 lg:col-span-2 ${
-          notifChannel === 'telegram' && tgConnected
+          tgConnected
             ? 'border-blue-200 dark:border-blue-800/50 bg-blue-50/30 dark:bg-blue-950/10'
-            : notifChannel === 'ntfy' && ntfyConnected
-            ? 'border-violet-200 dark:border-violet-800/50 bg-violet-50/30 dark:bg-violet-950/10'
             : ''
         }`}>
           <CardHeader className="pb-3">
@@ -542,15 +435,11 @@ export function SettingsView() {
                   Notificações de Leads
                 </CardTitle>
                 <CardDescription className="mt-1">
-                  Escolha um canal para receber alertas instantâneos quando novos leads chegarem
+                  Receba alertas instantâneos no Telegram quando novos leads chegarem
                 </CardDescription>
               </div>
-              {(tgConnected || ntfyConnected) && (
-                <Badge className={
-                  notifChannel === 'telegram'
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 gap-1'
-                    : 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 gap-1'
-                }>
+              {tgConnected && (
+                <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 gap-1">
                   <CheckCircle2 className="h-3 w-3" />
                   Ativo
                 </Badge>
@@ -563,354 +452,139 @@ export function SettingsView() {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Verificando...
               </div>
-            ) : (
-              <>
-                {/* ── Channel Selector ──────────────────────── */}
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setNotifChannel('telegram')}
-                    className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 text-left ${
-                      notifChannel === 'telegram'
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 shadow-sm'
-                        : 'border-transparent bg-muted/40 hover:bg-muted/60'
-                    }`}
-                  >
-                    <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${
-                      notifChannel === 'telegram'
-                        ? 'bg-blue-100 dark:bg-blue-900/40'
-                        : 'bg-muted'
-                    }`}>
-                      <MessageCircle className={`h-5 w-5 ${notifChannel === 'telegram' ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`} />
-                    </div>
-                    <div>
-                      <p className={`text-sm font-semibold ${notifChannel === 'telegram' ? 'text-blue-700 dark:text-blue-300' : 'text-foreground'}`}>Telegram</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">App de mensagens</p>
-                    </div>
-                    {tgConnected && (
-                      <div className="absolute top-2 right-2">
-                        <CheckCircle2 className="h-4 w-4 text-blue-500" />
-                      </div>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => setNotifChannel('ntfy')}
-                    className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 text-left ${
-                      notifChannel === 'ntfy'
-                        ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 shadow-sm'
-                        : 'border-transparent bg-muted/40 hover:bg-muted/60'
-                    }`}
-                  >
-                    <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${
-                      notifChannel === 'ntfy'
-                        ? 'bg-violet-100 dark:bg-violet-900/40'
-                        : 'bg-muted'
-                    }`}>
-                      <Bell className={`h-5 w-5 ${notifChannel === 'ntfy' ? 'text-violet-600 dark:text-violet-400' : 'text-muted-foreground'}`} />
-                    </div>
-                    <div>
-                      <p className={`text-sm font-semibold ${notifChannel === 'ntfy' ? 'text-violet-700 dark:text-violet-300' : 'text-foreground'}`}>Ntfy</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Push direto (sem app)</p>
-                    </div>
-                    {ntfyConnected && (
-                      <div className="absolute top-2 right-2">
-                        <CheckCircle2 className="h-4 w-4 text-violet-500" />
-                      </div>
-                    )}
-                  </button>
+            ) : !tgConfigured ? (
+              <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-7 h-7 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
+                    <Circle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Bot não configurado</p>
                 </div>
-
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  O bot do Telegram não está disponível no momento. Solicite ao administrador que configure o TELEGRAM_BOT_TOKEN.
+                </p>
+              </div>
+            ) : tgConnected ? (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+                      <Check className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Telegram conectado</p>
+                      <p className="text-[10px] text-muted-foreground">Chat ID: <code className="font-mono">{tgChatId}</code></p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={testTelegram}
+                      disabled={tgTesting}
+                      className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800/50 dark:hover:bg-blue-950/30"
+                    >
+                      {tgTesting ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Enviando...</> : <><Send className="h-4 w-4 mr-1.5" /> Testar</>}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={disconnectTelegram}
+                      disabled={tgSaving}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      {tgSaving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Desativando...</> : <><Unlink className="h-4 w-4 mr-1.5" /> Desativar</>}
+                    </Button>
+                  </div>
+                </div>
+                <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/20">
+                  <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-3">O que voce recebera</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['Nome e telefone do lead', 'E-mail do lead', 'Nome do empreendimento', 'Campanha Meta Ads', 'Respostas do formulario'].map((item) => (
+                      <div key={item} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <CheckCircle2 className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="tg-chat-id" className="text-sm font-medium">Seu Chat ID</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="tg-chat-id"
+                      placeholder="Ex: 123456789"
+                      value={tgChatId}
+                      onChange={(e) => setTgChatId(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <Button
+                      onClick={saveTelegramChatId}
+                      disabled={tgSaving || !tgChatId.trim()}
+                      className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
+                    >
+                      {tgSaving ? <><Loader2 className="h-4 w-4 animate-spin" /></> : <><Link2 className="h-4 w-4 mr-1.5" /> Vincular</>}
+                    </Button>
+                  </div>
+                </div>
                 <Separator />
-
-                {/* ═══════════════ TELEGRAM CONTENT ═══════════════ */}
-                {notifChannel === 'telegram' && (
-                  !tgConfigured ? (
-                    <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-7 h-7 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
-                          <Circle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                        </div>
-                        <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Bot não configurado</p>
+                <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
+                  <p className="text-sm font-semibold mb-4 flex items-center gap-2">
+                    <Smartphone className="h-4 w-4 text-blue-500" />
+                    Passo a passo para configurar
+                  </p>
+                  <div className="space-y-4">
+                    <div className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">1</div>
+                        <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
                       </div>
-                      <p className="text-xs text-amber-600 dark:text-amber-400">
-                        O bot do Telegram não está disponível no momento. Escolha a opção <strong>Ntfy</strong> acima para receber notificações por push direto.
-                      </p>
-                    </div>
-                  ) : tgConnected ? (
-                    /* ── Telegram: Connected ──────────────────── */
-                    <div className="space-y-5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
-                            <Check className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Telegram conectado</p>
-                            <p className="text-[10px] text-muted-foreground">Chat ID: <code className="font-mono">{tgChatId}</code></p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={testTelegram}
-                            disabled={tgTesting}
-                            className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800/50 dark:hover:bg-blue-950/30"
-                          >
-                            {tgTesting ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Enviando...</> : <><Send className="h-4 w-4 mr-1.5" /> Testar</>}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={disconnectTelegram}
-                            disabled={tgSaving}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            {tgSaving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Desativando...</> : <><Unlink className="h-4 w-4 mr-1.5" /> Desativar</>}
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/20">
-                        <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-3">O que voce recebera</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {['Nome e telefone do lead', 'E-mail do lead', 'Nome do empreendimento', 'Campanha Meta Ads', 'Respostas do formulario'].map((item) => (
-                            <div key={item} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <CheckCircle2 className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                              <span>{item}</span>
-                            </div>
-                          ))}
-                        </div>
+                      <div className="pb-4">
+                        <p className="text-sm font-medium">Abra o Telegram e busque por <strong>@userinfobot</strong></p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Ele e um bot oficial que diz qual e o seu Chat ID</p>
                       </div>
                     </div>
-                  ) : (
-                    /* ── Telegram: Setup Tutorial ─────────────── */
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="tg-chat-id" className="text-sm font-medium">Seu Chat ID</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            id="tg-chat-id"
-                            placeholder="Ex: 123456789"
-                            value={tgChatId}
-                            onChange={(e) => setTgChatId(e.target.value)}
-                            className="font-mono text-sm"
-                          />
-                          <Button
-                            onClick={saveTelegramChatId}
-                            disabled={tgSaving || !tgChatId.trim()}
-                            className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
-                          >
-                            {tgSaving ? <><Loader2 className="h-4 w-4 animate-spin" /></> : <><Link2 className="h-4 w-4 mr-1.5" /> Vincular</>}
-                          </Button>
-                        </div>
+                    <div className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">2</div>
+                        <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
                       </div>
-
-                      <Separator />
-
-                      {/* Visual Step-by-Step */}
-                      <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
-                        <p className="text-sm font-semibold mb-4 flex items-center gap-2">
-                          <Smartphone className="h-4 w-4 text-blue-500" />
-                          Passo a passo para configurar
-                        </p>
-                        <div className="space-y-4">
-                          {/* Step 1 */}
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">1</div>
-                              <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
-                            </div>
-                            <div className="pb-4">
-                              <p className="text-sm font-medium">Abra o Telegram e busque por <strong>@userinfobot</strong></p>
-                              <p className="text-xs text-muted-foreground mt-0.5">Ele e um bot oficial que diz qual e o seu Chat ID</p>
-                            </div>
-                          </div>
-                          {/* Step 2 */}
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">2</div>
-                              <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
-                            </div>
-                            <div className="pb-4">
-                              <p className="text-sm font-medium">Envie qualquer mensagem para ele</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">Pode ser um "oi" — ele respondera automaticamente</p>
-                            </div>
-                          </div>
-                          {/* Step 3 */}
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">3</div>
-                              <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
-                            </div>
-                            <div className="pb-4">
-                              <p className="text-sm font-medium">Copie o <strong>Chat ID</strong> que ele respondeu</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">Sera um numero, por exemplo: <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-[11px]">7123456789</code></p>
-                            </div>
-                          </div>
-                          {/* Step 4 */}
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                                <Check className="h-4 w-4" />
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">Cole o numero acima e clique em <strong>Vincular</strong></p>
-                              <p className="text-xs text-muted-foreground mt-0.5">Pronto! Voce recebera todas as notificacoes por aqui</p>
-                            </div>
-                          </div>
-                        </div>
+                      <div className="pb-4">
+                        <p className="text-sm font-medium">Envie qualquer mensagem para ele</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Pode ser um “oi” — ele respondera automaticamente</p>
                       </div>
                     </div>
-                  )
-                )}
-
-                {/* ═══════════════ NTFY CONTENT ═══════════════ */}
-                {notifChannel === 'ntfy' && (
-                  ntfyConnected ? (
-                    /* ── Ntfy: Connected ────────────────────── */
-                    <div className="space-y-5">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
-                            <Check className="h-4 w-4 text-violet-600 dark:text-violet-400" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-violet-700 dark:text-violet-300">Ntfy ativo</p>
-                            <p className="text-[10px] text-muted-foreground">Tópico privado configurado</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={testNtfy}
-                            disabled={ntfyTesting}
-                            className="text-violet-600 border-violet-200 hover:bg-violet-50 dark:text-violet-400 dark:border-violet-800/50 dark:hover:bg-violet-950/30"
-                          >
-                            {ntfyTesting ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Enviando...</> : <><Send className="h-4 w-4 mr-1.5" /> Testar</>}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={deactivateNtfy}
-                            disabled={ntfyDeactivating}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            {ntfyDeactivating ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Desativando...</> : <><Unlink className="h-4 w-4 mr-1.5" /> Desativar</>}
-                          </Button>
-                        </div>
+                    <div className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">3</div>
+                        <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
                       </div>
-
-                      <div className="p-4 rounded-xl bg-violet-50/50 dark:bg-violet-950/10 border border-violet-100 dark:border-violet-900/20">
-                        <p className="text-xs font-semibold text-violet-600 dark:text-violet-400 mb-3">O que voce recebera</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {['Nome e telefone do lead', 'E-mail do lead', 'Nome do empreendimento', 'Campanha Meta Ads', 'Respostas do formulario', 'Botao para abrir o CRM'].map((item) => (
-                            <div key={item} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <CheckCircle2 className="h-3 w-3 text-violet-500 flex-shrink-0" />
-                              <span>{item}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Visual Step-by-Step Tutorial */}
-                      <div className="p-4 rounded-xl bg-violet-50/50 dark:bg-violet-950/10 border border-violet-100 dark:border-violet-900/20">
-                        <p className="text-sm font-semibold mb-4 flex items-center gap-2">
-                          <ArrowRight className="h-4 w-4 text-violet-500" />
-                          Passo a passo para concluir a inscricao
-                        </p>
-                        <div className="space-y-4">
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center text-violet-600 dark:text-violet-400 font-bold text-sm flex-shrink-0">1</div>
-                              <div className="w-px flex-1 bg-violet-200 dark:bg-violet-800/40 mt-1" />
-                            </div>
-                            <div className="pb-4">
-                              <p className="text-sm font-medium">Clique no link abaixo para abrir seu topico</p>
-                              <div className="flex items-center gap-2 mt-1.5">
-                                <code className="text-xs bg-muted px-3 py-1.5 rounded-md font-mono truncate max-w-[300px]">{ntfySubscribeUrl}</code>
-                                <Button variant="ghost" size="sm" onClick={() => { window.open(ntfySubscribeUrl, '_blank'); }} className="h-7 w-7 p-0 flex-shrink-0"><ExternalLink className="h-3.5 w-3.5" /></Button>
-                                <Button variant="ghost" size="sm" onClick={() => copyToClipboard(ntfySubscribeUrl, 'Link')} className="h-7 w-7 p-0 flex-shrink-0"><Copy className="h-3.5 w-3.5" /></Button>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center text-violet-600 dark:text-violet-400 font-bold text-sm flex-shrink-0">2</div>
-                              <div className="w-px flex-1 bg-violet-200 dark:bg-violet-800/40 mt-1" />
-                            </div>
-                            <div className="pb-4">
-                              <p className="text-sm font-medium">Clique em <strong>"Subscribe to topic"</strong> na pagina que abriu</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">Se estiver no celular, use o app Ntfy e adicione o topico <code className="bg-muted px-1 rounded text-[10px] font-mono">{ntfyTopic}</code></p>
-                            </div>
-                          </div>
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-violet-600 dark:bg-violet-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                                <Check className="h-4 w-4" />
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">Pronto! Voce ja recebera as notificacoes</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">Use o botao "Testar" acima para confirmar que esta funcionando</p>
-                              <p className="text-[10px] text-violet-500 dark:text-violet-400 mt-1">
-                                Dica: Instale o app Ntfy (Android/iOS) para receber push notifications direto no celular.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
+                      <div className="pb-4">
+                        <p className="text-sm font-medium">Copie o <strong>Chat ID</strong> que ele respondeu</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Sera um numero, por exemplo: <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-[11px]">7123456789</code></p>
                       </div>
                     </div>
-                  ) : (
-                    /* ── Ntfy: Activate ─────────── */
-                    <div className="space-y-4">
-                      <div className="p-4 rounded-xl bg-muted/30 border border-border/50 space-y-3">
-                        <p className="text-sm font-semibold flex items-center gap-2">
-                          <Shield className="h-4 w-4 text-violet-500" />
-                          Por que escolher o Ntfy?
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          <div className="flex items-start gap-2">
-                            <Bell className="h-4 w-4 text-violet-500 mt-0.5 flex-shrink-0" />
-                            <div>
-                              <p className="text-xs font-medium">Sem instalar nada</p>
-                              <p className="text-[10px] text-muted-foreground">Funciona direto no navegador ou app</p>
-                            </div>
-                          </div>
-                          <div className="flex items-start gap-2">
-                            <Shield className="h-4 w-4 text-violet-500 mt-0.5 flex-shrink-0" />
-                            <div>
-                              <p className="text-xs font-medium">Topico exclusivo</p>
-                              <p className="text-[10px] text-muted-foreground">Nome aleatorio impossivel de adivinhar</p>
-                            </div>
-                          </div>
-                          <div className="flex items-start gap-2">
-                            <CheckCircle2 className="h-4 w-4 text-violet-500 mt-0.5 flex-shrink-0" />
-                            <div>
-                              <p className="text-xs font-medium">Configuracao em 1 clique</p>
-                              <p className="text-[10px] text-muted-foreground">Ative aqui e abra o link gerado</p>
-                            </div>
-                          </div>
+                    <div className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className="w-8 h-8 rounded-full bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                          <Check className="h-4 w-4" />
                         </div>
                       </div>
-
-                      <Button
-                        onClick={activateNtfy}
-                        disabled={ntfyActivating}
-                        className="w-full bg-violet-600 hover:bg-violet-700 text-white"
-                      >
-                        {ntfyActivating ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Gerando credenciais...</> : <><Bell className="h-4 w-4 mr-2" /> Ativar Notificacoes Ntfy</>}
-                      </Button>
+                      <div>
+                        <p className="text-sm font-medium">Cole o numero acima e clique em <strong>Vincular</strong></p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Pronto! Voce recebera todas as notificacoes por aqui</p>
+                      </div>
                     </div>
-                  )
-                )}
-              </>
+                  </div>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
 
-        
       </div>
     </div>
   );
