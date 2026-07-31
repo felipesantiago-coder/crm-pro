@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Search, Plus, Upload, Download, X, Tag, ChevronDown, Megaphone } from 'lucide-react';
+import { Search, Plus, Upload, Download, X, Tag, ChevronDown, Megaphone, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -58,6 +58,8 @@ export function ClientsView() {
 
   const [filterStage, setFilterStage] = useState('');
   const [filterCampaign, setFilterCampaign] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const [clients, setClients] = useState<Client[]>([]);
   const [total, setTotal] = useState(0);
@@ -93,6 +95,8 @@ export function ClientsView() {
       filterTagIds.forEach((id) => params.append('tagId', id));
       if (filterStage) params.set('stage', filterStage);
       if (filterCampaign) params.set('utmCampaign', filterCampaign);
+      params.set('sortBy', sortBy);
+      params.set('sortOrder', sortOrder);
       // Excluir negócios finalizados da lista principal (têm view dedicada)
       params.set('excludeClosed', 'true');
       params.set('page', page.toString());
@@ -107,7 +111,7 @@ export function ClientsView() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filterRegion, filterTagIds, filterStage, filterCampaign, page]);
+  }, [debouncedSearch, filterRegion, filterTagIds, filterStage, filterCampaign, page, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchClients();
@@ -366,6 +370,46 @@ export function ClientsView() {
             )}
           </SelectContent>
         </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 gap-1.5"
+          onClick={() => {
+            if (sortBy === 'createdAt') {
+              setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+            } else {
+              setSortBy('createdAt');
+              setSortOrder('desc');
+            }
+            setPage(1);
+          }}
+        >
+          <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="hidden sm:inline text-xs">Data Criação</span>
+          {sortBy === 'createdAt' && (
+            <span className="text-[10px] text-muted-foreground">{sortOrder === 'desc' ? '↓' : '↑'}</span>
+          )}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 gap-1.5"
+          onClick={() => {
+            if (sortBy === 'lastInteractionAt') {
+              setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+            } else {
+              setSortBy('lastInteractionAt');
+              setSortOrder('desc');
+            }
+            setPage(1);
+          }}
+        >
+          <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="hidden sm:inline text-xs">Última Interação</span>
+          {sortBy === 'lastInteractionAt' && (
+            <span className="text-[10px] text-muted-foreground">{sortOrder === 'desc' ? '↓' : '↑'}</span>
+          )}
+        </Button>
       </div>
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
