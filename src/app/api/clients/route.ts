@@ -29,6 +29,8 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
     const needsUpdate = searchParams.get('needsUpdate') === 'true';
     const utmCampaign = searchParams.get('utmCampaign') || '';
+    const sortBy = searchParams.get('sortBy') || 'createdAt';
+    const sortOrder = searchParams.get('sortOrder') || 'desc';
 
     // ADMIN vê todos; USER vê apenas os que criou + os que é parceiro
     const isAdminUser = currentUser.role === 'ADMIN';
@@ -167,7 +169,7 @@ export async function GET(request: NextRequest) {
           linkedEnterprise: { select: { id: true, name: true, region: true, imageUrl: true } },
           partners: { include: { user: { select: { id: true, name: true, email: true } } } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortBy]: sortOrder === 'asc' ? 'asc' : 'desc' },
       });
 
       return NextResponse.json({ clients, total: clientsNeedingUpdate.length, page, limit });
@@ -182,7 +184,7 @@ export async function GET(request: NextRequest) {
           linkedEnterprise: { select: { id: true, name: true, region: true, imageUrl: true } },
           partners: { include: { user: { select: { id: true, name: true, email: true } } } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortBy]: sortOrder === 'asc' ? 'asc' : 'desc' },
         skip: (page - 1) * limit,
         take: limit,
       }),

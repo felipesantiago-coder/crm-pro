@@ -40,6 +40,9 @@ const EnterprisePanel = lazy(() =>
 const MetaAdsPanel = lazy(() =>
   import('@/components/crm/meta-ads-panel').then((m) => ({ default: m.MetaAdsPanel }))
 );
+const ReportsView = lazy(() =>
+  import('@/components/crm/reports-view').then((m) => ({ default: m.ReportsView }))
+);
 
 function ViewLoader() {
   return (
@@ -110,6 +113,8 @@ function CRMApp() {
         return <AdminPanel />;
       case 'meta-ads':
         return <MetaAdsPanel />;
+      case 'reports':
+        return <ReportsView />;
       default:
         return <DashboardView />;
     }
