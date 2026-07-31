@@ -32,7 +32,7 @@ export async function GET() {
     }
 
     const isAdmin = currentUser.role === 'ADMIN';
-    const accessFilter = isAdmin
+    const clientAccessFilter = isAdmin
       ? {}
       : {
           OR: [
@@ -41,10 +41,22 @@ export async function GET() {
           ],
         };
 
+    // Para schedules, precisamos filtrar pelo clientId dos clientes acessíveis.
+    // O modelo Schedule não tem a relação 'partners', então reusar clientAccessFilter causaria erro.
+    let scheduleAccessFilter: Record<string, unknown> = {};
+    if (!isAdmin) {
+      const accessibleClientIds = await db.client.findMany({
+        where: clientAccessFilter,
+        select: { id: true },
+      });
+      const clientIds = accessibleClientIds.map((c) => c.id);
+      scheduleAccessFilter = { clientId: { in: clientIds } };
+    }
+
     // 1. Contagem por estágio (funil)
     const stageCounts = await db.client.groupBy({
       by: ['stage'],
-      where: accessFilter,
+      where: clientAccessFilter,
       _count: { stage: true },
     });
 
@@ -82,26 +94,26 @@ export async function GET() {
           where: {
             status: 'PENDING',
             scheduledDate: { gte: todayStart },
-            ...accessFilter,
+            ...scheduleAccessFilter,
           },
         }),
         db.schedule.count({
           where: {
             status: 'COMPLETED',
-            ...accessFilter,
+            ...scheduleAccessFilter,
           },
         }),
         db.schedule.count({
           where: {
             status: 'CANCELLED',
-            ...accessFilter,
+            ...scheduleAccessFilter,
           },
         }),
         db.schedule.count({
           where: {
             status: 'PENDING',
             scheduledDate: { lt: todayStart },
-            ...accessFilter,
+            ...scheduleAccessFilter,
           },
         }),
       ]);
@@ -120,7 +132,7 @@ export async function GET() {
     const visitsThisMonth = await db.schedule.count({
       where: {
         scheduledDate: { gte: monthStart, lt: monthEnd },
-        ...accessFilter,
+        ...scheduleAccessFilter,
       },
     });
 
@@ -129,7 +141,7 @@ export async function GET() {
       where: {
         status: 'COMPLETED',
         completedAt: { gte: monthStart, lt: monthEnd },
-        ...accessFilter,
+        ...scheduleAccessFilter,
       },
     });
 
@@ -137,7 +149,7 @@ export async function GET() {
     const newClientsThisMonth = await db.client.count({
       where: {
         createdAt: { gte: monthStart, lt: monthEnd },
-        ...accessFilter,
+        ...clientAccessFilter,
       },
     });
 
@@ -145,7 +157,7 @@ export async function GET() {
     const regionData = await db.client.groupBy({
       by: ['region'],
       where: {
-        ...accessFilter,
+        ...clientAccessFilter,
         region: { not: null },
       },
       _count: { region: true },
