@@ -132,7 +132,7 @@ export default function LoginPage() {
           <div className="mt-4 text-center">
             <Link
               href="/forgot-password"
-              className="text-sm text-white/80 hover:text-white transition-colors"
+              className="text-sm text-teal-600 hover:text-teal-700 transition-colors"
             >
               Esqueceu sua senha?
             </Link>
