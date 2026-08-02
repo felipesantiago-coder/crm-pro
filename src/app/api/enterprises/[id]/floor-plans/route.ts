@@ -205,6 +205,43 @@ export async function PUT(
 }
 
 /**
+ * PATCH — update a single floor plan (e.g. altText / caption)
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
+    const { id } = await params;
+    const body = await request.json();
+    const { planId, altText } = body;
+
+    if (!planId) {
+      return NextResponse.json({ error: 'planId é obrigatório.' }, { status: 400 });
+    }
+
+    const plan = await db.enterpriseFloorPlan.findUnique({
+      where: { id: planId, enterpriseId: id },
+    });
+    if (!plan) {
+      return NextResponse.json({ error: 'Planta não encontrada.' }, { status: 404 });
+    }
+
+    const updated = await db.enterpriseFloorPlan.update({
+      where: { id: planId },
+      data: { altText: typeof altText === 'string' ? altText.trim() || null : undefined },
+    });
+    return NextResponse.json(updated);
+  } catch (error) {
+    console.error('[FloorPlans PATCH] Erro:', error);
+    return NextResponse.json({ error: 'Erro ao atualizar planta.' }, { status: 500 });
+  }
+}
+
+/**
  * DELETE — remove a floor plan
  */
 export async function DELETE(
