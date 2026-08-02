@@ -120,6 +120,7 @@ model Enterprise {
 
   clients     Client[]
   images      EnterpriseImage[]
+  floorPlans  EnterpriseFloorPlan[]
   formFields  LandingFormField[]
 
   @@map("enterprises")
@@ -137,6 +138,20 @@ model EnterpriseImage {
 
   @@index([enterpriseId])
   @@map("enterprise_images")
+}
+
+model EnterpriseFloorPlan {
+  id           String  @id @default(cuid()) @map("id")
+  url          String  @map("url")
+  altText      String? @map("altText")
+  sortOrder    Int     @default(0) @map("sortOrder")
+  enterpriseId String  @map("enterpriseId")
+  createdAt    DateTime @default(now()) @map("createdAt")
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@index([enterpriseId])
+  @@map("enterprise_floor_plans")
 }
 
 model User {

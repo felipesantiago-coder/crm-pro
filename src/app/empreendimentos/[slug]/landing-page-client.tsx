@@ -7,13 +7,20 @@ import {
   X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Copy, Check, User, Send, AlertCircle,
-  Shield, ChevronDown, CalendarDays, TrendingUp, Users, Layers, Car,
+  Shield, ChevronDown, CalendarDays, TrendingUp, Users, Layers, Car, LayoutGrid,
 } from 'lucide-react';
 
 /* ================================================================
    Types
    ================================================================ */
 interface EnterpriseImage {
+  id: string;
+  url: string;
+  altText: string | null;
+  sortOrder: number;
+}
+
+interface FloorPlan {
   id: string;
   url: string;
   altText: string | null;
@@ -71,6 +78,7 @@ interface Enterprise {
   cachedInfo: ExtractedInfo | null;
   _count?: { clients: number };
   images: EnterpriseImage[];
+  floorPlans: FloorPlan[];
   formFields: FormField[];
 }
 
@@ -145,6 +153,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const [error, setError] = useState<string | null>(null);
   const [activeImgIdx, setActiveImgIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [activeFloorIdx, setActiveFloorIdx] = useState(0);
+  const [floorLightboxOpen, setFloorLightboxOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [queueUser, setQueueUser] = useState<{ userId: string; userName: string; userPhone: string | null } | null>(null);
@@ -1198,6 +1208,39 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 </div>
               )}
 
+              {/* Floor Plans — only show if enterprise has floor plans uploaded */}
+              {e.floorPlans && e.floorPlans.length > 0 && (
+              <div className="mt-10 sm:mt-14">
+                  <div className="flex items-center gap-3 mb-6 sm:mb-8">
+                    <div className="h-9 w-9 rounded-xl bg-blue-500/15 flex items-center justify-center">
+                      <LayoutGrid className="h-4 w-4 text-blue-400" />
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-semibold">Plantas das Unidades</h3>
+                    <span className="text-xs text-white/25 font-medium ml-auto">{e.floorPlans.length} planta{e.floorPlans.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                    {e.floorPlans.map((plan, idx) => (
+                      <button
+                        key={plan.id}
+                        onClick={() => { setActiveFloorIdx(idx); setFloorLightboxOpen(true); }}
+                        className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-blue-500/20 hover:bg-white/[0.03] transition-all duration-300 overflow-hidden cursor-pointer"
+                      >
+                        <div className="aspect-[4/3] bg-white/[0.01] flex items-center justify-center p-3">
+                          <img
+                            src={plan.url}
+                            alt={plan.altText || `Planta ${idx + 1}`}
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-3">
+                          <span className="text-[10px] text-white/80 bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded-full">Visualizar</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Differentials */}
               {info?.differentials && info.differentials.length > 0 && (
               <div className="mt-10 sm:mt-14">
@@ -1825,6 +1868,43 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           </div>
         </div>
       </div>
+
+      {/* ── Floor Plans Lightbox ────────────────────── */}
+      {floorLightboxOpen && enterprise?.floorPlans && enterprise.floorPlans.length > 0 && (
+        <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-2 sm:p-0" onClick={() => setFloorLightboxOpen(false)}>
+          <button
+            onClick={() => setFloorLightboxOpen(false)}
+            className="absolute top-3 right-3 sm:top-5 sm:right-5 text-white/60 hover:text-white z-10 bg-white/10 backdrop-blur-sm rounded-full p-2 sm:p-2.5 transition-colors"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <div className="absolute top-3 left-3 sm:top-5 sm:left-5 text-white/60 text-xs sm:text-sm bg-white/10 backdrop-blur-sm px-3 py-1.5 sm:px-4 sm:py-2 rounded-full">
+            Planta {activeFloorIdx + 1} / {enterprise.floorPlans.length}
+          </div>
+          <img
+            src={enterprise.floorPlans[activeFloorIdx]?.url}
+            alt={enterprise.floorPlans[activeFloorIdx]?.altText || `Planta ${activeFloorIdx + 1}`}
+            className="max-w-[95vw] sm:max-w-[90vw] max-h-[85vh] object-contain rounded-xl"
+            onClick={(ev) => ev.stopPropagation()}
+          />
+          {enterprise.floorPlans.length > 1 && (
+            <>
+              <button
+                onClick={(ev) => { ev.stopPropagation(); setActiveFloorIdx((p) => (p - 1 + enterprise.floorPlans.length) % enterprise.floorPlans.length); }}
+                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"
+              >
+                <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
+              </button>
+              <button
+                onClick={(ev) => { ev.stopPropagation(); setActiveFloorIdx((p) => (p + 1) % enterprise.floorPlans.length); }}
+                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"
+              >
+                <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── Lightbox ───────────────────────────────────── */}
       {lightboxOpen && (
