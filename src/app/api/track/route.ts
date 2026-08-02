@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { resolveGeoIP } from '@/lib/geo-ip';
+import { isLikelyBot } from '@/lib/bot-detector';
 
 // ============================================================
 // Client-side Tracking Endpoint (PUBLIC — no auth required)
@@ -74,6 +76,12 @@ function isValidPayload(data: unknown): data is TrackingPayload {
 // --- POST handler ---
 export async function POST(request: NextRequest) {
   const ip = extractIp(request);
+  const userAgent = request.headers.get('user-agent') || null;
+
+  // Bot filtering — silently drop bot traffic
+  if (isLikelyBot(userAgent)) {
+    return NextResponse.json({ status: 'ok' });
+  }
 
   // Rate limit check
   if (isRateLimited(ip)) {
@@ -165,9 +173,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const userAgent = request.headers.get('user-agent') || null;
+  // Resolve Geo-IP (fire-and-forget cached lookup)
+  const geoPromise = resolveGeoIP(ip);
 
   try {
+    const geo = await geoPromise;
+
     // Process events — upsert visitors and create events in parallel
     await Promise.all(
       validEvents.map(async (event) => {
@@ -187,7 +198,7 @@ export async function POST(request: NextRequest) {
           metadata,
         } = event;
 
-        // Upsert visitor (update lastSeenAt if exists)
+        // Upsert visitor (update geo + lastSeenAt if exists)
         await db.trackingVisitor.upsert({
           where: { visitorId },
           create: {
@@ -195,10 +206,15 @@ export async function POST(request: NextRequest) {
             siteId,
             ip,
             userAgent,
+            country: geo.country,
+            city: geo.city,
           },
           update: {
             ip,
             userAgent,
+            // Only update geo if previously null (first real resolution)
+            country: geo.country,
+            city: geo.city,
           },
         });
 
@@ -237,7 +253,6 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[Tracking] Error processing events:', error);
     // Return 200 anyway to not block the pixel — the client already sent the data
-    // but log so we can investigate
     return NextResponse.json({ status: 'partial_error' });
   }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { isLikelyBot } from '@/lib/bot-detector';
 
 // ============================================================
 // Pixel Tracking Endpoint (GET)
@@ -41,7 +42,23 @@ export async function GET(request: NextRequest) {
       request.headers.get('x-real-ip') ||
       null;
 
-    // Use setImmediate-style fire-and-forget (no await)
+    // Email pixel — UA is typically the email client, skip bot filter
+    // but still do basic sanity check
+    const ua = request.headers.get('user-agent') || '';
+    if (!ua || ua.length < 10) {
+      // Extremely short UA = likely not a real email client
+      return new NextResponse(TRANSPARENT_GIF_BUFFER, {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/gif',
+          'Content-Length': String(TRANSPARENT_GIF_BUFFER.length),
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          Pragma: 'no-cache',
+          Expires: '0',
+        },
+      });
+    }
+
     recordPixelEvent({
       visitorId,
       siteId,

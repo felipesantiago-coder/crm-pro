@@ -87,7 +87,7 @@
   /* ── Common payload builder ─────────────────────────── */
   var leadId = "";
   var _formTouched = false; // track if any form field was interacted with
-  var _formFieldsFilled = 0; // count of non-empty fields at last check
+  var _formFieldValues = {}; // track all form field values for accurate abandonment count
 
   function basePayload(evt, extra) {
     var d = {
@@ -336,13 +336,37 @@
   }
 
   /* ── Form abandonment on page unload ────────────────── */
+  function countFilledFields() {
+    if (_formFieldValues._legacyCount !== undefined) return _formFieldValues._legacyCount;
+    var count = 0;
+    for (var k in _formFieldValues) {
+      if (k === '_legacyCount') continue;
+      var v = _formFieldValues[k];
+      if (v && typeof v === 'string' ? v.trim().length > 0 : true) count++;
+    }
+    return count;
+  }
+
+  function getFilledFieldNames() {
+    if (_formFieldValues._legacyCount !== undefined) return [];
+    var names = [];
+    for (var k in _formFieldValues) {
+      if (k === '_legacyCount') continue;
+      var v = _formFieldValues[k];
+      if (v && typeof v === 'string' ? v.trim().length > 0 : true) names.push(k);
+    }
+    return names;
+  }
+
   function trackFormAbandonOnUnload() {
     window.addEventListener("beforeunload", function () {
       if (_formTouched) {
-        // Count non-empty form fields as a rough measure
-        var filled = _formFieldsFilled;
+        var filled = countFilledFields();
+        var filledNames = getFilledFieldNames();
         if (filled > 0) {
-          var payload = basePayload("form_abandon", { fields_filled: filled });
+          var meta = { fields_filled: filled };
+          if (filledNames.length > 0) meta.filled_fields = filledNames;
+          var payload = basePayload("form_abandon", meta);
           var params = new URLSearchParams();
           params.append("data", JSON.stringify(payload));
           if (navigator.sendBeacon) {
@@ -477,12 +501,24 @@
     },
 
     /**
-     * Update internal form field count (for abandonment tracking).
+     * Update internal form field values (for abandonment tracking).
      * Call this whenever a form field value changes.
-     * @param {number} count — number of non-empty fields
+     * @param {number} count — number of non-empty fields (legacy signature)
+     *     OR
+     * @param {object} fieldValues — { fieldName: value, ... } map of all form fields
+     *
+     * Supports two calling conventions:
+     *   Legacy:  _setFormFieldsFilled(3)
+     *   Modern:  _setFormFieldsFilled({ name: 'Joao', phone: '11999...', email: '', customField: 'value' })
      */
-    _setFormFieldsFilled: function (count) {
-      _formFieldsFilled = count;
+    _setFormFieldsFilled: function (countOrMap) {
+      if (typeof countOrMap === 'number') {
+        // Legacy: just store the count
+        _formFieldValues = { _legacyCount: countOrMap };
+      } else if (countOrMap && typeof countOrMap === 'object') {
+        // Modern: store field values, count non-empty
+        _formFieldValues = countOrMap;
+      }
     },
 
     /**
