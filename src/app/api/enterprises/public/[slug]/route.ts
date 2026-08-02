@@ -3,8 +3,8 @@ import { db } from '@/lib/db';
 import enterprisesCatalog, { EnterpriseCatalogEntry } from '@/data/enterprises-catalog';
 
 /**
- * Deep merge: catalog (static) overrides dbCachedInfo.
- * Only non-null catalog fields win; null catalog fields fall back to DB.
+ * Merge: DB cachedInfo is the PRIMARY source; catalog is FALLBACK only.
+ * DB fields win when non-null. Catalog fills in only null/undefined DB fields.
  */
 function mergeCachedInfo(
   dbCachedInfo: any,
@@ -15,31 +15,35 @@ function mergeCachedInfo(
   const base = dbCachedInfo || {};
   const merged: any = { ...base };
 
-  // Simple string/number fields — catalog wins if non-null
+  // Simple string/number fields — DB wins if non-null; catalog fills nulls
   for (const key of ['builder', 'architecture', 'landscaping', 'status', 'deliveryDate', 'price', 'totalUnits', 'floors', 'parkingSpots', 'summary'] as const) {
-    if (catalog[key] !== undefined && catalog[key] !== null) {
+    if ((merged[key] === null || merged[key] === undefined) && catalog[key] !== undefined && catalog[key] !== null) {
       merged[key] = catalog[key];
     }
   }
 
-  // Location — merge field by field
+  // Location — DB wins per-field; catalog fills missing
   if (catalog.location) {
     merged.location = { ...(base.location || {}) };
     for (const locKey of ['address', 'neighborhood', 'city', 'state', 'region', 'additionalInfo'] as const) {
-      if (catalog.location[locKey] !== undefined && catalog.location[locKey] !== null) {
+      if ((merged.location[locKey] === null || merged.location[locKey] === undefined) && catalog.location[locKey] !== undefined && catalog.location[locKey] !== null) {
         merged.location[locKey] = catalog.location[locKey];
       }
     }
   }
 
-  // Differentials — catalog wins if non-empty array
-  if (Array.isArray(catalog.differentials) && catalog.differentials.length > 0) {
-    merged.differentials = catalog.differentials;
+  // Differentials — DB wins if non-empty array; catalog fills only if DB is empty/missing
+  if (!Array.isArray(merged.differentials) || merged.differentials.length === 0) {
+    if (Array.isArray(catalog.differentials) && catalog.differentials.length > 0) {
+      merged.differentials = catalog.differentials;
+    }
   }
 
-  // Apartment types — catalog wins if non-empty array
-  if (Array.isArray(catalog.apartmentTypes) && catalog.apartmentTypes.length > 0) {
-    merged.apartmentTypes = catalog.apartmentTypes;
+  // Apartment types — DB wins if non-empty array; catalog fills only if DB is empty/missing
+  if (!Array.isArray(merged.apartmentTypes) || merged.apartmentTypes.length === 0) {
+    if (Array.isArray(catalog.apartmentTypes) && catalog.apartmentTypes.length > 0) {
+      merged.apartmentTypes = catalog.apartmentTypes;
+    }
   }
 
   return merged;
@@ -92,9 +96,7 @@ export async function GET(
       return NextResponse.json({ error: 'Empreendimento não encontrado' }, { status: 404 });
     }
 
-    // Merge static catalog data over DB cachedInfo.
-    // Catalog is the primary source for ficha técnica fields;
-    // DB is fallback for any field the catalog doesn't define.
+    // Use catalog as fallback for any null/missing fields in DB cachedInfo.
     const catalog = enterprisesCatalog[slug];
     if (catalog) {
       enterprise.cachedInfo = mergeCachedInfo(enterprise.cachedInfo, catalog);

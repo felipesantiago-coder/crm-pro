@@ -1,21 +1,20 @@
 /**
- * Enterprises Catalog — Static data source for landing pages
+ * Enterprises Catalog — Fallback data source for landing pages
  *
- * This file is the PRIMARY source for the "Ficha Técnica" section.
- * It eliminates dependency on AI extraction (Gemini/Groq) which is
- * unreliable in serverless environments.
+ * This file provides DEFAULT data for the "Ficha Técnica" section.
+ * It is used ONLY when the database's cachedInfo has null/missing fields.
  *
  * HOW IT WORKS:
  * - The public API (`/api/enterprises/public/[slug]`) merges this data
- *   into the response. If a field is null here, the DB's cachedInfo
- *   is used as fallback (for backward compatibility).
- * - To update: edit this file and redeploy. Changes propagate to the
- *   landing page, public API, and any other consumer automatically.
+ *   into the response. DB cachedInfo is the PRIMARY source; this catalog
+ *   fills in ONLY fields that are null or undefined in the DB.
+ * - To update landing page data: update the DB via the enterprise panel.
+ *   Changes are reflected immediately. This file serves as initial/fallback data.
  *
  * STRUCTURE:
  * - Key = enterprise slug (must match the `slug` column in the DB)
- * - Value = partial ExtractedInfo (only fields you want to override)
- * - Null fields are ignored (DB fallback applies)
+ * - Value = partial ExtractedInfo (only fields you want as defaults)
+ * - Null catalog fields are ignored
  */
 
 export interface EnterpriseCatalogEntry {
