@@ -77,7 +77,7 @@ interface Enterprise {
 /* ================================================================
    Custom Component — Scroll Reveal
    ================================================================ */
-function ScrollReveal({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function ScrollReveal({ children, className = '' }: React.PropsWithChildren<{ className?: string }>) {
   const ref = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -677,6 +677,50 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </div>
             )}
           </div>
+
+          {/* Metrics overlay bar */}
+          {(status || info?.totalUnits || areaRange || deliveryText) && (
+            <div className="mt-6 sm:mt-8">
+              <div className="inline-flex flex-wrap items-center bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl divide-x divide-white/10">
+                {status && (
+                  <div className="flex items-center gap-2 px-4 py-3">
+                    <CheckCircle2 className="h-4 w-4 text-[#C9A96E]/70" />
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-white/40 leading-none">Status</p>
+                      <p className="text-sm font-bold text-white leading-tight mt-0.5">{status}</p>
+                    </div>
+                  </div>
+                )}
+                {info?.totalUnits != null && info.totalUnits > 0 && (
+                  <div className="flex items-center gap-2 px-4 py-3">
+                    <Users className="h-4 w-4 text-[#C9A96E]/70" />
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-white/40 leading-none">Unidades</p>
+                      <p className="text-sm font-bold text-white leading-tight mt-0.5">{info.totalUnits}</p>
+                    </div>
+                  </div>
+                )}
+                {areaRange && (
+                  <div className="flex items-center gap-2 px-4 py-3">
+                    <Ruler className="h-4 w-4 text-[#C9A96E]/70" />
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-white/40 leading-none">Área</p>
+                      <p className="text-sm font-bold text-white leading-tight mt-0.5">{areaRange}</p>
+                    </div>
+                  </div>
+                )}
+                {deliveryText && status !== 'Entregue' && (
+                  <div className="flex items-center gap-2 px-4 py-3">
+                    <CalendarDays className="h-4 w-4 text-[#C9A96E]/70" />
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-white/40 leading-none">Entrega</p>
+                      <p className="text-sm font-bold text-white leading-tight mt-0.5">{deliveryText}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Scroll indicator */}
@@ -685,6 +729,36 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           <div className="w-px h-8 bg-gradient-to-b from-white/30 to-transparent" />
         </div>
       </section>
+
+      {/* ── Numbers / Stats Section ───────────────────── */}
+      <ScrollReveal>
+        {(info?.totalUnits || areaRange || deliveryText) ? (
+          <section className="py-12 sm:py-20 bg-gradient-to-b from-[#C9A96E]/[0.03] to-transparent">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8">
+                {info?.totalUnits != null && info.totalUnits > 0 && (
+                  <div className="text-center border-t-2 border-[#C9A96E]/30 pt-6">
+                    <p className="text-4xl sm:text-5xl font-bold text-[#C9A96E]">{info.totalUnits}</p>
+                    <p className="text-sm text-white/40 mt-2">Unidades</p>
+                  </div>
+                )}
+                {areaRange && (
+                  <div className="text-center border-t-2 border-[#C9A96E]/30 pt-6">
+                    <p className="text-4xl sm:text-5xl font-bold text-[#C9A96E]">{areaRange}</p>
+                    <p className="text-sm text-white/40 mt-2">Metragem</p>
+                  </div>
+                )}
+                {deliveryText && (
+                  <div className="text-center border-t-2 border-[#C9A96E]/30 pt-6">
+                    <p className="text-2xl sm:text-3xl font-bold text-[#C9A96E]">{deliveryText}</p>
+                    <p className="text-sm text-white/40 mt-2">Previsão de Entrega</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : null}
+      </ScrollReveal>
 
       {/* ── Gallery Section ────────────────────────────── */}
       <ScrollReveal>
@@ -714,7 +788,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
               {/* Main image */}
               <div
-                className="relative aspect-[4/3] sm:aspect-[16/10] lg:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
+                className="relative aspect-[3/2] sm:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
                 onClick={() => {
                   if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackGalleryClick(activeImgIdx, images.length);
                   setLightboxOpen(true);
@@ -727,6 +801,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   className="object-cover transition-transform duration-500 group-hover:scale-[1.02]"
                   sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 960px"
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10 pointer-events-none" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                   <div className="bg-black/50 backdrop-blur-sm rounded-full p-4">
@@ -768,7 +843,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
       {/* ── Ficha Técnica do Empreendimento ─────────────── */}
       <ScrollReveal>
-        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
+        <section className="py-12 sm:py-24 border-t border-white/[0.04] bg-white/[0.01]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             {/* Section header */}
             <div className="flex items-center gap-4 mb-8 sm:mb-12">
@@ -781,9 +856,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             </div>
 
             {/* Spec grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
               {/* Status */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${
                       status === 'Lançamento' ? 'bg-emerald-500/15' : status === 'Em Construção' ? 'bg-amber-500/15' : status === 'Entregue' ? 'bg-blue-500/15' : 'bg-white/5'
@@ -796,7 +871,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 </div>
 
               {/* Construtora */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-orange-500/15 flex items-center justify-center">
                       <HardHat className="h-4 w-4 text-orange-400" />
@@ -807,7 +882,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 </div>
 
               {/* Localização */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
                       <MapPin className="h-4 w-4 text-blue-400" />
@@ -820,7 +895,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 </div>
 
               {/* Tipos de Unidade */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
                       <Building2 className="h-4 w-4 text-violet-400" />
@@ -833,7 +908,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
               {/* Arquitetura — only show when data exists */}
               {info?.architecture && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
                       <Palette className="h-4 w-4 text-violet-400" />
@@ -846,7 +921,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
               {/* Paisagismo — only show when data exists */}
               {info?.landscaping && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
                       <Sparkles className="h-4 w-4 text-emerald-400" />
@@ -858,7 +933,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               )}
 
               {/* Preço */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-[#C9A96E]/15 flex items-center justify-center">
                       <DollarSign className="h-4 w-4 text-[#C9A96E]" />
@@ -884,7 +959,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
               {/* Unidades — only show when data exists */}
               {info?.totalUnits != null && info.totalUnits > 0 && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-cyan-500/15 flex items-center justify-center">
                       <Users className="h-4 w-4 text-cyan-400" />
@@ -897,7 +972,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
               {/* Pavimentos — only show when data exists */}
               {info?.floors != null && info.floors > 0 && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-indigo-500/15 flex items-center justify-center">
                       <Layers className="h-4 w-4 text-indigo-400" />
@@ -910,7 +985,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
               {/* Vagas — only show when data exists */}
               {info?.parkingSpots != null && info.parkingSpots > 0 && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-teal-500/15 flex items-center justify-center">
                       <Car className="h-4 w-4 text-teal-400" />
@@ -922,7 +997,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               )}
 
               {/* Endereço */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0 sm:col-span-2 lg:col-span-2">
+              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0 sm:col-span-2 lg:col-span-2">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className="h-8 w-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
                       <Navigation className="h-4 w-4 text-blue-400" />
@@ -955,14 +1030,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               {/* Summary — Sobre o Empreendimento */}
               {info?.summary ? (
                 <div className="mb-8 sm:mb-12">
-                  <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.08] via-[#C9A96E]/[0.03] to-transparent border border-[#C9A96E]/15 p-6 sm:p-8 lg:p-10">
+                  <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.12] via-[#C9A96E]/[0.05] to-transparent border border-[#C9A96E]/20 p-6 sm:p-8 lg:p-12">
                     <div className="absolute top-0 right-0 w-48 h-48 bg-[#C9A96E]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
                     <div className="relative">
                       <div className="flex items-center gap-2.5 mb-4">
                         <div className="h-1.5 w-8 rounded-full bg-[#C9A96E]" />
                         <span className="text-xs font-semibold text-[#C9A96E] uppercase tracking-widest">Sobre o empreendimento</span>
                       </div>
-                      <p className="text-sm sm:text-[15px] text-white/75 leading-[1.8] max-w-4xl">{info.summary}</p>
+                      <p className="text-sm sm:text-[15px] text-white/80 leading-[1.8] max-w-5xl">{info.summary}</p>
                     </div>
                   </div>
                 </div>
@@ -1070,7 +1145,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                       return (
                         <div
                           key={idx}
-                          className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-emerald-500/20 hover:bg-white/[0.03] transition-all duration-300 overflow-hidden"
+                          className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-emerald-500/20 hover:bg-white/[0.03] hover:scale-[1.02] transition-all duration-300 overflow-hidden"
                         >
                           {/* Top accent bar */}
                           <div className="h-0.5 bg-gradient-to-r from-emerald-500/40 to-transparent" />
@@ -1116,11 +1191,11 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     </div>
                     <h3 className="text-lg sm:text-xl font-semibold">Diferenciais</h3>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {(info?.differentials || []).map((d, i) => (
                       <div
                         key={i}
-                        className="flex items-start gap-3 px-4 sm:px-5 py-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:border-[#C9A96E]/20 transition-colors min-w-0"
+                        className="flex items-start gap-3 px-5 sm:px-6 py-4 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:border-[#C9A96E]/20 transition-colors min-w-0"
                       >
                         <CheckCircle2 className="h-4 w-4 text-[#C9A96E] flex-shrink-0" />
                         <span className="text-sm text-white/70 leading-relaxed min-w-0">{d}</span>
@@ -1136,7 +1211,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
       {/* ── Por que o {e.name}? ──────────────────────────── */}
       <ScrollReveal>
-        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
+        <section className="py-12 sm:py-24 bg-gradient-to-b from-transparent via-white/[0.01] to-transparent">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             {/* Section header */}
             <div className="flex items-center gap-4 mb-8 sm:mb-12">
@@ -1150,8 +1225,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               {/* Card 1 — Localização Privilegiada */}
-              <div className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
-                <div className="h-0.5 w-12 bg-gradient-to-r from-[#C9A96E] to-transparent mb-5 rounded-full" />
+              <div className="group relative rounded-2xl bg-gradient-to-br from-blue-500/[0.06] to-transparent border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+                <div className="h-0.5 w-12 bg-gradient-to-r from-blue-400 to-transparent mb-5 rounded-full" />
                 <div className="h-10 w-10 rounded-xl bg-blue-500/15 flex items-center justify-center mb-4">
                   <MapPin className="h-5 w-5 text-blue-400" />
                 </div>
@@ -1162,8 +1237,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </div>
 
               {/* Card 2 — Qualidade de Construção */}
-              <div className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
-                <div className="h-0.5 w-12 bg-gradient-to-r from-[#C9A96E] to-transparent mb-5 rounded-full" />
+              <div className="group relative rounded-2xl bg-gradient-to-br from-orange-500/[0.06] to-transparent border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+                <div className="h-0.5 w-12 bg-gradient-to-r from-orange-400 to-transparent mb-5 rounded-full" />
                 <div className="h-10 w-10 rounded-xl bg-orange-500/15 flex items-center justify-center mb-4">
                   <HardHat className="h-5 w-5 text-orange-400" />
                 </div>
@@ -1174,7 +1249,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </div>
 
               {/* Card 3 — Diferenciais Exclusivos */}
-              <div className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+              <div className="group relative rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.06] to-transparent border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
                 <div className="h-0.5 w-12 bg-gradient-to-r from-[#C9A96E] to-transparent mb-5 rounded-full" />
                 <div className="h-10 w-10 rounded-xl bg-[#C9A96E]/15 flex items-center justify-center mb-4">
                   <Sparkles className="h-5 w-5 text-[#C9A96E]" />
@@ -1188,8 +1263,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </div>
 
               {/* Card 4 — Oportunidade de Investimento */}
-              <div className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
-                <div className="h-0.5 w-12 bg-gradient-to-r from-[#C9A96E] to-transparent mb-5 rounded-full" />
+              <div className="group relative rounded-2xl bg-gradient-to-br from-emerald-500/[0.06] to-transparent border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+                <div className="h-0.5 w-12 bg-gradient-to-r from-emerald-400 to-transparent mb-5 rounded-full" />
                 <div className="h-10 w-10 rounded-xl bg-emerald-500/15 flex items-center justify-center mb-4">
                   <TrendingUp className="h-5 w-5 text-emerald-400" />
                 </div>
@@ -1202,8 +1277,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </div>
 
               {/* Card 5 — Atendimento Personalizado */}
-              <div className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
-                <div className="h-0.5 w-12 bg-gradient-to-r from-[#C9A96E] to-transparent mb-5 rounded-full" />
+              <div className="group relative rounded-2xl bg-gradient-to-br from-purple-500/[0.06] to-transparent border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+                <div className="h-0.5 w-12 bg-gradient-to-r from-purple-400 to-transparent mb-5 rounded-full" />
                 <div className="h-10 w-10 rounded-xl bg-purple-500/15 flex items-center justify-center mb-4">
                   <Shield className="h-5 w-5 text-purple-400" />
                 </div>
@@ -1236,6 +1311,34 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
         </section>
       )}
 
+      {/* ── Trust / Social Proof Strip ────────────────── */}
+      <ScrollReveal>
+        <section className="bg-[#C9A96E]/[0.04] border-y border-[#C9A96E]/10">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8">
+              <div className="flex flex-col items-center gap-2 text-center">
+                <Shield className="h-5 w-5 text-[#C9A96E]/50" />
+                <span className="text-xs sm:text-sm text-white/40 font-medium">Dados Protegidos</span>
+              </div>
+              <div className="flex flex-col items-center gap-2 text-center">
+                <CheckCircle2 className="h-5 w-5 text-[#C9A96E]/50" />
+                <span className="text-xs sm:text-sm text-white/40 font-medium">Sem Compromisso</span>
+              </div>
+              <div className="flex flex-col items-center gap-2 text-center">
+                <Clock className="h-5 w-5 text-[#C9A96E]/50" />
+                <span className="text-xs sm:text-sm text-white/40 font-medium">Resposta em até 24h</span>
+              </div>
+              {e._count && e._count.clients > 0 && (
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <Users className="h-5 w-5 text-[#C9A96E]/50" />
+                  <span className="text-xs sm:text-sm text-white/40 font-medium">{e._count.clients} pessoas interessadas</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </ScrollReveal>
+
       {/* ── Registration Form Section ───────────────────── */}
       <ScrollReveal>
         <section id="cadastro" className="py-12 sm:py-24 border-t border-white/[0.04]">
@@ -1259,6 +1362,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">
                   Interessado no <span className="text-[#C9A96E]">{e.name}</span>?
                 </h2>
+                <p className="text-[#C9A96E]/80 text-sm sm:text-base font-medium mb-2">
+                  {showUrgencyBadge ? '⚠️ Vagas limitadas — garanta sua unidade.' : 'Oportunidade exclusiva no mercado imobiliário.'}
+                </p>
                 <p className="text-white/50 max-w-lg text-sm sm:text-base leading-relaxed mb-6 sm:mb-8">
                   Preencha o formulário ao lado e receba atendimento personalizado sobre este empreendimento. Nossa equipe entrará em contato com você em breve para agendar uma visita ou tirar todas as suas dúvidas.
                 </p>
@@ -1282,10 +1388,10 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
               {/* Right side — Form */}
               <div className="relative order-1 lg:order-2">
-                <div className="absolute -inset-1 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/10 via-transparent to-[#C9A96E]/5 rounded-3xl blur-sm sm:blur-xl" />
+                <div className="absolute -inset-1 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/15 via-transparent to-[#C9A96E]/10 rounded-3xl blur-sm sm:blur-xl" />
                 <form
                   onSubmit={handleFormSubmit}
-                  className="relative z-10 rounded-2xl bg-white/[0.03] border border-white/[0.08] p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
+                  className="relative z-10 rounded-2xl bg-white/[0.03] border border-white/[0.12] p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
                 >
                   <div className="mb-2">
                     <h3 className="text-xl font-bold">Cadastro</h3>
@@ -1454,7 +1560,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   <button
                     type="submit"
                     disabled={formSubmitting}
-                    className="w-full flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-base hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                    className="w-full flex items-center justify-center gap-2.5 px-8 py-4.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-lg hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
                   >
                     {formSubmitting ? (
                       <>
@@ -1677,6 +1783,32 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           <div className="h-[env(safe-area-inset-bottom)]" />
         </div>
       )}
+
+      {/* Sticky Desktop CTA */}
+      <div className="hidden sm:block fixed bottom-0 left-0 right-0 z-40 animate-slide-up-bar">
+        <div className="bg-[#0A0A0A]/80 backdrop-blur-xl border-t border-white/[0.06]">
+          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-semibold text-white/80">{displayTitle}</span>
+              {status && (
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                  status === 'Lançamento' ? 'bg-emerald-500/15 text-emerald-400' :
+                  status === 'Em Construção' ? 'bg-amber-500/15 text-amber-400' :
+                  'bg-blue-500/15 text-blue-400'
+                }`}>{status}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <a href="#cadastro" className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-semibold hover:bg-[#D4B87E] transition-colors">
+                Cadastre-se
+              </a>
+              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="px-5 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-semibold hover:bg-[#20bd5a] transition-colors">
+                WhatsApp
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* ── Lightbox ───────────────────────────────────── */}
       {lightboxOpen && (
