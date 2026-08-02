@@ -484,43 +484,22 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   /* ─── Derived data for Ficha Técnica ────────────────── */
   const areas = (info?.apartmentTypes || []).flatMap(a => {
     if (!a.area) return [];
-    const raw = a.area.trim();
+    let cleaned = a.area.trim();
     // Normalize Brazilian decimal comma to dot
-    const normalized = raw.replace(/,/g, '.');
-    // Remove unit suffix for cleaner matching
-    const withoutUnit = normalized.replace(/m\u00B2/gi, '').trim();
-    // Try range patterns first: "66-69", "181 a 351"
-    const rangeDash = withoutUnit.match(/^(\d+[\.]?\d*)\s*[-\u2013]\s*(\d+[\.]?\d*)$/);
-    if (rangeDash) {
-      const lo = parseFloat(rangeDash[1]);
-      const hi = parseFloat(rangeDash[2]);
-      if (!isNaN(lo) && !isNaN(hi) && lo > 0 && hi > 0) return [lo, hi];
+    cleaned = cleaned.replace(/,/g, '.');
+    // Remove unit variants: m², m2, M², M2
+    cleaned = cleaned.replace(/m[²2]/gi, '').trim();
+    // Remove common prefixes (De, de, desde, entre, a partir de)
+    cleaned = cleaned.replace(/^(de|desde|entre|a\s+partir\s+de)\s+/i, '').trim();
+    // Extract ALL valid numbers from the cleaned string
+    const nums: number[] = [];
+    const numRe = /(\d+(?:\.\d+)?)/g;
+    let m;
+    while ((m = numRe.exec(cleaned)) !== null) {
+      const val = parseFloat(m[1]);
+      if (!isNaN(val) && val > 0) nums.push(val);
     }
-    const rangeA = withoutUnit.match(/^(\d+[\.]?\d*)\s+a\s+(\d+[\.]?\d*)$/i);
-    if (rangeA) {
-      const lo = parseFloat(rangeA[1]);
-      const hi = parseFloat(rangeA[2]);
-      if (!isNaN(lo) && !isNaN(hi) && lo > 0 && hi > 0) return [lo, hi];
-    }
-    // "até X" pattern
-    const ateMatch = withoutUnit.match(/^at[eé]\s+(\d+[\.]?\d*)$/i);
-    if (ateMatch) {
-      const val = parseFloat(ateMatch[1]);
-      if (!isNaN(val) && val > 0) return [val];
-    }
-    // Single numeric value
-    const singleMatch = withoutUnit.match(/^(\d+[\.]?\d*)$/);
-    if (singleMatch) {
-      const val = parseFloat(singleMatch[1]);
-      if (!isNaN(val) && val > 0) return [val];
-    }
-    // Fallback: extract first number found
-    const anyNum = raw.match(/(\d+[\.,]?\d*)/);
-    if (anyNum) {
-      const val = parseFloat(anyNum[1].replace(',', '.'));
-      if (!isNaN(val) && val > 0) return [val];
-    }
-    return [];
+    return nums;
   }).filter(a => a > 0 && a < 5000); // sanity: no apartment > 5000 m²
   const maxArea = areas.length > 0 ? Math.max(...areas) : 0;
   const minArea = areas.length > 0 ? Math.min(...areas) : 0;
