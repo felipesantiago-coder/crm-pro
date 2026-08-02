@@ -166,6 +166,7 @@ export async function GET() {
       formAbandonCount: number;
       timezoneBreakdown: Array<{ timezone: string; visitors: number }>;
       languageBreakdown: Array<{ language: string; visitors: number }>;
+      geoBreakdown: Array<{ country: string; city: string; visitors: number; leads: number }>;
     } = {
       visitors: 0,
       pageviews: 0,
@@ -193,6 +194,7 @@ export async function GET() {
       formAbandonCount: 0,
       timezoneBreakdown: [],
       languageBreakdown: [],
+      geoBreakdown: [],
     };
 
     let pixelAvailable = false;
@@ -218,6 +220,7 @@ export async function GET() {
         eventCountsResult,
         timezoneResult,
         languageResult,
+        geoResult,
       ] = await Promise.all([
         // Query 1: Core funnel data
         db.$queryRaw<{
@@ -511,6 +514,21 @@ export async function GET() {
           ORDER BY visitors DESC
           LIMIT 10
         `,
+
+        // Query 19: Geographic breakdown (from tracking_visitors)
+        db.$queryRaw<{ country: string; city: string; visitors: string | number; leads: string | number }[]>`
+          SELECT
+            COALESCE(tv."country", '(desconhecido)') as country,
+            COALESCE(tv."city", '(desconhecido)') as city,
+            COUNT(DISTINCT tv."visitorId")::text as visitors,
+            COUNT(DISTINCT CASE WHEN tv."leadId" IS NOT NULL THEN tv."visitorId" END)::text as leads
+          FROM "tracking_visitors" tv
+          WHERE tv."lastSeenAt" >= NOW() - INTERVAL '30 days'
+            AND tv."country" IS NOT NULL
+          GROUP BY tv."country", tv."city"
+          ORDER BY visitors DESC
+          LIMIT 20
+        `,
       ]);
 
       if (funnelResult.length > 0) {
@@ -644,6 +662,14 @@ export async function GET() {
         language: r.language,
         visitors: Number(r.visitors) || 0,
       }));
+
+      // Geographic breakdown
+      pixelData.geoBreakdown = geoResult.map((r) => ({
+        country: r.country,
+        city: r.city,
+        visitors: Number(r.visitors) || 0,
+        leads: Number(r.leads) || 0,
+      }));
     } catch (pixelErr) {
       // tracking_events table may not exist yet (migration not run) — continue without pixel data
       console.warn('[Meta Ads Analyze] Tabela tracking_events não disponível, prosseguindo sem dados de pixel:', pixelErr);
@@ -772,7 +798,13 @@ ${pixelData.sectionViews.length > 0 ? pixelData.sectionViews.map((s) => `- ${s.s
 ${pixelData.timezoneBreakdown.length > 0 ? pixelData.timezoneBreakdown.map((t) => `- ${t.timezone}: ${t.visitors} visitantes (${((t.visitors / pixelData.visitors) * 100).toFixed(1)}%)`).join('\n') : '- Nenhum dado de fuso horario disponivel'}
 
 ### Idioma do Navegador:
-${pixelData.languageBreakdown.length > 0 ? pixelData.languageBreakdown.map((l) => `- ${l.language}: ${l.visitors} visitantes (${((l.visitors / pixelData.visitors) * 100).toFixed(1)}%)`).join('\n') : '- Nenhum dado de idioma disponivel'}`;
+${pixelData.languageBreakdown.length > 0 ? pixelData.languageBreakdown.map((l) => `- ${l.language}: ${l.visitors} visitantes (${((l.visitors / pixelData.visitors) * 100).toFixed(1)}%)`).join('\n') : '- Nenhum dado de idioma disponivel'}
+
+### Localizacao Geografica (Geo-IP):
+${pixelData.geoBreakdown.length > 0 ? pixelData.geoBreakdown.map((g) => {
+  const convPct = g.visitors > 0 ? ((g.leads / g.visitors) * 100).toFixed(1) : '0.0';
+  return `- ${g.city}/${g.country}: ${g.visitors} visitantes, ${g.leads} leads (${convPct}% conversao)`;
+}).join('\n') : '- Nenhum dado geografico disponivel (Geo-IP pode ainda nao estar ativo)'}`;
     }
 
     const dataSummary = `
@@ -817,7 +849,7 @@ Analise os dados fornecidos e gere um relatório estruturado com as seguintes se
 7. **Análise do Formulário** — Qual campo tem maior taxa de desistência? Quanto tempo os visitantes gastam em cada campo? Há formulários abandonados?
 8. **Galeria e FAQ** — Os visitantes interagem com as imagens? Quais perguntas do FAQ mais geram interesse? A galeria influencia na conversão?
 9. **Efetividade do WhatsApp** — Quantos cliques no WhatsApp? Qual CTA é mais efetivo? Qual a relação entre exit intent e cliques no WhatsApp?
-10. **Geografia e Idioma** — De quais fusos horários vêm os visitantes? Quais idiomas? Quais horários têm mais engajamento?
+10. **Geografia, Idioma e Localizacao** — De quais paises/cidades vêm os visitantes (dados de Geo-IP)? Quais fusos horarios? Quais idiomas? Há visitantes de fora do Brasil? Quais cidades convertem mais?
 11. **Alertas e Problemas** — Leads sem interação, estagnados, alta taxa de rejeição, discrepância pixel vs CRM, erros de JS.
 12. **Recomendações** — 10-15 recomendações práticas e específicas para melhorar os resultados. Inclua sugestões sobre otimização de landing pages, CTAs, campanhas, formulário, horários de atendimento e acompanhamento de leads.
 

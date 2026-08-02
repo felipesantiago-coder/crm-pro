@@ -167,6 +167,18 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const [formError, setFormError] = useState('');
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
 
+  // Track all form fields (standard + custom) for pixel abandonment
+  const updatePixelFormFields = useCallback((name: string, phone: string, email: string, custom: Record<string, string>) => {
+    if (typeof window === 'undefined' || !window.CRMPIXEL) return;
+    const fields: Record<string, string> = { nome: name, telefone: phone, email };
+    // Add custom fields with their labels for readability
+    for (const [id, val] of Object.entries(custom)) {
+      const f = e?.formFields?.find((ff: FormField) => ff.id === id);
+      fields[f?.label || id] = val;
+    }
+    window.CRMPIXEL._setFormFieldsFilled(fields);
+  }, [e?.formFields]);
+
   // NEW: Floating WhatsApp bar visibility (mobile)
   const [showFloatingWhatsApp, setShowFloatingWhatsApp] = useState(false);
 
@@ -1499,7 +1511,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         id="form-name"
                         type="text"
                         value={formName}
-                        onChange={(ev) => { setFormName(ev.target.value); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL._setFormFieldsFilled([ev.target.value, formPhone, formEmail].filter(Boolean).length); }}
+                        onChange={(ev) => { setFormName(ev.target.value); updatePixelFormFields(ev.target.value, formPhone, formEmail, customAnswers); }}
                         onFocus={() => { fieldFocusTime.current.name = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('name'); }}
                         onBlur={() => { const t = fieldFocusTime.current.name || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('name', Date.now() - t); }}
                         placeholder="Seu nome completo"
@@ -1520,7 +1532,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         id="form-phone"
                         type="tel"
                         value={formPhone}
-                        onChange={(ev) => { handlePhoneChange(ev.target.value); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL._setFormFieldsFilled([formName, ev.target.value, formEmail].filter(Boolean).length); }}
+                        onChange={(ev) => { handlePhoneChange(ev.target.value); updatePixelFormFields(formName, ev.target.value, formEmail, customAnswers); }}
                         onFocus={() => { fieldFocusTime.current.phone = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('phone'); }}
                         onBlur={() => { const t = fieldFocusTime.current.phone || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('phone', Date.now() - t); }}
                         placeholder="(11) 99999-9999"
@@ -1541,7 +1553,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         id="form-email"
                         type="email"
                         value={formEmail}
-                        onChange={(ev) => { setFormEmail(ev.target.value); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL._setFormFieldsFilled([formName, formPhone, ev.target.value].filter(Boolean).length); }}
+                        onChange={(ev) => { setFormEmail(ev.target.value); updatePixelFormFields(formName, formPhone, ev.target.value, customAnswers); }}
                         onFocus={() => { fieldFocusTime.current.email = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('email'); }}
                         onBlur={() => { const t = fieldFocusTime.current.email || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('email', Date.now() - t); }}
                         placeholder="seuemail@exemplo.com"
@@ -1571,7 +1583,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                                 id={`field-${field.id}`}
                                 type="text"
                                 value={val}
-                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                                onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.value }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                 placeholder={field.placeholder || undefined}
                                 required={field.required}
                                 className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
@@ -1583,7 +1595,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                                 id={`field-${field.id}`}
                                 type="number"
                                 value={val}
-                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                                onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.value }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                 placeholder={field.placeholder || undefined}
                                 required={field.required}
                                 className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
@@ -1594,7 +1606,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                               <textarea
                                 id={`field-${field.id}`}
                                 value={val}
-                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                                onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.value }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                 placeholder={field.placeholder || undefined}
                                 required={field.required}
                                 rows={3}
@@ -1606,7 +1618,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                               <select
                                 id={`field-${field.id}`}
                                 value={val}
-                                onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.value }))}
+                                onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.value }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                 required={field.required}
                                 className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all appearance-none cursor-pointer"
                                 style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
@@ -1624,7 +1636,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                                   id={`field-${field.id}`}
                                   type="checkbox"
                                   checked={val === 'Sim'}
-                                  onChange={(ev) => setCustomAnswers((prev) => ({ ...prev, [field.id]: ev.target.checked ? 'Sim' : 'Não' }))}
+                                  onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.checked ? 'Sim' : 'Não' }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                   className="h-4 w-4 rounded border-white/20 bg-white/[0.04] text-[#C9A96E] focus:ring-[#C9A96E]/20 cursor-pointer accent-[#C9A96E]"
                                 />
                                 <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">
