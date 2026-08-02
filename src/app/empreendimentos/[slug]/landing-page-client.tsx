@@ -286,6 +286,24 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     };
   }, [lightboxOpen, enterprise]);
 
+  // Floor-plan lightbox keyboard navigation & scroll lock
+  useEffect(() => {
+    if (!floorLightboxOpen || !enterprise) return;
+    const plans = enterprise.floorPlans || [];
+    const len = Math.max(plans.length, 1);
+    const h = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setFloorLightboxOpen(false);
+      if (ev.key === 'ArrowRight') setActiveFloorIdx((p) => (p + 1) % len);
+      if (ev.key === 'ArrowLeft') setActiveFloorIdx((p) => (p - 1 + len) % len);
+    };
+    window.addEventListener('keydown', h);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', h);
+      document.body.style.overflow = '';
+    };
+  }, [floorLightboxOpen, enterprise]);
+
   // NEW: Floating WhatsApp bar — show after scrolling past hero
   useEffect(() => {
     const onScroll = () => {
@@ -1232,6 +1250,11 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                             className="w-full h-full object-contain"
                           />
                         </div>
+                        {plan.altText && (
+                          <div className="px-3 py-2 border-t border-white/[0.04]">
+                            <p className="text-[11px] sm:text-xs text-white/50 leading-tight line-clamp-2">{plan.altText}</p>
+                          </div>
+                        )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-3">
                           <span className="text-[10px] text-white/80 bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded-full">Visualizar</span>
                         </div>
@@ -1871,7 +1894,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
       {/* ── Floor Plans Lightbox ────────────────────── */}
       {floorLightboxOpen && enterprise?.floorPlans && enterprise.floorPlans.length > 0 && (
-        <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-2 sm:p-0" onClick={() => setFloorLightboxOpen(false)}>
+        <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-2 sm:p-0" onClick={() => setFloorLightboxOpen(false)}>
           <button
             onClick={() => setFloorLightboxOpen(false)}
             className="absolute top-3 right-3 sm:top-5 sm:right-5 text-white/60 hover:text-white z-10 bg-white/10 backdrop-blur-sm rounded-full p-2 sm:p-2.5 transition-colors"
@@ -1884,9 +1907,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           <img
             src={enterprise.floorPlans[activeFloorIdx]?.url}
             alt={enterprise.floorPlans[activeFloorIdx]?.altText || `Planta ${activeFloorIdx + 1}`}
-            className="max-w-[95vw] sm:max-w-[90vw] max-h-[85vh] object-contain rounded-xl"
+            className="max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] object-contain rounded-xl"
             onClick={(ev) => ev.stopPropagation()}
           />
+          {enterprise.floorPlans[activeFloorIdx]?.altText && (
+            <p className="mt-3 sm:mt-4 text-sm sm:text-base text-white/70 text-center max-w-lg px-4 leading-relaxed">
+              {enterprise.floorPlans[activeFloorIdx].altText}
+            </p>
+          )}
           {enterprise.floorPlans.length > 1 && (
             <>
               <button

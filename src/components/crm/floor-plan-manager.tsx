@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Trash2, Loader2, GripVertical,
   LayoutGrid, ChevronUp, ChevronDown, Upload, AlertCircle,
+  Pencil, Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -43,6 +44,9 @@ export function FloorPlanManager({
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editingCaptionId, setEditingCaptionId] = useState<string | null>(null);
+  const [captionDraft, setCaptionDraft] = useState('');
+  const [savingCaptionId, setSavingCaptionId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPlans = useCallback(async () => {
@@ -126,6 +130,35 @@ export function FloorPlanManager({
     } finally {
       setDeletingId(null);
     }
+  }
+
+  /* ── Save Caption ─────────────────────────────────── */
+  async function handleSaveCaption(planId: string) {
+    setSavingCaptionId(planId);
+    try {
+      const res = await fetch(`/api/enterprises/${enterpriseId}/floor-plans`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId, altText: captionDraft }),
+      });
+      if (res.ok) {
+        setPlans((prev) =>
+          prev.map((p) => (p.id === planId ? { ...p, altText: captionDraft.trim() || null } : p)),
+        );
+        setEditingCaptionId(null);
+      } else {
+        toast.error('Erro ao salvar legenda');
+      }
+    } catch {
+      toast.error('Erro de conexão');
+    } finally {
+      setSavingCaptionId(null);
+    }
+  }
+
+  function startEditingCaption(plan: FloorPlan) {
+    setEditingCaptionId(plan.id);
+    setCaptionDraft(plan.altText || '');
   }
 
   /* ── Drag & Drop Reorder ─────────────────────────────── */
@@ -329,6 +362,13 @@ export function FloorPlanManager({
                                 >
                                   <ChevronDown className="h-3 w-3 text-white" />
                                 </button>
+                                <button
+                                  onClick={() => startEditingCaption(plan)}
+                                  className="h-6 w-6 rounded bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                                  title="Editar legenda"
+                                >
+                                  <Pencil className="h-3 w-3 text-white" />
+                                </button>
                               </div>
                               {confirmDeleteId === plan.id ? (
                                 <button
@@ -353,6 +393,44 @@ export function FloorPlanManager({
                             </div>
                           </div>
                         </div>
+                        {/* Caption bar */}
+                        {editingCaptionId === plan.id ? (
+                          <div className="flex items-center gap-1 px-2 py-1.5 border-t">
+                            <input
+                              type="text"
+                              value={captionDraft}
+                              onChange={(e) => setCaptionDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveCaption(plan.id);
+                                if (e.key === 'Escape') setEditingCaptionId(null);
+                              }}
+                              placeholder="Legenda da planta..."
+                              className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground/50"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => handleSaveCaption(plan.id)}
+                              disabled={savingCaptionId === plan.id}
+                              className="h-5 w-5 rounded flex items-center justify-center text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors disabled:opacity-50"
+                            >
+                              {savingCaptionId === plan.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                            </button>
+                            <button
+                              onClick={() => setEditingCaptionId(null)}
+                              className="h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => startEditingCaption(plan)}
+                            className="w-full text-left px-2 py-1.5 border-t text-[11px] text-muted-foreground truncate hover:text-foreground transition-colors"
+                            title={plan.altText || 'Clique para adicionar legenda'}
+                          >
+                            {plan.altText || <span className="italic opacity-50">Adicionar legenda...</span>}
+                          </button>
+                        )}
                       </div>
                     ))}
 
