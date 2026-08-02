@@ -5,10 +5,11 @@ import {
   Building2, MapPin, Search, Filter, X, ChevronLeft, ChevronRight,
   FileText, Users, Grid3X3, List, Maximize2,
   ZoomIn, ArrowLeft, Ruler, BedDouble, HardHat, Sparkles,
-  Palette, Navigation, DollarSign, Clock, CheckCircle2, Camera, CalendarDays,
+  Palette, Navigation, DollarSign, Clock, CheckCircle2, Camera, CalendarDays, LayoutGrid,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { GalleryManager } from './gallery-manager';
+import { FloorPlanManager } from './floor-plan-manager';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -104,6 +105,7 @@ export function EnterprisePanel() {
   });
 
   const [galleryEnterprise, setGalleryEnterprise] = useState<{ id: string; name: string; imageUrl: string | null } | null>(null);
+  const [floorPlanEnterprise, setFloorPlanEnterprise] = useState<{ id: string; name: string } | null>(null);
 
   if (selectedEnterprise) {
     return (
@@ -112,6 +114,7 @@ export function EnterprisePanel() {
           enterprise={selectedEnterprise}
           onBack={() => setSelectedEnterprise(null)}
           onOpenGallery={() => setGalleryEnterprise({ id: selectedEnterprise.id, name: selectedEnterprise.name, imageUrl: selectedEnterprise.imageUrl })}
+          onOpenFloorPlans={() => setFloorPlanEnterprise({ id: selectedEnterprise.id, name: selectedEnterprise.name })}
         />
         {galleryEnterprise && (
           <GalleryManager
@@ -119,6 +122,13 @@ export function EnterprisePanel() {
             enterpriseName={galleryEnterprise.name}
             currentHeroUrl={galleryEnterprise.imageUrl}
             onClose={() => { setGalleryEnterprise(null); fetchData(); }}
+          />
+        )}
+        {floorPlanEnterprise && (
+          <FloorPlanManager
+            enterpriseId={floorPlanEnterprise.id}
+            enterpriseName={floorPlanEnterprise.name}
+            onClose={() => { setFloorPlanEnterprise(null); fetchData(); }}
           />
         )}
       </>
@@ -271,7 +281,7 @@ function EnterpriseListItem({ enterprise: e, onClick }: { enterprise: Enterprise
 // ============================================================
 // Enterprise Detail — reads from cachedInfo (no AI calls)
 // ============================================================
-function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery }: { enterprise: Enterprise; onBack: () => void; onOpenGallery: () => void }) {
+function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery, onOpenFloorPlans }: { enterprise: Enterprise; onBack: () => void; onOpenGallery: () => void; onOpenFloorPlans: () => void }) {
   const [activeImgIdx, setActiveImgIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
@@ -300,6 +310,10 @@ function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery }: { enterprise
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {e._count.clients > 0 && <Badge variant="secondary" className="text-xs"><Users className="h-3 w-3 mr-1" />{e._count.clients} cliente{e._count.clients !== 1 ? 's' : ''}</Badge>}
+          <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={onOpenFloorPlans}>
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Plantas</span>
+          </Button>
           <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={onOpenGallery}>
             <Camera className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Galeria</span>
