@@ -171,25 +171,25 @@ export async function GET() {
       ? await db.$queryRaw<Array<{ month: string; count: bigint }>>(
           Prisma.sql`
             SELECT
-              TO_CHAR("created_at", 'YYYY-MM') as month,
+              TO_CHAR("createdAt", 'YYYY-MM') as month,
               COUNT(*)::bigint as count
             FROM clients
-            WHERE "created_at" >= NOW() - INTERVAL '6 months'
-            GROUP BY TO_CHAR("created_at", 'YYYY-MM')
+            WHERE "createdAt" >= NOW() - INTERVAL '6 months'
+            GROUP BY TO_CHAR("createdAt", 'YYYY-MM')
             ORDER BY month ASC
           `
         )
       : await db.$queryRaw<Array<{ month: string; count: bigint }>>(
           Prisma.sql`
             SELECT
-              TO_CHAR("created_at", 'YYYY-MM') as month,
+              TO_CHAR("createdAt", 'YYYY-MM') as month,
               COUNT(*)::bigint as count
             FROM clients
-            WHERE "created_at" >= NOW() - INTERVAL '6 months'
-              AND ("created_by" = ${currentUser.id} OR EXISTS (
-                SELECT 1 FROM client_partners cp WHERE cp."client_id" = clients.id AND cp."user_id" = ${currentUser.id}
+            WHERE "createdAt" >= NOW() - INTERVAL '6 months'
+              AND ("createdBy" = ${currentUser.id} OR EXISTS (
+                SELECT 1 FROM client_partners cp WHERE cp."clientId" = clients.id AND cp."userId" = ${currentUser.id}
               ))
-            GROUP BY TO_CHAR("created_at", 'YYYY-MM')
+            GROUP BY TO_CHAR("createdAt", 'YYYY-MM')
             ORDER BY month ASC
           `
         );
@@ -205,18 +205,18 @@ export async function GET() {
           Prisma.sql`
             SELECT COUNT(*)::bigint as count
             FROM interactions i
-            JOIN clients c ON i."client_id" = c.id
-            WHERE i."created_at" >= ${weekStart.toISOString()}
+            JOIN clients c ON i."clientId" = c.id
+            WHERE i."createdAt" >= ${weekStart.toISOString()}
           `
         )
       : await db.$queryRaw<Array<{ count: bigint }>>(
           Prisma.sql`
             SELECT COUNT(*)::bigint as count
             FROM interactions i
-            JOIN clients c ON i."client_id" = c.id
-            WHERE i."created_at" >= ${weekStart.toISOString()}
-              AND (c."created_by" = ${currentUser.id} OR EXISTS (
-                SELECT 1 FROM client_partners cp WHERE cp."client_id" = c.id AND cp."user_id" = ${currentUser.id}
+            JOIN clients c ON i."clientId" = c.id
+            WHERE i."createdAt" >= ${weekStart.toISOString()}
+              AND (c."createdBy" = ${currentUser.id} OR EXISTS (
+                SELECT 1 FROM client_partners cp WHERE cp."clientId" = c.id AND cp."userId" = ${currentUser.id}
               ))
           `
         );

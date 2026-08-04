@@ -36,8 +36,8 @@ export async function GET() {
           SELECT c."utmCampaign", COUNT(*)::bigint as count
           FROM "clients" c
           WHERE c."utmCampaign" IS NOT NULL AND c."utmCampaign" != ''
-            AND (c."created_by" = ${currentUser.id} OR EXISTS (
-              SELECT 1 FROM client_partners cp WHERE cp."client_id" = c.id AND cp."user_id" = ${currentUser.id}
+            AND (c."createdBy" = ${currentUser.id} OR EXISTS (
+              SELECT 1 FROM client_partners cp WHERE cp."clientId" = c.id AND cp."userId" = ${currentUser.id}
             ))
           GROUP BY c."utmCampaign"
           ORDER BY count DESC
