@@ -90,8 +90,8 @@ export async function GET(request: NextRequest) {
     // Access filter for raw SQL
     const accessClause = isAdmin
       ? Prisma.sql`1=1`
-      : Prisma.sql`(c."created_by" = ${userId} OR EXISTS (
-        SELECT 1 FROM client_partners cp WHERE cp."client_id" = c.id AND cp."user_id" = ${userId}
+      : Prisma.sql`(c."createdBy" = ${userId} OR EXISTS (
+        SELECT 1 FROM client_partners cp WHERE cp."clientId" = c.id AND cp."userId" = ${userId}
       ))`;
 
     // Run all queries in parallel
@@ -106,20 +106,20 @@ export async function GET(request: NextRequest) {
       // 1. New clients in period
       db.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
         SELECT COUNT(*)::bigint as count FROM clients c
-        WHERE c."created_at" >= ${startDate} AND c."created_at" <= ${endDate}
+        WHERE c."createdAt" >= ${startDate} AND c."createdAt" <= ${endDate}
           AND ${accessClause}
       `),
 
       // 2. Interactions in period
-      db.$queryRaw<Array<{ count: bigint; clientId: string; clientName: string; description: string; createdAt: string }[]>>(Prisma.sql`
-        SELECT i."client_id" as "clientId", c.name as "clientName", 
+      db.$queryRaw<Array<{ clientId: string; clientName: string; description: string; createdAt: string }>>(Prisma.sql`
+        SELECT i."clientId" as "clientId", c.name as "clientName", 
                LEFT(i.description, 80) as description, 
-               i."created_at" as "createdAt"
+               i."createdAt" as "createdAt"
         FROM interactions i
-        JOIN clients c ON i."client_id" = c.id
-        WHERE i."created_at" >= ${startDate} AND i."created_at" <= ${endDate}
+        JOIN clients c ON i."clientId" = c.id
+        WHERE i."createdAt" >= ${startDate} AND i."createdAt" <= ${endDate}
           AND ${accessClause}
-        ORDER BY i."created_at" DESC
+        ORDER BY i."createdAt" DESC
         LIMIT 50
       `),
 
@@ -131,8 +131,8 @@ export async function GET(request: NextRequest) {
           COUNT(*) FILTER (WHERE s.status = 'PENDING')::bigint as pending,
           COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::bigint as cancelled
         FROM schedules s
-        JOIN clients c ON s."client_id" = c.id
-        WHERE s."created_at" >= ${startDate} AND s."created_at" <= ${endDate}
+        JOIN clients c ON s."clientId" = c.id
+        WHERE s."createdAt" >= ${startDate} AND s."createdAt" <= ${endDate}
           AND ${accessClause}
       `),
 
@@ -143,8 +143,8 @@ export async function GET(request: NextRequest) {
           COUNT(*) FILTER (WHERE r.notified = true)::bigint as completed,
           COUNT(*) FILTER (WHERE r.notified = false)::bigint as pending
         FROM reminders r
-        JOIN clients c ON r."client_id" = c.id
-        WHERE r."created_at" >= ${startDate} AND r."created_at" <= ${endDate}
+        JOIN clients c ON r."clientId" = c.id
+        WHERE r."createdAt" >= ${startDate} AND r."createdAt" <= ${endDate}
           AND ${accessClause}
       `),
 
@@ -173,29 +173,29 @@ export async function GET(request: NextRequest) {
           )::date as date
         ) d
         LEFT JOIN (
-          SELECT "created_at"::date as date, COUNT(*) as count 
-          FROM clients WHERE "created_at" >= ${startDate} AND "created_at" <= ${endDate}
+          SELECT "createdAt"::date as date, COUNT(*) as count 
+          FROM clients WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
             AND ${accessClause}
           GROUP BY 1
         ) cc ON cc.date = d.date
         LEFT JOIN (
-          SELECT i."created_at"::date as date, COUNT(*) as count 
-          FROM interactions i JOIN clients c ON i."client_id" = c.id
-          WHERE i."created_at" >= ${startDate} AND i."created_at" <= ${endDate}
+          SELECT i."createdAt"::date as date, COUNT(*) as count 
+          FROM interactions i JOIN clients c ON i."clientId" = c.id
+          WHERE i."createdAt" >= ${startDate} AND i."createdAt" <= ${endDate}
             AND ${accessClause}
           GROUP BY 1
         ) ic ON ic.date = d.date
         LEFT JOIN (
-          SELECT s."created_at"::date as date, COUNT(*) as count 
-          FROM schedules s JOIN clients c ON s."client_id" = c.id
-          WHERE s."created_at" >= ${startDate} AND s."created_at" <= ${endDate}
+          SELECT s."createdAt"::date as date, COUNT(*) as count 
+          FROM schedules s JOIN clients c ON s."clientId" = c.id
+          WHERE s."createdAt" >= ${startDate} AND s."createdAt" <= ${endDate}
             AND ${accessClause}
           GROUP BY 1
         ) sc ON sc.date = d.date
         LEFT JOIN (
-          SELECT r."created_at"::date as date, COUNT(*) as count 
-          FROM reminders r JOIN clients c ON r."client_id" = c.id
-          WHERE r."created_at" >= ${startDate} AND r."created_at" <= ${endDate}
+          SELECT r."createdAt"::date as date, COUNT(*) as count 
+          FROM reminders r JOIN clients c ON r."clientId" = c.id
+          WHERE r."createdAt" >= ${startDate} AND r."createdAt" <= ${endDate}
             AND ${accessClause}
           GROUP BY 1
         ) rc ON rc.date = d.date
@@ -207,8 +207,8 @@ export async function GET(request: NextRequest) {
     const interactionsCountRaw = await db.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
       SELECT COUNT(*)::bigint as count
       FROM interactions i
-      JOIN clients c ON i."client_id" = c.id
-      WHERE i."created_at" >= ${startDate} AND i."created_at" <= ${endDate}
+      JOIN clients c ON i."clientId" = c.id
+      WHERE i."createdAt" >= ${startDate} AND i."createdAt" <= ${endDate}
         AND ${accessClause}
     `);
 
@@ -218,7 +218,7 @@ export async function GET(request: NextRequest) {
     const closedResults = await db.$queryRaw<Array<{ stage: string; count: bigint }>>(Prisma.sql`
       SELECT c.stage, COUNT(*)::bigint as count 
       FROM clients c
-      WHERE c."updated_at" >= ${startDate} AND c."updated_at" <= ${endDate}
+      WHERE c."updatedAt" >= ${startDate} AND c."updatedAt" <= ${endDate}
         AND c.stage IN ('FECHADO_GANHO', 'FECHADO_PERDIDO')
         AND ${accessClause}
       GROUP BY c.stage
@@ -230,10 +230,10 @@ export async function GET(request: NextRequest) {
     // Top interacted clients
     const topClientsRaw = await db.$queryRaw<Array<{ clientName: string; interactionCount: bigint; lastInteraction: string }>>(Prisma.sql`
       SELECT c.name as "clientName", COUNT(i.id)::bigint as "interactionCount", 
-             MAX(i."created_at") as "lastInteraction"
+             MAX(i."createdAt") as "lastInteraction"
       FROM interactions i
-      JOIN clients c ON i."client_id" = c.id
-      WHERE i."created_at" >= ${startDate} AND i."created_at" <= ${endDate}
+      JOIN clients c ON i."clientId" = c.id
+      WHERE i."createdAt" >= ${startDate} AND i."createdAt" <= ${endDate}
         AND ${accessClause}
       GROUP BY c.name
       ORDER BY "interactionCount" DESC

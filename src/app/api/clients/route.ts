@@ -142,8 +142,8 @@ export async function GET(request: NextRequest) {
         : await db.$queryRaw<Array<{id: string}>>`
             SELECT c.id FROM "clients" c
             WHERE
-              (c."created_by" = ${currentUser.id} OR EXISTS (
-                SELECT 1 FROM client_partners cp WHERE cp."client_id" = c.id AND cp."user_id" = ${currentUser.id}
+              (c."createdBy" = ${currentUser.id} OR EXISTS (
+                SELECT 1 FROM client_partners cp WHERE cp."clientId" = c.id AND cp."userId" = ${currentUser.id}
               ))
               AND CASE
                 WHEN c."lastInteractionAt" IS NOT NULL
