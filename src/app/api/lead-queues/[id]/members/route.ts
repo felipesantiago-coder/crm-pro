@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 
 // GET — list members of a queue
 export async function GET(
@@ -47,28 +48,40 @@ export async function POST(
       return NextResponse.json({ error: 'Usuário é obrigatório' }, { status: 400 });
     }
 
-    // Get current max order
-    const maxOrder = await db.leadQueueMember.aggregate({
-      where: { queueId: id },
-      _max: { order: true },
-    });
+    // FIX: validate user exists
+    const userExists = await db.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!userExists) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 400 });
+    }
 
-    const member = await db.leadQueueMember.create({
-      data: {
-        queueId: id,
-        userId,
-        order: (maxOrder._max.order ?? -1) + 1,
-      },
-      include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
+    // FIX: wrap maxOrder read + create in transaction to prevent race condition
+    const member = await db.$transaction(async (tx) => {
+      const maxOrder = await tx.leadQueueMember.aggregate({
+        where: { queueId: id },
+        _max: { order: true },
+      });
+      return tx.leadQueueMember.create({
+        data: {
+          queueId: id,
+          userId,
+          order: (maxOrder._max.order ?? -1) + 1,
+        },
+        include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
+      });
     });
 
     return NextResponse.json(member, { status: 201 });
   } catch (error: unknown) {
     console.error('[Queue Members] Erro:', error);
-    const msg = error instanceof Error && error.message.includes('Unique') 
-      ? 'Este usuário já está na fila' 
-      : 'Erro interno';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        return NextResponse.json({ error: 'Este usuário já está na fila' }, { status: 409 });
+      }
+      if (error.code === 'P2003') {
+        return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 400 });
+      }
+    }
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
 
@@ -95,19 +108,23 @@ export async function PATCH(
       where: { id: memberId, queueId: id },
       data: {
         ...(isActive !== undefined ? { isActive } : {}),
-        ...(order !== undefined ? { order } : {}),
+        ...(order !== undefined ? { order: typeof order === 'number' ? order : 0 } : {}),
       },
       include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
     });
 
     return NextResponse.json(member);
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      return NextResponse.json({ error: 'Membro não encontrado' }, { status: 404 });
+    }
     console.error('[Queue Member] Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
 
 // DELETE — remove member from queue (memberId in request body)
+// NOTE: prefer using the /[memberId] sub-route instead (better REST)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -129,6 +146,9 @@ export async function DELETE(
     await db.leadQueueMember.delete({ where: { id: memberId, queueId: id } });
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      return NextResponse.json({ error: 'Membro não encontrado' }, { status: 404 });
+    }
     console.error('[Queue Member] Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }

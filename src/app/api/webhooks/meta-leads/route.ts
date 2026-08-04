@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import crypto from 'crypto';
 import { notifyNewLead } from '@/lib/telegram';
+import { assignLeadToUser } from '@/lib/lead-queue';
 
 // ============================================================
 // Meta Lead Ads Webhook
@@ -347,41 +348,43 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // 6. Assign via lead queue (round-robin distribution, same as landing page)
-        let assignedUser: { assigned: boolean; userId: string; userName: string; userPhone?: string } | null = null;
-        let creatorId: string | undefined;
-
-        try {
-          const assignRes = await fetch(
-            `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/lead-queues/assign`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                source: `meta_ads:${campaignName || adName}`,
-              }),
-            },
-          );
-          if (assignRes.ok) {
-            assignedUser = await assignRes.json();
-            if (assignedUser?.assigned) {
-              creatorId = assignedUser.userId;
-            }
-          }
-        } catch { /* queue assignment failed, fall through to admin fallback */ }
-
-        // Fallback: first admin user
-        if (!creatorId) {
-          try {
-            const admin = await db.user.findFirst({
-              where: { role: 'ADMIN' },
-              orderBy: { createdAt: 'asc' },
-            });
-            creatorId = admin?.id;
-          } catch {}
+        // 5. Check for duplicate — search notes for leadgen_id (idempotency)
+        // FIX: prevents duplicate clients when Meta retries the webhook concurrently
+        const existingByLeadgenId = await db.client.findFirst({
+          where: { notes: { contains: `Lead ID: ${leadgenId}` } },
+          select: { id: true },
+        });
+        if (existingByLeadgenId) {
+          results.push({ success: true, clientName: 'dedup', reason: 'already_processed', leadId: leadgenId });
+          continue;
         }
 
-        // 7. Criar o cliente
+        // 6. Find a user for createdBy (required FK)
+        let creatorId: string | undefined;
+        try {
+          const admin = await db.user.findFirst({
+            where: { role: 'ADMIN' },
+            select: { id: true },
+            orderBy: { createdAt: 'asc' },
+          });
+          creatorId = admin?.id;
+          if (!creatorId) {
+            const anyUser = await db.user.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
+            creatorId = anyUser?.id;
+          }
+          if (!creatorId) {
+            console.error('[Meta Webhook] Nenhum usuário no sistema. Lead perdido:', name);
+            results.push({ success: false, clientName: name, reason: 'no_user', leadId: leadgenId });
+            continue;
+          }
+        } catch {
+          console.error('[Meta Webhook] Erro ao buscar usuário');
+          results.push({ success: false, clientName: name, reason: 'no_user', leadId: leadgenId });
+          continue;
+        }
+
+        // 7. Create client FIRST (before queue assignment)
+        // FIX: if creation fails, we don't waste a queue turn
         try {
           const newClient = await db.client.create({
             data: {
@@ -390,13 +393,13 @@ export async function POST(request: NextRequest) {
               phone: phone || undefined,
               region: region || undefined,
               stage: 'LEAD',
-              updatePeriod: 1, // Lead novo — acompanhar diariamente
-              createdBy: creatorId || 'system',
+              updatePeriod: 1,
+              createdBy: creatorId,
               notes: `[Meta Ads] Lead recebido automaticamente.\nAnúncio: ${adName}${campaignName ? `\nCampanha: ${campaignName}` : ''}\nFormulário: ${formName}\nLead ID: ${leadgenId}`,
             },
           });
 
-          // Criar interação inicial
+          // Create initial interaction
           await db.interaction.create({
             data: {
               clientId: newClient.id,
@@ -404,45 +407,46 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          // Send notifications (fire-and-forget)
-          if (creatorId) {
-            db.user.findUnique({
-              where: { id: creatorId },
-              select: { telegramChatId: true },
-            }).then((user) => {
-              const leadData = {
-                leadName: newClient.name,
-                leadPhone: newClient.phone || '',
-                leadEmail: newClient.email || '',
-                enterpriseName: undefined as string | undefined,
-                utmCampaign: campaignName || null,
-                utmSource: 'meta_ads',
-                slug: undefined as string | undefined,
-                customAnswers: undefined as Record<string, string> | undefined,
-              };
-
-              if (user?.telegramChatId) {
-                notifyNewLead(user.telegramChatId, leadData).catch((err) =>
-                  console.warn('[Meta Webhook] Falha na notificação Telegram:', err),
-                );
-              }
-
-            }).catch(() => { /* silent */ });
+          // 8. Assign via queue (direct function call, NOT HTTP)
+          // FIX: replaced fragile self-referential HTTP call with direct function
+          let assignedUserId: string | undefined;
+          try {
+            const assignResult = await assignLeadToUser({
+              leadId: newClient.id,
+              source: `meta_ads:${campaignName || adName}`,
+            });
+            if (assignResult.assigned && assignResult.userId) {
+              assignedUserId = assignResult.userId;
+              // Update client's createdBy to the assigned user
+              await db.client.update({ where: { id: newClient.id }, data: { createdBy: assignedUserId } }).catch(() => {});
+            }
+          } catch (queueErr) {
+            console.error(`[Meta Webhook] Falha na atribuição de fila (lead salvo):`, queueErr);
           }
 
-          results.push({
-            success: true,
-            clientName: name,
-            leadId: leadgenId,
-          });
+          // 9. Send Telegram notification
+          const notifyId = assignedUserId || creatorId;
+          if (notifyId) {
+            db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true } }).then((user) => {
+              if (user?.telegramChatId) {
+                notifyNewLead(user.telegramChatId, {
+                  leadName: newClient.name,
+                  leadPhone: newClient.phone || '',
+                  leadEmail: newClient.email || '',
+                  enterpriseName: undefined,
+                  utmCampaign: campaignName || null,
+                  utmSource: 'meta_ads',
+                  slug: undefined,
+                  customAnswers: undefined,
+                }).catch((err) => console.warn('[Meta Webhook] Falha na notificação:', err));
+              }
+            }).catch(() => {});
+          }
+
+          results.push({ success: true, clientName: name, leadId: leadgenId });
         } catch (createError) {
           console.error(`[Meta Webhook] Erro ao criar cliente ${name}:`, createError);
-          results.push({
-            success: false,
-            clientName: name,
-            reason: 'create_failed',
-            leadId: leadgenId,
-          });
+          results.push({ success: false, clientName: name, reason: 'create_failed', leadId: leadgenId });
         }
       }
     }
