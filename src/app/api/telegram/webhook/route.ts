@@ -147,15 +147,26 @@ async function sendTelegramReply(
   text: string,
 ): Promise<void> {
   try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         chat_id: chatId,
         text,
         parse_mode: 'HTML',
       }),
     });
+
+    clearTimeout(timeoutId);
+
+    const data = await res.json();
+    if (!data.ok) {
+      console.error(`[Telegram Webhook] Reply failed: ${data.description}`, { chatId });
+    }
   } catch (error) {
     console.error('[Telegram Webhook] Reply failed:', error);
   }

@@ -98,12 +98,12 @@ export async function POST(request: NextRequest) {
       }
 
       // Send Telegram notification for repeat lead
+      // FIX: include assignedUserName so the agent knows it's their turn
       if (assignedUser?.assigned && assignedUser.userId) {
-        try {
-          const notifyUser = await db.user.findUnique({
-            where: { id: assignedUser.userId },
-            select: { telegramChatId: true },
-          });
+        db.user.findUnique({
+          where: { id: assignedUser.userId },
+          select: { telegramChatId: true },
+        }).then((notifyUser) => {
           if (notifyUser?.telegramChatId) {
             notifyNewLead(notifyUser.telegramChatId, {
               leadName: existingClient.name,
@@ -113,10 +113,17 @@ export async function POST(request: NextRequest) {
               utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
               utmSource: typeof utmSource === 'string' ? utmSource : null,
               slug: slug || undefined,
+              assignedUserName: assignedUser.userName,
               customAnswers: undefined,
-            }).catch(() => {});
+            }).catch((err) => console.warn('[Public Lead] Falha na notificação (lead existente):', err));
+          } else {
+            // FIX: Log when assigned user has no Telegram configured — admin should know
+            console.warn(`[Public Lead] Usuário ${assignedUser.userName} (${assignedUser.userId}) atribuído mas sem Telegram configurado. Lead ${existingClient.id} sem notificação.`);
           }
-        } catch { /* non-critical */ }
+        }).catch(() => { /* non-critical: DB lookup failed, lead is still saved */ });
+      } else {
+        // FIX: Log when no queue was available — admin should know leads are coming without notification
+        console.warn(`[Public Lead] Lead existente ${existingClient.id} sem fila disponível. Nenhuma notificação enviada.`);
       }
 
       return NextResponse.json({
@@ -203,12 +210,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // ── Send Telegram notification (fire-and-forget) ──
+    // ── Send Telegram notification ──
+    // FIX: Pass assignedUserName so the agent knows it's their turn.
+    // FIX: Log when no Telegram is configured so admin can diagnose.
     const notifyUserId = assignedUser?.assigned ? assignedUser.userId : createdByUserId;
     if (notifyUserId) {
       db.user.findUnique({
         where: { id: notifyUserId },
-        select: { telegramChatId: true },
+        select: { telegramChatId: true, name: true },
       }).then((user) => {
         if (user?.telegramChatId) {
           const leadData = {
@@ -219,15 +228,21 @@ export async function POST(request: NextRequest) {
             utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
             utmSource: typeof utmSource === 'string' ? utmSource : null,
             slug: slug || undefined,
+            assignedUserName: assignedUser?.assigned ? assignedUser.userName : undefined,
             customAnswers: (customAnswers && typeof customAnswers === 'object')
               ? Object.fromEntries(
                   Object.entries(customAnswers).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''),
                 ) as Record<string, string>
               : undefined,
           };
-          notifyNewLead(user.telegramChatId, leadData).catch((err) => console.warn('[Public Lead] Falha na notificação:', err));
+          notifyNewLead(user.telegramChatId, leadData).catch((err) =>
+            console.warn('[Public Lead] Falha na notificação:', err)
+          );
+        } else {
+          // FIX: Log when user has no Telegram — critical for ops visibility
+          console.warn(`[Public Lead] Usuário ${user?.name || notifyUserId} atribuído mas sem Telegram configurado. Lead ${client.id} sem notificação.`);
         }
-      }).catch(() => { /* silent */ });
+      }).catch(() => { /* non-critical: DB lookup failed, lead is still saved */ });
     }
 
     return NextResponse.json({
