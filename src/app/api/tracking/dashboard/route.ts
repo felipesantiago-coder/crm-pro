@@ -21,7 +21,6 @@ export async function GET(request: Request) {
 
     const startDate = new Date();
     if (period === 0) {
-      // "today" — start from midnight UTC (close enough for BRT, 3h diff)
       startDate.setUTCHours(0, 0, 0, 0);
     } else {
       startDate.setDate(startDate.getDate() - period);
@@ -39,6 +38,12 @@ export async function GET(request: Request) {
       byContent,
       byEventType,
       topPages,
+      topCountries,
+      topCities,
+      deviceBreakdown,
+      hourlyData,
+      recentLeads,
+      referrerBreakdown,
       metaPixelLeads,
       metaCrmLeads,
       metaMatched,
@@ -50,6 +55,7 @@ export async function GET(request: Request) {
           totalPageviews: bigint;
           totalEvents: bigint;
           uniqueLeads: bigint;
+          uniqueSessions: bigint;
         }>
       >(
         Prisma.sql`
@@ -57,7 +63,8 @@ export async function GET(request: Request) {
             COUNT(DISTINCT e."visitorId")::bigint          AS "totalVisitors",
             COUNT(*) FILTER (WHERE e."eventType" = 'pageview')::bigint AS "totalPageviews",
             COUNT(*)::bigint                                 AS "totalEvents",
-            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS "uniqueLeads"
+            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS "uniqueLeads",
+            COUNT(DISTINCT e."sessionId")::bigint             AS "uniqueSessions"
           FROM tracking_events e
           LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
           WHERE e."createdAt" >= ${startDate}::timestamptz
@@ -65,7 +72,7 @@ export async function GET(request: Request) {
         `,
       ),
 
-      // ── 2. Bounced visitors (exactly 1 pageview, no other events) ──
+      // ── 2. Bounced visitors ──
       db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(*)::bigint AS count
@@ -107,7 +114,7 @@ export async function GET(request: Request) {
         `,
       ),
 
-      // ── 4. Funnel: pageview visitors → engaged (>1 event) → lead visitors ──
+      // ── 4. Funnel ──
       db.$queryRaw<
         Array<{ stage: string; count: bigint }>
       >(
@@ -140,76 +147,61 @@ export async function GET(request: Request) {
 
       // ── 5. By campaign ──
       db.$queryRaw<
-        Array<{
-          campaign: string;
-          visitors: bigint;
-          leads: bigint;
-        }>
+        Array<{ campaign: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
           SELECT
-            COALESCE(e."utmCampaign", '(none)') AS campaign,
+            COALESCE(e."utmCampaign", '(sem campanha)') AS campaign,
             COUNT(DISTINCT e."visitorId")::bigint AS visitors,
             COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS leads
           FROM tracking_events e
           LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
           WHERE e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY COALESCE(e."utmCampaign", '(none)')
+          GROUP BY COALESCE(e."utmCampaign", '(sem campanha)')
           ORDER BY visitors DESC
         `,
       ),
 
       // ── 6. By source ──
       db.$queryRaw<
-        Array<{
-          source: string;
-          visitors: bigint;
-          leads: bigint;
-        }>
+        Array<{ source: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
           SELECT
-            COALESCE(e."utmSource", '(none)') AS source,
+            COALESCE(e."utmSource", '(orgânico/direto)') AS source,
             COUNT(DISTINCT e."visitorId")::bigint AS visitors,
             COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS leads
           FROM tracking_events e
           LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
           WHERE e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY COALESCE(e."utmSource", '(none)')
+          GROUP BY COALESCE(e."utmSource", '(orgânico/direto)')
           ORDER BY visitors DESC
         `,
       ),
 
       // ── 7. By UTM content (ad creative) ──
       db.$queryRaw<
-        Array<{
-          content: string;
-          visitors: bigint;
-          leads: bigint;
-        }>
+        Array<{ content: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
           SELECT
-            COALESCE(e."utmContent", '(none)') AS content,
+            COALESCE(e."utmContent", '(sem conteúdo)') AS content,
             COUNT(DISTINCT e."visitorId")::bigint AS visitors,
             COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS leads
           FROM tracking_events e
           LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
           WHERE e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY COALESCE(e."utmContent", '(none)')
+          GROUP BY COALESCE(e."utmContent", '(sem conteúdo)')
           ORDER BY visitors DESC
         `,
       ),
 
       // ── 8. By event type ──
       db.$queryRaw<
-        Array<{
-          eventType: string;
-          count: bigint;
-        }>
+        Array<{ eventType: string; count: bigint }>
       >(
         Prisma.sql`
           SELECT
@@ -225,15 +217,11 @@ export async function GET(request: Request) {
 
       // ── 9. Top pages ──
       db.$queryRaw<
-        Array<{
-          url: string;
-          views: bigint;
-          leads: bigint;
-        }>
+        Array<{ url: string; views: bigint; leads: bigint }>
       >(
         Prisma.sql`
           SELECT
-            COALESCE(e."pageUrl", '(unknown)') AS url,
+            COALESCE(e."pageUrl", '(desconhecida)') AS url,
             COUNT(*)::bigint AS views,
             COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS leads
           FROM tracking_events e
@@ -241,13 +229,174 @@ export async function GET(request: Request) {
           WHERE e."eventType" = 'pageview'
             AND e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY COALESCE(e."pageUrl", '(unknown)')
+          GROUP BY COALESCE(e."pageUrl", '(desconhecida)')
           ORDER BY views DESC
           LIMIT 20
         `,
       ),
 
-      // ── 10a. Meta discrepancy: pixel-tracked leads (form_submit + lead from Meta campaigns) ──
+      // ── 10. Top countries ──
+      db.$queryRaw<
+        Array<{ country: string; visitors: bigint; leads: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            COALESCE(v."country", '(desconhecido)') AS country,
+            COUNT(DISTINCT v."visitorId")::bigint AS visitors,
+            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN v."visitorId" END)::bigint AS leads
+          FROM tracking_visitors v
+          WHERE v."lastSeenAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR v."siteId" = ${siteId})
+          GROUP BY COALESCE(v."country", '(desconhecido)')
+          ORDER BY visitors DESC
+          LIMIT 10
+        `,
+      ),
+
+      // ── 11. Top cities ──
+      db.$queryRaw<
+        Array<{ city: string; country: string; visitors: bigint; leads: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            COALESCE(v."city", '(desconhecido)') AS city,
+            COALESCE(v."country", '') AS country,
+            COUNT(DISTINCT v."visitorId")::bigint AS visitors,
+            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN v."visitorId" END)::bigint AS leads
+          FROM tracking_visitors v
+          WHERE v."lastSeenAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR v."siteId" = ${siteId})
+          GROUP BY COALESCE(v."city", '(desconhecido)'), COALESCE(v."country", '')
+          ORDER BY visitors DESC
+          LIMIT 10
+        `,
+      ),
+
+      // ── 12. Device breakdown ──
+      db.$queryRaw<
+        Array<{ device: string; visitors: bigint; leads: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            CASE
+              WHEN v."userAgent" IS NULL THEN 'Outro'
+              WHEN v."userAgent" ~* 'Mobile|Android.*Mobile|iPhone|iPod' THEN 'Mobile'
+              WHEN v."userAgent" ~* 'iPad|Android(?!.*Mobile)|Tablet' THEN 'Tablet'
+              ELSE 'Desktop'
+            END AS device,
+            COUNT(DISTINCT v."visitorId")::bigint AS visitors,
+            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN v."visitorId" END)::bigint AS leads
+          FROM tracking_visitors v
+          WHERE v."lastSeenAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR v."siteId" = ${siteId})
+          GROUP BY CASE
+            WHEN v."userAgent" IS NULL THEN 'Outro'
+            WHEN v."userAgent" ~* 'Mobile|Android.*Mobile|iPhone|iPod' THEN 'Mobile'
+            WHEN v."userAgent" ~* 'iPad|Android(?!.*Mobile)|Tablet' THEN 'Tablet'
+            ELSE 'Desktop'
+          END
+          ORDER BY visitors DESC
+        `,
+      ),
+
+      // ── 13. Hourly distribution ──
+      db.$queryRaw<
+        Array<{ hour: number; visitors: bigint; events: bigint; leads: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            EXTRACT(HOUR FROM e."createdAt")::int AS hour,
+            COUNT(DISTINCT e."visitorId")::bigint AS visitors,
+            COUNT(*)::bigint AS events,
+            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS leads
+          FROM tracking_events e
+          LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
+          WHERE e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY EXTRACT(HOUR FROM e."createdAt")
+          ORDER BY hour
+        `,
+      ),
+
+      // ── 14. Recent converted leads (last 20) ──
+      db.$queryRaw<
+        Array<{
+          visitorId: string;
+          leadId: string;
+          country: string | null;
+          city: string | null;
+          utmSource: string | null;
+          utmCampaign: string | null;
+          utmContent: string | null;
+          pageUrl: string | null;
+          convertedAt: string;
+          clientName: string | null;
+        }>
+      >(
+        Prisma.sql`
+          SELECT DISTINCT ON (v."visitorId")
+            v."visitorId",
+            v."leadId",
+            v."country",
+            v."city",
+            e."utmSource",
+            e."utmCampaign",
+            e."utmContent",
+            e."pageUrl",
+            e."createdAt" AS "convertedAt",
+            c.name AS "clientName"
+          FROM tracking_visitors v
+          JOIN tracking_events e ON e."visitorId" = v."visitorId"
+          LEFT JOIN clients c ON c.id = v."leadId"
+          WHERE v."leadId" IS NOT NULL
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          ORDER BY v."visitorId", e."createdAt" DESC
+          LIMIT 20
+        `,
+      ),
+
+      // ── 15. Referrer breakdown ──
+      db.$queryRaw<
+        Array<{ referrer: string; visitors: bigint; leads: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            CASE
+              WHEN e."referrer" IS NULL OR e."referrer" = '' THEN '(direto)'
+              WHEN e."referrer" ~* 'facebook\.com|fb\.com' THEN 'Facebook'
+              WHEN e."referrer" ~* 'instagram\.com' THEN 'Instagram'
+              WHEN e."referrer" ~* 'google\.com' THEN 'Google'
+              WHEN e."referrer" ~* 'whatsapp\.com|wa\.me' THEN 'WhatsApp'
+              WHEN e."referrer" ~* 'linkedin\.com' THEN 'LinkedIn'
+              WHEN e."referrer" ~* 'tiktok\.com' THEN 'TikTok'
+              WHEN e."referrer" ~* 'youtube\.com' THEN 'YouTube'
+              ELSE SUBSTRING(e."referrer" FROM 'https?://([^/]+)')
+            END AS referrer,
+            COUNT(DISTINCT e."visitorId")::bigint AS visitors,
+            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS leads
+          FROM tracking_events e
+          LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
+          WHERE e."eventType" = 'pageview'
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY CASE
+            WHEN e."referrer" IS NULL OR e."referrer" = '' THEN '(direto)'
+            WHEN e."referrer" ~* 'facebook\.com|fb\.com' THEN 'Facebook'
+            WHEN e."referrer" ~* 'instagram\.com' THEN 'Instagram'
+            WHEN e."referrer" ~* 'google\.com' THEN 'Google'
+            WHEN e."referrer" ~* 'whatsapp\.com|wa\.me' THEN 'WhatsApp'
+            WHEN e."referrer" ~* 'linkedin\.com' THEN 'LinkedIn'
+            WHEN e."referrer" ~* 'tiktok\.com' THEN 'TikTok'
+            WHEN e."referrer" ~* 'youtube\.com' THEN 'YouTube'
+            ELSE SUBSTRING(e."referrer" FROM 'https?://([^/]+)')
+          END
+          ORDER BY visitors DESC
+          LIMIT 10
+        `,
+      ),
+
+      // ── 16a. Meta discrepancy: pixel-tracked leads ──
       db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
@@ -258,7 +407,7 @@ export async function GET(request: Request) {
         `,
       ),
 
-      // ── 10b. Meta discrepancy: CRM leads tagged [Meta Ads] ──
+      // ── 16b. Meta discrepancy: CRM leads tagged [Meta Ads] ──
       db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(*)::bigint AS count
@@ -268,7 +417,7 @@ export async function GET(request: Request) {
         `,
       ),
 
-      // ── 10c. Meta discrepancy: matched (pixel lead visitors with CRM [Meta Ads] entry) ──
+      // ── 16c. Meta discrepancy: matched ──
       db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
@@ -287,13 +436,15 @@ export async function GET(request: Request) {
     const totalPageviews = Number(kpis[0]?.totalPageviews ?? 0);
     const totalEvents = Number(kpis[0]?.totalEvents ?? 0);
     const uniqueLeads = Number(kpis[0]?.uniqueLeads ?? 0);
+    const uniqueSessions = Number(kpis[0]?.uniqueSessions ?? 0);
     const bounced = Number(bouncedVisitors[0]?.count ?? 0);
 
     const conversionRate = totalVisitors > 0 ? (uniqueLeads / totalVisitors) * 100 : 0;
     const avgEventsPerVisitor = totalVisitors > 0 ? totalEvents / totalVisitors : 0;
     const bounceRate = totalVisitors > 0 ? (bounced / totalVisitors) * 100 : 0;
+    const pageviewsPerSession = uniqueSessions > 0 ? totalPageviews / uniqueSessions : 0;
 
-    // ── Assemble funnel with rates ──
+    // ── Funnel ──
     const pageviewCount = Number(funnelData.find((f) => f.stage === 'pageview')?.count ?? 0);
     const engagementCount = Number(funnelData.find((f) => f.stage === 'engagement')?.count ?? 0);
     const leadCount = Number(funnelData.find((f) => f.stage === 'lead')?.count ?? 0);
@@ -312,7 +463,7 @@ export async function GET(request: Request) {
       },
     ];
 
-    // ── Assemble byCampaign with conversionRate ──
+    // ── By campaign ──
     const campaignRows = byCampaign.map((r) => ({
       campaign: r.campaign,
       visitors: Number(r.visitors),
@@ -320,14 +471,15 @@ export async function GET(request: Request) {
       conversionRate: Number(r.visitors) > 0 ? (Number(r.leads) / Number(r.visitors)) * 100 : 0,
     }));
 
-    // ── Assemble bySource ──
+    // ── By source ──
     const sourceRows = bySource.map((r) => ({
       source: r.source,
       visitors: Number(r.visitors),
       leads: Number(r.leads),
+      conversionRate: Number(r.visitors) > 0 ? (Number(r.leads) / Number(r.visitors)) * 100 : 0,
     }));
 
-    // ── Assemble byContent with conversionRate ──
+    // ── By content ──
     const contentRows = byContent.map((r) => ({
       content: r.content,
       visitors: Number(r.visitors),
@@ -335,16 +487,68 @@ export async function GET(request: Request) {
       conversionRate: Number(r.visitors) > 0 ? (Number(r.leads) / Number(r.visitors)) * 100 : 0,
     }));
 
-    // ── Assemble byEventType ──
+    // ── By event type ──
     const eventTypeRows = byEventType.map((r) => ({
       eventType: r.eventType,
       count: Number(r.count),
     }));
 
-    // ── Assemble topPages ──
+    // ── Top pages ──
     const pageRows = topPages.map((r) => ({
       url: r.url,
       views: Number(r.views),
+      leads: Number(r.leads),
+      conversionRate: Number(r.views) > 0 ? (Number(r.leads) / Number(r.views)) * 100 : 0,
+    }));
+
+    // ── Top countries ──
+    const countryRows = topCountries.map((r) => ({
+      country: r.country,
+      visitors: Number(r.visitors),
+      leads: Number(r.leads),
+    }));
+
+    // ── Top cities ──
+    const cityRows = topCities.map((r) => ({
+      city: r.city,
+      country: r.country,
+      visitors: Number(r.visitors),
+      leads: Number(r.leads),
+    }));
+
+    // ── Device breakdown ──
+    const deviceRows = deviceBreakdown.map((r) => ({
+      device: r.device,
+      visitors: Number(r.visitors),
+      leads: Number(r.leads),
+    }));
+
+    // ── Hourly data ──
+    const hourlyRows = hourlyData.map((r) => ({
+      hour: Number(r.hour),
+      visitors: Number(r.visitors),
+      events: Number(r.events),
+      leads: Number(r.leads),
+    }));
+
+    // ── Recent leads ──
+    const leadRows = recentLeads.map((r) => ({
+      visitorId: r.visitorId,
+      leadId: r.leadId,
+      country: r.country,
+      city: r.city,
+      utmSource: r.utmSource,
+      utmCampaign: r.utmCampaign,
+      utmContent: r.utmContent,
+      pageUrl: r.pageUrl,
+      convertedAt: r.convertedAt,
+      clientName: r.clientName,
+    }));
+
+    // ── Referrer breakdown ──
+    const referrerRows = referrerBreakdown.map((r) => ({
+      referrer: r.referrer,
+      visitors: Number(r.visitors),
       leads: Number(r.leads),
     }));
 
@@ -360,9 +564,11 @@ export async function GET(request: Request) {
         totalPageviews,
         totalEvents,
         uniqueLeads,
+        uniqueSessions,
         conversionRate: round2(conversionRate),
         avgEventsPerVisitor: round2(avgEventsPerVisitor),
         bounceRate: round2(bounceRate),
+        pageviewsPerSession: round2(pageviewsPerSession),
       },
       chartData: chartData.map((r) => ({
         date: r.date,
@@ -377,6 +583,12 @@ export async function GET(request: Request) {
       byContent: contentRows,
       byEventType: eventTypeRows,
       topPages: pageRows,
+      topCountries: countryRows,
+      topCities: cityRows,
+      deviceBreakdown: deviceRows,
+      hourlyData: hourlyRows,
+      recentLeads: leadRows,
+      referrerBreakdown: referrerRows,
       metaDiscrepancy: {
         pixelLeads,
         crmMetaLeads,
@@ -392,7 +604,6 @@ export async function GET(request: Request) {
   }
 }
 
-/** Round to 2 decimal places */
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
