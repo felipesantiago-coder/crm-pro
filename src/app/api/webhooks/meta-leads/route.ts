@@ -418,6 +418,7 @@ export async function POST(request: NextRequest) {
           // 8. Assign via queue (direct function call, NOT HTTP)
           // FIX: replaced fragile self-referential HTTP call with direct function
           let assignedUserId: string | undefined;
+          let assignedUserName: string | undefined;
           try {
             const assignResult = await assignLeadToUser({
               leadId: newClient.id,
@@ -425,6 +426,7 @@ export async function POST(request: NextRequest) {
             });
             if (assignResult.assigned && assignResult.userId) {
               assignedUserId = assignResult.userId;
+              assignedUserName = assignResult.userName;
               // Update client's createdBy to the assigned user
               await db.client.update({
                 where: { id: newClient.id },
@@ -441,9 +443,10 @@ export async function POST(request: NextRequest) {
           }
 
           // 9. Send Telegram notification
+          // FIX: Pass assignedUserName so the agent knows it's their turn
           const notifyId = assignedUserId || creatorId;
           if (notifyId) {
-            db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true } }).then((user) => {
+            db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } }).then((user) => {
               if (user?.telegramChatId) {
                 notifyNewLead(user.telegramChatId, {
                   leadName: newClient.name,
@@ -453,8 +456,12 @@ export async function POST(request: NextRequest) {
                   utmCampaign: campaignName || null,
                   utmSource: 'meta_ads',
                   slug: undefined,
+                  assignedUserName: assignedUserName,
                   customAnswers: undefined,
                 }).catch((err) => console.warn('[Meta Webhook] Falha na notificação:', err));
+              } else {
+                // FIX: Log when user has no Telegram configured
+                console.warn(`[Meta Webhook] Usuário ${user?.name || notifyId} atribuído mas sem Telegram. Lead ${newClient.id} (${name}) sem notificação.`);
               }
             }).catch(() => {});
           }

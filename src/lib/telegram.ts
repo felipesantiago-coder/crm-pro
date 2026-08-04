@@ -12,6 +12,9 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
+// Telegram message size limit
+const MAX_MESSAGE_LENGTH = 4096;
+
 // ── Types ─────────────────────────────────────────────────────
 
 interface TelegramMessageResponse {
@@ -38,26 +41,46 @@ async function sendTelegramMessage(
     return false;
   }
 
+  if (!chatId) {
+    console.warn('[Telegram] Empty chatId — skipping notification');
+    return false;
+  }
+
+  // Truncate message if it exceeds Telegram's limit
+  const finalText = text.length > MAX_MESSAGE_LENGTH
+    ? text.slice(0, MAX_MESSAGE_LENGTH - 50) + '\n\n⚠️ [Mensagem truncada]'
+    : text;
+
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
     const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         chat_id: chatId,
-        text,
+        text: finalText,
         parse_mode: options?.parseMode || 'HTML',
         disable_web_page_preview: options?.disableWebPagePreview ?? true,
       }),
     });
 
+    clearTimeout(timeoutId);
+
     const data: TelegramMessageResponse = await res.json();
     if (!data.ok) {
-      console.error(`[Telegram] sendMessage failed: ${data.description}`, { chatId });
+      console.error(`[Telegram] sendMessage failed (chatId=${chatId}): ${data.description}`);
       return false;
     }
     return true;
   } catch (error) {
-    console.error('[Telegram] Error sending message:', error);
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      console.error(`[Telegram] sendMessage timed out (chatId=${chatId})`);
+    } else {
+      console.error('[Telegram] Error sending message:', error);
+    }
     return false;
   }
 }
@@ -83,32 +106,46 @@ export async function notifyNewLead(
   telegramChatId: string,
   data: LeadNotificationData,
 ): Promise<boolean> {
+  // Assigned agent line
+  const assignedLine = data.assignedUserName
+    ? `\n👤 <b>Para:</b> ${escapeHtml(data.assignedUserName)}`
+    : '';
+
+  // Source/slug line
+  const sourceLine = data.slug
+    ? `\n🔗 <b>Origem:</b> Landing ${escapeHtml(data.slug)}`
+    : data.utmSource
+      ? `\n📡 <b>Fonte:</b> ${escapeHtml(data.utmSource)}`
+      : '';
+
   const campaignLine = data.utmCampaign
-    ? `\n📊 <b>Campanha:</b> ${escapeHtml(data.utmCampaign)}${data.utmSource ? ` (${escapeHtml(data.utmSource)})` : ''}`
+    ? `\n📊 <b>Campanha:</b> ${escapeHtml(data.utmCampaign)}`
     : '';
 
   const enterpriseLine = data.enterpriseName
     ? `\n🏗️ <b>Empreendimento:</b> ${escapeHtml(data.enterpriseName)}`
     : '';
 
-  // Build custom answers block
+  // Build custom answers block (limit to prevent overflow)
   let answersBlock = '';
   if (data.customAnswers && Object.keys(data.customAnswers).length > 0) {
     const lines = Object.entries(data.customAnswers)
       .filter(([, v]) => v && String(v).trim() !== '')
-      .map(([k, v]) => `  • <b>${escapeHtml(k)}:</b> ${escapeHtml(String(v))}`)
+      .slice(0, 10) // Max 10 custom fields in notification
+      .map(([k, v]) => `  • <b>${escapeHtml(k.slice(0, 50))}:</b> ${escapeHtml(String(v).slice(0, 200))}`)
       .join('\n');
     if (lines) {
-      answersBlock = `\n\n📋 <b>Respostas do formulário:</b>\n${lines}`;
+      answersBlock = '\n\n📋 <b>Respostas do formulário:</b>\n' + lines;
     }
   }
 
   const text =
-    `🚨 <b>Novo Lead Recebido!</b>\n\n` +
+    `🚨 <b>Novo Lead Recebido!</b>${assignedLine}\n\n` +
     `👤 <b>Nome:</b> ${escapeHtml(data.leadName)}\n` +
-    `📞 <b>Telefone:</b> ${escapeHtml(data.leadPhone)}\n` +
+    `📞 <b>Telefone:</b> <a href="tel:${escapeHtml(data.leadPhone)}">${escapeHtml(data.leadPhone)}</a>\n` +
     `📧 <b>E-mail:</b> ${escapeHtml(data.leadEmail)}` +
     enterpriseLine +
+    sourceLine +
     campaignLine +
     answersBlock +
     `\n\n⏰ ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`;
@@ -146,7 +183,14 @@ export async function verifyChatId(chatId: string): Promise<{ ok: boolean; name?
   if (!BOT_TOKEN) return { ok: false };
 
   try {
-    const res = await fetch(`${TELEGRAM_API}/getChat?chat_id=${encodeURIComponent(chatId)}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(`${TELEGRAM_API}/getChat?chat_id=${encodeURIComponent(chatId)}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
     const data = await res.json();
     if (data.ok) {
       return { ok: true, name: data.result?.first_name || data.result?.title };
@@ -163,5 +207,6 @@ function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
