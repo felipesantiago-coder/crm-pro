@@ -173,11 +173,11 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     const fields: Record<string, string> = { nome: name, telefone: phone, email };
     // Add custom fields with their labels for readability
     for (const [id, val] of Object.entries(custom)) {
-      const f = e?.formFields?.find((ff: FormField) => ff.id === id);
+      const f = enterprise?.formFields?.find((ff: FormField) => ff.id === id);
       fields[f?.label || id] = val;
     }
     window.CRMPIXEL._setFormFieldsFilled(fields);
-  }, [e?.formFields]);
+  }, [enterprise?.formFields]);
 
   // NEW: Floating WhatsApp bar visibility (mobile)
   const [showFloatingWhatsApp, setShowFloatingWhatsApp] = useState(false);
