@@ -32,9 +32,14 @@ export async function GET() {
       // Tabela pode não existir
     }
 
+    // Detectar provedor do banco pela URL (para debug)
+    const dbUrl = process.env.DATABASE_URL || '';
+    const dbProvider = dbUrl.includes('neon.tech') ? 'Neon' : dbUrl.includes('supabase') ? 'Supabase (LEGADO — deveria ser Neon)' : dbUrl.includes('file:') ? 'SQLite (local)' : 'Desconhecido';
+
     return NextResponse.json({
       status: 'ok',
       database: 'connected',
+      databaseProvider: dbProvider,
       users: {
         count: userCount,
         list: users,
@@ -44,10 +49,11 @@ export async function GET() {
       },
       env: {
         databaseUrlSet: !!process.env.DATABASE_URL,
-        databaseUrlPrefix: process.env.DATABASE_URL?.substring(0, 15) + '...',
+        databaseUrlPrefix: dbUrl.substring(0, 30) + '...',
         nextauthSecretSet: !!process.env.NEXTAUTH_SECRET,
         nextauthUrl: process.env.NEXTAUTH_URL || 'not set',
-        supabaseUrlSet: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+        supabaseStorageSet: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+        supabaseStorageNote: 'Supabase usado APENAS para Storage/Realtime (NAO como banco de dados)',
       },
     });
   } catch (error) {

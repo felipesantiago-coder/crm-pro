@@ -1,8 +1,12 @@
 /**
  * Flag central para alternar entre Supabase Realtime e Socket.io.
  *
- * Para ATIVAR o Socket.io:
- *   1. Defina a variável de ambiente NEXT_PUBLIC_SOCKET_URL no Vercel
+ * O banco de dados é o Neon (via Prisma). O Supabase é usado
+ * APENAS para Realtime (subscriptions postgres_changes em tabelas do Neon)
+ * e Object Storage (imagens). Não confunda com banco de dados.
+ *
+ * Para ATIVAR o Socket.io (alternativa ao Supabase Realtime):
+ *   1. Defina NEXT_PUBLIC_SOCKET_URL no Vercel
  *      Ex: NEXT_PUBLIC_SOCKET_URL=https://seu-socket-server.onrender.com
  *
  * Para DESATIVAR (voltar ao Supabase Realtime):

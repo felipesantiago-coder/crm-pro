@@ -2,7 +2,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// === PRODUÇÃO (Vercel + Supabase PostgreSQL) ===
+// === PRODUÇÃO (Vercel + Neon PostgreSQL) ===
+// Banco de dados: Neon (serverless PostgreSQL via Prisma ORM)
+// Storage/Realtime: Supabase (apenas Object Storage + Realtime subscriptions)
+// Autenticação: NextAuth Credentials (tabela "users" no Neon, NÃO Supabase Auth)
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
