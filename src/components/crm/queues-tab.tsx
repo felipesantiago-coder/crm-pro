@@ -186,10 +186,10 @@ export function QueuesTab() {
 
   async function toggleMemberActive(queueId: string, memberId: string, isActive: boolean) {
     try {
-      const res = await fetch(`/api/lead-queues/${queueId}/members`, {
+      const res = await fetch(`/api/lead-queues/${queueId}/members/${memberId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId, isActive: !isActive }),
+        body: JSON.stringify({ isActive: !isActive }),
       });
       if (res.ok) fetchQueues();
     } catch { toast.error('Erro ao alterar membro'); }
@@ -197,27 +197,34 @@ export function QueuesTab() {
 
   async function removeMember(queueId: string, memberId: string) {
     try {
-      const res = await fetch(`/api/lead-queues/${queueId}/members`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId }),
-      });
+      // FIX: use proper URL param route instead of DELETE with body (which proxies may strip)
+      const res = await fetch(`/api/lead-queues/${queueId}/members/${memberId}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Membro removido');
         fetchQueues();
+      } else {
+        toast.error('Erro ao remover membro');
       }
     } catch { toast.error('Erro ao remover membro'); }
   }
 
-  async function moveMember(queueId: string, memberId: string, direction: 'up' | 'down', currentOrder: number) {
+  async function moveMember(queueId: string, memberId: string, direction: 'up' | 'down', currentOrder: number, allMembers: QueueMember[]) {
+    // FIX: swap orders between this member and the adjacent one to prevent duplicate order values
+    const idx = allMembers.findIndex((m) => m.id === memberId);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= allMembers.length) return;
+    const swapMember = allMembers[swapIdx];
     try {
-      await fetch(`/api/lead-queues/${queueId}/members`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId, order: direction === 'up' ? currentOrder - 1 : currentOrder + 1 }),
-      });
+      await Promise.all([
+        fetch(`/api/lead-queues/${queueId}/members/${memberId}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: swapMember.order }),
+        }),
+        fetch(`/api/lead-queues/${queueId}/members/${swapMember.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: currentOrder }),
+        }),
+      ]);
       fetchQueues();
-    } catch { /* silent reorder */ }
+    } catch { toast.error('Erro ao reordenar'); }
   }
 
   const getAvailableUsers = (queue: LeadQueue) => {
@@ -419,14 +426,14 @@ export function QueuesTab() {
                           >
                             <div className="flex flex-col gap-0.5">
                               <button
-                                onClick={() => moveMember(q.id, m.id, 'up', m.order)}
+                                onClick={() => moveMember(q.id, m.id, 'up', m.order, q.members)}
                                 disabled={idx === 0}
                                 className="text-muted-foreground hover:text-foreground disabled:opacity-20"
                               >
                                 <ArrowUp className="h-3 w-3" />
                               </button>
                               <button
-                                onClick={() => moveMember(q.id, m.id, 'down', m.order)}
+                                onClick={() => moveMember(q.id, m.id, 'down', m.order, q.members)}
                                 disabled={idx === q.members.length - 1}
                                 className="text-muted-foreground hover:text-foreground disabled:opacity-20"
                               >
@@ -441,7 +448,7 @@ export function QueuesTab() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium truncate">{m.user.name}</span>
-                                {q.isDefault && m.isActive && idx === (q.currentIdx % Math.max(active.length, 1)) && (
+                                {q.isDefault && m.isActive && active.length > 0 && idx === (q.currentIdx % active.length) && (
                                   <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[9px] px-1.5 py-0 gap-0.5">
                                     <Crown className="h-2.5 w-2.5" /> Vez
                                   </Badge>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 
 // GET — single queue with details
 export async function GET(
@@ -24,9 +25,7 @@ export async function GET(
         },
         assignments: {
           take: 50,
-          include: {
-            user: { select: { id: true, name: true, phone: true } },
-          },
+          include: { user: { select: { id: true, name: true, phone: true } } },
           orderBy: { createdAt: 'desc' },
         },
       },
@@ -58,29 +57,37 @@ export async function PUT(
     const body = await request.json();
     const { name, description, isActive, isDefault } = body;
 
-    if (isDefault) {
-      await db.leadQueue.updateMany({ where: { isDefault: true, NOT: { id } }, data: { isDefault: false } });
-    }
-
-    const queue = await db.leadQueue.update({
-      where: { id },
-      data: {
-        ...(name !== undefined ? { name: name.trim() } : {}),
-        ...(description !== undefined ? { description: description?.trim() || null } : {}),
-        ...(isActive !== undefined ? { isActive } : {}),
-        ...(isDefault !== undefined ? { isDefault } : {}),
-      },
-      include: {
-        members: {
-          include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
-          orderBy: { order: 'asc' },
+    // FIX: wrap isDefault swap + update in transaction
+    const queue = await db.$transaction(async (tx) => {
+      if (isDefault) {
+        await tx.leadQueue.updateMany({
+          where: { isDefault: true, NOT: { id } },
+          data: { isDefault: false },
+        });
+      }
+      return tx.leadQueue.update({
+        where: { id },
+        data: {
+          ...(name !== undefined ? { name: String(name).trim().slice(0, 200) } : {}),
+          ...(description !== undefined ? { description: description ? String(description).trim().slice(0, 500) : null } : {}),
+          ...(isActive !== undefined ? { isActive } : {}),
+          ...(isDefault !== undefined ? { isDefault } : {}),
         },
-        _count: { select: { assignments: true } },
-      },
+        include: {
+          members: {
+            include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
+            orderBy: { order: 'asc' },
+          },
+          _count: { select: { assignments: true } },
+        },
+      });
     });
 
     return NextResponse.json(queue);
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      return NextResponse.json({ error: 'Fila não encontrada' }, { status: 404 });
+    }
     console.error('[Lead Queue] Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
@@ -98,8 +105,22 @@ export async function DELETE(
     }
 
     const { id } = await params;
+
+    // FIX: Check existence first to return 404, and warn about cascade
+    const queue = await db.leadQueue.findUnique({
+      where: { id },
+      include: { _count: { select: { assignments: true, members: true } } },
+    });
+    if (!queue) {
+      return NextResponse.json({ error: 'Fila não encontrada' }, { status: 404 });
+    }
+
     await db.leadQueue.delete({ where: { id } });
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      deletedAssignments: queue._count.assignments,
+      deletedMembers: queue._count.members,
+    });
   } catch (error) {
     console.error('[Lead Queue] Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

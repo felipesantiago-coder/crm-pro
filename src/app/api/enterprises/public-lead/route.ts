@@ -3,14 +3,18 @@ import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { notifyNewLead } from '@/lib/telegram';
 import { rateLimit } from '@/lib/rate-limit';
+import { assignLeadToUser, type AssignResult } from '@/lib/lead-queue';
 
 /**
  * PUBLIC endpoint — no auth required.
  * Receives a lead submission from a landing page form.
- * Creates a Client record and optionally assigns it via the lead queue.
+ * Creates a Client record and assigns it via the lead queue.
+ *
+ * FIXED: Client creation happens FIRST, then queue assignment.
+ * This prevents wasting a queue turn if client creation fails.
  */
 export async function POST(request: NextRequest) {
-  // Rate limit: 5 submissions per minute per IP (prevent form abuse)
+  // Rate limit: 5 submissions per minute per IP
   const rateLimitResult = rateLimit(request, { maxRequests: 5, windowSeconds: 60, keyPrefix: 'public-lead' });
   if (rateLimitResult) return rateLimitResult;
 
@@ -18,17 +22,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, phone, email, slug, customAnswers, utmSource, utmMedium, utmCampaign, utmContent, utmTerm } = body;
 
-    // ── Validate slug format ───────────────────────────────
+    // ── Validate slug format ──
     if (slug && !/^[a-z0-9-]{1,100}$/.test(slug)) {
       return NextResponse.json({ error: 'Dados inválidos.' }, { status: 400 });
     }
 
-    // ── Validate required fields ─────────────────────────────
+    // ── Validate required fields ──
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
-      return NextResponse.json(
-        { error: 'Nome completo é obrigatório (mínimo 2 caracteres).' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Nome completo é obrigatório (mínimo 2 caracteres).' }, { status: 400 });
     }
     if (name.trim().length > 200) {
       return NextResponse.json({ error: 'Nome muito longo.' }, { status: 400 });
@@ -36,10 +37,7 @@ export async function POST(request: NextRequest) {
 
     const cleanPhone = (phone || '').replace(/\D/g, '');
     if (!cleanPhone || cleanPhone.length < 10) {
-      return NextResponse.json(
-        { error: 'Telefone é obrigatório e deve conter DDD + número.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Telefone é obrigatório e deve conter DDD + número.' }, { status: 400 });
     }
     if (cleanPhone.length > 15) {
       return NextResponse.json({ error: 'Telefone inválido.' }, { status: 400 });
@@ -47,16 +45,13 @@ export async function POST(request: NextRequest) {
 
     const cleanEmail = (email || '').trim().toLowerCase();
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      return NextResponse.json(
-        { error: 'E-mail é obrigatório e deve ser válido.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'E-mail é obrigatório e deve ser válido.' }, { status: 400 });
     }
     if (cleanEmail.length > 254) {
       return NextResponse.json({ error: 'E-mail inválido.' }, { status: 400 });
     }
 
-    // ── Find enterprise by slug ──────────────────────────────
+    // ── Find enterprise by slug ──
     let enterpriseId: string | null = null;
     let enterpriseName: string | null = null;
     let enterpriseRegion: string | null = null;
@@ -73,81 +68,45 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── Check for existing client (match by phone OR email) ─
+    // ── Check for existing client (match by phone OR email) ──
     const existingClient = await db.client.findFirst({
-      where: {
-        OR: [
-          { phone: cleanPhone },
-          { email: cleanEmail },
-        ],
-      },
+      where: { OR: [{ phone: cleanPhone }, { email: cleanEmail }] },
       select: { id: true, name: true, stage: true, enterpriseId: true, phone: true, email: true },
     });
 
     if (existingClient) {
-      // Update existing client with this new interaction (no queue assignment — don't waste a turn)
       await db.interaction.create({
         data: {
           clientId: existingClient.id,
           description: `[Landing Page] Novo cadastro${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? ` (slug: ${slug})` : ''}`,
         },
       });
-
-      return NextResponse.json({
-        success: true,
-        isExisting: true,
-        clientId: existingClient.id,
-        clientName: existingClient.name,
-        assignedUser: null,
-      });
+      return NextResponse.json({ success: true, isExisting: true, clientId: existingClient.id, clientName: existingClient.name, assignedUser: null });
     }
 
-    // ── Find a user to assign as createdBy (queue or system) ─
-    let assignedUser: { assigned: boolean; userId: string; userName: string; userPhone?: string; queueId?: string } | null = null;
-    let createdByUserId: string | null = null;
-
-    try {
-      const assignRes = await fetch(
-        `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/lead-queues/assign`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source: slug ? `landing_form:${slug}` : 'landing_form',
-          }),
-        },
-      );
-      if (assignRes.ok) {
-        assignedUser = await assignRes.json();
-        if (assignedUser?.assigned) {
-          createdByUserId = assignedUser.userId;
-        }
-      }
-    } catch {
-      // Silent
+    // ── Find a user to assign as createdBy ──
+    // createdBy is a required FK — if no user exists, we cannot create the client
+    const firstUser = await db.user.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
+    if (!firstUser) {
+      console.error('[Public Lead] Nenhum usuário encontrado no sistema. Lead perdido.');
+      return NextResponse.json({ error: 'Sistema não configurado: nenhum usuário cadastrado.' }, { status: 500 });
     }
+    let createdByUserId: string = firstUser.id;
 
-    // Fallback: find first admin user
-    if (!createdByUserId) {
-      const firstUser = await db.user.findFirst({
-        select: { id: true },
-        orderBy: { createdAt: 'asc' },
-      });
-      createdByUserId = firstUser?.id || 'system';
-    }
-
-    // ── Build custom answers text ──────────────────────────────
+    // ── Build custom answers text ──
     let customAnswersText = '';
     if (customAnswers && typeof customAnswers === 'object' && Object.keys(customAnswers).length > 0) {
       const lines = Object.entries(customAnswers)
         .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
-        .map(([k, v]) => `  • ${k}: ${v}`);
+        .slice(0, 20) // Limit to 20 custom fields
+        .map(([k, v]) => `  • ${String(k).slice(0, 50)}: ${String(v).slice(0, 500)}`);
       if (lines.length > 0) {
         customAnswersText = '\n\nRespostas do formulário:\n' + lines.join('\n');
       }
     }
 
-    // ── Create client ────────────────────────────────────────
+    // ── Create client FIRST ──
+    // FIX: client creation before queue assignment prevents wasted queue turns
     const client = await db.client.create({
       data: {
         name: name.trim(),
@@ -158,16 +117,37 @@ export async function POST(request: NextRequest) {
         enterpriseId: enterpriseId || undefined,
         stage: 'LEAD',
         createdBy: createdByUserId,
-        utmSource: typeof utmSource === 'string' ? utmSource : undefined,
-        utmMedium: typeof utmMedium === 'string' ? utmMedium : undefined,
-        utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : undefined,
-        utmContent: typeof utmContent === 'string' ? utmContent : undefined,
-        utmTerm: typeof utmTerm === 'string' ? utmTerm : undefined,
+        utmSource: typeof utmSource === 'string' ? utmSource.slice(0, 200) : undefined,
+        utmMedium: typeof utmMedium === 'string' ? utmMedium.slice(0, 100) : undefined,
+        utmCampaign: typeof utmCampaign === 'string' ? utmCampaign.slice(0, 200) : undefined,
+        utmContent: typeof utmContent === 'string' ? utmContent.slice(0, 200) : undefined,
+        utmTerm: typeof utmTerm === 'string' ? utmTerm.slice(0, 200) : undefined,
         notes: `[Landing Page] Cadastro realizado via formulário${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? `\nSlug: ${slug}` : ''}${utmCampaign ? `\nCampanha: ${utmCampaign}` : ''}${customAnswersText}`,
       },
     });
 
-    // ── Create initial interaction ───────────────────────────
+    // ── Assign via lead queue (direct function call, NOT HTTP) ──
+    // FIX: replaced fragile self-referential HTTP call with direct function import
+    let assignedUser: AssignResult | null = null;
+    try {
+      assignedUser = await assignLeadToUser({
+        leadId: client.id,
+        source: slug ? `landing_form:${slug}` : 'landing_form',
+      });
+
+      // If queue assigned a user, update client's createdBy to that user
+      if (assignedUser?.assigned && assignedUser.userId) {
+        await db.client.update({
+          where: { id: client.id },
+          data: { createdBy: assignedUser.userId },
+        }).catch(() => { /* non-critical */ });
+      }
+    } catch (err) {
+      // Queue assignment failed — lead is still saved, just not assigned
+      console.error('[Public Lead] Falha na atribuição de fila (lead salvo sem atribuição):', err);
+    }
+
+    // ── Create initial interaction ──
     await db.interaction.create({
       data: {
         clientId: client.id,
@@ -175,33 +155,30 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // ── Send Telegram notification (fire-and-forget) ───────
-    if (createdByUserId && createdByUserId !== 'system') {
-      // Fetch assigned user's telegramChatId (may be null)
+    // ── Send Telegram notification (fire-and-forget) ──
+    const notifyUserId = assignedUser?.assigned ? assignedUser.userId : createdByUserId;
+    if (notifyUserId) {
       db.user.findUnique({
-        where: { id: createdByUserId },
+        where: { id: notifyUserId },
         select: { telegramChatId: true },
       }).then((user) => {
-        const leadData = {
-          leadName: client.name,
-          leadPhone: client.phone || '',
-          leadEmail: client.email || '',
-          enterpriseName,
-          utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
-          utmSource: typeof utmSource === 'string' ? utmSource : null,
-          slug: slug || undefined,
-          customAnswers: (customAnswers && typeof customAnswers === 'object')
-            ? Object.fromEntries(
-                Object.entries(customAnswers).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''),
-              ) as Record<string, string>
-            : undefined,
-        };
-
-        // Telegram notification
         if (user?.telegramChatId) {
+          const leadData = {
+            leadName: client.name,
+            leadPhone: client.phone || '',
+            leadEmail: client.email || '',
+            enterpriseName,
+            utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
+            utmSource: typeof utmSource === 'string' ? utmSource : null,
+            slug: slug || undefined,
+            customAnswers: (customAnswers && typeof customAnswers === 'object')
+              ? Object.fromEntries(
+                  Object.entries(customAnswers).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''),
+                ) as Record<string, string>
+              : undefined,
+          };
           notifyNewLead(user.telegramChatId, leadData).catch((err) => console.warn('[Public Lead] Falha na notificação:', err));
         }
-
       }).catch(() => { /* silent */ });
     }
 
@@ -220,6 +197,9 @@ export async function POST(request: NextRequest) {
     console.error('[Public Lead] Erro:', error);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return NextResponse.json({ error: 'Cadastro já realizado com esses dados.' }, { status: 409 });
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      return NextResponse.json({ error: 'Erro de configuração: nenhum usuário cadastrado no sistema.' }, { status: 500 });
     }
     return NextResponse.json({ error: 'Erro interno do servidor.' }, { status: 500 });
   }
