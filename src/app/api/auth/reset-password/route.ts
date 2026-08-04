@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { hashPassword, verifyPassword } from '@/lib/auth';
+import { hashPassword } from '@/lib/auth';
+import { rateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
+import crypto from 'crypto';
 
 const resetSchema = z.object({
   token: z.string().min(1, 'Token é obrigatório'),
@@ -13,8 +15,20 @@ const resetSchema = z.object({
     .regex(/[0-9]/, 'A nova senha deve conter pelo menos um número'),
 });
 
+/**
+ * Gera hash SHA-256 para o token de reset.
+ * Mais rápido que bcrypt e suficiente para tokens descartáveis.
+ */
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: 5 tentativas por minuto por IP
+    const rateLimitResp = rateLimit(request, { maxRequests: 5, windowSeconds: 60, keyPrefix: 'reset-password' });
+    if (rateLimitResp) return rateLimitResp;
+
     const body = await request.json();
     const parsed = resetSchema.safeParse(body);
     if (!parsed.success) {
@@ -24,28 +38,16 @@ export async function POST(request: NextRequest) {
 
     const { token, newPassword } = parsed.data;
 
-    // Busca qualquer usuário com token de reset não expirado
-    const usersWithToken = await db.user.findMany({
+    // Hash do token recebido para comparação direta (O(1) ao invés de O(n) com bcrypt)
+    const tokenHash = hashToken(token);
+
+    const matchedUser = await db.user.findFirst({
       where: {
-        passwordResetToken: { not: null },
+        passwordResetToken: tokenHash,
         passwordResetExpires: { gt: new Date() },
       },
-      select: {
-        id: true,
-        passwordResetToken: true,
-        passwordResetExpires: true,
-      },
+      select: { id: true },
     });
-
-    // Verifica qual usuário corresponde ao token (comparando hash)
-    let matchedUser: (typeof usersWithToken)[0] | null = null;
-    for (const user of usersWithToken) {
-      const isValid = await verifyPassword(token, user.passwordResetToken!);
-      if (isValid) {
-        matchedUser = user;
-        break;
-      }
-    }
 
     if (!matchedUser) {
       return NextResponse.json(
@@ -54,7 +56,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Atualiza a senha e limpa o token
     const hashedNewPassword = await hashPassword(newPassword);
 
     await db.user.update({

@@ -49,6 +49,8 @@ export const config = {
     '/',
     '/login',
     '/change-password',
+    '/reset-password',
+    '/forgot-password',
     '/empreendimentos/:path*',
     '/portal/:path*',
     // API routes
