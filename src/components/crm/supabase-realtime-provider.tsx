@@ -81,10 +81,20 @@ async function fetchNotificationCount(
 }
 
 /**
- * Provider global que escuta mudanças em tempo real do Supabase
- * em todas as tabelas do CRM (clients, tags, reminders, user_settings).
+ * Provider que escuta mudanças em tempo real via Supabase Realtime
+ * em tabelas do banco de dados Neon (clients, tags, reminders, user_settings).
+ *
+ * IMPORTANTE: O Supabase NÃO é o banco de dados deste projeto.
+ * O banco de dados é o Neon (PostgreSQL via Prisma ORM).
+ * O Supabase é usado APENAS para Realtime subscriptions (postgres_changes)
+ * e Object Storage (imagens de empreendimentos).
+ *
+ * O Realtime do Supabase escuta a mesma base de dados Neon via
+ * replica WAL. As tabelas residem no Neon; o Supabase apenas
+ * propaga as mudanças em tempo real para a UI (toasts).
+ *
  * Atualiza automaticamente a UI quando dados são modificados por qualquer
- * dispositivo/sessão conectada ao mesmo Supabase project.
+ * dispositivo/sessão conectada.
  */
 export function SupabaseRealtimeProvider({ children }: SupabaseRealtimeProviderProps) {
   const [connected, setConnected] = useState(false)
@@ -143,7 +153,8 @@ export function SupabaseRealtimeProvider({ children }: SupabaseRealtimeProviderP
     }
   }, [isSupabaseConfigured, setNotificationReminders])
 
-  // Se não tem Supabase configurado, renderiza children sem real-time
+  // Se não tem Supabase Realtime configurado, renderiza children sem real-time
+  // (Storage do Supabase ainda funciona server-side independente disto)
   if (!isSupabaseConfigured) {
     return <>{children}</>
   }

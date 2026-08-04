@@ -136,7 +136,7 @@ export async function GET() {
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { status: 'error', error: errMsg, hint: 'Tables may not exist. Run migration in Neon SQL Editor.' },
+      { status: 'error', error: errMsg, hint: 'Tables may not exist. Run migration in Neon SQL Editor (console.neon.tech) or npx prisma db push.' },
       { status: 500 },
     );
   }

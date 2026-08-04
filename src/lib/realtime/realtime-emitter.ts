@@ -1,6 +1,8 @@
 /**
  * Emitter para API routes — envia eventos de realtime via PostgreSQL NOTIFY.
  *
+ * BANCO DE DADOS: Neon (via Prisma). O NOTIFY usa a conexão Neon.
+ *
  * Uso nas API routes (após cada mutação Prisma):
  *
  *   import { realtimeEmit } from '@/lib/realtime/realtime-emitter';
@@ -14,12 +16,12 @@
  *     actorId: session.user.id,
  *   });
  *
- * O emitter usa Prisma $executeRawUnsafe para executar NOTIFY,
+ * O emitter usa Prisma $executeRawUnsafe para executar NOTIFY no Neon,
  * que é capturado pelo servidor Socket.io (LISTEN).
  *
- * Isso NÃO interfere no Supabase Realtime — ambas as soluções
- * podem coexistir. Quando o Socket.io estiver ativo, basta
- * remover o SupabaseRealtimeProvider do layout.
+ * Isso NÃO interfere no Supabase Realtime — o Supabase é usado apenas
+ * para Realtime subscriptions e Storage. Quando o Socket.io estiver ativo,
+ * basta remover o SupabaseRealtimeProvider do layout.
  */
 
 import { db as prisma } from '@/lib/db';

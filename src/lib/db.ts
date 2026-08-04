@@ -1,5 +1,18 @@
 import { PrismaClient } from '@prisma/client'
 
+//
+// INFRAESTRUTURA DO BANCO DE DADOS
+// ================================
+// Em produção (Vercel), DATABASE_URL aponta para o Neon PostgreSQL.
+// Todas as 14 tabelas do CRM (clients, users, enterprises, tracking, etc.)
+// residem no Neon. O Prisma ORM é a única camada de acesso aos dados.
+//
+// O Supabase NÃO é usado como banco de dados neste projeto.
+// Ele fornece apenas: Object Storage (imagens) e Realtime (toasts na UI).
+//
+// Em desenvolvimento local, DATABASE_URL=file:./db/custom.db (SQLite).
+//
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
@@ -40,12 +53,12 @@ export const db = new Proxy({} as PrismaClient, {
 
 /**
  * Ensures the database connection is alive.
- * Supabase Free Tier pauses after inactivity — the first connection
- * attempt may fail while the DB is waking up.
  *
- * This function retries with increasing delays (3s, 4s, 5s) to give
- * the database enough time to resume from its paused state.
- * Total worst-case wait: ~12 seconds.
+ * Neon pode suspender branches inativas (scale-to-zero) — a primeira
+ * conexão pode falhar enquanto o banco está acordando (cold start).
+ * Esta função retenta com delays crescentes (3s, 4s, 5s) para dar
+ * tempo suficiente ao Neon reativar a conexão.
+ * Pior caso: ~12 segundos de espera.
  */
 export async function ensureDbConnection(maxRetries = 3): Promise<PrismaClient> {
   const client = getDb()
@@ -56,7 +69,7 @@ export async function ensureDbConnection(maxRetries = 3): Promise<PrismaClient> 
     } catch (err) {
       console.error(`[DB] Connection attempt ${attempt}/${maxRetries} failed:`, err)
       if (attempt < maxRetries) {
-        // Increasing delay: 3s, 4s, 5s — gives Supabase time to wake up
+        // Increasing delay: 3s, 4s, 5s — gives Neon time to wake up
         const delay = (attempt + 2) * 1000
         console.log(`[DB] Waiting ${delay}ms before retry...`)
         await new Promise(resolve => setTimeout(resolve, delay))
