@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
         include: {
           members: {
             where: { isActive: true },
-            include: { user: { select: { id: true, name: true } } },
+            include: { user: { select: { id: true, name: true, phone: true } } },
             orderBy: { order: 'asc' },
           },
         },
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
         include: {
           members: {
             where: { isActive: true },
-            include: { user: { select: { id: true, name: true } } },
+            include: { user: { select: { id: true, name: true, phone: true } } },
             orderBy: { order: 'asc' },
           },
         },
@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
       hasQueue: true,
       userId: member.userId,
       userName: member.user.name,
+      userPhone: member.user.phone || null,
     });
   } catch (error) {
     console.error('[Queue Next User] Erro:', error);
