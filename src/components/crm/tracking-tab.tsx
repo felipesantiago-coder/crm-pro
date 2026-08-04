@@ -140,6 +140,7 @@ const FUNNEL_GRADIENTS: Record<string, string> = {
 };
 
 const PERIOD_OPTIONS = [
+  { value: 'today', label: 'Hoje' },
   { value: '7d', label: '7 dias' },
   { value: '30d', label: '30 dias' },
   { value: '90d', label: '90 dias' },
