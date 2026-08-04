@@ -162,8 +162,10 @@ model User {
   passwordHash      String   @map("passwordHash")
   role              String   @default("USER") @map("role")
   mustChangePassword Boolean @default(false) @map("mustChangePassword")
-  telegramChatId    String?  @unique @map("telegramChatId")
-  createdAt         DateTime  @default(now()) @map("createdAt")
+  telegramChatId      String?   @unique @map("telegramChatId")
+  passwordResetToken  String?   @map("passwordResetToken")
+  passwordResetExpires DateTime? @map("passwordResetExpires")
+  createdAt           DateTime  @default(now()) @map("createdAt")
   updatedAt         DateTime  @updatedAt @map("updatedAt")
 
   createdClients      Client[]              @relation("CreatedClients")

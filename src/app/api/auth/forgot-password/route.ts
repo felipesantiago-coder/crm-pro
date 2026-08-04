@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { hashPassword } from '@/lib/auth';
 import { sendEmail } from '@/lib/email';
+import { rateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 import crypto from 'crypto';
 
@@ -19,6 +19,10 @@ function appUrl() {
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: 3 solicitações por minuto por IP
+    const rateLimitResp = rateLimit(request, { maxRequests: 3, windowSeconds: 60, keyPrefix: 'forgot-password' });
+    if (rateLimitResp) return rateLimitResp;
+
     const body = await request.json();
     const parsed = forgotSchema.safeParse(body);
     if (!parsed.success) {
@@ -36,9 +40,9 @@ export async function POST(request: NextRequest) {
     });
 
     if (user) {
-      // Gera token aleatório e armazena o hash
+      // Gera token aleatório e armazena o hash (SHA-256 para busca O(1))
       const rawToken = crypto.randomBytes(32).toString('hex');
-      const hashedToken = await hashPassword(rawToken);
+      const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
       const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_MINUTES * 60 * 1000);
 
       await db.user.update({

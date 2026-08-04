@@ -3,6 +3,25 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { ensureDbConnection } from '@/lib/db';
 import { verifyPassword } from '@/lib/auth';
 
+// ── Rate limiting in-memory para o authorize ──────────────────
+// Não temos acesso ao NextRequest dentro do callback do NextAuth,
+// então usamos um mapa simples por email. Em serverless (Vercel),
+// cada instância tem seu próprio mapa — não é perfeito mas bloqueia
+// ataques de força bruta dentro da mesma instância.
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 60 * 1000; // 1 minuto
+let lastCleanup = Date.now();
+
+function cleanupLoginAttempts() {
+  const now = Date.now();
+  if (now - lastCleanup < 60_000) return;
+  lastCleanup = now;
+  for (const [key, entry] of loginAttempts) {
+    if (now >= entry.resetAt) loginAttempts.delete(key);
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -19,6 +38,20 @@ export const authOptions: NextAuthOptions = {
         const email = credentials.email.trim().toLowerCase();
         const password = credentials.password;
 
+        // ── Rate limiting por email ────────────────────────
+        cleanupLoginAttempts();
+        const now = Date.now();
+        let attempt = loginAttempts.get(email);
+        if (!attempt || now >= attempt.resetAt) {
+          attempt = { count: 0, resetAt: now + LOGIN_WINDOW_MS };
+          loginAttempts.set(email, attempt);
+        }
+        attempt.count++;
+        if (attempt.count > LOGIN_MAX_ATTEMPTS) {
+          console.warn('[AUTH] Rate limited:', email, 'attempts:', attempt.count);
+          return null;
+        }
+
         let user: {
           id: string;
           name: string;
@@ -28,11 +61,7 @@ export const authOptions: NextAuthOptions = {
           mustChangePassword: boolean;
         } | null = null;
 
-        // ensureDbConnection already handles Supabase cold-start retries
-        // (2s, 3s, 4s delays). No need for a second retry loop here —
-        // the nested retries were causing Vercel function timeouts.
         try {
-          console.log('[AUTH] Authenticating:', email);
           const client = await ensureDbConnection(3);
           user = await client.user.findUnique({
             where: { email },
@@ -51,7 +80,6 @@ export const authOptions: NextAuthOptions = {
         }
 
         if (!user || !user.passwordHash) {
-          console.log('[AUTH] User not found or no passwordHash:', email);
           return null;
         }
 
@@ -59,6 +87,9 @@ export const authOptions: NextAuthOptions = {
         if (!isValid) {
           return null;
         }
+
+        // Login bem-sucedido — limpa tentativas
+        loginAttempts.delete(email);
 
         return {
           id: user.id,
@@ -73,16 +104,12 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // Primeiro login: popula o token com dados frescos do DB
         token.id = user.id;
         token.email = user.email;
         token.name = user.name;
         token.role = (user as { role: string }).role;
         token.mustChangePassword = (user as { mustChangePassword: boolean }).mustChangePassword;
       } else if (token.id) {
-        // Refresh de token (sem `user`): consulta o DB para obter
-        // o valor atual de mustChangePassword, evitando que um valor
-        // antigo congelado no JWT prenda o usuário na tela de troca de senha.
         try {
           const client = await ensureDbConnection(2);
           const fresh = await client.user.findUnique({
@@ -93,8 +120,6 @@ export const authOptions: NextAuthOptions = {
             token.mustChangePassword = fresh.mustChangePassword;
             token.role = fresh.role;
           } else {
-            // Usuário não existe mais no DB — invalida a sessão
-            // retornando um token vazio, o que força o logout.
             console.warn('[AUTH] User not found during token refresh, invalidating session:', token.id);
             return {} as typeof token;
           }
@@ -118,7 +143,7 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET!,
   session: {
     strategy: 'jwt',
-    maxAge: 8 * 60 * 60, // 8 horas — sessão expira e o usuário precisa relogar
+    maxAge: 8 * 60 * 60, // 8 horas
   },
   pages: {
     signIn: '/login',

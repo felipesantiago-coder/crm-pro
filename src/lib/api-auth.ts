@@ -15,10 +15,8 @@ export async function requireAdmin() {
   if (!session?.user?.email) {
     return { error: NextResponse.json({ error: 'Não autorizado' }, { status: 401 }), session: null };
   }
-  // Check if user has ADMIN role from session token
-  const userRole = (session as unknown as { role?: string })?.role ||
-                   (session.user as unknown as { role?: string })?.role;
-  if (userRole !== 'ADMIN') {
+  // session.user.role é tipado via next-auth.d.ts
+  if (session.user.role !== 'ADMIN') {
     return { error: NextResponse.json({ error: 'Acesso negado' }, { status: 403 }), session: null };
   }
   return { error: null, session };
