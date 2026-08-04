@@ -20,7 +20,6 @@ function isRateLimited(ip: string): boolean {
   const entry = ipCounters.get(ip);
 
   if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
-    // Start a fresh window
     ipCounters.set(ip, { count: 1, windowStart: now });
     return false;
   }
@@ -57,6 +56,12 @@ interface TrackingPayload {
   utmContent?: string | null;
   utmTerm?: string | null;
   metadata?: unknown;
+  // Extra pixel fields stored in metadata
+  screen?: string | null;
+  timezone?: string | null;
+  language?: string | null;
+  connection?: string | null;
+  ts?: number | null;
 }
 
 function extractIp(request: NextRequest): string {
@@ -98,26 +103,27 @@ export async function POST(request: NextRequest) {
 
   try {
     if (contentType.includes('application/x-www-form-urlencoded')) {
-      // Pixel sends: data=<url-encoded-json>
       const rawBody = await request.text();
       const urlParams = new URLSearchParams(rawBody);
       const dataParam = urlParams.get('data');
       if (dataParam) {
-        body = JSON.parse(decodeURIComponent(dataParam));
+        // urlParams.get() already decodes — do NOT double-decode
+        body = JSON.parse(dataParam);
       } else {
         return NextResponse.json({ error: 'No data parameter' }, { status: 400 });
       }
     } else {
       body = await request.json();
     }
-  } catch {
+  } catch (parseErr) {
+    console.error(`[Tracking] Parse error — ip=${ip} ct=${contentType} err=${parseErr instanceof Error ? parseErr.message : parseErr}`);
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
   // Support both single event and batch (array) payloads
   const rawEvents: unknown[] = Array.isArray(body) ? body : [body];
 
-  // Normalize pixel snake_case → camelCase and validate
+  // Normalize pixel snake_case → camelCase, validate, and capture extra fields
   const events = rawEvents
     .map((e: unknown): TrackingPayload | null => {
       if (typeof e !== 'object' || e === null) return null;
@@ -137,14 +143,19 @@ export async function POST(request: NextRequest) {
         utmContent: (r.utmContent as string) || (r.utm_content as string) || null,
         utmTerm: (r.utmTerm as string) || (r.utm_term as string) || null,
         metadata: (() => {
-          // Properly merge top-level lead_id into metadata without spreading the entire event
+          // Merge extra pixel fields into metadata
+          const m: Record<string, unknown> = {};
           if (r.metadata && typeof r.metadata === 'object' && !Array.isArray(r.metadata)) {
-            const m = { ...(r.metadata as Record<string, unknown>) };
-            if (r.lead_id) m.lead_id = r.lead_id;
-            return m;
+            Object.assign(m, r.metadata as Record<string, unknown>);
           }
-          if (r.lead_id) return { lead_id: r.lead_id };
-          return undefined;
+          if (r.lead_id) m.lead_id = r.lead_id;
+          // Capture extra device/context fields
+          if (r.screen) m.screen = r.screen;
+          if (r.timezone) m.timezone = r.timezone;
+          if (r.language) m.language = r.language;
+          if (r.connection) m.connection = r.connection;
+          if (r.ts) m.client_ts = r.ts;
+          return Object.keys(m).length > 0 ? m : undefined;
         })(),
       };
     })
@@ -153,6 +164,7 @@ export async function POST(request: NextRequest) {
   const validEvents = events;
 
   if (validEvents.length === 0) {
+    console.warn(`[Tracking] No valid events after normalization — ip=${ip} rawCount=${rawEvents.length}`);
     return NextResponse.json(
       { error: 'No valid events provided' },
       { status: 400 },
@@ -160,7 +172,6 @@ export async function POST(request: NextRequest) {
   }
 
   // Check rate limit against total batch size
-  // (the per-event increment already happened above once; adjust for batch)
   {
     const entry = ipCounters.get(ip);
     if (entry && entry.count + validEvents.length - 1 > RATE_LIMIT_MAX) {
@@ -174,15 +185,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Resolve Geo-IP (fire-and-forget cached lookup)
-  const geoPromise = resolveGeoIP(ip);
+  const eventTypes = validEvents.map((e) => e.eventType);
+  console.log(`[Tracking] Processing ${validEvents.length} event(s) — types=[${eventTypes.join(',')}] ip=${ip} siteId=${validEvents[0]?.siteId}`);
 
   try {
-    const geo = await geoPromise;
-    const eventTypes = validEvents.map((e) => e.eventType);
-    console.log(`[Tracking] Processing ${validEvents.length} event(s) — types=[${eventTypes.join(',')}] ip=${ip} siteId=${validEvents[0]?.siteId}`);
-
-    // Process events — upsert visitors and create events in parallel
+    // ── STEP 1: Write events to DB IMMEDIATELY (no geo-IP dependency) ──
     await Promise.all(
       validEvents.map(async (event) => {
         const {
@@ -201,7 +208,7 @@ export async function POST(request: NextRequest) {
           metadata,
         } = event;
 
-        // Upsert visitor (update geo + lastSeenAt if exists)
+        // Upsert visitor (WITHOUT geo — geo updated asynchronously below)
         await db.trackingVisitor.upsert({
           where: { visitorId },
           create: {
@@ -209,15 +216,12 @@ export async function POST(request: NextRequest) {
             siteId,
             ip,
             userAgent,
-            country: geo.country,
-            city: geo.city,
+            country: null,
+            city: null,
           },
           update: {
             ip,
             userAgent,
-            // Only update geo if previously null (first real resolution)
-            country: geo.country,
-            city: geo.city,
           },
         });
 
@@ -240,7 +244,7 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // Link visitor to lead on identify events — enables funnel tracking (pageview → lead)
+        // Link visitor to lead on identify events
         if (eventType === 'identify') {
           const rawMeta = (metadata as Record<string, unknown>) || {};
           const leadIdValue = typeof rawMeta.lead_id === 'string' ? rawMeta.lead_id : null;
@@ -253,10 +257,32 @@ export async function POST(request: NextRequest) {
         }
       }),
     );
+
+    // ── STEP 2: Resolve Geo-IP in background (fire-and-forget) ──
+    // This does NOT block the response. Geo data is updated asynchronously.
+    const visitorIds = [...new Set(validEvents.map((e) => e.visitorId))];
+    resolveGeoIP(ip)
+      .then((geo) => {
+        if (geo.country || geo.city) {
+          Promise.all(
+            visitorIds.map((vid) =>
+              db.trackingVisitor.update({
+                where: { visitorId: vid },
+                data: {
+                  country: geo.country || null,
+                  city: geo.city || null,
+                },
+              }).catch(() => {}),
+            ),
+          );
+        }
+      })
+      .catch(() => {
+        /* Geo-IP failed silently — visitor record already created without geo */
+      });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error(`[Tracking] DB error — ip=${ip} events=${validEvents.length} err=${errMsg}`, error);
-    // Return 200 anyway to not block the pixel — the client already sent the data
     return NextResponse.json({ status: 'partial_error' });
   }
 

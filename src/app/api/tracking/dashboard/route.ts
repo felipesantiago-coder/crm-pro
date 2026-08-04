@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/api-auth';
 import { Prisma } from '@prisma/client';
 
 const PERIOD_DAYS: Record<string, number> = {
+  'today': 0,
   '7d': 7,
   '30d': 30,
   '90d': 90,
@@ -19,8 +20,13 @@ export async function GET(request: Request) {
     const siteId = searchParams.get('siteId') ?? null;
 
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - period);
-    startDate.setHours(0, 0, 0, 0);
+    if (period === 0) {
+      // "today" — start from midnight UTC (close enough for BRT, 3h diff)
+      startDate.setUTCHours(0, 0, 0, 0);
+    } else {
+      startDate.setDate(startDate.getDate() - period);
+      startDate.setHours(0, 0, 0, 0);
+    }
 
     // Run all independent queries in parallel
     const [
