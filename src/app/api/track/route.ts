@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
 
   // Bot filtering — silently drop bot traffic
   if (isLikelyBot(userAgent)) {
+    console.log(`[Tracking] Bot dropped — ip=${ip} ua=${userAgent?.substring(0, 80)}`);
     return NextResponse.json({ status: 'ok' });
   }
 
@@ -178,6 +179,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const geo = await geoPromise;
+    const eventTypes = validEvents.map((e) => e.eventType);
+    console.log(`[Tracking] Processing ${validEvents.length} event(s) — types=[${eventTypes.join(',')}] ip=${ip} siteId=${validEvents[0]?.siteId}`);
 
     // Process events — upsert visitors and create events in parallel
     await Promise.all(
@@ -251,10 +254,38 @@ export async function POST(request: NextRequest) {
       }),
     );
   } catch (error) {
-    console.error('[Tracking] Error processing events:', error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[Tracking] DB error — ip=${ip} events=${validEvents.length} err=${errMsg}`, error);
     // Return 200 anyway to not block the pixel — the client already sent the data
     return NextResponse.json({ status: 'partial_error' });
   }
 
   return NextResponse.json({ status: 'ok' });
+}
+
+// --- GET handler: health check & debug info (admin only) ---
+export async function GET(request: NextRequest) {
+  try {
+    const { requireAdmin } = await import('@/lib/api-auth');
+    const { error } = await requireAdmin();
+    if (error) return error;
+
+    const [visitorCount, eventCount, latestEvent] = await Promise.all([
+      db.trackingVisitor.count(),
+      db.trackingEvent.count(),
+      db.trackingEvent.findFirst({ orderBy: { createdAt: 'desc' }, select: { id: true, eventType: true, createdAt: true, visitorId: true } }),
+    ]);
+
+    return NextResponse.json({
+      status: 'healthy',
+      tables: { visitors: visitorCount, events: eventCount },
+      latestEvent,
+    });
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json(
+      { status: 'error', error: errMsg, hint: 'As tabelas tracking_visitors e tracking_events podem nao existir. Execute a migracao no Neon SQL Editor.' },
+      { status: 500 },
+    );
+  }
 }
