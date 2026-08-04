@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 
 export const metadata: Metadata = {
   title: {
@@ -32,10 +33,16 @@ export default function EmpreendimentosLayout({
 }) {
   return (
     <>
-      {/* Pixel de tracking — carrega ANTES do React bundle para garantir
-          que eventos sejam enviados mesmo se o app React crashar.
-          data-debug="true" ativa logs no console do navegador (remover em prod) */}
-      <script src="/pixel.js" data-site-id="default" data-debug="true" />
+      {/* Pixel de tracking — usa next/script em vez de <script> JSX
+          porque o SessionProviderWrapper usa ssr:false, o que impede
+          que <script> JSX seja renderizado no HTML inicial. O next/script
+          injeta o script diretamente no <head> via seu próprio loader. */}
+      <Script
+        src="/pixel.js"
+        data-site-id="default"
+        data-debug="true"
+        strategy="afterInteractive"
+      />
       {children}
     </>
   );

@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
         country: null,
         city: null,
       },
-      update: { ip, userAgent },
+      update: { ip, userAgent: ua },
     });
     diagnostics.steps.push('OK: Visitor upserted');
 
@@ -109,7 +109,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: 'success', diagnostics });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    diagnostics.steps.push(`FAIL: DB error - ${errMsg}`);
+    const errType = err?.constructor?.name || typeof err;
+    const stack = err instanceof Error ? (err.stack || '').substring(0, 500) : '';
+    diagnostics.steps.push(`FAIL: DB error [${errType}] - ${errMsg}`);
+    if (stack) diagnostics.errorStack = stack;
     return NextResponse.json({ status: 'db_error', diagnostics });
   }
 }

@@ -55,10 +55,14 @@
 
   /* ── Script tag / site-id ───────────────────────────── */
   var me = document.currentScript || (function () {
+    // Fallback: find pixel.js by src attribute
     var s = document.getElementsByTagName("script");
+    for (var i = s.length - 1; i >= 0; i--) {
+      if ((s[i].src || "").indexOf("pixel.js") !== -1) return s[i];
+    }
     return s[s.length - 1];
   })();
-  var siteId = (me && me.getAttribute("data-site-id")) || "";
+  var siteId = (me && me.getAttribute("data-site-id")) || "default";
 
   /* ── UTM parser ─────────────────────────────────────── */
   function parseUTM() {
@@ -123,7 +127,7 @@
   }
 
   /* ── Debug mode (enabled via data-debug="true" on script tag) */
-  var _debug = (me && me.getAttribute("data-debug") === "true");
+  var _debug = (me && me.getAttribute("data-debug") === "true") || location.search.indexOf("crmpx_debug=1") !== -1;
   function _log() {
     if (!_debug) return;
     var args = ["[CRM Pixel]"].concat(Array.prototype.slice.call(arguments));
