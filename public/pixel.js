@@ -28,7 +28,6 @@
   var SS_SID = "_crmpx_sid";
   var DEBOUNCE_MS = 2000;
   var HEARTBEAT_INTERVAL = 30000; // 30 s
-  var _sendCount = 0;
 
   /* ── UUID v4 ────────────────────────────────────────── */
   function uuid() {
@@ -126,60 +125,23 @@
     return out;
   }
 
-  /* ── Debug mode (enabled via data-debug="true" on script tag) */
-  var _debug = (me && me.getAttribute("data-debug") === "true") || location.search.indexOf("crmpx_debug=1") !== -1;
-  function _log() {
-    if (!_debug) return;
-    var args = ["[CRM Pixel]"].concat(Array.prototype.slice.call(arguments));
-    try { console.log.apply(console, args); } catch(e) {}
-  }
-  _log("v2 loaded", { siteId: siteId, vid: vid, sid: sid, endpoint: TRACK_ENDPOINT });
-
   /* ── Transport: sendBeacon → fetch ──────────────────── */
-  function send(payload, forceFetch) {
-    _sendCount++;
+  function send(payload) {
     var json = JSON.stringify(payload);
-    _log("send(#" + _sendCount + ")", payload.event, forceFetch ? "[fetch]" : "[beacon]");
-
-    // For debug mode or first pageview, use fetch so we can see the response
-    if (forceFetch || _debug) {
-      try {
-        var data = "data=" + encodeURIComponent(json);
-        fetch(TRACK_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: data,
-          keepalive: true,
-          credentials: "omit"
-        }).then(function(res) {
-          _log("response", payload.event, res.status, res.statusText);
-          return res.text();
-        }).then(function(body) {
-          _log("body", payload.event, body);
-        }).catch(function(err) {
-          _log("ERROR", payload.event, err.message || err);
-        });
-      } catch (e) {
-        _log("fetch error", e.message || e);
-      }
-      return;
-    }
-
     if (navigator.sendBeacon) {
       try {
         var params = new URLSearchParams();
         params.append("data", json);
         var sent = navigator.sendBeacon(TRACK_ENDPOINT, params);
-        _log("beacon sent=" + sent);
         if (sent) return;
-      } catch (e) { _log("beacon error", e.message || e); }
+      } catch (e) { /* fallback */ }
     }
     try {
-      var data2 = "data=" + encodeURIComponent(json);
+      var data = "data=" + encodeURIComponent(json);
       fetch(TRACK_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: data2,
+        body: data,
         keepalive: true,
         credentials: "omit"
       });
@@ -421,8 +383,7 @@
   /* ── Page-view (called once per session load) ───────── */
   function trackPageview() {
     if (!debounce("pageview")) return;
-    // Use fetch for pageview so we can see server response (helps debugging)
-    send(basePayload("pageview"), true);
+    send(basePayload("pageview"));
     ensureScrollListener();
     startHeartbeat();
     trackWebVitals();

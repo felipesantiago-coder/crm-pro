@@ -33,14 +33,11 @@ export default function EmpreendimentosLayout({
 }) {
   return (
     <>
-      {/* Pixel de tracking — usa next/script em vez de <script> JSX
-          porque o SessionProviderWrapper usa ssr:false, o que impede
-          que <script> JSX seja renderizado no HTML inicial. O next/script
-          injeta o script diretamente no <head> via seu próprio loader. */}
+      {/* Pixel de tracking — usa next/script para injetar corretamente
+          independente do SessionProviderWrapper (ssr: false). */}
       <Script
         src="/pixel.js"
         data-site-id="default"
-        data-debug="true"
         strategy="afterInteractive"
       />
       {children}
