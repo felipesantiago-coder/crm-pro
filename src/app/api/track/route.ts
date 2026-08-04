@@ -102,18 +102,23 @@ export async function POST(request: NextRequest) {
   const contentType = request.headers.get('content-type') || '';
 
   try {
+    console.log(`[Tracking] Incoming POST — ip=${ip} ct=${contentType} ua=${userAgent?.substring(0, 60)}`);
     if (contentType.includes('application/x-www-form-urlencoded')) {
       const rawBody = await request.text();
+      console.log(`[Tracking] Raw body length=${rawBody.length} preview=${rawBody.substring(0, 200)}`);
       const urlParams = new URLSearchParams(rawBody);
       const dataParam = urlParams.get('data');
       if (dataParam) {
         // urlParams.get() already decodes — do NOT double-decode
         body = JSON.parse(dataParam);
+        console.log(`[Tracking] Parsed data keys=${Object.keys(body as object).join(',')}`);
       } else {
+        console.warn(`[Tracking] No data= parameter — raw keys=[${[...urlParams.keys()].join(',')}]`);
         return NextResponse.json({ error: 'No data parameter' }, { status: 400 });
       }
     } else {
       body = await request.json();
+      console.log(`[Tracking] JSON body keys=${Object.keys(body as object).join(',')}`);
     }
   } catch (parseErr) {
     console.error(`[Tracking] Parse error — ip=${ip} ct=${contentType} err=${parseErr instanceof Error ? parseErr.message : parseErr}`);
