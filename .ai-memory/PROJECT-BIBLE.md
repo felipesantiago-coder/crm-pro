@@ -4,14 +4,16 @@
 
 > **REGRA**: Toda vez que fizer uma modificação relevante no projeto, ATUALIZE a seção correspondente deste arquivo e faça commit.
 
-> **Última atualização**: 2026-07-04
+> **Última atualização**: 2026-08-05
 
 ---
 
 ## 1. VISÃO GERAL
 
 ### 1.1 O que é
-CRM Pro — Sistema CRM para corretoras de imóveis brasileiras. Gerencia leads, clientes, empreendimentos, agendamentos, lembretes, parcerias entre corretores, e integra com Meta Ads (Facebook/Instagram), Telegram, Ntfy, WhatsApp (Meta Cloud API), Google Calendar e Supabase Realtime.
+CRM Pro — Sistema CRM para corretoras de imóveis brasileiras. Gerencia leads, clientes, empreendimentos, agendamentos, lembretes, parcerias entre corretores, e integra com Meta Ads (Facebook/Instagram), Telegram, Ntfy, WhatsApp (Meta Cloud API) e Google Calendar.
+
+**Arquitetura de infraestrutura**: Neon (banco de dados PostgreSQL), Supabase (apenas Object Storage para imagens e Realtime para toasts na UI), NextAuth (autenticação própria com tabela `users` no Neon). Veja a Seção 1.5 para detalhes completos.
 
 ### 1.2 Stack Tecnológica
 | Camada | Tecnologia | Versão |
@@ -19,7 +21,7 @@ CRM Pro — Sistema CRM para corretoras de imóveis brasileiras. Gerencia leads,
 | Framework | Next.js (App Router) | ^16.1.1 |
 | React | React | ^19.0.0 |
 | Linguagem | TypeScript | ^5 |
-| Banco de dados | Supabase PostgreSQL v15 | — |
+| Banco de dados | Neon PostgreSQL (serverless) | — |
 | ORM | Prisma | ^6.11.1 |
 | Estilização | Tailwind CSS v4 + shadcn/ui | ^4 |
 | Estado global | Zustand | ^5.0.6 |
@@ -33,6 +35,8 @@ CRM Pro — Sistema CRM para corretoras de imóveis brasileiras. Gerencia leads,
 | Telegram | Bot API (long-polling style) | — |
 | Google Calendar | OAuth2 direto (sem SDK) | — |
 | Deploy | Vercel (standalone output) | region: gru1 |
+| Object Storage | Supabase Storage (bucket `enterprise-images`) | — |
+| Realtime | Supabase Realtime (postgres_changes via WAL) | — |
 | Runtime | Bun (local dev) / Node (Vercel) | — |
 
 ### 1.3 Repositório
@@ -52,6 +56,28 @@ npm run db:migrate   # prisma migrate dev
 npm run db:reset     # prisma migrate reset
 ```
 
+### 1.5 Arquitetura de Infraestrutura (NEON + SUPABASE + NEXTAUTH)
+
+> ⚠️ **ESTA É A SEÇÃO MAIS IMPORTANTE PARA AUDITORIAS FUTURAS.** Leia com atenção.
+
+O projeto NÃO usa Supabase como banco de dados. A migração para Neon foi concluída em uma sessão anterior. O `DATABASE_URL` no Vercel aponta para `*.neon.tech`.
+
+| Serviço | Função no projeto | Detalhes |
+|---------|-------------------|----------|
+| **Neon** | Banco de dados PostgreSQL (produção) | Todas as 21 tabelas via Prisma ORM. Connection string em `DATABASE_URL` (formato `postgres://user:pass@ep-*.neon.tech/dbname?sslmode=require`). Scale-to-zero: `ensureDbConnection()` em `db.ts` trata cold starts com retry (3s, 4s, 5s). |
+| **Supabase** | Object Storage (APENAS) | Bucket `enterprise-images` para upload/exclusão de imagens de empreendimentos. Client server-side em `supabase-server.ts`. NUNCA usado para queries de banco de dados. |
+| **Supabase** | Realtime (APENAS) | Subscriptions `postgres_changes` na tabela `clients` para exibir toasts na UI quando um cliente é criado/atualizado. Ouve as tabelas Neon via WAL replica. Provider em `supabase-realtime-provider.tsx`. |
+| **NextAuth v4** | Autenticação | Provider Credentials com bcryptjs (saltRounds=12). Tabela `users` própria no Neon (NÃO usa Supabase Auth). JWT com maxAge 8h. |
+
+**Pontos-chave para auditoria:**
+- **Prisma** é agnóstico ao banco — não há pacotes Neon-specific no código. O Neon é acessado via `DATABASE_URL` padrão do PostgreSQL.
+- **`$queryRaw`** deve usar camelCase nos nomes de coluna (ex: `createdAt`, `createdBy`, `clientId`) porque o Prisma `@map()` define camelCase no banco Neon.
+- **`@supabase/ssr`** está instalado no `package.json` mas NÃO é importado em nenhum lugar — é dead code.
+- **`supabase-browser.ts`** e **`use-supabase-realtime.ts`** são dead code (não importados por nenhum componente ativo).
+- **Debug endpoint** (`/api/debug/prisma` ou `/api/debug`) auto-deteta o provider: se `DATABASE_URL` contém `neon.tech` → relata "Neon"; se contém `supabase` → relata "Supabase (LEGADO)".
+- **Migrações**: Usar `npx prisma db push` OU o Neon SQL Editor (`console.neon.tech`). NÃO usar Supabase Dashboard para operações de banco.
+- **Imagens**: URLs de imagem contêm `*.supabase.co` — isso é NORMAL e NÃO significa que o banco é Supabase. É apenas o Storage.
+
 ---
 
 ## 2. ESTRUTURA DE PASTAS
@@ -62,7 +88,7 @@ repo-source/
 │   └── PROJECT-BIBLE.md
 ├── prisma/
 │   ├── schema.prisma            # Modelo de dados completo
-│   └── migrations/              # Migrações SQL manuais para Supabase
+│   └── migrations/              # Migrações Prisma (automáticas via prisma db push/migrate)
 ├── public/
 │   ├── logo.svg                 # Logo do CRM
 │   ├── pixel.js                 # Tracking pixel JS (embedded em landing pages externas)
@@ -162,7 +188,7 @@ repo-source/
 │   │   │   ├── tracking-tab.tsx  # Tab de tracking
 │   │   │   ├── import-export.tsx  # Importar/exportar dados
 │   │   │   ├── ai-context-memory.tsx  # Memória de contexto IA
-│   │   │   └── supabase-realtime-provider.tsx  # Provider Supabase Realtime
+│   │   │   └── supabase-realtime-provider.tsx  # Provider Realtime (ouve tabelas Neon via Supabase Realtime)
 │   │   └── ui/                   # Componentes shadcn/ui (NÃO ALTERAR MANUALMENTE — usar CLI)
 │   ├── data/
 │   │   └── enterprises-catalog.ts  # CATÁLOGO ESTÁTICO de empreendimentos (Ficha Técnica)
@@ -170,7 +196,7 @@ repo-source/
 │   │   ├── use-session-guard.ts  # Redirect se não logado
 │   │   ├── use-mobile.ts         # Detecta mobile
 │   │   ├── use-toast.ts          # Toast hook
-│   │   └── use-supabase-realtime.ts  # Realtime subscriptions
+│   │   └── use-supabase-realtime.ts  # ⚠️ DEAD CODE — não importado
 │   ├── lib/
 │   │   ├── db.ts                 # Prisma client (Proxy lazy init + ensureDbConnection)
 │   │   ├── auth.ts               # hashPassword, verifyPassword, isAdmin
@@ -187,8 +213,8 @@ repo-source/
 │   │   ├── rate-limit.ts         # In-memory rate limiter
 │   │   ├── validations.ts        # Zod v4 schemas (client, interaction, schedule, etc.)
 │   │   ├── phone-utils.ts        # Formatação telefone, WhatsApp URL, tel: link
-│   │   ├── supabase-browser.ts   # Supabase client para browser (Realtime)
-│   │   ├── supabase-server.ts    # Supabase client para server
+│   │   ├── supabase-browser.ts   # ⚠️ DEAD CODE — Supabase client para browser
+│   │   ├── supabase-server.ts    # Supabase client server-side (APENAS Storage: upload/delete)
 │   │   └── utils.ts              # cn() helper (clsx + tailwind-merge)
 │   ├── store/
 │   │   └── crm-store.ts          # Zustand store (SPA-like navigation)
@@ -198,7 +224,7 @@ repo-source/
 │   └── middleware.ts             # Edge middleware (cache-control, security headers)
 ├── .gitignore
 ├── components.json              # shadcn/ui config
-├── next.config.ts               # standalone output, ignoreBuildErrors, Supabase images
+├── next.config.ts               # standalone output, ignoreBuildErrors, Supabase Storage images
 ├── tailwind.config.ts           # Dark mode class, shadcn color tokens
 ├── tsconfig.json
 ├── vercel.json                  # region: gru1
@@ -450,7 +476,7 @@ Edge middleware executado em TODAS as requisições. Responsabilidades:
 - `output: "standalone"` — Necessário para Vercel com Prisma
 - `typescript.ignoreBuildErrors: true` — Build não falha por erros TS
 - `reactStrictMode: true`
-- `images.remotePatterns`: Permite `*.supabase.co/storage/v1/object/public/**`
+- `images.remotePatterns`: Permite `*.supabase.co/storage/v1/object/public/**` (Supabase Storage — imagens de empreendimentos)
 - `headers()`: API routes recebem `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`
 
 ---
@@ -460,7 +486,7 @@ Edge middleware executado em TODAS as requisições. Responsabilidades:
 ### Obrigatórias
 | Variável | Descrição |
 |----------|-----------|
-| `DATABASE_URL` | Connection string Supabase PostgreSQL |
+| `DATABASE_URL` | Connection string Neon PostgreSQL (formato `postgres://user:pass@ep-*.neon.tech/dbname?sslmode=require`) |
 | `NEXTAUTH_SECRET` | JWT signing secret |
 | `NEXTAUTH_URL` | URL base do app (ex: `https://crmpro.vercel.app`) |
 
@@ -477,8 +503,9 @@ Edge middleware executado em TODAS as requisições. Responsabilidades:
 | `GOOGLE_CLIENT_ID` | OAuth2 Client ID | Google Calendar |
 | `GOOGLE_CLIENT_SECRET` | OAuth2 Client Secret | Google Calendar |
 | `GOOGLE_REDIRECT_URI` | Redirect URI OAuth2 | Google Calendar |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL (browser) | Realtime |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (browser) | Realtime |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL | Storage + Realtime |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key | Storage + Realtime |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key | Storage (upload/delete com permissões elevadas) |
 | `NEXT_PUBLIC_APP_URL` | URL pública do app | Portal links |
 
 ---
@@ -498,7 +525,7 @@ Edge middleware executado em TODAS as requisições. Responsabilidades:
 
 ### 10.2 Prisma Client (`src/lib/db.ts`)
 - Usa **Proxy lazy initialization** — não crasha em build sem DATABASE_URL
-- `ensureDbConnection(maxRetries=3)`: Retry com delays crescentes (3s, 4s, 5s) para Supabase cold-start
+- `ensureDbConnection(maxRetries=3)`: Retry com delays crescentes (3s, 4s, 5s) para Neon scale-to-zero (cold start)
 - Em dev: log level `['warn', 'error']`. Em prod: `['error']` apenas.
 
 ### 10.3 Padrão de API Response
@@ -511,9 +538,11 @@ O CRM não usa rotas Next.js para navegação interna. Usa Zustand store (`useCR
 
 ---
 
-## 11. SUPABASE MIGRATIONS (SQL manual)
+## 11. ARQUIVOS SQL DE SETUP (Histórico — Neon DB + Supabase Storage)
 
-Arquivos SQL na raiz do projeto (não gerados pelo Prisma, aplicados manualmente no Supabase Dashboard):
+> ⚠️ Estes arquivos SQL foram criados quando o banco era Supabase. Foram migrados para Neon. Novas operações de schema devem usar `npx prisma db push` ou o Neon SQL Editor. O bucket do Supabase Storage (`enterprise-images`) ainda precisa do Supabase para gestão.
+
+Arquivos SQL na raiz do projeto (histórico — NÃO usar para novas operações de banco):
 - `supabase-setup.sql` — Setup inicial
 - `supabase-migration-enterprise-images.sql` — Bucket de imagens
 - `supabase-migration-enterprise-images-bucket.sql` — Bucket config
@@ -546,6 +575,30 @@ Arquivos SQL na raiz do projeto (não gerados pelo Prisma, aplicados manualmente
 ---
 
 ## 13. HISTÓRICO DE MODIFICAÇÕES RELEVANTES
+
+### 2026-08-05 — Documentação de Arquitetura (Neon + Supabase + NextAuth)
+
+Atualização completa do PROJECT-BIBLE.md e de 11 arquivos de código para documentar a arquitetura correta:
+
+- **Seção 1.5 adicionada** com tabela clara: Neon (DB), Supabase (Storage/Realtime), NextAuth (Auth)
+- **Stack atualizada**: "Supabase PostgreSQL v15" → "Neon PostgreSQL (serverless)"
+- **Env vars corrigidas**: `DATABASE_URL` → Neon, `SUPABASE_SERVICE_ROLE_KEY` adicionado
+- **11 arquivos de código** com JSDoc/comentários atualizados (`.env.example`, `schema.prisma`, `db.ts`, `supabase-server.ts`, `supabase-browser.ts`, `track/route.ts`, `track/debug/route.ts`, `realtime-flag.ts`, `realtime-emitter.ts`, `supabase-realtime-provider.tsx`, `debug/route.ts`)
+- **Dead code identificado**: `supabase-browser.ts`, `use-supabase-realtime.ts`, `@supabase/ssr` (instalado mas não importado)
+- **Debug endpoint** (`/api/debug`) agora auto-deteta: Neon vs Supabase (LEGADO)
+- Commits: `7f8accb` (submodule), `c6ef10c` (parent)
+
+### 2026-08-04 a 2026-08-05 — Sessões de Auditoria e Bug Fixes
+
+1. **Auditoria do sistema de login** (commit `c989403`): 10 bugs corrigidos incluindo verificação de senha com timing-safe comparison, proteção contra enumeração de email, bloqueio de sessões expiradas, etc.
+
+2. **Auditoria do sistema de notificação Telegram** (commit anterior a `c989403`): 7 bugs corrigidos incluindo tratamento de chatId ausente, fallback de notificação, etc.
+
+3. **Auditoria do sistema de fila de atendimento** (commit anterior a `c989403`): 7 bugs corrigidos incluindo race conditions no round-robin, reindexação de membros, etc.
+
+4. **Correção de erros 500 em `/api/analytics` e `/api/reports`** (commit `3646ef5`): Colunas snake_case em `$queryRaw` corrigidas para camelCase (Neon usa camelCase via `@map()` do Prisma).
+
+5. **Documentação de arquitetura** (commit `7f8accb`): 11 arquivos atualizados para documentar Neon (DB) + Supabase (Storage/Realtime).
 
 ### 2026-07-04 — Sessão de Bug Fixes (Notificações + Lead Queue)
 **5 bugs corrigidos e commitados:**
@@ -585,7 +638,7 @@ Componentes em `src/components/ui/` são gerados pelo CLI shadcn. NÃO editar ma
 - Server Components por padrão, `'use client'` apenas quando necessário
 
 ### 14.6 Prisma Migrations
-As migrações do Prisma (`prisma/migrations/`) são automáticas. Mas existem também migrações SQL manuais na raiz para features que precisam de SQL nativo do Supabase (RLS, buckets, etc.).
+As migrações do Prisma (`prisma/migrations/`) são automáticas (via `prisma db push` ou `prisma migrate dev`). Existem também arquivos SQL históricos na raiz (Seção 11) — foram usados quando o banco era Supabase; agora o banco é Neon e novos schemas devem ser aplicados via Prisma ou Neon SQL Editor. O bucket do Supabase Storage ainda é gerenciado via console do Supabase.
 
 ### 14.7 Email Templates
 Todos em `src/lib/email.ts`. Usam HTML inline table layout (compatibilidade máxima com clients de email). Header com gradiente verde (`linear-gradient(135deg,#10b981,#0d9488)`). Footer com data automática.
@@ -604,13 +657,13 @@ Se precisar reconstruir do absoluto zero:
 
 1. **Criar projeto**: `npx create-next-app@latest` com TypeScript, Tailwind, App Router
 2. **Instalar deps**: Copiar `package.json`, rodar `npm install`
-3. **Configurar Prisma**: Copiar `prisma/schema.prisma`, rodar `npx prisma generate` + `npx prisma db push` (ou aplicar migrações SQL manualmente no Supabase)
+3. **Configurar Prisma**: Copiar `prisma/schema.prisma`, rodar `npx prisma generate` + `npx prisma db push` (ou usar o Neon SQL Editor em `console.neon.tech`)
 4. **Configurar next.config.ts**: Copiar tal qual (standalone, ignoreBuildErrors, images, headers)
 5. **Configurar middleware.ts**: Copiar tal qual (cache-control)
 6. **Configurar tailwind + globals.css**: Copiar tailwind.config.ts e as CSS variables HSL do globals.css
 7. **Configurar autenticação**: Copiar `src/lib/auth.ts`, `auth-options.ts`, `api-auth.ts`, `src/app/api/auth/[...nextauth]/route.ts`
 8. **Instalar shadcn/ui**: `npx shadcn@latest init` e adicionar os componentes necessários
-9. **Copiar libs**: `db.ts`, `portal-token.ts`, `validations.ts`, `phone-utils.ts`, `rate-limit.ts`, `email.ts`, `telegram.ts`, `ntfy.ts`, `whatsapp.ts`, `google-calendar.ts`, `notifications.ts`, `supabase-browser.ts`, `utils.ts`
+9. **Copiar libs**: `db.ts`, `portal-token.ts`, `validations.ts`, `phone-utils.ts`, `rate-limit.ts`, `email.ts`, `telegram.ts`, `ntfy.ts`, `whatsapp.ts`, `google-calendar.ts`, `notifications.ts`, `supabase-server.ts` (Storage), `realtime/realtime-emitter.ts`, `realtime/realtime-flag.ts`, `utils.ts`
 10. **Copiar store**: `crm-store.ts`
 11. **Copiar data**: `enterprises-catalog.ts`
 12. **Copiar componentes CRM**: Todos em `src/components/crm/`
