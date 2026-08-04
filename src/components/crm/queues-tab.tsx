@@ -448,7 +448,11 @@ export function QueuesTab() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium truncate">{m.user.name}</span>
-                                {q.isDefault && m.isActive && active.length > 0 && idx === (q.currentIdx % active.length) && (
+                                {q.isDefault && m.isActive && active.length > 0 && (() => {
+                                  const activeIdx = q.currentIdx % active.length;
+                                  const activeMember = active[activeIdx];
+                                  return activeMember && m.id === activeMember.id;
+                                })() && (
                                   <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[9px] px-1.5 py-0 gap-0.5">
                                     <Crown className="h-2.5 w-2.5" /> Vez
                                   </Badge>

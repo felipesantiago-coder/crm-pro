@@ -289,10 +289,10 @@ export async function POST(request: NextRequest) {
           if (fetched) {
             fieldData = fetched;
           } else {
-          
+            console.warn(`[Meta Webhook] Não foi possível buscar dados do lead ${leadgenId}`);
           }
         } else if (fieldData.length === 0) {
-          
+          console.warn(`[Meta Webhook] Sem field_data e sem pageAccessToken para lead ${leadgenId}`);
         }
 
         // Extrair campos do formulário
@@ -350,13 +350,21 @@ export async function POST(request: NextRequest) {
 
         // 5. Check for duplicate — search notes for leadgen_id (idempotency)
         // FIX: prevents duplicate clients when Meta retries the webhook concurrently
-        const existingByLeadgenId = await db.client.findFirst({
-          where: { notes: { contains: `Lead ID: ${leadgenId}` } },
-          select: { id: true },
-        });
-        if (existingByLeadgenId) {
-          results.push({ success: true, clientName: 'dedup', reason: 'already_processed', leadId: leadgenId });
-          continue;
+        // Note: Using notes contains as a simple dedup. For high volume,
+        // consider adding a dedicated metaLeadgenId column.
+        // Also: assignLeadToUser() has its own idempotency cache for leadId.
+        try {
+          const existingByLeadgenId = await db.client.findFirst({
+            where: { notes: { contains: `Lead ID: ${leadgenId}` } },
+            select: { id: true },
+          });
+          if (existingByLeadgenId) {
+            results.push({ success: true, clientName: 'dedup', reason: 'already_processed', leadId: leadgenId });
+            continue;
+          }
+        } catch (dedupErr) {
+          // If dedup check fails, log but proceed (better to create a duplicate than lose a lead)
+          console.warn(`[Meta Webhook] Falha na verificação de duplicata para lead ${leadgenId}:`, dedupErr);
         }
 
         // 6. Find a user for createdBy (required FK)
@@ -413,12 +421,20 @@ export async function POST(request: NextRequest) {
           try {
             const assignResult = await assignLeadToUser({
               leadId: newClient.id,
-              source: `meta_ads:${campaignName || adName}`,
+              source: `meta_ads:${(campaignName || adName || '').slice(0, 200)}`,
             });
             if (assignResult.assigned && assignResult.userId) {
               assignedUserId = assignResult.userId;
               // Update client's createdBy to the assigned user
-              await db.client.update({ where: { id: newClient.id }, data: { createdBy: assignedUserId } }).catch(() => {});
+              await db.client.update({
+                where: { id: newClient.id },
+                data: {
+                  createdBy: assignedUserId,
+                  // Also store UTM info when available from Meta
+                  utmSource: 'meta_ads',
+                  utmCampaign: (campaignName || '').slice(0, 200) || undefined,
+                },
+              }).catch(() => {});
             }
           } catch (queueErr) {
             console.error(`[Meta Webhook] Falha na atribuição de fila (lead salvo):`, queueErr);

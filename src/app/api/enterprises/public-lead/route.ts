@@ -75,13 +75,61 @@ export async function POST(request: NextRequest) {
     });
 
     if (existingClient) {
+      // Create interaction recording the repeat contact
       await db.interaction.create({
         data: {
           clientId: existingClient.id,
           description: `[Landing Page] Novo cadastro${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? ` (slug: ${slug})` : ''}`,
         },
       });
-      return NextResponse.json({ success: true, isExisting: true, clientId: existingClient.id, clientName: existingClient.name, assignedUser: null });
+
+      // CRITICAL FIX: Even for existing clients, still assign via queue
+      // so the lead reaches the next available agent.
+      // This was previously returning assignedUser: null for existing clients,
+      // meaning repeat leads had NO queue assignment.
+      let assignedUser: AssignResult | null = null;
+      try {
+        assignedUser = await assignLeadToUser({
+          leadId: existingClient.id,
+          source: slug ? `landing_form:${slug}` : 'landing_form',
+        });
+      } catch (err) {
+        console.error('[Public Lead] Falha na atribuição de fila (lead existente):', err);
+      }
+
+      // Send Telegram notification for repeat lead
+      if (assignedUser?.assigned && assignedUser.userId) {
+        try {
+          const notifyUser = await db.user.findUnique({
+            where: { id: assignedUser.userId },
+            select: { telegramChatId: true },
+          });
+          if (notifyUser?.telegramChatId) {
+            notifyNewLead(notifyUser.telegramChatId, {
+              leadName: existingClient.name,
+              leadPhone: existingClient.phone || '',
+              leadEmail: existingClient.email || '',
+              enterpriseName,
+              utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
+              utmSource: typeof utmSource === 'string' ? utmSource : null,
+              slug: slug || undefined,
+              customAnswers: undefined,
+            }).catch(() => {});
+          }
+        } catch { /* non-critical */ }
+      }
+
+      return NextResponse.json({
+        success: true,
+        isExisting: true,
+        clientId: existingClient.id,
+        clientName: existingClient.name,
+        assignedUser: assignedUser?.assigned ? {
+          userId: assignedUser.userId,
+          userName: assignedUser.userName,
+          userPhone: assignedUser.userPhone,
+        } : null,
+      });
     }
 
     // ── Find a user to assign as createdBy ──
