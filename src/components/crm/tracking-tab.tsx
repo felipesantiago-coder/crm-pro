@@ -228,9 +228,17 @@ export function TrackingTab() {
       const res = await fetch(`/api/tracking/dashboard?period=${p}`);
       if (res.ok) {
         const json = await res.json();
-        setData(json);
+        // Validacao basica — evita crash se a API retornar formato inesperado
+        if (json && json.metrics && typeof json.metrics.totalVisitors === 'number') {
+          setData(json);
+        } else {
+          console.error('[TrackingTab] Resposta inesperada da API:', json);
+          toast.error('Erro: formato inesperado dos dados de tracking');
+        }
       } else {
-        toast.error('Erro ao carregar dados de tracking');
+        const errText = await res.text().catch(() => '');
+        console.error('[TrackingTab] Erro da API:', res.status, errText);
+        toast.error(`Erro ao carregar dados de tracking (${res.status})`);
       }
     } catch {
       toast.error('Erro de conexão ao carregar tracking');
@@ -287,7 +295,7 @@ export function TrackingTab() {
   }
 
   // ── Empty State ──
-  if (data && data.metrics.totalVisitors === 0) {
+  if (data?.metrics && data.metrics.totalVisitors === 0) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -385,7 +393,21 @@ export function TrackingTab() {
     );
   }
 
-  if (!data) return null;
+  if (!data || !data.metrics) {
+    return (
+      <Card className="border-border/50">
+        <CardContent className="py-12 px-6 text-center">
+          <p className="text-sm text-muted-foreground">Nao foi possivel carregar os dados de tracking.</p>
+          <button
+            className="mt-3 text-xs text-[#C9A96E] hover:underline"
+            onClick={() => fetchData(period)}
+          >
+            Tentar novamente
+          </button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // ── Derived data ──
   const last14 = data.chartData.slice(-14);
