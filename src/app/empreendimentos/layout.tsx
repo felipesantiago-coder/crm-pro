@@ -32,8 +32,10 @@ export default function EmpreendimentosLayout({
 }) {
   return (
     <>
+      {/* Pixel de tracking — carrega ANTES do React bundle para garantir
+          que eventos sejam enviados mesmo se o app React crashar */}
+      <script src="/pixel.js" data-site-id="default" />
       {children}
-      <script src="/pixel.js" data-site-id="default" async />
     </>
   );
 }
