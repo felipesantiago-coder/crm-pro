@@ -840,9 +840,9 @@ function AnalysisTab() {
           <div className="text-sm text-muted-foreground">
             <p className="font-medium text-foreground">Como funciona</p>
             <p className="mt-1">
-              A IA analisa todos os seus leads do Meta Ads, incluindo volume, distribuição por estágio,
-              campanhas, regiões e padrões nos dados. Com base nisso, gera um relatório com insights
-              de qualidade, gargalos no funil e recomendações práticas para otimizar seus anúncios.
+              A IA analisa seus leads do webhook Meta Ads, leads de landing pages com UTM do Meta e dados do
+              pixel próprio (comportamento, scroll, dispositivos, Web Vitals, formulário). Gera um relatório
+              com insights de qualidade, gargalos no funil, análise da landing page e recomendações práticas.
             </p>
           </div>
         </CardContent>

@@ -7,9 +7,14 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 
 /**
- * API de Análise IA dos Leads do Meta Ads
- * Envia dados agregados dos leads para a IA gerar insights
- * e recomendações de otimização.
+ * API de Análise IA dos Leads do Meta Ads + Landing Pages
+ * Envia dados agregados dos leads (webhook Meta + landing pages com UTM Meta)
+ * e dados do pixel próprio para a IA gerar insights e recomendações de otimização.
+ *
+ * Fontes de leads consideradas:
+ *   1. Webhook Meta Ads (notes contêm "[Meta Ads]")
+ *   2. Landing pages com UTM de origem Meta (utmSource = facebook/instagram/meta/fb)
+ *   3. Dados do pixel próprio (tracking_events/tracking_visitors) — sempre incluídos
  */
 export async function GET() {
   try {
@@ -17,17 +22,24 @@ export async function GET() {
     if (error) return error;
 
     // ─────────────────────────────────────────
-    // 1. Coletar dados dos leads do Meta
+    // 1. Coletar dados dos leads (Meta Ads + Landing Pages com UTM Meta)
     // ─────────────────────────────────────────
+    const META_UTM_SOURCES = ['facebook', 'instagram', 'meta', 'fb'];
+
     const metaClients = await db.client.findMany({
       where: {
         OR: [
+          // Webhook Meta Ads direto
           { notes: { contains: '[Meta Ads]' } },
           {
             interactions: {
               some: { description: { contains: '[Meta Ads]' } },
             },
           },
+          // Landing pages com UTM de origem Meta (case-insensitive)
+          ...META_UTM_SOURCES.map((source) => ({
+            utmSource: { contains: source, mode: 'insensitive' as const },
+          })),
         ],
       },
       select: {
@@ -40,6 +52,9 @@ export async function GET() {
         createdAt: true,
         lastInteractionAt: true,
         enterprise: true,
+        utmSource: true,
+        utmMedium: true,
+        utmCampaign: true,
         interactions: {
           select: {
             description: true,
@@ -53,11 +68,28 @@ export async function GET() {
       take: 200,
     });
 
-    if (metaClients.length === 0) {
-      return NextResponse.json({
-        analysis: null,
-        message: 'Nenhum lead do Meta Ads encontrado para análise. Configure o webhook e aguarde os primeiros leads.',
-      });
+    // Se não há leads CRM, permite análise apenas com dados do pixel
+    const hasPixelDataOnly = metaClients.length === 0;
+    if (hasPixelDataOnly) {
+      // Verifica se há dados de pixel antes de bloquear
+      try {
+        const pixelCheck = await db.$queryRaw<{ cnt: string }[]>`
+          SELECT COUNT(DISTINCT "visitorId")::text as cnt FROM "tracking_events"
+          WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+        `;
+        if (!pixelCheck.length || Number(pixelCheck[0].cnt) === 0) {
+          return NextResponse.json({
+            analysis: null,
+            message: 'Nenhum lead do Meta Ads ou dado de pixel encontrado para análise. Configure o webhook, publique landing pages com o pixel e aguarde os primeiros visitantes.',
+          });
+        }
+        // Há dados de pixel mas nenhum lead CRM — prosseguir com pixel-only
+      } catch {
+        return NextResponse.json({
+          analysis: null,
+          message: 'Nenhum lead do Meta Ads encontrado para análise. Configure o webhook ou publique landing pages com UTM do Meta e aguarde os primeiros leads.',
+        });
+      }
     }
 
     // ─────────────────────────────────────────
@@ -79,12 +111,19 @@ export async function GET() {
         regions[c.region] = (regions[c.region] || 0) + 1;
       }
 
-      // Campanha (das notas)
-      if (c.notes) {
-        const campaignMatch = c.notes.match(/Campanha:\s*(.+)/);
-        if (campaignMatch) {
-          campaigns[campaignMatch[1].trim()] = (campaigns[campaignMatch[1].trim()] || 0) + 1;
+      // Campanha (das notas OU do campo utmCampaign)
+      const campaignName = (() => {
+        // Prioridade 1: regex nas notas (webhook Meta)
+        if (c.notes) {
+          const m = c.notes.match(/Campanha:\s*(.+)/);
+          if (m) return m[1].trim();
         }
+        // Prioridade 2: campo utmCampaign (landing pages)
+        if (c.utmCampaign) return c.utmCampaign;
+        return null;
+      })();
+      if (campaignName) {
+        campaigns[campaignName] = (campaigns[campaignName] || 0) + 1;
       }
 
       // Por mês
@@ -112,9 +151,9 @@ export async function GET() {
     weekAgo.setDate(weekAgo.getDate() - 7);
     const recentLeads = metaClients.filter((c) => c.createdAt >= weekAgo).length;
 
-    // Taxa de conversão
+    // Taxa de conversão (protege contra divisão por zero quando só há pixel)
     const converted = (stages['NEGOCIACAO'] || 0) + (stages['PROPOSTA'] || 0) + (stages['FECHADO'] || 0);
-    const convRate = ((converted / total) * 100).toFixed(1);
+    const convRate = total > 0 ? ((converted / total) * 100).toFixed(1) : '0.0';
 
     // Amostra de leads para contexto
     const sampleLeads = metaClients.slice(0, 15).map((c) => ({
@@ -126,9 +165,17 @@ export async function GET() {
       criadoEm: c.createdAt.toISOString().split('T')[0],
       ultimaInteracao: c.lastInteractionAt?.toISOString().split('T')[0] || 'Nenhuma',
       campanha: (() => {
-        if (!c.notes) return 'N/A';
-        const m = c.notes.match(/Campanha:\s*(.+)/);
-        return m ? m[1].trim() : 'N/A';
+        if (c.notes) {
+          const m = c.notes.match(/Campanha:\s*(.+)/);
+          if (m) return m[1].trim();
+        }
+        return c.utmCampaign || 'N/A';
+      })(),
+      origem: (() => {
+        if (c.notes && c.notes.includes('[Meta Ads]')) return 'Webhook Meta';
+        if (c.notes && c.notes.includes('[Landing Page]')) return 'Landing Page';
+        if (c.utmSource) return 'UTM: ' + c.utmSource;
+        return 'N/A';
       })(),
     }));
 
@@ -807,14 +854,32 @@ ${pixelData.geoBreakdown.length > 0 ? pixelData.geoBreakdown.map((g) => {
 }).join('\n') : '- Nenhum dado geografico disponivel (Geo-IP pode ainda nao estar ativo)'}`;
     }
 
-    const dataSummary = `
+    // Contar origens dos leads
+    const sourceBreakdown: Record<string, number> = {};
+    if (!hasPixelDataOnly) {
+      for (const c of metaClients) {
+        const origem = c.notes?.includes('[Meta Ads]') ? 'Webhook Meta'
+          : c.notes?.includes('[Landing Page]') ? 'Landing Page'
+          : c.utmSource ? 'UTM: ' + c.utmSource
+          : 'Outros';
+        sourceBreakdown[origem] = (sourceBreakdown[origem] || 0) + 1;
+      }
+    }
+
+    // Montar seção de dados CRM (pode estar vazia no modo pixel-only)
+    const crmSection = hasPixelDataOnly
+      ? '\n### Dados do CRM\nNenhum lead do CRM identificado com origem Meta Ads nos últimos 30 dias. A análise abaixo é baseada EXCLUSIVAMENTE nos dados do pixel próprio (landing pages).\n'
+      : `
 ## Dados do Meta Ads para Análise
 
 ### Visão Geral
-- Total de leads recebidos: ${total}
+- Total de leads recebidos (CRM): ${total}
 - Leads nos últimos 7 dias: ${recentLeads}
 - Taxa de conversão (Leads → Negociação/Proposta/Fechado): ${convRate}%
 - Leads sem nenhuma interação: ${withoutInteraction} (${((withoutInteraction / total) * 100).toFixed(1)}%)
+
+### Origem dos Leads
+${Object.entries(sourceBreakdown).sort((a, b) => b[1] - a[1]).map(([s, c]) => `- ${s}: ${c} (${((c / total) * 100).toFixed(1)}%)`).join('\n')}
 
 ### Distribuição por Estágio do Funil
 ${Object.entries(stages).sort((a, b) => b[1] - a[1]).map(([s, c]) => `- ${s}: ${c} (${((c / total) * 100).toFixed(1)}%)`).join('\n')}
@@ -830,20 +895,26 @@ ${Object.entries(byMonth).sort((a, b) => a[0].localeCompare(b[0])).map(([m, c]) 
 
 ### Amostra de 15 Leads (mais recentes)
 ${JSON.stringify(sampleLeads, null, 2)}
-${pixelSection}
-`.trim();
+`;
+
+    const dataSummary = `${crmSection}${pixelSection}`.trim();
 
     const systemPrompt = `Você é um consultor especialista em marketing digital e Meta Ads (Facebook/Instagram) para o mercado imobiliário brasileiro.
-Seu papel é analisar os dados de leads do Meta Ads e fornecer insights acionáveis em português brasileiro.
+Seu papel é analisar os dados de leads (do webhook Meta, de landing pages com UTM Meta e do pixel próprio) e fornecer insights acionáveis em português brasileiro.
 
 Cruze os dados do pixel próprio com os dados de leads do CRM. Identifique discrepâncias entre o que o pixel registrou e o que o CRM mostra. Analise a taxa de rejeição, o comportamento dos visitantes, engajamento (scroll depth), tempo na página, dispositivo (mobile vs desktop) e effectiveness dos CTAs de WhatsApp.
+
+ORIGEM DOS LEADS: Os leads podem vir de 3 fontes:
+- **Webhook Meta**: O lead preencheu o formulário nativo do Facebook/Instagram.
+- **Landing Page**: O lead visitou a landing page do empreendimento e preencheu o formulário lá (com UTM do Meta).
+- **Pixel**: Dados de navegação coletados pelo pixel próprio nas landing pages.
 
 Analise os dados fornecidos e gere um relatório estruturado com as seguintes seções:
 
 1. **Resumo Executivo** — Visão geral rápida dos números e tendências
 2. **Análise de Funil Completo** — Use o funil do pixel (pageview → engagement → lead). Identifique gargalos. Analise a taxa de rejeição e o tempo médio na página.
 3. **Engajamento e Comportamento** — Analise scroll depth, tempo na página, dispositivos, fontes de tráfego e visualização de seções. Identifique padrões de comportamento.
-4. **Qualidade dos Leads** — Os leads parecem qualificados? Há padrões nos dados? Que tipo de visitante converte?
+4. **Qualidade dos Leads** — Os leads parecem qualificados? Há padrões nos dados? Que tipo de visitante converte? Compare leads do webhook vs landing page.
 5. **Performance da Landing Page** — Analise Web Vitals (LCP, FID, CLS). Há problemas de performance que afetam a conversão? Há erros de JavaScript?
 6. **Desempenho por Campanha e Criativo** — Qual campanha traz os melhores leads? Qual landing page converte mais?
 7. **Análise do Formulário** — Qual campo tem maior taxa de desistência? Quanto tempo os visitantes gastam em cada campo? Há formulários abandonados?
@@ -855,14 +926,15 @@ Analise os dados fornecidos e gere um relatório estruturado com as seguintes se
 
 IMPORTANTE:
 - Leads do webhook Meta Ads chegam diretamente do Facebook e NÃO geram eventos de pixel. A discrepancia entre pixel e CRM e esperada nesse caso.
-- Leads cadastrados via formulario das landing pages GERAM eventos de pixel (form_submit).
+- Leads cadastrados via formulario das landing pages GERAM eventos de pixel (form_submit) e campos UTM.
 - Use dados numericos em TODOS os argumentos. Nunca faca afirmações vagas.
 - Foque no que importa para um corretor/consultor imobiliário.
 - Se houver dados de dispositivo, analise se mobile ou desktop tem melhor conversão.
 - Se houver dados de Web Vitals, identifique problemas de performance (LCP > 2500ms, CLS > 0.1, FID > 100ms).
 - Se houver dados de FAQ, identifique quais dúvidas são mais frequentes e sugira otimizações.
 - Se houver dados de exit intent, sugira estratégias de retenção (popup, oferta especial, etc.).
-- Se houver dados de fuso horario, sugira horários otimos para atendimento via WhatsApp.`;
+- Se houver dados de fuso horario, sugira horários otimos para atendimento via WhatsApp.
+- Se os dados forem exclusivamente do pixel (sem leads CRM), foque a análise no comportamento dos visitantes, funil de conversão da landing page e performance técnica.`;
 
     // ─────────────────────────────────────────
     // 4. Chamar IA
