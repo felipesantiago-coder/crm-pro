@@ -78,37 +78,80 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── Helper: fire Meta CAPI event (fire-and-forget, ad-blocker proof) ──
-    const fireMetaCAPI = () => {
-      if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) return;
-      const fbp = request.cookies.get('_fbp')?.value;
-      const fbc = request.cookies.get('_fbc')?.value;
-      fetch('/api/meta-capi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event_name: 'Lead',
-          event_id: metaEventId || undefined,
-          action_source: 'website',
-          user_data: {
-            email: cleanEmail || undefined,
-            phone: cleanPhone.length >= 10 ? cleanPhone : undefined,
-            name: name.trim(),
-            fbp: fbp || undefined,
-            fbc: fbc || undefined,
-            ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined,
-            user_agent: request.headers.get('user-agent') || undefined,
-            page_url: slug ? `${process.env.NEXT_PUBLIC_APP_URL || ''}/empreendimentos/${slug}` : undefined,
-          },
-          custom_data: {
-            content_name: enterpriseName || undefined,
-            content_category: 'empreendimento',
-            value: 1,
-            currency: 'BRL',
-          },
-        }),
-      }).catch((err) => console.warn('[Public Lead] Meta CAPI fire-and-forget failed:', err?.message));
-    };
+    // ── Check for existing client (match by email OR phone if provided) ──
+    const existingWhere: Prisma.ClientWhereInput[] = [{ email: cleanEmail }];
+    if (cleanPhone.length >= 10) {
+      existingWhere.push({ phone: cleanPhone });
+    }
+    const existingClient = await db.client.findFirst({
+      where: { OR: existingWhere },
+      select: { id: true, name: true, stage: true, enterpriseId: true, phone: true, email: true },
+    });
+
+    if (existingClient) {
+      // Create interaction recording the repeat contact
+      await db.interaction.create({
+        data: {
+          clientId: existingClient.id,
+          description: `[Landing Page] Novo cadastro${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? ` (slug: ${slug})` : ''}`,
+        },
+      });
+
+      // CRITICAL FIX: Even for existing clients, still assign via queue
+      // so the lead reaches the next available agent.
+      // This was previously returning assignedUser: null for existing clients,
+      // meaning repeat leads had NO queue assignment.
+      let assignedUser: AssignResult | null = null;
+      try {
+        assignedUser = await assignLeadToUser({
+          leadId: existingClient.id,
+          source: slug ? `landing_form:${slug}` : 'landing_form',
+        });
+      } catch (err) {
+        console.error('[Public Lead] Falha na atribuição de fila (lead existente):', err);
+      }
+
+      // Send Telegram notification for repeat lead
+      // FIX: include assignedUserName so the agent knows it's their turn
+      if (assignedUser?.assigned && assignedUser.userId) {
+        db.user.findUnique({
+          where: { id: assignedUser.userId },
+          select: { telegramChatId: true },
+        }).then((notifyUser) => {
+          if (notifyUser?.telegramChatId) {
+            notifyNewLead(notifyUser.telegramChatId, {
+              leadName: existingClient.name,
+              leadPhone: existingClient.phone || '',
+              leadEmail: existingClient.email || '',
+              enterpriseName,
+              utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
+              utmSource: typeof utmSource === 'string' ? utmSource : null,
+              slug: slug || undefined,
+              assignedUserName: assignedUser.userName,
+              customAnswers: undefined,
+            }).catch((err) => console.warn('[Public Lead] Falha na notificação (lead existente):', err));
+          } else {
+            // FIX: Log when assigned user has no Telegram configured — admin should know
+            console.warn(`[Public Lead] Usuário ${assignedUser.userName} (${assignedUser.userId}) atribuído mas sem Telegram configurado. Lead ${existingClient.id} sem notificação.`);
+          }
+        }).catch(() => { /* non-critical: DB lookup failed, lead is still saved */ });
+      } else {
+        // FIX: Log when no queue was available — admin should know leads are coming without notification
+        console.warn(`[Public Lead] Lead existente ${existingClient.id} sem fila disponível. Nenhuma notificação enviada.`);
+      }
+
+      return NextResponse.json({
+        success: true,
+        isExisting: true,
+        clientId: existingClient.id,
+        clientName: existingClient.name,
+        assignedUser: assignedUser?.assigned ? {
+          userId: assignedUser.userId,
+          userName: assignedUser.userName,
+          userPhone: assignedUser.userPhone,
+        } : null,
+      });
+    }
 
     // ── Helper: send Telegram notification (fire-and-forget) ──
     const sendNotification = (userId: string, leadData: Parameters<typeof notifyNewLead>[1], clientName: string) => {
@@ -278,10 +321,20 @@ export async function POST(request: NextRequest) {
     // ── Create interaction record ──
     await db.interaction.create({
       data: {
-        clientId: client.id,
-        description: isNew
-          ? `[Landing Page] Cadastro inicial${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? ` (slug: ${slug})` : ''}`
-          : `[Landing Page] Novo cadastro${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? ` (slug: ${slug})` : ''}`,
+        name: name.trim(),
+        phone: cleanPhone.length >= 10 ? cleanPhone : null,
+        email: cleanEmail || null,
+        region: enterpriseRegion,
+        enterprise: enterpriseName || undefined,
+        enterpriseId: enterpriseId || undefined,
+        stage: 'LEAD',
+        createdBy: createdByUserId,
+        utmSource: typeof utmSource === 'string' ? utmSource.slice(0, 200) : undefined,
+        utmMedium: typeof utmMedium === 'string' ? utmMedium.slice(0, 100) : undefined,
+        utmCampaign: typeof utmCampaign === 'string' ? utmCampaign.slice(0, 200) : undefined,
+        utmContent: typeof utmContent === 'string' ? utmContent.slice(0, 200) : undefined,
+        utmTerm: typeof utmTerm === 'string' ? utmTerm.slice(0, 200) : undefined,
+        notes: `[Landing Page] Cadastro realizado via formulário${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? `\nSlug: ${slug}` : ''}${utmCampaign ? `\nCampanha: ${utmCampaign}` : ''}${customAnswersText}`,
       },
     });
 
