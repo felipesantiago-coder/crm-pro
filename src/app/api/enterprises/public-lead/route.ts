@@ -36,8 +36,9 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanPhone = (phone || '').replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 10) {
-      return NextResponse.json({ error: 'Telefone é obrigatório e deve conter DDD + número.' }, { status: 400 });
+    // Phone is now optional on landing pages — if provided, validate format
+    if (cleanPhone.length > 0 && cleanPhone.length < 10) {
+      return NextResponse.json({ error: 'Telefone inválido. Informe DDD + número (mínimo 10 dígitos) ou deixe em branco.' }, { status: 400 });
     }
     if (cleanPhone.length > 15) {
       return NextResponse.json({ error: 'Telefone inválido.' }, { status: 400 });
@@ -68,9 +69,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── Check for existing client (match by phone OR email) ──
+    // ── Check for existing client (match by email OR phone if provided) ──
+    const existingWhere: Prisma.ClientWhereInput[] = [{ email: cleanEmail }];
+    if (cleanPhone.length >= 10) {
+      existingWhere.push({ phone: cleanPhone });
+    }
     const existingClient = await db.client.findFirst({
-      where: { OR: [{ phone: cleanPhone }, { email: cleanEmail }] },
+      where: { OR: existingWhere },
       select: { id: true, name: true, stage: true, enterpriseId: true, phone: true, email: true },
     });
 
@@ -165,8 +170,8 @@ export async function POST(request: NextRequest) {
     const client = await db.client.create({
       data: {
         name: name.trim(),
-        phone: cleanPhone,
-        email: cleanEmail,
+        phone: cleanPhone.length >= 10 ? cleanPhone : null,
+        email: cleanEmail || null,
         region: enterpriseRegion,
         enterprise: enterpriseName || undefined,
         enterpriseId: enterpriseId || undefined,
