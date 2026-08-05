@@ -80,6 +80,8 @@ interface AnalysisResponse {
   error?: string;
   message?: string;
   generatedAt?: string;
+  period?: string;
+  periodLabel?: string;
   dataPoints?: {
     totalLeads: number;
     recentLeads: number;
@@ -723,13 +725,14 @@ function AnalysisTab() {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState('30d');
 
   async function runAnalysis() {
     setLoading(true);
     setError(null);
     setAnalysis(null);
     try {
-      const res = await fetch('/api/meta-ads/analyze');
+      const res = await fetch(`/api/meta-ads/analyze?period=${selectedPeriod}`);
       if (res.ok) {
         const data: AnalysisResponse = await res.json();
         if (data.analysis) {
@@ -814,23 +817,37 @@ function AnalysisTab() {
             Insights e recomendações inteligentes sobre seus anúncios
           </p>
         </div>
-        <Button
-          onClick={runAnalysis}
-          disabled={loading}
-          className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Analisando...
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Gerar Análise
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+            <SelectTrigger className="w-[160px] h-9 text-xs">
+              <Calendar className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="24h">Últimas 24 horas</SelectItem>
+              <SelectItem value="48h">Últimas 48 horas</SelectItem>
+              <SelectItem value="7d">Última semana</SelectItem>
+              <SelectItem value="30d">Último mês</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={runAnalysis}
+            disabled={loading}
+            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Analisando...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4 mr-2" />
+                Gerar Análise
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Info card */}
@@ -841,8 +858,9 @@ function AnalysisTab() {
             <p className="font-medium text-foreground">Como funciona</p>
             <p className="mt-1">
               A IA analisa seus leads do webhook Meta Ads, leads de landing pages com UTM do Meta e dados do
-              pixel próprio (comportamento, scroll, dispositivos, Web Vitals, formulário). Gera um relatório
-              com insights de qualidade, gargalos no funil, análise da landing page e recomendações práticas.
+              pixel próprio (comportamento, scroll, atenção/heartbeat, dispositivos, Web Vitals, formulário).
+              Inclui correlação entre eventos e conversão, diagnóstico por landing page, análise por horário,
+              score de engajamento e detalhes de erros de JS. Selecione o período desejado e clique em Gerar Análise.
             </p>
           </div>
         </CardContent>

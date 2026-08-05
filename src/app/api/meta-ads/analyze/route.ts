@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
 
@@ -15,16 +15,46 @@ const GEMINI_MODEL = 'gemini-2.5-flash';
  *   1. Webhook Meta Ads (notes contêm "[Meta Ads]")
  *   2. Landing pages com UTM de origem Meta (utmSource = facebook/instagram/meta/fb)
  *   3. Dados do pixel próprio (tracking_events/tracking_visitors) — sempre incluídos
+ *
+ * Query params:
+ *   period=24h|48h|7d|30d  (default: 30d)
  */
-export async function GET() {
+
+// ── Period mapping ──────────────────────────────────────
+const PERIOD_MAP: Record<string, string> = {
+  '24h': "NOW() - INTERVAL '24 hours'",
+  '48h': "NOW() - INTERVAL '48 hours'",
+  '7d':  "NOW() - INTERVAL '7 days'",
+  '30d': "NOW() - INTERVAL '30 days'",
+};
+
+const PERIOD_LABELS: Record<string, string> = {
+  '24h': 'últimas 24 horas',
+  '48h': 'últimas 48 horas',
+  '7d':  'última semana',
+  '30d': 'último mês',
+};
+
+export async function GET(request: NextRequest) {
   try {
     const { error } = await requireAdmin();
     if (error) return error;
+
+    // ── Parse period parameter ──────────────────────────────
+    const { searchParams } = new URL(request.url);
+    const periodParam = searchParams.get('period') || '30d';
+    const sqlInterval = PERIOD_MAP[periodParam] || PERIOD_MAP['30d'];
+    const periodLabel = PERIOD_LABELS[periodParam] || PERIOD_LABELS['30d'];
 
     // ─────────────────────────────────────────
     // 1. Coletar dados dos leads (Meta Ads + Landing Pages com UTM Meta)
     // ─────────────────────────────────────────
     const META_UTM_SOURCES = ['facebook', 'instagram', 'meta', 'fb'];
+
+    // Calculate date range for CRM leads based on period
+    const now = new Date();
+    const periodMs: Record<string, number> = { '24h': 86400000, '48h': 172800000, '7d': 604800000, '30d': 2592000000 };
+    const periodStartDate = new Date(now.getTime() - (periodMs[periodParam] || periodMs['30d']));
 
     const metaClients = await db.client.findMany({
       where: {
@@ -41,6 +71,7 @@ export async function GET() {
             utmSource: { contains: source, mode: 'insensitive' as const },
           })),
         ],
+        createdAt: { gte: periodStartDate },
       },
       select: {
         name: true,
@@ -75,19 +106,19 @@ export async function GET() {
       try {
         const pixelCheck = await db.$queryRaw<{ cnt: string }[]>`
           SELECT COUNT(DISTINCT "visitorId")::text as cnt FROM "tracking_events"
-          WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+          WHERE "createdAt" >= ${sqlInterval}::timestamp
         `;
         if (!pixelCheck.length || Number(pixelCheck[0].cnt) === 0) {
           return NextResponse.json({
             analysis: null,
-            message: 'Nenhum lead do Meta Ads ou dado de pixel encontrado para análise. Configure o webhook, publique landing pages com o pixel e aguarde os primeiros visitantes.',
+            message: `Nenhum lead do Meta Ads ou dado de pixel encontrado para análise (${periodLabel}). Configure o webhook, publique landing pages com o pixel e aguarde os primeiros visitantes.`,
           });
         }
         // Há dados de pixel mas nenhum lead CRM — prosseguir com pixel-only
       } catch {
         return NextResponse.json({
           analysis: null,
-          message: 'Nenhum lead do Meta Ads encontrado para análise. Configure o webhook ou publique landing pages com UTM do Meta e aguarde os primeiros leads.',
+          message: `Nenhum lead do Meta Ads encontrado para análise (${periodLabel}). Configure o webhook ou publique landing pages com UTM do Meta e aguarde os primeiros leads.`,
         });
       }
     }
@@ -146,10 +177,11 @@ export async function GET() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
 
-    // Leads recentes (últimos 7 dias)
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    const recentLeads = metaClients.filter((c) => c.createdAt >= weekAgo).length;
+    // Leads recentes (últimos 7 dias ou período menor)
+    const recentWindow = Math.min(7, periodMs[periodParam] || 2592000000) / 86400000;
+    const recentDate = new Date();
+    recentDate.setDate(recentDate.getDate() - recentWindow);
+    const recentLeads = metaClients.filter((c) => c.createdAt >= recentDate).length;
 
     // Taxa de conversão (protege contra divisão por zero quando só há pixel)
     const converted = (stages['NEGOCIACAO'] || 0) + (stages['PROPOSTA'] || 0) + (stages['FECHADO'] || 0);
@@ -214,6 +246,53 @@ export async function GET() {
       timezoneBreakdown: Array<{ timezone: string; visitors: number }>;
       languageBreakdown: Array<{ language: string; visitors: number }>;
       geoBreakdown: Array<{ country: string; city: string; visitors: number; leads: number }>;
+      // ── NEW: 6 improvements ──
+      heartbeatAnalysis: {
+        converterAvgHeartbeats: number;
+        nonConverterAvgHeartbeats: number;
+        converterAvgAttentionSec: number;
+        nonConverterAvgAttentionSec: number;
+        attentionDistribution: Array<{ buckets: string; visitors: number; converters: number; convRate: number }>;
+      };
+      eventConversionCorrelation: Array<{
+        event_type: string;
+        visitors_with_event: number;
+        converters_with_event: number;
+        visitors_without_event: number;
+        converters_without_event: number;
+        convRate_with: number;
+        convRate_without: number;
+        lift: number;
+      }>;
+      perPageMetrics: Array<{
+        url: string;
+        visitors: number;
+        leads: number;
+        convRate: number;
+        avgTimeOnPage: number | null;
+        bounceRate: number | null;
+        avgScrollMax: number | null;
+      }>;
+      hourlyConversion: Array<{
+        hour: number;
+        visitors: number;
+        leads: number;
+        convRate: number;
+      }>;
+      jsErrorDetails: Array<{
+        message: string;
+        filename: string | null;
+        count: number;
+        firstSeen: string;
+  }>; 
+      engagementScore: {
+        hot: number;
+        warm: number;
+        cold: number;
+        hotConvRate: number;
+        warmConvRate: number;
+        coldConvRate: number;
+      };
     } = {
       visitors: 0,
       pageviews: 0,
@@ -242,12 +321,35 @@ export async function GET() {
       timezoneBreakdown: [],
       languageBreakdown: [],
       geoBreakdown: [],
+      // NEW fields defaults
+      heartbeatAnalysis: {
+        converterAvgHeartbeats: 0,
+        nonConverterAvgHeartbeats: 0,
+        converterAvgAttentionSec: 0,
+        nonConverterAvgAttentionSec: 0,
+        attentionDistribution: [],
+      },
+      eventConversionCorrelation: [],
+      perPageMetrics: [],
+      hourlyConversion: [],
+      jsErrorDetails: [],
+      engagementScore: {
+        hot: 0,
+        warm: 0,
+        cold: 0,
+        hotConvRate: 0,
+        warmConvRate: 0,
+        coldConvRate: 0,
+      },
     };
 
     let pixelAvailable = false;
 
     try {
-      // Run all pixel queries in parallel for speed
+      // ── Run ALL pixel queries in parallel for speed ──
+      // Template literal helpers: use ${sqlInterval}::timestamp for dynamic interval
+      const interval = sqlInterval;
+
       const [
         funnelResult,
         campaignResults,
@@ -268,7 +370,20 @@ export async function GET() {
         timezoneResult,
         languageResult,
         geoResult,
+        // ── NEW: 6 improvement queries ──
+        heartbeatResult,           // Improvement 1: heartbeat averages
+        attentionDistResult,      // Improvement 1b: attention distribution buckets
+        eventCorrelationResult,   // Improvement 2: event-conversion correlation
+        perPageResult,            // Improvement 3
+        hourlyResult,             // Improvement 4
+        jsErrorDetailsResult,     // Improvement 5
+        engagementScoreResult,    // Improvement 6
       ] = await Promise.all([
+
+        // ═══════════════════════════════════════════
+        // EXISTING QUERIES (1-19) — updated with dynamic interval
+        // ═══════════════════════════════════════════
+
         // Query 1: Core funnel data
         db.$queryRaw<{
           visitors: string | number;
@@ -286,7 +401,7 @@ export async function GET() {
             COUNT(DISTINCT "utmCampaign") as campaigns_count,
             COUNT(DISTINCT "utmContent") as creatives_count
           FROM "tracking_events"
-          WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+          WHERE "createdAt" >= ${interval}::timestamp
         `,
 
         // Query 2: Top campaigns from pixel data
@@ -300,7 +415,7 @@ export async function GET() {
             COUNT(DISTINCT "visitorId") as visitors,
             COUNT(DISTINCT CASE WHEN "eventType" = 'lead' OR "eventType" = 'form_submit' THEN "visitorId" END) as leads
           FROM "tracking_events"
-          WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+          WHERE "createdAt" >= ${interval}::timestamp
           GROUP BY COALESCE("utmCampaign", '(direto)')
           ORDER BY leads DESC
           LIMIT 10
@@ -313,7 +428,7 @@ export async function GET() {
           FROM (
             SELECT "visitorId", COUNT(*) as total_events
             FROM "tracking_events"
-            WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+            WHERE "createdAt" >= ${interval}::timestamp
             GROUP BY "visitorId"
           ) sub
         `,
@@ -325,24 +440,24 @@ export async function GET() {
             COUNT(DISTINCT "visitorId") as visitors
           FROM "tracking_events"
           WHERE "eventType" = 'scroll_depth'
-            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND "createdAt" >= ${interval}::timestamp
             AND metadata->>'depth' IS NOT NULL
           GROUP BY (metadata->>'depth')::int
           ORDER BY depth
         `,
 
-        // Query 5: Average time on page (from pageview_duration events)
+        // Query 5: Average time on page
         db.$queryRaw<{ avg_seconds: string | number; median_seconds: string | number }[]>`
           SELECT
             ROUND(AVG((metadata->>'time_on_page')::numeric))::text as avg_seconds,
             ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (metadata->>'time_on_page')::numeric))::text as median_seconds
           FROM "tracking_events"
           WHERE "eventType" = 'pageview_duration'
-            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND "createdAt" >= ${interval}::timestamp
             AND metadata->>'time_on_page' IS NOT NULL
         `,
 
-        // Query 6: WhatsApp click breakdown by source
+        // Query 6: WhatsApp click breakdown
         db.$queryRaw<{ source: string; clicks: string | number; unique_visitors: string | number }[]>`
           SELECT
             COALESCE(metadata->>'source', '(principal)') as source,
@@ -350,12 +465,12 @@ export async function GET() {
             COUNT(DISTINCT "visitorId") as unique_visitors
           FROM "tracking_events"
           WHERE "eventType" = 'whatsapp_click'
-            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND "createdAt" >= ${interval}::timestamp
           GROUP BY COALESCE(metadata->>'source', '(principal)')
           ORDER BY clicks DESC
         `,
 
-        // Query 7: Device breakdown (mobile vs tablet vs desktop)
+        // Query 7: Device breakdown
         db.$queryRaw<{ device: string; visitors: string | number; leads: string | number }[]>`
           SELECT
             CASE
@@ -368,7 +483,7 @@ export async function GET() {
             COUNT(DISTINCT v."visitorId")::text as visitors,
             COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN v."visitorId" END)::text as leads
           FROM "tracking_visitors" v
-          WHERE v."lastSeenAt" >= NOW() - INTERVAL '30 days'
+          WHERE v."lastSeenAt" >= ${interval}::timestamp
           GROUP BY
             CASE
               WHEN LOWER("userAgent") LIKE '%mobile%' OR LOWER("userAgent") LIKE '%android%' OR LOWER("userAgent") LIKE '%iphone%'
@@ -380,7 +495,7 @@ export async function GET() {
           ORDER BY visitors DESC
         `,
 
-        // Query 8: Referrer breakdown (top sources)
+        // Query 8: Referrer breakdown
         db.$queryRaw<{ referrer: string; visitors: string | number; leads: string | number }[]>`
           SELECT
             CASE
@@ -397,15 +512,15 @@ export async function GET() {
           FROM "tracking_events" e
           LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
           WHERE e."eventType" = 'pageview'
-            AND e."createdAt" >= NOW() - INTERVAL '30 days'
+            AND e."createdAt" >= ${interval}::timestamp
           GROUP BY
             CASE
-              WHEN "referrer" IS NULL OR "referrer" = '' THEN '(direto)'
-              WHEN LOWER("referrer") LIKE '%facebook%' OR LOWER("referrer") LIKE '%fb%' THEN 'Facebook'
-              WHEN LOWER("referrer") LIKE '%instagram%' THEN 'Instagram'
-              WHEN LOWER("referrer") LIKE '%google%' THEN 'Google'
-              WHEN LOWER("referrer") LIKE '%whatsapp%' THEN 'WhatsApp'
-              WHEN LOWER("referrer") LIKE '%linkedin%' THEN 'LinkedIn'
+              WHEN e."referrer" IS NULL OR e."referrer" = '' THEN '(direto)'
+              WHEN LOWER(e."referrer") LIKE '%facebook%' OR LOWER(e."referrer") LIKE '%fb%' THEN 'Facebook'
+              WHEN LOWER(e."referrer") LIKE '%instagram%' THEN 'Instagram'
+              WHEN LOWER(e."referrer") LIKE '%google%' THEN 'Google'
+              WHEN LOWER(e."referrer") LIKE '%whatsapp%' THEN 'WhatsApp'
+              WHEN LOWER(e."referrer") LIKE '%linkedin%' THEN 'LinkedIn'
               ELSE 'Outros'
             END
           ORDER BY visitors DESC
@@ -421,23 +536,23 @@ export async function GET() {
           FROM "tracking_events" e
           LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
           WHERE e."eventType" = 'pageview'
-            AND e."createdAt" >= NOW() - INTERVAL '30 days'
+            AND e."createdAt" >= ${interval}::timestamp
           GROUP BY COALESCE("pageUrl", '(desconhecida)')
           ORDER BY COUNT(*) DESC
           LIMIT 10
         `,
 
-        // Query 10: Full funnel stages (pageview visitors → engaged → leads)
+        // Query 10: Full funnel stages
         db.$queryRaw<{ stage: string; count: string | number }[]>`
           WITH base AS (
             SELECT e."visitorId", v."leadId", COUNT(*) OVER (PARTITION BY e."visitorId") AS event_count
             FROM tracking_events e
             LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
-            WHERE e."createdAt" >= NOW() - INTERVAL '30 days'
+            WHERE e."createdAt" >= ${interval}::timestamp
           ),
           pv_visitors AS (
             SELECT COUNT(DISTINCT "visitorId")::text AS cnt FROM base WHERE EXISTS (
-              SELECT 1 FROM tracking_events e2 WHERE e2."visitorId" = base."visitorId" AND e2."eventType" = 'pageview'
+              SELECT 1 FROM tracking_events e2 WHERE e2."visitorId" = base."visitorId" AND e2."eventType" = 'pageview' AND e2."createdAt" >= ${interval}::timestamp
             )
           ),
           engaged AS (
@@ -453,7 +568,7 @@ export async function GET() {
           SELECT 'lead' AS stage, (SELECT cnt FROM leads) AS count
         `,
 
-        // Query 11: Web Vitals (average LCP, FID, CLS, FCP, TTFB, INP)
+        // Query 11: Web Vitals
         db.$queryRaw<{ metric: string; avg_value: string | number; count: string | number }[]>`
           SELECT
             metadata->>'metric' as metric,
@@ -461,7 +576,7 @@ export async function GET() {
             COUNT(*)::text as count
           FROM "tracking_events"
           WHERE "eventType" = 'web_vital'
-            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND "createdAt" >= ${interval}::timestamp
             AND metadata->>'metric' IS NOT NULL
             AND metadata->>'value' IS NOT NULL
           GROUP BY metadata->>'metric'
@@ -476,7 +591,7 @@ export async function GET() {
             ROUND(AVG((metadata->>'total_images')::numeric))::text as avg_images
           FROM "tracking_events"
           WHERE "eventType" = 'gallery_click'
-            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND "createdAt" >= ${interval}::timestamp
         `,
 
         // Query 13: FAQ engagement
@@ -487,12 +602,12 @@ export async function GET() {
             COUNT(*)::text as opens
           FROM "tracking_events"
           WHERE "eventType" = 'faq_open'
-            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND "createdAt" >= ${interval}::timestamp
           GROUP BY COALESCE((metadata->>'question_index')::int, 0), COALESCE(metadata->>'question', '(sem texto)')
           ORDER BY opens DESC
         `,
 
-        // Query 14: Form field drop-off (avg time per field, focus vs blur counts)
+        // Query 14: Form field drop-off
         db.$queryRaw<{ field: string; avg_time_ms: string | number; focus_count: string | number; blur_count: string | number }[]>`
           SELECT
             COALESCE(metadata->>'field', '(desconhecido)') as field,
@@ -501,7 +616,7 @@ export async function GET() {
             COUNT(*) FILTER (WHERE "eventType" = 'form_blur')::text as blur_count
           FROM "tracking_events"
           WHERE ("eventType" = 'form_focus' OR "eventType" = 'form_blur')
-            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND "createdAt" >= ${interval}::timestamp
           GROUP BY COALESCE(metadata->>'field', '(desconhecido)')
           ORDER BY avg_time_ms::numeric DESC
         `,
@@ -513,7 +628,7 @@ export async function GET() {
             COUNT(DISTINCT "visitorId")::text as visitors
           FROM "tracking_events"
           WHERE "eventType" = 'section_view'
-            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND "createdAt" >= ${interval}::timestamp
           GROUP BY COALESCE(metadata->>'section', '(desconhecida)')
           ORDER BY visitors DESC
         `,
@@ -531,17 +646,17 @@ export async function GET() {
             COUNT(*) FILTER (WHERE "eventType" = 'print')::text as prints,
             COUNT(*) FILTER (WHERE "eventType" = 'form_abandon')::text as form_abandons
           FROM "tracking_events"
-          WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+          WHERE "createdAt" >= ${interval}::timestamp
         `,
 
-        // Query 17: Timezone breakdown (from metadata of pageview events)
+        // Query 17: Timezone breakdown
         db.$queryRaw<{ timezone: string; visitors: string | number }[]>`
           SELECT
             COALESCE(metadata->>'timezone', '(desconhecido)') as timezone,
             COUNT(DISTINCT "visitorId")::text as visitors
           FROM "tracking_events"
           WHERE "eventType" = 'pageview'
-            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND "createdAt" >= ${interval}::timestamp
             AND metadata->>'timezone' IS NOT NULL
           GROUP BY COALESCE(metadata->>'timezone', '(desconhecido)')
           ORDER BY visitors DESC
@@ -555,14 +670,14 @@ export async function GET() {
             COUNT(DISTINCT "visitorId")::text as visitors
           FROM "tracking_events"
           WHERE "eventType" = 'pageview'
-            AND "createdAt" >= NOW() - INTERVAL '30 days'
+            AND "createdAt" >= ${interval}::timestamp
             AND metadata->>'language' IS NOT NULL
           GROUP BY COALESCE(metadata->>'language', '(desconhecido)')
           ORDER BY visitors DESC
           LIMIT 10
         `,
 
-        // Query 19: Geographic breakdown (from tracking_visitors)
+        // Query 19: Geographic breakdown
         db.$queryRaw<{ country: string; city: string; visitors: string | number; leads: string | number }[]>`
           SELECT
             COALESCE(tv."country", '(desconhecido)') as country,
@@ -570,14 +685,289 @@ export async function GET() {
             COUNT(DISTINCT tv."visitorId")::text as visitors,
             COUNT(DISTINCT CASE WHEN tv."leadId" IS NOT NULL THEN tv."visitorId" END)::text as leads
           FROM "tracking_visitors" tv
-          WHERE tv."lastSeenAt" >= NOW() - INTERVAL '30 days'
+          WHERE tv."lastSeenAt" >= ${interval}::timestamp
             AND tv."country" IS NOT NULL
           GROUP BY tv."country", tv."city"
           ORDER BY visitors DESC
           LIMIT 20
         `,
+
+        // ═══════════════════════════════════════════
+        // NEW QUERIES (20-25) — 6 improvements
+        // ═══════════════════════════════════════════
+
+        // Query 20 — Improvement 1: Deep heartbeat analysis
+        // Compares attention (heartbeats + max time_on_page) between converters and non-converters
+        db.$queryRaw<{
+          is_converter: boolean;
+          avg_heartbeats: string | number;
+          avg_attention_sec: string | number;
+          visitors: string | number;
+        }[]>`
+          WITH visitor_stats AS (
+            SELECT
+              e."visitorId",
+              v."leadId",
+              COUNT(*) FILTER (WHERE e."eventType" = 'heartbeat') AS hb_count,
+              GREATEST(
+                MAX((e.metadata->>'time_on_page')::int) FILTER (WHERE e."eventType" = 'heartbeat'),
+                MAX((e.metadata->>'time_on_page')::int) FILTER (WHERE e."eventType" = 'pageview_duration'),
+                0
+              ) AS max_attention_sec
+            FROM "tracking_events" e
+            LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
+            WHERE e."createdAt" >= ${interval}::timestamp
+            GROUP BY e."visitorId", v."leadId"
+          )
+          SELECT
+            ("leadId" IS NOT NULL) as is_converter,
+            ROUND(AVG(hb_count))::text as avg_heartbeats,
+            ROUND(AVG(max_attention_sec))::text as avg_attention_sec,
+            COUNT(*)::text as visitors
+          FROM visitor_stats
+          GROUP BY ("leadId" IS NOT NULL)
+        `,
+
+        // Query 21 — Improvement 1b: Attention distribution buckets for converters vs non-converters
+        db.$queryRaw<{
+          bucket: string;
+          visitors: string | number;
+          converters: string | number;
+        }[]>`
+          WITH visitor_max_time AS (
+            SELECT
+              e."visitorId",
+              v."leadId",
+              GREATEST(
+                MAX((e.metadata->>'time_on_page')::int) FILTER (WHERE e."eventType" = 'heartbeat'),
+                MAX((e.metadata->>'time_on_page')::int) FILTER (WHERE e."eventType" = 'pageview_duration'),
+                0
+              ) AS max_sec
+            FROM "tracking_events" e
+            LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
+            WHERE e."createdAt" >= ${interval}::timestamp
+            GROUP BY e."visitorId", v."leadId"
+          )
+          SELECT
+            CASE
+              WHEN max_sec < 15 THEN '0-14s (saiu rapido)'
+              WHEN max_sec < 30 THEN '15-29s'
+              WHEN max_sec < 60 THEN '30-59s'
+              WHEN max_sec < 120 THEN '1-2min'
+              WHEN max_sec < 300 THEN '2-5min'
+              ELSE '5min+'
+            END as bucket,
+            COUNT(*)::text as visitors,
+            COUNT(*) FILTER (WHERE "leadId" IS NOT NULL)::text as converters
+          FROM visitor_max_time
+          GROUP BY bucket
+          ORDER BY MIN(max_sec)
+        `,
+
+        // Query 22 — Improvement 2: Event-conversion correlation
+        // For each engagement event, compare conversion rate of visitors who did vs didn't do it
+        db.$queryRaw<{
+          event_type: string;
+          visitors_with: string | number;
+          converters_with: string | number;
+          visitors_without: string | number;
+          converters_without: string | number;
+        }[]>`
+          WITH all_visitors AS (
+            SELECT DISTINCT "visitorId" FROM "tracking_events"
+            WHERE "createdAt" >= ${interval}::timestamp
+          ),
+          visitors_with_lead AS (
+            SELECT DISTINCT v."visitorId"
+            FROM "tracking_visitors" v
+            WHERE v."leadId" IS NOT NULL
+              AND v."lastSeenAt" >= ${interval}::timestamp
+          ),
+          engagement_events AS (
+            SELECT DISTINCT unnest(ARRAY['gallery_click', 'faq_open', 'scroll_depth', 'section_view', 'whatsapp_click', 'exit_intent']) AS evt
+          ),
+          event_visitors AS (
+            SELECT
+              ee.evt AS event_type,
+              COUNT(DISTINCT e."visitorId") AS visitors_with,
+              COUNT(DISTINCT CASE WHEN wvl."visitorId" IS NOT NULL THEN e."visitorId" END) AS converters_with
+            FROM engagement_events ee
+            LEFT JOIN "tracking_events" e ON e."eventType" = ee.evt AND e."createdAt" >= ${interval}::timestamp
+            LEFT JOIN visitors_with_lead wvl ON wvl."visitorId" = e."visitorId"
+            GROUP BY ee.evt
+          ),
+          totals AS (
+            SELECT
+              COUNT(*)::int as total_visitors,
+              COUNT(*) FILTER (WHERE wvl."visitorId" IS NOT NULL)::int as total_converters
+            FROM all_visitors av
+            LEFT JOIN visitors_with_lead wvl ON wvl."visitorId" = av."visitorId"
+          )
+          SELECT
+            ev.event_type,
+            ev.visitors_with::text,
+            ev.converters_with::text,
+            (t.total_visitors - ev.visitors_with)::text as visitors_without,
+            (t.total_converters - ev.converters_with)::text as converters_without
+          FROM event_visitors ev
+          CROSS JOIN totals t
+        `,
+
+        // Query 23 — Improvement 3: Per-landing-page detailed metrics
+        db.$queryRaw<{
+          url: string;
+          visitors: string | number;
+          leads: string | number;
+          avg_time: string | number;
+          bounce_pct: string | number;
+          avg_scroll_max: string | number;
+        }[]>`
+          WITH page_visitors AS (
+            SELECT
+              e."pageUrl",
+              e."visitorId",
+              COUNT(*) OVER (PARTITION BY e."visitorId") AS total_events
+            FROM "tracking_events" e
+            WHERE e."eventType" = 'pageview'
+              AND e."createdAt" >= ${interval}::timestamp
+          ),
+          page_bounce AS (
+            SELECT
+              "pageUrl",
+              COUNT(*) FILTER (WHERE total_events = 1)::float / NULLIF(COUNT(*), 0) * 100 AS bounce_pct
+            FROM page_visitors
+            GROUP BY "pageUrl"
+          ),
+          page_time AS (
+            SELECT
+              e."pageUrl",
+              ROUND(AVG((e.metadata->>'time_on_page')::numeric))::text AS avg_time
+            FROM "tracking_events" e
+            WHERE e."eventType" = 'pageview_duration'
+              AND e."createdAt" >= ${interval}::timestamp
+            GROUP BY e."pageUrl"
+          ),
+          page_scroll AS (
+            SELECT
+              e."pageUrl",
+              ROUND(AVG((e.metadata->>'depth')::numeric))::text AS avg_scroll_max
+            FROM "tracking_events" e
+            WHERE e."eventType" = 'scroll_depth'
+              AND e."createdAt" >= ${interval}::timestamp
+              AND e.metadata->>'depth' IS NOT NULL
+            GROUP BY e."pageUrl"
+          ),
+          page_leads AS (
+            SELECT
+              COALESCE(e."pageUrl", '(desconhecida)') as "pageUrl",
+              COUNT(DISTINCT e."visitorId")::text as visitors,
+              COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::text as leads
+            FROM "tracking_events" e
+            LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
+            WHERE e."eventType" = 'pageview'
+              AND e."createdAt" >= ${interval}::timestamp
+            GROUP BY COALESCE(e."pageUrl", '(desconhecida)')
+          )
+          SELECT
+            pl."pageUrl" as url,
+            pl.visitors,
+            pl.leads,
+            pt.avg_time,
+            pb.bounce_pct,
+            ps.avg_scroll_max
+          FROM page_leads pl
+          LEFT JOIN page_bounce pb ON pb."pageUrl" = pl.url
+          LEFT JOIN page_time pt ON pt."pageUrl" = pl.url
+          LEFT JOIN page_scroll ps ON ps."pageUrl" = pl.url
+          ORDER BY pl.visitors::int DESC
+          LIMIT 10
+        `,
+
+        // Query 24 — Improvement 4: Hourly conversion analysis
+        db.$queryRaw<{
+          hour: number;
+          visitors: string | number;
+          leads: string | number;
+        }[]>`
+          SELECT
+            EXTRACT(HOUR FROM e."createdAt")::int as hour,
+            COUNT(DISTINCT e."visitorId")::text as visitors,
+            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::text as leads
+          FROM "tracking_events" e
+          LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
+          WHERE e."eventType" = 'pageview'
+            AND e."createdAt" >= ${interval}::timestamp
+          GROUP BY EXTRACT(HOUR FROM e."createdAt")
+          ORDER BY hour
+        `,
+
+        // Query 25 — Improvement 5: JS Error details (top 5 messages with context)
+        db.$queryRaw<{
+          message: string;
+          filename: string | null;
+          count: string | number;
+          first_seen: string;
+        }[]>`
+          SELECT
+            COALESCE(metadata->>'message', '(sem mensagem)') as message,
+            metadata->>'filename' as filename,
+            COUNT(*)::text as count,
+            MIN("createdAt")::text as first_seen
+          FROM "tracking_events"
+          WHERE "eventType" = 'js_error'
+            AND "createdAt" >= ${interval}::timestamp
+          GROUP BY COALESCE(metadata->>'message', '(sem mensagem)'), metadata->>'filename'
+          ORDER BY COUNT(*) DESC
+          LIMIT 5
+        `,
+
+        // Query 26 — Improvement 6: Engagement score segmentation (cold/warm/hot)
+        db.$queryRaw<{
+          segment: string;
+          visitors: string | number;
+          converters: string | number;
+        }[]>`
+          WITH visitor_engagement AS (
+            SELECT
+              e."visitorId",
+              v."leadId",
+              -- Engagement score: +1 for each distinct engagement event type
+              (COUNT(DISTINCT CASE WHEN e."eventType" IN ('heartbeat','scroll_depth','section_view','gallery_click','faq_open','whatsapp_click','form_focus') THEN e."eventType" END)) AS engagement_types,
+              -- +1 for deep scroll (>=75%)
+              COUNT(DISTINCT CASE WHEN e."eventType" = 'scroll_depth' AND (e.metadata->>'depth')::int >= 75 THEN 1 END) AS deep_scroll,
+              -- +1 for long attention (heartbeat with time_on_page >= 60s)
+              COUNT(DISTINCT CASE WHEN e."eventType" = 'heartbeat' AND (e.metadata->>'time_on_page')::int >= 60 THEN 1 END) AS long_attention
+            FROM "tracking_events" e
+            LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
+            WHERE e."createdAt" >= ${interval}::timestamp
+            GROUP BY e."visitorId", v."leadId"
+          ),
+          scored AS (
+            SELECT
+              "visitorId",
+              "leadId",
+              engagement_types + deep_scroll + long_attention AS score
+            FROM visitor_engagement
+          )
+          SELECT
+            CASE
+              WHEN score >= 4 THEN 'quente'
+              WHEN score >= 2 THEN 'morno'
+              ELSE 'frio'
+            END as segment,
+            COUNT(*)::text as visitors,
+            COUNT(*) FILTER (WHERE "leadId" IS NOT NULL)::text as converters
+          FROM scored
+          GROUP BY CASE
+            WHEN score >= 4 THEN 'quente'
+            WHEN score >= 2 THEN 'morno'
+            ELSE 'frio'
+          END
+          ORDER BY MIN(score) DESC
+        `,
       ]);
 
+      // ── Process existing query results ──
       if (funnelResult.length > 0) {
         const row = funnelResult[0];
         pixelData.visitors = Number(row.visitors) || 0;
@@ -599,7 +989,6 @@ export async function GET() {
         pixelData.bounceRate = Number(bounceResult[0].bounce_rate) || null;
       }
 
-      // Scroll depth
       const totalVisitors = pixelData.visitors || 1;
       pixelData.scrollDepth = scrollResult.map((row) => ({
         depth: Number(row.depth),
@@ -607,58 +996,46 @@ export async function GET() {
         pct: Math.round((Number(row.visitors) / totalVisitors) * 1000) / 10,
       }));
 
-      // Time on page
       if (timeOnPageResult.length > 0 && timeOnPageResult[0].avg_seconds !== null) {
         pixelData.avgTimeOnPage = Number(timeOnPageResult[0].avg_seconds) || null;
       }
 
-      // WhatsApp breakdown
       pixelData.whatsappBreakdown = whatsappBreakdownResult.map((row) => ({
         source: row.source,
         clicks: Number(row.clicks) || 0,
         uniqueVisitors: Number(row.unique_visitors) || 0,
       }));
 
-      // Device breakdown
       pixelData.deviceBreakdown = deviceResult.map((row) => ({
         device: row.device,
         visitors: Number(row.visitors) || 0,
         leads: Number(row.leads) || 0,
       }));
 
-      // Referrer breakdown
       pixelData.referrerBreakdown = referrerResult.map((row) => ({
         referrer: row.referrer,
         visitors: Number(row.visitors) || 0,
         leads: Number(row.leads) || 0,
       }));
 
-      // Top pages
       pixelData.topPages = topPagesResult.map((row) => ({
         url: row.url,
         views: Number(row.views) || 0,
         leads: Number(row.leads) || 0,
       }));
 
-      // Funnel stages
       const pvCount = Number(funnelStagesResult.find((f) => f.stage === 'pageview')?.count ?? 0);
       pixelData.funnelStages = funnelStagesResult.map((f) => {
         const count = Number(f.count) || 0;
-        return {
-          stage: f.stage,
-          count,
-          rate: pvCount > 0 ? Math.round((count / pvCount) * 1000) / 10 : 0,
-        };
+        return { stage: f.stage, count, rate: pvCount > 0 ? Math.round((count / pvCount) * 1000) / 10 : 0 };
       });
 
-      // Web vitals
       pixelData.webVitals = webVitalsResult.map((r) => ({
         metric: r.metric,
         avg_value: Number(r.avg_value) || 0,
         count: Number(r.count) || 0,
       }));
 
-      // Gallery engagement
       if (galleryResult.length > 0) {
         const gr = galleryResult[0];
         pixelData.galleryEngagement = {
@@ -668,14 +1045,12 @@ export async function GET() {
         };
       }
 
-      // FAQ engagement
       pixelData.faqEngagement = faqResult.map((r) => ({
         question_index: r.question_index,
         question: r.question,
         opens: Number(r.opens) || 0,
       }));
 
-      // Form field drop-off
       pixelData.formFieldDropoff = formFieldResult.map((r) => ({
         field: r.field,
         avg_time_ms: Number(r.avg_time_ms) || 0,
@@ -683,13 +1058,11 @@ export async function GET() {
         blur_count: Number(r.blur_count) || 0,
       }));
 
-      // Section views
       pixelData.sectionViews = sectionViewResult.map((r) => ({
         section: r.section,
         visitors: Number(r.visitors) || 0,
       }));
 
-      // Event counts (exit intent, errors, prints, form abandons)
       if (eventCountsResult.length > 0) {
         const ec = eventCountsResult[0];
         pixelData.exitIntentCount = Number(ec.exit_intent) || 0;
@@ -698,27 +1071,127 @@ export async function GET() {
         pixelData.formAbandonCount = Number(ec.form_abandons) || 0;
       }
 
-      // Timezone breakdown
       pixelData.timezoneBreakdown = timezoneResult.map((r) => ({
         timezone: r.timezone,
         visitors: Number(r.visitors) || 0,
       }));
 
-      // Language breakdown
       pixelData.languageBreakdown = languageResult.map((r) => ({
         language: r.language,
         visitors: Number(r.visitors) || 0,
       }));
 
-      // Geographic breakdown
       pixelData.geoBreakdown = geoResult.map((r) => ({
         country: r.country,
         city: r.city,
         visitors: Number(r.visitors) || 0,
         leads: Number(r.leads) || 0,
       }));
+
+      // ═══════════════════════════════════════════
+      // Process NEW query results (Improvements 1-6)
+      // ═══════════════════════════════════════════
+
+      // ── Improvement 1: Deep heartbeat analysis ──
+      const converterRow = heartbeatResult.find((r) => r.is_converter === true);
+      const nonConverterRow = heartbeatResult.find((r) => r.is_converter === false);
+      pixelData.heartbeatAnalysis.converterAvgHeartbeats = Number(converterRow?.avg_heartbeats) || 0;
+      pixelData.heartbeatAnalysis.nonConverterAvgHeartbeats = Number(nonConverterRow?.avg_heartbeats) || 0;
+      pixelData.heartbeatAnalysis.converterAvgAttentionSec = Number(converterRow?.avg_attention_sec) || 0;
+      pixelData.heartbeatAnalysis.nonConverterAvgAttentionSec = Number(nonConverterRow?.avg_attention_sec) || 0;
+
+      // Attention distribution buckets (from query 21)
+      const bucketOrder = ['0-14s (saiu rapido)', '15-29s', '30-59s', '1-2min', '2-5min', '5min+'];
+      pixelData.heartbeatAnalysis.attentionDistribution = bucketOrder
+        .map((label) => {
+          const row = attentionDistResult.find((r) => r.bucket === label);
+          if (!row) return null;
+          const v = Number(row.visitors) || 0;
+          const c = Number(row.converters) || 0;
+          return {
+            buckets: label,
+            visitors: v,
+            converters: c,
+            convRate: v > 0 ? Math.round((c / v) * 1000) / 10 : 0,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+
+      // ── Improvement 2: Event-conversion correlation ──
+      pixelData.eventConversionCorrelation = eventCorrelationResult.map((r) => {
+        const withV = Number(r.visitors_with) || 0;
+        const withC = Number(r.converters_with) || 0;
+        const withoutV = Number(r.visitors_without) || 0;
+        const withoutC = Number(r.converters_without) || 0;
+        const crWith = withV > 0 ? (withC / withV) * 100 : 0;
+        const crWithout = withoutV > 0 ? (withoutC / withoutV) * 100 : 0;
+        const lift = crWithout > 0 ? Math.round(((crWith - crWithout) / crWithout) * 100) : 0;
+        return {
+          event_type: r.event_type,
+          visitors_with_event: withV,
+          converters_with_event: withC,
+          visitors_without_event: withoutV,
+          converters_without_event: withoutC,
+          convRate_with: Math.round(crWith * 10) / 10,
+          convRate_without: Math.round(crWithout * 10) / 10,
+          lift,
+        };
+      });
+
+      // ── Improvement 3: Per-landing-page metrics ──
+      pixelData.perPageMetrics = perPageResult.map((r) => {
+        const v = Number(r.visitors) || 0;
+        const l = Number(r.leads) || 0;
+        return {
+          url: r.url,
+          visitors: v,
+          leads: l,
+          convRate: v > 0 ? Math.round((l / v) * 1000) / 10 : 0,
+          avgTimeOnPage: r.avg_time !== null ? Number(r.avg_time) : null,
+          bounceRate: r.bounce_pct !== null ? Math.round(Number(r.bounce_pct) * 10) / 10 : null,
+          avgScrollMax: r.avg_scroll_max !== null ? Number(r.avg_scroll_max) : null,
+        };
+      });
+
+      // ── Improvement 4: Hourly conversion ──
+      pixelData.hourlyConversion = hourlyResult.map((r) => {
+        const v = Number(r.visitors) || 0;
+        const l = Number(r.leads) || 0;
+        return {
+          hour: Number(r.hour),
+          visitors: v,
+          leads: l,
+          convRate: v > 0 ? Math.round((l / v) * 1000) / 10 : 0,
+        };
+      });
+
+      // ── Improvement 5: JS Error details ──
+      pixelData.jsErrorDetails = jsErrorDetailsResult.map((r) => ({
+        message: r.message,
+        filename: r.filename,
+        count: Number(r.count) || 0,
+        firstSeen: r.first_seen,
+      }));
+
+      // ── Improvement 6: Engagement score ──
+      const hotRow = engagementScoreResult.find((r) => r.segment === 'quente');
+      const warmRow = engagementScoreResult.find((r) => r.segment === 'morno');
+      const coldRow = engagementScoreResult.find((r) => r.segment === 'frio');
+      const hotV = Number(hotRow?.visitors) || 0;
+      const hotC = Number(hotRow?.converters) || 0;
+      const warmV = Number(warmRow?.visitors) || 0;
+      const warmC = Number(warmRow?.converters) || 0;
+      const coldV = Number(coldRow?.visitors) || 0;
+      const coldC = Number(coldRow?.converters) || 0;
+      pixelData.engagementScore = {
+        hot: hotV,
+        warm: warmV,
+        cold: coldV,
+        hotConvRate: hotV > 0 ? Math.round((hotC / hotV) * 1000) / 10 : 0,
+        warmConvRate: warmV > 0 ? Math.round((warmC / warmV) * 1000) / 10 : 0,
+        coldConvRate: coldV > 0 ? Math.round((coldC / coldV) * 1000) / 10 : 0,
+      };
     } catch (pixelErr) {
-      // tracking_events table may not exist yet (migration not run) — continue without pixel data
       console.warn('[Meta Ads Analyze] Tabela tracking_events não disponível, prosseguindo sem dados de pixel:', pixelErr);
       pixelAvailable = false;
     }
@@ -772,14 +1245,109 @@ export async function GET() {
 
       const avgTime = pixelData.avgTimeOnPage ? Math.round(pixelData.avgTimeOnPage) : null;
 
-      // CRM leads from Meta (same 30-day window for fair comparison)
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const crmMetaLeads30d = metaClients.filter((c) => c.createdAt >= thirtyDaysAgo).length;
+      // CRM leads from same period
+      const crmMetaLeadsPeriod = metaClients.length;
+
+      // ── NEW: Improvement 1 — Heartbeat/attention analysis text ──
+      const ha = pixelData.heartbeatAnalysis;
+      const heartbeatSection = `
+### Atenção e Retenção (Heartbeat)
+- Tempo médio de atenção dos **conversores**: ${ha.converterAvgAttentionSec}s (${Math.floor(ha.converterAvgAttentionSec / 60)}min ${ha.converterAvgAttentionSec % 60}s)
+- Tempo médio de atenção dos **não-conversores**: ${ha.nonConverterAvgAttentionSec}s (${Math.floor(ha.nonConverterAvgAttentionSec / 60)}min ${ha.nonConverterAvgAttentionSec % 60}s)
+- Heartbeats médios dos conversores: ${ha.converterAvgHeartbeats} pulsos
+- Heartbeats médios dos não-conversores: ${ha.nonConverterAvgHeartbeats} pulsos
+- Diferença de atenção: ${ha.converterAvgAttentionSec > ha.nonConverterAvgAttentionSec ? '+' : ''}${ha.converterAvgAttentionSec - ha.nonConverterAvgAttentionSec}s (${ha.nonConverterAvgAttentionSec > 0 ? Math.round(((ha.converterAvgAttentionSec - ha.nonConverterAvgAttentionSec) / ha.nonConverterAvgAttentionSec) * 100) : 0}% ${ha.converterAvgAttentionSec >= ha.nonConverterAvgAttentionSec ? 'a mais' : 'a menos'} para conversores)
+
+Distribuição de tempo de atenção (com taxa de conversão por faixa):
+${ha.attentionDistribution.length > 0
+  ? ha.attentionDistribution.map((b) => `- ${b.buckets}: ${b.visitors} visitantes, ${b.converters} converteram (${b.convRate}%)`).join('\n')
+  : '- Nenhum dado disponível'}
+`
+      .trim();
+
+      // ── NEW: Improvement 2 — Event-conversion correlation text ──
+      const eventLabels: Record<string, string> = {
+        gallery_click: 'Clique na Galeria',
+        faq_open: 'Abertura de FAQ',
+        scroll_depth: 'Scroll Profundo',
+        section_view: 'Visualização de Seção',
+        whatsapp_click: 'Clique no WhatsApp',
+        exit_intent: 'Intenção de Saida',
+      };
+      const correlationSection = `
+### Correlação Evento → Conversão
+Qual a taxa de conversão dos visitantes que fizeram cada tipo de evento vs os que não fizeram?
+${pixelData.eventConversionCorrelation.length > 0
+  ? pixelData.eventConversionCorrelation.map((c) => {
+      const label = eventLabels[c.event_type] || c.event_type;
+      const liftStr = c.lift > 0 ? `+${c.lift}% lift` : `${c.lift}% lift`;
+      return `- ${label}: ${c.convRate_with}% conversão (com evento, ${c.visitors_with_event} visitantes) vs ${c.convRate_without}% (sem evento, ${c.visitors_without_event} visitantes) — ${liftStr}`;
+    }).join('\n')
+  : '- Nenhum dado disponível'}
+`
+      .trim();
+
+      // ── NEW: Improvement 3 — Per-page metrics text ──
+      const perPageSection = `
+### Diagnóstico por Landing Page (individual)
+${pixelData.perPageMetrics.length > 0
+  ? pixelData.perPageMetrics.map((p) => {
+      const shortUrl = p.url.length > 60 ? p.url.substring(0, 57) + '...' : p.url;
+      return `- ${shortUrl}: ${p.visitors} visitantes, ${p.leads} leads (${p.convRate}%), tempo médio: ${p.avgTimeOnPage !== null ? p.avgTimeOnPage + 's' : 'N/A'}, bounce rate: ${p.bounceRate !== null ? p.bounceRate + '%' : 'N/A'}, scroll médio máx: ${p.avgScrollMax !== null ? p.avgScrollMax + '%' : 'N/A'}`;
+    }).join('\n')
+  : '- Nenhuma landing page com dados suficientes'}
+`
+      .trim();
+
+      // ── NEW: Improvement 4 — Hourly conversion text ──
+      const hourlySection = `
+### Conversão por Hora do Dia
+${pixelData.hourlyConversion.length > 0
+  ? (() => {
+      // Show top 5 hours by conversion rate (min 3 visitors)
+      const qualified = pixelData.hourlyConversion.filter((h) => h.visitors >= 3);
+      const sorted = [...qualified].sort((a, b) => b.convRate - a.convRate);
+      const topHours = sorted.slice(0, 5);
+      const worstHours = [...sorted].sort((a, b) => a.convRate - b.convRate).slice(0, 3);
+      const topLines = topHours.map((h) => `- ${String(h.hour).padStart(2, '0')}:00 — ${h.visitors} visitantes, ${h.leads} leads (${h.convRate}%)`);
+      const worstLines = worstHours
+        .filter((w) => !topHours.includes(w))
+        .map((h) => `- ${String(h.hour).padStart(2, '0')}:00 — ${h.visitors} visitantes, ${h.leads} leads (${h.convRate}%)`);
+      return `Melhores horários (maior conversão):
+${topLines.join('\n') || '- N/A'}
+${worstLines.length > 0 ? `\nPiores horários (menor conversão):\n${worstLines.join('\n')}` : ''}`;
+    })()
+  : '- Nenhum dado disponível'}
+`
+      .trim();
+
+      // ── NEW: Improvement 5 — JS Error details text ──
+      const jsErrorSection = `
+### Detalhes dos Erros de JavaScript (top 5)
+${pixelData.jsErrorDetails.length > 0
+  ? pixelData.jsErrorDetails.map((e) => {
+      const file = e.filename ? ` (${e.filename})` : '';
+      return `- [${e.count}x] ${e.message}${file} — primeiro visto em ${e.firstSeen?.split('T')[0] || 'N/A'}`;
+    }).join('\n')
+  : '- Nenhum erro registrado'}
+`
+      .trim();
+
+      // ── NEW: Improvement 6 — Engagement score text ──
+      const es = pixelData.engagementScore;
+      const totalES = es.hot + es.warm + es.cold;
+      const engagementSection = `
+### Score de Engajamento (frio/morno/quente)
+Critério: frio (<2 pontos), morno (2-3), quente (4+). Pontos = tipos de eventos interativos + scroll profundo + atenção longa.
+- Quentes (alto engajamento): ${es.hot} visitantes (${totalES > 0 ? ((es.hot / totalES) * 100).toFixed(1) : '0'}%) — taxa de conversão: ${es.hotConvRate}%
+- Mornos (engajamento médio): ${es.warm} visitantes (${totalES > 0 ? ((es.warm / totalES) * 100).toFixed(1) : '0'}%) — taxa de conversão: ${es.warmConvRate}%
+- Frios (baixo engajamento): ${es.cold} visitantes (${totalES > 0 ? ((es.cold / totalES) * 100).toFixed(1) : '0'}%) — taxa de conversão: ${es.coldConvRate}%
+`
+      .trim();
 
       pixelSection = `
 
-## DADOS DO PIXEL PROPRIO (ultimos 30 dias)
+## DADOS DO PIXEL PROPRIO (${periodLabel})
 - Visitantes unicos rastreados: ${pixelData.visitors}
 - Pageviews registrados: ${pixelData.pageviews}
 - Leads capturados pelo pixel (form_submit + lead): ${pixelData.pixelLeads}
@@ -811,8 +1379,8 @@ ${pageLines}
 ${campaignLines}
 
 ### Discrepancia Pixel vs CRM:
-- Leads no pixel (form_submit + lead, ultimos 30 dias): ${pixelData.pixelLeads}
-- Leads no CRM (tag Meta Ads, ultimos 30 dias): ${crmMetaLeads30d}
+- Leads no pixel (form_submit + lead, ${periodLabel}): ${pixelData.pixelLeads}
+- Leads no CRM (tag Meta Ads, ${periodLabel}): ${crmMetaLeadsPeriod}
 - NOTA: Leads do webhook Meta Ads NAO geram eventos de pixel. A discrepancia e esperada quando ha leads vindos diretamente do formulario do Facebook.
 
 ### Performance da Pagina (Web Vitals):
@@ -832,7 +1400,7 @@ ${pixelData.formFieldDropoff.length > 0 ? pixelData.formFieldDropoff.map((f) => 
   return `- Campo "${f.field}": focos=${f.focus_count}, blurs=${f.blur_count}, tempo medio=${f.avg_time_ms}ms, taxa de desistencia=${dropoff}%`;
 }).join('\n') : '- Nenhum dado de formulario disponivel'}
 
-### Visualizacao de Secoes (quais secos os visitantes veem):
+### Visualizacao de Secoes (quais secoes os visitantes veem):
 ${pixelData.sectionViews.length > 0 ? pixelData.sectionViews.map((s) => `- ${s.section}: ${s.visitors} visitantes (${pixelData.visitors > 0 ? ((s.visitors / pixelData.visitors) * 100).toFixed(1) : '0.0'}%)`).join('\n') : '- Nenhum dado de secoes disponivel'}
 
 ### Comportamento de Saida e Erros:
@@ -851,7 +1419,19 @@ ${pixelData.languageBreakdown.length > 0 ? pixelData.languageBreakdown.map((l) =
 ${pixelData.geoBreakdown.length > 0 ? pixelData.geoBreakdown.map((g) => {
   const convPct = g.visitors > 0 ? ((g.leads / g.visitors) * 100).toFixed(1) : '0.0';
   return `- ${g.city}/${g.country}: ${g.visitors} visitantes, ${g.leads} leads (${convPct}% conversao)`;
-}).join('\n') : '- Nenhum dado geografico disponivel (Geo-IP pode ainda nao estar ativo)'}`;
+}).join('\n') : '- Nenhum dado geografico disponivel (Geo-IP pode ainda nao estar ativo)'}
+
+${heartbeatSection}
+
+${correlationSection}
+
+${perPageSection}
+
+${hourlySection}
+
+${jsErrorSection}
+
+${engagementSection}`;
     }
 
     // Contar origens dos leads
@@ -866,15 +1446,15 @@ ${pixelData.geoBreakdown.length > 0 ? pixelData.geoBreakdown.map((g) => {
       }
     }
 
-    // Montar seção de dados CRM (pode estar vazia no modo pixel-only)
+    // Montar seção de dados CRM
     const crmSection = hasPixelDataOnly
-      ? '\n### Dados do CRM\nNenhum lead do CRM identificado com origem Meta Ads nos últimos 30 dias. A análise abaixo é baseada EXCLUSIVAMENTE nos dados do pixel próprio (landing pages).\n'
+      ? '\n### Dados do CRM\nNenhum lead do CRM identificado com origem Meta Ads no período selecionado. A análise abaixo é baseada EXCLUSIVAMENTE nos dados do pixel próprio (landing pages).\n'
       : `
-## Dados do Meta Ads para Análise
+## Dados do Meta Ads para Análise (${periodLabel})
 
 ### Visão Geral
 - Total de leads recebidos (CRM): ${total}
-- Leads nos últimos 7 dias: ${recentLeads}
+- Leads no período: ${recentLeads}
 - Taxa de conversão (Leads → Negociação/Proposta/Fechado): ${convRate}%
 - Leads sem nenhuma interação: ${withoutInteraction} (${((withoutInteraction / total) * 100).toFixed(1)}%)
 
@@ -911,20 +1491,25 @@ ORIGEM DOS LEADS: Os leads podem vir de 3 fontes:
 
 Analise os dados fornecidos e gere um relatório estruturado com as seguintes seções:
 
-1. **Resumo Executivo** — Visão geral rápida dos números e tendências
+1. **Resumo Executivo** — Visão geral rápida dos números e tendências do período
 2. **Análise de Funil Completo** — Use o funil do pixel (pageview → engagement → lead). Identifique gargalos. Analise a taxa de rejeição e o tempo médio na página.
-3. **Engajamento e Comportamento** — Analise scroll depth, tempo na página, dispositivos, fontes de tráfego e visualização de seções. Identifique padrões de comportamento.
-4. **Qualidade dos Leads** — Os leads parecem qualificados? Há padrões nos dados? Que tipo de visitante converte? Compare leads do webhook vs landing page.
-5. **Performance da Landing Page** — Analise Web Vitals (LCP, FID, CLS). Há problemas de performance que afetam a conversão? Há erros de JavaScript?
-6. **Desempenho por Campanha e Criativo** — Qual campanha traz os melhores leads? Qual landing page converte mais?
-7. **Análise do Formulário** — Qual campo tem maior taxa de desistência? Quanto tempo os visitantes gastam em cada campo? Há formulários abandonados?
-8. **Galeria e FAQ** — Os visitantes interagem com as imagens? Quais perguntas do FAQ mais geram interesse? A galeria influencia na conversão?
-9. **Efetividade do WhatsApp** — Quantos cliques no WhatsApp? Qual CTA é mais efetivo? Qual a relação entre exit intent e cliques no WhatsApp?
-10. **Geografia, Idioma e Localizacao** — De quais paises/cidades vêm os visitantes (dados de Geo-IP)? Quais fusos horarios? Quais idiomas? Há visitantes de fora do Brasil? Quais cidades convertem mais?
-11. **Alertas e Problemas** — Leads sem interação, estagnados, alta taxa de rejeição, discrepância pixel vs CRM, erros de JS.
-12. **Recomendações** — 10-15 recomendações práticas e específicas para melhorar os resultados. Inclua sugestões sobre otimização de landing pages, CTAs, campanhas, formulário, horários de atendimento e acompanhamento de leads.
+3. **Atenção e Retenção** — ANALISE A SEÇÃO DE HEARTBEAT. Compare o tempo de atenção dos conversores vs não-conversores. Use a distribuição por faixas de tempo para identificar em qual momento os visitantes perdem interesse. Recomende ações específicas para reter visitantes (ex: se 40% saem antes de 30s, a hero section precisa ser mais impactante).
+4. **Correlação Evento → Conversão** — Use os dados de correlação para identificar QUAIS comportamentos estão mais associados à conversão. Visitantes que clicam na galeria convertem mais? E os que abrem FAQ? Use os números de lift para priorizar recomendações.
+5. **Diagnóstico por Landing Page** — Para cada landing page, analise: bounce rate, tempo médio, scroll médio e taxa de conversão. Identifique qual página tem pior performance e o que pode ser melhorado em cada uma especificamente.
+6. **Melhores Horários** — Use os dados de conversão por hora do dia para recomendar horários ideais de atendimento via WhatsApp e horários de maior investimento em anúncios.
+7. **Engajamento e Comportamento** — Analise scroll depth, dispositivos, fontes de tráfego e visualização de seções. Analise o score de engajamento (frio/morno/quente) e a taxa de conversão de cada segmento.
+8. **Qualidade dos Leads** — Os leads parecem qualificados? Há padrões nos dados? Que tipo de visitante converte? Compare leads do webhook vs landing page.
+9. **Performance da Landing Page** — Analise Web Vitals (LCP, FID, CLS). Há problemas de performance? Use os detalhes dos erros de JS para sugerir correções específicas (arquivo, mensagem, frequência).
+10. **Desempenho por Campanha e Criativo** — Qual campanha traz os melhores leads? Qual landing page converte mais?
+11. **Análise do Formulário** — Qual campo tem maior taxa de desistência? Quanto tempo os visitantes gastam em cada campo? Há formulários abandonados?
+12. **Galeria e FAQ** — Os visitantes interagem com as imagens? Quais perguntas do FAQ mais geram interesse? A galeria influencia na conversão?
+13. **Efetividade do WhatsApp** — Quantos cliques no WhatsApp? Qual CTA é mais efetivo? Qual a relação entre exit intent e cliques no WhatsApp?
+14. **Geografia, Idioma e Localização** — De quais países/cidades vêm os visitantes (dados de Geo-IP)? Quais fusos horários? Quais idiomas? Há visitantes de fora do Brasil? Quais cidades convertem mais?
+15. **Alertas e Problemas** — Leads sem interação, estagnados, alta taxa de rejeição, discrepância pixel vs CRM, erros de JS (com detalhes técnicos).
+16. **Recomendações** — 10-15 recomendações práticas e específicas para melhorar os resultados. PRIORIZE recomendações baseadas nos dados de correlação e score de engajamento. Inclua sugestões sobre otimização de cada landing page individualmente, CTAs, campanhas, formulário, horários de atendimento e acompanhamento de leads.
 
 IMPORTANTE:
+- Período da análise: ${periodLabel}.
 - Leads do webhook Meta Ads chegam diretamente do Facebook e NÃO geram eventos de pixel. A discrepancia entre pixel e CRM e esperada nesse caso.
 - Leads cadastrados via formulario das landing pages GERAM eventos de pixel (form_submit) e campos UTM.
 - Use dados numericos em TODOS os argumentos. Nunca faca afirmações vagas.
@@ -933,7 +1518,10 @@ IMPORTANTE:
 - Se houver dados de Web Vitals, identifique problemas de performance (LCP > 2500ms, CLS > 0.1, FID > 100ms).
 - Se houver dados de FAQ, identifique quais dúvidas são mais frequentes e sugira otimizações.
 - Se houver dados de exit intent, sugira estratégias de retenção (popup, oferta especial, etc.).
-- Se houver dados de fuso horario, sugira horários otimos para atendimento via WhatsApp.
+- Se houver dados de fuso horário, sugira horários ótimos para atendimento via WhatsApp.
+- Se houver dados de correlação, priorize ações que têm maior lift na conversão.
+- Se houver dados de score de engajamento, recomende como transformar visitantes frios em mornos/quentes.
+- Se houver dados de horários, recomende quando investir mais em anúncios e quando ter equipe disponível.
 - Se os dados forem exclusivamente do pixel (sem leads CRM), foque a análise no comportamento dos visitantes, funil de conversão da landing page e performance técnica.`;
 
     // ─────────────────────────────────────────
@@ -952,7 +1540,7 @@ IMPORTANTE:
             contents: [{ role: 'user', parts: [{ text: dataSummary }] }],
             generationConfig: {
               temperature: 0.4,
-              maxOutputTokens: 4096,
+              maxOutputTokens: 8192,
             },
           }),
         });
@@ -981,7 +1569,7 @@ IMPORTANTE:
               { role: 'user', content: dataSummary },
             ],
             temperature: 0.4,
-            max_tokens: 4096,
+            max_tokens: 8192,
           }),
         });
 
@@ -1004,6 +1592,8 @@ IMPORTANTE:
     return NextResponse.json({
       analysis,
       generatedAt: new Date().toISOString(),
+      period: periodParam,
+      periodLabel,
       dataPoints: {
         totalLeads: total,
         recentLeads,
