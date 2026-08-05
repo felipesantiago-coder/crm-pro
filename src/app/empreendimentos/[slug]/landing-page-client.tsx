@@ -182,6 +182,28 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   // NEW: Floating WhatsApp bar visibility (mobile)
   const [showFloatingWhatsApp, setShowFloatingWhatsApp] = useState(false);
 
+  // NEW: Sticky form submit visibility (mobile) — shows when form section is in viewport
+  const [showStickyFormSubmit, setShowStickyFormSubmit] = useState(false);
+  const formSectionRef = useRef<HTMLDivElement>(null);
+  const isSubmittingRef = useRef(false); // prevent double-submit
+
+  // Meta Pixel helper — fires fbq events only if Meta Pixel is loaded
+  const trackMetaPixel = useCallback((event: string, data?: Record<string, unknown>) => {
+    if (typeof window !== 'undefined' && typeof (window as unknown as Record<string, unknown>).fbq === 'function') {
+      const fbq = (window as unknown as Record<string, unknown>).fbq as (...args: unknown[]) => void;
+      if (data) {
+        fbq('track', event, data);
+      } else {
+        fbq('track', event);
+      }
+    }
+  }, []);
+
+  // Generate unique event_id for deduplication (Meta CAPI + browser pixel)
+  const generateMetaEventId = useCallback(() => {
+    return `lp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  }, []);
+
   // NEW: FAQ accordion state
   const [faqOpenIndex, setFaqOpenIndex] = useState<number | null>(null);
 
@@ -316,13 +338,25 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     };
   }, [floorLightboxOpen, enterprise]);
 
-  // NEW: Floating WhatsApp bar — show after scrolling past hero
+  // Floating WhatsApp bar — show after scrolling past hero
+  // Sticky form submit — show when form section is visible on mobile
   useEffect(() => {
     const onScroll = () => {
       setShowFloatingWhatsApp(window.scrollY > window.innerHeight * 0.4);
+
+      // Sticky form submit: show on mobile when form section is in viewport
+      if (formSectionRef.current && window.innerWidth < 640) {
+        const rect = formSectionRef.current.getBoundingClientRect();
+        const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+        setShowStickyFormSubmit(isVisible);
+      }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    window.addEventListener('resize', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
   }, []);
 
   const whatsappNumber = queueUser?.userPhone
@@ -407,13 +441,20 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       const data = await res.json();
 
       if (res.ok && data.success) {
-        // Track pixel event + identify visitor with new lead
+        // Track CRM pixel event + identify visitor with new lead
         if (typeof window !== 'undefined' && window.CRMPIXEL) {
           window.CRMPIXEL.track('form_submit', { enterprise: enterprise?.name });
           if (data.clientId) {
             window.CRMPIXEL.identify(data.clientId);
           }
         }
+        // Track Meta Pixel — Lead event (for ad optimization)
+        trackMetaPixel('Lead', {
+          content_name: enterprise?.name,
+          content_category: 'empreendimento',
+          value: 1,
+          currency: 'BRL',
+        });
 
         // Redirect to success page
         const params = new URLSearchParams();
@@ -517,7 +558,6 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const goPrev = () => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1));
 
   const displayTitle = e.landingTitle || e.name;
-  const displaySubtitle = e.landingSubtitle || info?.summary?.slice(0, 120) || null;
 
   // NEW: Determine if urgency badge should show
   const showUrgencyBadge = status === 'Lançamento' || status === 'Em Construção';
@@ -547,6 +587,25 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const areaRange = maxArea > 0
     ? (minArea === maxArea ? `${maxArea}m²` : `${minArea} a ${maxArea}m²`)
     : null;
+
+  // Smart subtitle: use landingSubtitle, then AI summary, then generate from data
+  const displaySubtitle = e.landingSubtitle
+    || info?.summary?.slice(0, 120)
+    || (() => {
+      const parts: string[] = [];
+      if (info?.location?.city || info?.location?.neighborhood) {
+        parts.push(`Em ${info.location.neighborhood || info.location.city}${info.location.city && info.location.neighborhood ? ', ' + info.location.city : ''}`);
+      }
+      if (priceText) {
+        parts.push(priceText);
+      } else if (areaRange) {
+        parts.push(`Áreas de ${areaRange}`);
+      }
+      if (deliveryText && deliveryText !== 'Já entregue') {
+        parts.push(`Entrega ${deliveryText}`);
+      }
+      return parts.length > 0 ? parts.join(' · ') : null;
+    })() || null;
 
   /* ================================================================
      Render
@@ -717,6 +776,11 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 if (typeof window !== 'undefined' && window.CRMPIXEL) {
                   window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'hero', userId: queueUser?.userId });
                 }
+                // Track Meta Pixel — Contact event
+                trackMetaPixel('Contact', {
+                  content_name: e.name,
+                  content_category: 'empreendimento',
+                });
               }}
               className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-4 sm:px-9 sm:py-4.5 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-semibold text-sm sm:text-base hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
               style={{ animationDelay: '0.1s' }}
@@ -1501,11 +1565,43 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   Interessado no <span className="text-[#C9A96E]">{e.name}</span>?
                 </h2>
                 <p className="text-[#C9A96E]/80 text-sm sm:text-base font-medium mb-2">
-                  {showUrgencyBadge ? '⚠️ Vagas limitadas — garanta sua unidade.' : 'Oportunidade exclusiva no mercado imobiliário.'}
+                  {showUrgencyBadge ? 'Vagas limitadas — garanta sua unidade antes do lançamento.' : priceText ? `A partir de ${priceText.replace('a partir de ', '')} — condições exclusivas.` : 'Oportunidade exclusiva no mercado imobiliário.'}
                 </p>
-                <p className="text-white/50 max-w-lg text-sm sm:text-base leading-relaxed mb-6 sm:mb-8">
-                  Preencha o formulário ao lado e receba atendimento personalizado sobre este empreendimento. Nossa equipe entrará em contato com você em breve para agendar uma visita ou tirar todas as suas dúvidas.
-                </p>
+                {/* Dynamic selling points based on available data */}
+                <div className="space-y-2 mb-6 sm:mb-8">
+                  <p className="text-white/50 max-w-lg text-sm sm:text-base leading-relaxed">
+                    {e.landingDescription
+                      ? e.landingDescription
+                      : `Cadastre-se e receba atendimento personalizado. Nossa equipe entrará em contato para agendar uma visita ao ${e.name}${info?.location?.neighborhood ? ` no ${info.location.neighborhood}` : ''} e apresentar todas as condições comerciais.`}
+                  </p>
+                  {/* Quick-value bullets from available data */}
+                  <ul className="space-y-1.5">
+                    {areaRange && (
+                      <li className="flex items-center gap-2 text-sm text-white/40">
+                        <Ruler className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+                        Unidades de {areaRange}
+                      </li>
+                    )}
+                    {info?.totalUnits && info.totalUnits > 0 && (
+                      <li className="flex items-center gap-2 text-sm text-white/40">
+                        <Building2 className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+                        {info.totalUnits} unidades disponíveis
+                      </li>
+                    )}
+                    {deliveryText && deliveryText !== 'Já entregue' && (
+                      <li className="flex items-center gap-2 text-sm text-white/40">
+                        <CalendarDays className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+                        Previsão de entrega: {deliveryText}
+                      </li>
+                    )}
+                    {(info?.differentials && info.differentials.length > 0) && (
+                      <li className="flex items-center gap-2 text-sm text-white/40">
+                        <Sparkles className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+                        {(info.differentials || []).slice(0, 3).join(' · ')}
+                      </li>
+                    )}
+                  </ul>
+                </div>
 
                 {/* Quick WhatsApp */}
                 <a
@@ -1516,6 +1612,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     if (typeof window !== 'undefined' && window.CRMPIXEL) {
                       window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'form_section', userId: queueUser?.userId });
                     }
+                    trackMetaPixel('Contact', { content_name: e.name, content_category: 'empreendimento' });
                   }}
                   className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
                 >
@@ -1525,9 +1622,10 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </div>
 
               {/* Right side — Form */}
-              <div className="relative order-1 lg:order-2">
+              <div ref={formSectionRef} className="relative order-1 lg:order-2">
                 <div className="absolute -inset-1 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/15 via-transparent to-[#C9A96E]/10 rounded-3xl blur-sm sm:blur-xl" />
                 <form
+                  id="landing-form"
                   onSubmit={handleFormSubmit}
                   className="relative z-10 rounded-2xl bg-white/[0.03] border border-white/[0.12] p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
                 >
@@ -1812,6 +1910,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   if (typeof window !== 'undefined' && window.CRMPIXEL) {
                     window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'faq_cta', userId: queueUser?.userId });
                   }
+                  trackMetaPixel('Contact', { content_name: e.name, content_category: 'empreendimento' });
                 }}
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
               >
@@ -1875,6 +1974,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     if (typeof window !== 'undefined' && window.CRMPIXEL) {
                       window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'footer', userId: queueUser?.userId });
                     }
+                    trackMetaPixel('Contact', { content_name: e.name, content_category: 'empreendimento' });
                   }}
                   className="flex items-center gap-2.5 text-sm text-white/30 hover:text-[#C9A96E] transition-colors"
                 >
@@ -1899,8 +1999,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
         </div>
       </footer>
 
-      {/* ★ NEW: Floating Sticky WhatsApp CTA (Mobile) ─── */}
-      {showFloatingWhatsApp && (
+      {/* ★ NEW: Floating Sticky WhatsApp CTA (Mobile) — hidden when form is visible to avoid overlap */}
+      {showFloatingWhatsApp && !showStickyFormSubmit && (
         <div className="fixed bottom-0 left-0 right-0 z-50 sm:hidden animate-slide-up-bar">
           <div className="bg-gradient-to-r from-[#C9A96E] to-[#A8893E] shadow-[0_-4px_20px_rgba(201,169,110,0.3)]">
             <a
@@ -1911,6 +2011,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 if (typeof window !== 'undefined' && window.CRMPIXEL) {
                   window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'floating_bar', userId: queueUser?.userId });
                 }
+                trackMetaPixel('Contact', { content_name: e.name, content_category: 'empreendimento' });
               }}
               className="flex items-center justify-center gap-2.5 py-3.5 px-6 text-[#0A0A0A] font-semibold text-sm"
             >
@@ -1923,6 +2024,37 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           </div>
           {/* Safe area bottom for phones with home indicator */}
           <div className="h-[env(safe-area-inset-bottom)]" />
+        </div>
+      )}
+
+      {/* ★ Sticky Form Submit (Mobile only — replaces WhatsApp bar when form is visible) */}
+      {showStickyFormSubmit && !formSubmitting && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 sm:hidden animate-slide-up-bar">
+          <div className="bg-[#0A0A0A]/90 backdrop-blur-xl border-t border-[#C9A96E]/20 shadow-[0_-4px_20px_rgba(201,169,110,0.15)]">
+            <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-white/50 truncate">{e.name}</p>
+                <p className="text-[11px] text-white/30">Apenas nome + e-mail</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  // Trigger form submit from sticky bar
+                  const form = document.getElementById('landing-form') as HTMLFormElement | null;
+                  if (form && !isSubmittingRef.current) {
+                    isSubmittingRef.current = true;
+                    form.requestSubmit();
+                    setTimeout(() => { isSubmittingRef.current = false; }, 3000);
+                  }
+                }}
+                className="flex-shrink-0 flex items-center gap-2 px-5 py-3 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-sm hover:bg-[#D4B87E] transition-all active:scale-95 shadow-lg shadow-[#C9A96E]/20"
+              >
+                <Send className="h-4 w-4" />
+                Cadastrar
+              </button>
+            </div>
+            <div className="h-[env(safe-area-inset-bottom)]" />
+          </div>
         </div>
       )}
 
