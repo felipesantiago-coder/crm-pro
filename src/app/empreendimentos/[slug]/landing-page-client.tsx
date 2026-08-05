@@ -8,6 +8,7 @@ import {
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Copy, Check, User, Send, AlertCircle,
   Shield, ChevronDown, CalendarDays, TrendingUp, Users, Layers, Car, LayoutGrid,
+  Eye, Timer,
 } from 'lucide-react';
 
 /* ================================================================
@@ -187,6 +188,17 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const formSectionRef = useRef<HTMLDivElement>(null);
   const isSubmittingRef = useRef(false); // prevent double-submit
 
+  // NEW: Exit-intent popup (medium priority #8)
+  const [exitPopupOpen, setExitPopupOpen] = useState(false);
+  const exitPopupShownRef = useRef(false); // show only once per session
+
+  // NEW: Social proof notification cycling (medium priority #7)
+  const [socialProofIdx, setSocialProofIdx] = useState(0);
+
+  // NEW: Sticky desktop CTA — show only after scrolling past hero
+  const [showDesktopSticky, setShowDesktopSticky] = useState(false);
+  const [isFormSectionVisible, setIsFormSectionVisible] = useState(false);
+
   // Meta Pixel helper — fires fbq events only if Meta Pixel is loaded
   const trackMetaPixel = useCallback((event: string, data?: Record<string, unknown>) => {
     if (typeof window !== 'undefined' && typeof (window as unknown as Record<string, unknown>).fbq === 'function') {
@@ -206,6 +218,49 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
   // NEW: FAQ accordion state
   const [faqOpenIndex, setFaqOpenIndex] = useState<number | null>(null);
+
+  // Social proof names pool for simulated live notifications
+  const socialProofPool = React.useMemo(() => [
+    { name: 'Maria', action: 'se cadastrou', time: '2 min' },
+    { name: 'Carlos', action: 'solicitou informações', time: '5 min' },
+    { name: 'Ana', action: 'agendou visita', time: '8 min' },
+    { name: 'Pedro', action: 'se cadastrou', time: '12 min' },
+    { name: 'Juliana', action: 'pediu condições', time: '15 min' },
+    { name: 'Rafael', action: 'se cadastrou', time: '18 min' },
+    { name: 'Fernanda', action: 'solicitou visita', time: '22 min' },
+    { name: 'Lucas', action: 'se cadastrou', time: '25 min' },
+  ], []);
+
+  // Cycle social proof every 6s
+  useEffect(() => {
+    if (socialProofPool.length === 0) return;
+    const timer = setInterval(() => {
+      setSocialProofIdx((prev) => (prev + 1) % socialProofPool.length);
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [socialProofPool.length]);
+
+  // Calculate form progress (for progress bar — medium priority #9)
+  const formProgress = React.useMemo(() => {
+    let total = 2; // name + email are required
+    let filled = 0;
+    if (formName.trim().length >= 2) filled++;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formEmail.trim().toLowerCase())) filled++;
+    // Count optional phone as bonus
+    const phoneDigits = formPhone.replace(/\D/g, '');
+    if (phoneDigits.length >= 10) total++ , filled++;
+    // Count required custom fields
+    if (enterprise?.formFields) {
+      for (const field of enterprise.formFields) {
+        if (field.required) {
+          total++;
+          const val = customAnswers[field.id];
+          if (val && val.trim() !== '') filled++;
+        }
+      }
+    }
+    return Math.min(100, Math.round((filled / total) * 100));
+  }, [formName, formEmail, formPhone, customAnswers, enterprise?.formFields]);
 
   // Tracking: form field focus timestamps
   const fieldFocusTime = useRef<Record<string, number>>({});
@@ -251,17 +306,25 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     return () => observer.disconnect();
   }, []);
 
-  // Tracking: exit intent (desktop only)
+  // Tracking: exit intent (desktop only) — show popup + track (medium priority #8)
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.CRMPIXEL) return;
+    if (typeof window === 'undefined') return;
     const handler = (e: MouseEvent) => {
       if ((e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth) && e.relatedTarget === null) {
-        window.CRMPIXEL?.trackExitIntent();
+        if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL?.trackExitIntent();
+        // Show exit-intent popup only once per session, only if user hasn't submitted form
+        if (!exitPopupShownRef.current && !formSubmitting) {
+          exitPopupShownRef.current = true;
+          setExitPopupOpen(true);
+          if (typeof window !== 'undefined' && window.CRMPIXEL) {
+            window.CRMPIXEL.track('exit_popup_shown', { enterprise: enterprise?.name });
+          }
+        }
       }
     };
     document.addEventListener('mouseleave', handler);
     return () => document.removeEventListener('mouseleave', handler);
-  }, []);
+  }, [formSubmitting, enterprise?.name]);
 
   const fetchEnterprise = useCallback(async () => {
     if (!slug) return;
@@ -340,15 +403,27 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
   // Floating WhatsApp bar — show after scrolling past hero
   // Sticky form submit — show when form section is visible on mobile
+  // Desktop sticky — show only after scrolling past hero, hide when form is visible
   useEffect(() => {
     const onScroll = () => {
-      setShowFloatingWhatsApp(window.scrollY > window.innerHeight * 0.4);
+      const scrollY = window.scrollY;
+      const heroHeight = window.innerHeight;
+      setShowFloatingWhatsApp(scrollY > heroHeight * 0.4);
 
       // Sticky form submit: show on mobile when form section is in viewport
       if (formSectionRef.current && window.innerWidth < 640) {
         const rect = formSectionRef.current.getBoundingClientRect();
         const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
         setShowStickyFormSubmit(isVisible);
+      }
+
+      // Desktop sticky CTA: show after scrolling past hero (medium priority #11)
+      if (window.innerWidth >= 640) {
+        setShowDesktopSticky(scrollY > heroHeight * 0.7);
+        if (formSectionRef.current) {
+          const rect = formSectionRef.current.getBoundingClientRect();
+          setIsFormSectionVisible(rect.top < window.innerHeight * 0.8 && rect.bottom > 0);
+        }
       }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -788,13 +863,21 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               <Phone className="h-4 w-4" />
               Falar com consultor
             </a>
-            {e._count && e._count.clients > 0 && (
+            {e._count && e._count.clients > 0 ? (
               <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/30" style={{ animationDelay: '0.2s' }}>
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#C9A96E] opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-[#C9A96E]" />
                 </span>
                 {e._count.clients} pessoa{e._count.clients !== 1 ? 's' : ''} interessada{e._count.clients !== 1 ? 's' : ''}
+              </div>
+            ) : (
+              <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/30" style={{ animationDelay: '0.2s' }}>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+                </span>
+                <span>{socialProofPool[socialProofIdx]?.name} {socialProofPool[socialProofIdx]?.action.toLowerCase()} há {socialProofPool[socialProofIdx]?.time}</span>
               </div>
             )}
           </div>
@@ -1630,7 +1713,24 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   className="relative z-10 rounded-2xl bg-white/[0.03] border border-white/[0.12] p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
                 >
                   <div className="mb-2">
-                    <h3 className="text-xl font-bold">Cadastro</h3>
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="text-xl font-bold">Cadastro</h3>
+                      {formProgress > 0 && formProgress < 100 && (
+                        <span className="text-xs text-[#C9A96E]/70 font-medium">{formProgress}% completo</span>
+                      )}
+                    </div>
+                    {/* Progress bar (medium priority #9) */}
+                    {formProgress > 0 && (
+                      <div className="h-1 w-full bg-white/[0.06] rounded-full overflow-hidden mb-1">
+                        <div
+                          className="h-full rounded-full transition-all duration-500 ease-out"
+                          style={{
+                            width: `${formProgress}%`,
+                            backgroundColor: formProgress === 100 ? '#25D366' : '#C9A96E',
+                          }}
+                        />
+                      </div>
+                    )}
                     <p className="text-sm text-white/40 mt-1">Preencha seus dados para receber atendimento</p>
                   </div>
 
@@ -1659,8 +1759,15 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         placeholder="Seu nome completo"
                         autoComplete="name"
                         required
-                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                        className={`w-full pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.04] border text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-1 transition-all ${
+                          formName.trim().length >= 2
+                            ? 'border-emerald-500/40 focus:border-emerald-500/50 focus:ring-emerald-500/20'
+                            : 'border-white/[0.08] focus:border-[#C9A96E]/50 focus:ring-[#C9A96E]/20'
+                        }`}
                       />
+                      {formName.trim().length >= 2 && (
+                        <Check className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
+                      )}
                     </div>
                   </div>
 
@@ -1681,8 +1788,15 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         placeholder="seuemail@exemplo.com"
                         autoComplete="email"
                         required
-                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                        className={`w-full pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.04] border text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-1 transition-all ${
+                          /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formEmail.trim().toLowerCase())
+                            ? 'border-emerald-500/40 focus:border-emerald-500/50 focus:ring-emerald-500/20'
+                            : 'border-white/[0.08] focus:border-[#C9A96E]/50 focus:ring-[#C9A96E]/20'
+                        }`}
                       />
+                      {/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formEmail.trim().toLowerCase()) && (
+                        <Check className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
+                      )}
                     </div>
                   </div>
 
@@ -1704,8 +1818,15 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         placeholder="(11) 99999-9999"
                         inputMode="numeric"
                         autoComplete="tel"
-                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                        className={`w-full pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.04] border text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-1 transition-all ${
+                          formPhone.replace(/\D/g, '').length >= 10
+                            ? 'border-emerald-500/40 focus:border-emerald-500/50 focus:ring-emerald-500/20'
+                            : 'border-white/[0.08] focus:border-[#C9A96E]/50 focus:ring-[#C9A96E]/20'
+                        }`}
                       />
+                      {formPhone.replace(/\D/g, '').length >= 10 && (
+                        <Check className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
+                      )}
                     </div>
                   </div>
 
@@ -1796,16 +1917,25 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     </div>
                   )}
 
-                  {/* Submit — benefit-driven CTA with urgency */}
+                  {/* Submit — progress-aware CTA (medium priority #9) */}
                   <button
                     type="submit"
                     disabled={formSubmitting}
-                    className="w-full flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-base sm:text-lg hover:bg-[#D4B87E] transition-all shadow-lg shadow-[#C9A96E]/20 disabled:opacity-50 disabled:cursor-not-allowed mt-2 hover:shadow-[#C9A96E]/30 hover:scale-[1.01] active:scale-[0.99]"
+                    className={`w-full flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl font-bold text-base sm:text-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed mt-2 hover:scale-[1.01] active:scale-[0.99] ${
+                      formProgress === 100
+                        ? 'bg-emerald-500 text-white shadow-emerald-500/20 hover:bg-emerald-400 hover:shadow-emerald-500/30'
+                        : 'bg-[#C9A96E] text-[#0A0A0A] shadow-[#C9A96E]/20 hover:bg-[#D4B87E] hover:shadow-[#C9A96E]/30'
+                    }`}
                   >
                     {formSubmitting ? (
                       <>
                         <Loader2 className="h-5 w-5 animate-spin" />
                         Enviando...
+                      </>
+                    ) : formProgress === 100 ? (
+                      <>
+                        <Send className="h-4 w-4" />
+                        Enviar cadastro agora
                       </>
                     ) : (
                       <>
@@ -2058,31 +2188,110 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
         </div>
       )}
 
-      {/* Sticky Desktop CTA */}
-      <div className="hidden sm:block fixed bottom-0 left-0 right-0 z-40 animate-slide-up-bar">
-        <div className="bg-[#0A0A0A]/80 backdrop-blur-xl border-t border-white/[0.06]">
-          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-semibold text-white/80">{displayTitle}</span>
-              {status && (
-                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                  status === 'Lançamento' ? 'bg-emerald-500/15 text-emerald-400' :
-                  status === 'Em Construção' ? 'bg-amber-500/15 text-amber-400' :
-                  'bg-blue-500/15 text-blue-400'
-                }`}>{status}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <a href="#cadastro" className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-bold hover:bg-[#D4B87E] transition-all hover:shadow-[#C9A96E]/20">
-                Garantir minha unidade
-              </a>
-              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="px-5 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-semibold hover:bg-[#20bd5a] transition-colors">
-                WhatsApp
-              </a>
+      {/* Sticky Desktop CTA — show only after scrolling past hero, hide when form visible (medium priority #11) */}
+      {showDesktopSticky && !isFormSectionVisible && (
+        <div className="hidden sm:block fixed bottom-0 left-0 right-0 z-40 animate-slide-up-bar">
+          <div className="bg-[#0A0A0A]/80 backdrop-blur-xl border-t border-white/[0.06]">
+            <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-semibold text-white/80">{displayTitle}</span>
+                {status && (
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                    status === 'Lançamento' ? 'bg-emerald-500/15 text-emerald-400' :
+                    status === 'Em Construção' ? 'bg-amber-500/15 text-amber-400' :
+                    'bg-blue-500/15 text-blue-400'
+                  }`}>{status}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <a href="#cadastro" className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-bold hover:bg-[#D4B87E] transition-all hover:shadow-[#C9A96E]/20">
+                  Garantir minha unidade
+                </a>
+                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="px-5 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-semibold hover:bg-[#20bd5a] transition-colors">
+                  WhatsApp
+                </a>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* ── Exit-Intent Popup (medium priority #8) — show once per session ── */}
+      {exitPopupOpen && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setExitPopupOpen(false)}
+        >
+          <div
+            className="relative max-w-md w-full rounded-2xl bg-[#141414] border border-white/10 p-6 sm:p-8 shadow-2xl"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setExitPopupOpen(false)}
+              className="absolute top-4 right-4 text-white/30 hover:text-white transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Icon */}
+            <div className="flex items-center justify-center mb-5">
+              <div className="h-14 w-14 rounded-2xl bg-[#C9A96E]/15 flex items-center justify-center">
+                <Eye className="h-7 w-7 text-[#C9A96E]" />
+              </div>
+            </div>
+
+            {/* Heading */}
+            <h3 className="text-xl font-bold text-center mb-2">
+              Espera! Antes de sair...
+            </h3>
+            <p className="text-sm text-white/50 text-center mb-6 leading-relaxed">
+              {showUrgencyBadge
+                ? `As vagas para o ${e.name} são limitadas. Cadastre-se agora e garanta condições exclusivas de lançamento.`
+                : `O ${e.name} tem condições especiais disponíveis. Preencha apenas nome e e-mail para receber atendimento.`}
+            </p>
+
+            {/* CTA buttons */}
+            <div className="space-y-3">
+              <a
+                href="#cadastro"
+                onClick={() => {
+                  setExitPopupOpen(false);
+                  if (typeof window !== 'undefined' && window.CRMPIXEL) {
+                    window.CRMPIXEL.track('exit_popup_cta', { enterprise: e.name, action: 'form' });
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-sm hover:bg-[#D4B87E] transition-all shadow-lg shadow-[#C9A96E]/20"
+              >
+                <Send className="h-4 w-4" />
+                Quero garantir minha unidade
+              </a>
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  setExitPopupOpen(false);
+                  if (typeof window !== 'undefined' && window.CRMPIXEL) {
+                    window.CRMPIXEL.track('exit_popup_cta', { enterprise: e.name, action: 'whatsapp' });
+                  }
+                  trackMetaPixel('Contact', { content_name: e.name, content_category: 'empreendimento' });
+                }}
+                className="w-full flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors"
+              >
+                <Phone className="h-4 w-4" />
+                Falar pelo WhatsApp
+              </a>
+            </div>
+
+            {/* Trust signal */}
+            <p className="text-[11px] text-white/25 text-center mt-4">
+              <Shield className="h-3 w-3 inline-block mr-1 text-[#C9A96E]/40" />
+              Seus dados estão seguros e não enviamos spam.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Floor Plans Lightbox ────────────────────── */}
       {floorLightboxOpen && enterprise?.floorPlans && enterprise.floorPlans.length > 0 && (
