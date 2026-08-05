@@ -403,6 +403,114 @@
     }
   });
 
+  /* ── Performance Diagnostic (runs once after page load) ── */
+  function runPerformanceDiagnostic() {
+    setTimeout(function () {
+      var issues = [];
+
+      // Check for missing jQuery (common issue on external LPs)
+      if (typeof window.jQuery === "undefined" && typeof window.$ === "undefined") {
+        // Check if any script references $ or jQuery
+        var scripts = document.getElementsByTagName("script");
+        var needsJQuery = false;
+        for (var i = 0; i < scripts.length; i++) {
+          var src = scripts[i].src || "";
+          var inline = scripts[i].textContent || "";
+          if (src.indexOf("main.js") !== -1 || src.indexOf("gallery") !== -1) {
+            if (inline.indexOf("$") !== -1 || inline.indexOf("jQuery") !== -1) {
+              needsJQuery = true;
+              break;
+            }
+          }
+        }
+        // Also check by looking for script srcs that might need jQuery
+        if (!needsJQuery) {
+          for (var j = 0; j < scripts.length; j++) {
+            var s = scripts[j];
+            if ((s.textContent || "").indexOf("$(") !== -1 && (s.textContent || "").indexOf("ready") !== -1) {
+              needsJQuery = true;
+              break;
+            }
+          }
+        }
+        if (needsJQuery) {
+          issues.push({
+            severity: "high",
+            code: "missing_jquery",
+            message: "jQuery ($) nao carregado, mas scripts da pagina tentam usa-lo. Mova o jQuery para o <head> ou antes dos scripts que dependem dele."
+          });
+        }
+      }
+
+      // Check for images without dimensions (causes CLS)
+      var imgs = document.getElementsByTagName("img");
+      var imgsWithoutDimensions = 0;
+      var slowImages = 0;
+      for (var k = 0; k < imgs.length; k++) {
+        var img = imgs[k];
+        if (!img.width && !img.height && !img.getAttribute("width") && !img.getAttribute("height")) {
+          imgsWithoutDimensions++;
+        }
+        // Check natural dimensions vs display dimensions for slow-loading images
+        if (img.naturalWidth > 0 && img.naturalWidth > 1200 && !img.hasAttribute("loading")) {
+          slowImages++;
+        }
+      }
+      if (imgsWithoutDimensions > 3) {
+        issues.push({
+          severity: "medium",
+          code: "images_no_dimensions",
+          message: imgsWithoutDimensions + " imagens sem dimensoes definidas (width/height). Isso causa CLS. Adicione atributos width e height em todas as imagens."
+        });
+      }
+      if (slowImages > 2) {
+        issues.push({
+          severity: "medium",
+          code: "images_no_lazy",
+          message: slowImages + " imagens grandes sem lazy loading. Adicione loading=\"lazy\" nas imagens abaixo do fold."
+        });
+      }
+
+      // Check for render-blocking scripts in body (scripts without async/defer before main content)
+      var headScripts = document.head ? document.head.getElementsByTagName("script") : [];
+      var bodyScripts = document.body ? document.body.getElementsByTagName("script") : [];
+      var syncBodyScripts = 0;
+      for (var m = 0; m < Math.min(bodyScripts.length, 20); m++) {
+        var bs = bodyScripts[m];
+        if (!bs.async && !bs.defer && bs.src && bs.src.indexOf("pixel.js") === -1) {
+          syncBodyScripts++;
+        }
+      }
+      if (syncBodyScripts > 2) {
+        issues.push({
+          severity: "low",
+          code: "sync_body_scripts",
+          message: syncBodyScripts + " scripts sincronos no body. Considere adicionar async/defer para nao bloquear a renderizacao."
+        });
+      }
+
+      // Check for large DOM size
+      var domSize = document.querySelectorAll("*").length;
+      if (domSize > 3000) {
+        issues.push({
+          severity: "low",
+          code: "large_dom",
+          message: "DOM com " + domSize + " elementos. Considere simplificar para melhorar a performance de renderizacao."
+        });
+      }
+
+      // Report diagnostic results
+      if (issues.length > 0) {
+        send(basePayload("performance_diagnostic", {
+          issues_count: issues.length,
+          issues: issues,
+          dom_size: domSize,
+          image_count: imgs.length
+        }));
+      }
+    }, 5000); // Run 5s after page load to catch deferred errors
+  }
+
   /* ── Public API ─────────────────────────────────────── */
   var CRMPIXEL = {
     /**
@@ -542,7 +650,11 @@
   /* ── Boot ───────────────────────────────────────────── */
   if (document.readyState === "complete" || document.readyState === "interactive") {
     trackPageview();
+    runPerformanceDiagnostic();
   } else {
-    document.addEventListener("DOMContentLoaded", trackPageview);
+    document.addEventListener("DOMContentLoaded", function () {
+      trackPageview();
+      runPerformanceDiagnostic();
+    });
   }
 })();

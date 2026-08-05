@@ -349,14 +349,15 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       setFormError('Informe seu nome completo.');
       return;
     }
-    const cleanPhone = formPhone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      setFormError('Informe um telefone válido com DDD.');
-      return;
-    }
     const cleanEmail = formEmail.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setFormError('Informe um e-mail válido.');
+      return;
+    }
+    const cleanPhone = formPhone.replace(/\D/g, '');
+    // Phone is now optional — if provided, validate format
+    if (cleanPhone.length > 0 && cleanPhone.length < 10) {
+      setFormError('Informe um telefone válido com DDD (mínimo 10 dígitos) ou deixe em branco.');
       return;
     }
 
@@ -391,7 +392,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formName.trim(),
-          phone: cleanPhone,
+          phone: cleanPhone.length >= 10 ? cleanPhone : undefined,
           email: cleanEmail,
           slug: slug || undefined,
           customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined,
@@ -699,14 +700,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             </p>
           )}
 
-          {/* CTA row */}
+          {/* CTA row — optimized for conversion with benefit-driven copy */}
           <div className="mt-6 sm:mt-10 flex flex-wrap items-center gap-3 sm:gap-4">
             <a
               href="#cadastro"
-              className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-3.5 sm:px-9 sm:py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-sm sm:text-base hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/25"
+              className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-4 sm:px-9 sm:py-4.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-sm sm:text-base hover:bg-[#D4B87E] transition-all shadow-lg shadow-[#C9A96E]/25 hover:shadow-[#C9A96E]/40 hover:scale-[1.02] active:scale-[0.98]"
             >
-              <MessageSquare className="h-4 w-4" />
-              Quero saber mais
+              <Send className="h-4 w-4" />
+              Quero minha unidade
             </a>
             <a
               href={whatsappUrl}
@@ -717,11 +718,11 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'hero', userId: queueUser?.userId });
                 }
               }}
-              className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-3.5 sm:px-9 sm:py-4 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-semibold text-sm sm:text-base hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
+              className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-4 sm:px-9 sm:py-4.5 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-semibold text-sm sm:text-base hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
               style={{ animationDelay: '0.1s' }}
             >
               <Phone className="h-4 w-4" />
-              WhatsApp
+              Falar com consultor
             </a>
             {e._count && e._count.clients > 0 && (
               <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/30" style={{ animationDelay: '0.2s' }}>
@@ -785,6 +786,49 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           <div className="w-px h-8 bg-gradient-to-b from-white/30 to-transparent" />
         </div>
       </section>
+
+      {/* ── Quick-Access Gallery Teaser (between Hero and Stats to incentivize scroll) ── */}
+      {images.length > 0 && (
+        <section className="border-t border-white/[0.04]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-lg sm:text-xl font-bold tracking-tight">Conheça o empreendimento</h2>
+                <p className="text-sm text-white/40 mt-1">Veja as imagens, plantas e detalhes</p>
+              </div>
+              <a
+                href="#galeria"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-[#C9A96E] hover:text-[#D4B87E] transition-colors group"
+              >
+                Ver galeria
+                <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </a>
+            </div>
+            {/* Thumbnail strip — horizontal scroll on mobile */}
+            <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible sm:grid sm:grid-cols-4 lg:grid-cols-5">
+              {images.slice(0, 5).map((img, idx) => (
+                <a
+                  key={img.id}
+                  href="#galeria"
+                  onClick={() => { setActiveImgIdx(idx); }}
+                  className="relative flex-shrink-0 w-40 sm:w-full aspect-[4/3] rounded-xl overflow-hidden group"
+                >
+                  <img
+                    src={img.url}
+                    alt={img.altText || `${e.name} - Imagem ${idx + 1}`}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    loading={idx === 0 ? 'eager' : 'lazy'}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <ZoomIn className="h-5 w-5 text-white" />
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ── Numbers / Stats Section ───────────────────── */}
       <ScrollReveal>
@@ -1442,7 +1486,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
               <div className="text-center">
                 <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Cadastre-se</h2>
-                <p className="text-sm text-white/40 mt-1">Receba atendimento personalizado sobre o {e.name}</p>
+                <p className="text-sm text-white/40 mt-1">São apenas 2 campos obrigatórios — nome e e-mail</p>
               </div>
               <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
             </div>
@@ -1515,34 +1559,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         onFocus={() => { fieldFocusTime.current.name = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('name'); }}
                         onBlur={() => { const t = fieldFocusTime.current.name || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('name', Date.now() - t); }}
                         placeholder="Seu nome completo"
+                        autoComplete="name"
                         required
                         className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
                       />
                     </div>
                   </div>
 
-                  {/* Phone */}
-                  <div>
-                    <label htmlFor="form-phone" className="block text-sm font-medium text-white/70 mb-2">
-                      Telefone <span className="text-red-400">*</span>
-                    </label>
-                    <div className="relative">
-                      <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
-                      <input
-                        id="form-phone"
-                        type="tel"
-                        value={formPhone}
-                        onChange={(ev) => { handlePhoneChange(ev.target.value); updatePixelFormFields(formName, ev.target.value, formEmail, customAnswers); }}
-                        onFocus={() => { fieldFocusTime.current.phone = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('phone'); }}
-                        onBlur={() => { const t = fieldFocusTime.current.phone || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('phone', Date.now() - t); }}
-                        placeholder="(11) 99999-9999"
-                        required
-                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Email */}
+                  {/* Email — moved before Phone to reduce funnel drop */}
                   <div>
                     <label htmlFor="form-email" className="block text-sm font-medium text-white/70 mb-2">
                       E-mail <span className="text-red-400">*</span>
@@ -1557,7 +1581,31 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         onFocus={() => { fieldFocusTime.current.email = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('email'); }}
                         onBlur={() => { const t = fieldFocusTime.current.email || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('email', Date.now() - t); }}
                         placeholder="seuemail@exemplo.com"
+                        autoComplete="email"
                         required
+                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Phone — now OPTIONAL to reduce 41% form abandonment */}
+                  <div>
+                    <label htmlFor="form-phone" className="block text-sm font-medium text-white/70 mb-1.5">
+                      Telefone <span className="text-white/30 font-normal text-xs">(opcional)</span>
+                    </label>
+                    <p className="text-[11px] text-white/25 mb-2 -mt-1">Seu consultor poderá entrar em contato mais rapidamente.</p>
+                    <div className="relative">
+                      <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                      <input
+                        id="form-phone"
+                        type="tel"
+                        value={formPhone}
+                        onChange={(ev) => { handlePhoneChange(ev.target.value); updatePixelFormFields(formName, ev.target.value, formEmail, customAnswers); }}
+                        onFocus={() => { fieldFocusTime.current.phone = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('phone'); }}
+                        onBlur={() => { const t = fieldFocusTime.current.phone || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('phone', Date.now() - t); }}
+                        placeholder="(11) 99999-9999"
+                        inputMode="numeric"
+                        autoComplete="tel"
                         className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
                       />
                     </div>
@@ -1650,11 +1698,11 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     </div>
                   )}
 
-                  {/* Submit */}
+                  {/* Submit — benefit-driven CTA with urgency */}
                   <button
                     type="submit"
                     disabled={formSubmitting}
-                    className="w-full flex items-center justify-center gap-2.5 px-8 py-4.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-lg hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                    className="w-full flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-base sm:text-lg hover:bg-[#D4B87E] transition-all shadow-lg shadow-[#C9A96E]/20 disabled:opacity-50 disabled:cursor-not-allowed mt-2 hover:shadow-[#C9A96E]/30 hover:scale-[1.01] active:scale-[0.99]"
                   >
                     {formSubmitting ? (
                       <>
@@ -1664,7 +1712,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     ) : (
                       <>
                         <Send className="h-4 w-4" />
-                        Cadastrar e Receber Atendimento
+                        Garantir minha unidade
                       </>
                     )}
                   </button>
@@ -1893,8 +1941,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               )}
             </div>
             <div className="flex items-center gap-3">
-              <a href="#cadastro" className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-semibold hover:bg-[#D4B87E] transition-colors">
-                Cadastre-se
+              <a href="#cadastro" className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-bold hover:bg-[#D4B87E] transition-all hover:shadow-[#C9A96E]/20">
+                Garantir minha unidade
               </a>
               <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="px-5 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-semibold hover:bg-[#20bd5a] transition-colors">
                 WhatsApp
