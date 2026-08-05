@@ -21,11 +21,11 @@ const GEMINI_MODEL = 'gemini-2.5-flash';
  */
 
 // ── Period mapping ──────────────────────────────────────
-const PERIOD_MAP: Record<string, string> = {
-  '24h': "NOW() - INTERVAL '24 hours'",
-  '48h': "NOW() - INTERVAL '48 hours'",
-  '7d':  "NOW() - INTERVAL '7 days'",
-  '30d': "NOW() - INTERVAL '30 days'",
+const PERIOD_MS: Record<string, number> = {
+  '24h': 86_400_000,
+  '48h': 172_800_000,
+  '7d':  604_800_000,
+  '30d': 2_592_000_000,
 };
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -43,8 +43,8 @@ export async function GET(request: NextRequest) {
     // ── Parse period parameter ──────────────────────────────
     const { searchParams } = new URL(request.url);
     const periodParam = searchParams.get('period') || '30d';
-    const sqlInterval = PERIOD_MAP[periodParam] || PERIOD_MAP['30d'];
     const periodLabel = PERIOD_LABELS[periodParam] || PERIOD_LABELS['30d'];
+    const periodStartDate = new Date(Date.now() - (PERIOD_MS[periodParam] || PERIOD_MS['30d']));
 
     // ─────────────────────────────────────────
     // 1. Coletar dados dos leads (Meta Ads + Landing Pages com UTM Meta)
@@ -52,9 +52,7 @@ export async function GET(request: NextRequest) {
     const META_UTM_SOURCES = ['facebook', 'instagram', 'meta', 'fb'];
 
     // Calculate date range for CRM leads based on period
-    const now = new Date();
-    const periodMs: Record<string, number> = { '24h': 86400000, '48h': 172800000, '7d': 604800000, '30d': 2592000000 };
-    const periodStartDate = new Date(now.getTime() - (periodMs[periodParam] || periodMs['30d']));
+    // periodStartDate already computed above
 
     const metaClients = await db.client.findMany({
       where: {
@@ -106,7 +104,7 @@ export async function GET(request: NextRequest) {
       try {
         const pixelCheck = await db.$queryRaw<{ cnt: string }[]>`
           SELECT COUNT(DISTINCT "visitorId")::text as cnt FROM "tracking_events"
-          WHERE "createdAt" >= ${sqlInterval}::timestamp
+          WHERE "createdAt" >= ${periodStartDate}
         `;
         if (!pixelCheck.length || Number(pixelCheck[0].cnt) === 0) {
           return NextResponse.json({
@@ -178,9 +176,8 @@ export async function GET(request: NextRequest) {
       .slice(0, 5);
 
     // Leads recentes (últimos 7 dias ou período menor)
-    const recentWindow = Math.min(7, periodMs[periodParam] || 2592000000) / 86400000;
-    const recentDate = new Date();
-    recentDate.setDate(recentDate.getDate() - recentWindow);
+    const recentWindowMs = Math.min(7 * 86400000, PERIOD_MS[periodParam] || PERIOD_MS['30d']);
+    const recentDate = new Date(Date.now() - recentWindowMs);
     const recentLeads = metaClients.filter((c) => c.createdAt >= recentDate).length;
 
     // Taxa de conversão (protege contra divisão por zero quando só há pixel)
@@ -347,8 +344,7 @@ export async function GET(request: NextRequest) {
 
     try {
       // ── Run ALL pixel queries in parallel for speed ──
-      // Template literal helpers: use ${sqlInterval}::timestamp for dynamic interval
-      const interval = sqlInterval;
+      // periodStartDate is a JS Date — Prisma serializes it to PostgreSQL timestamp
 
       const [
         funnelResult,
@@ -401,7 +397,7 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT "utmCampaign") as campaigns_count,
             COUNT(DISTINCT "utmContent") as creatives_count
           FROM "tracking_events"
-          WHERE "createdAt" >= ${interval}::timestamp
+          WHERE "createdAt" >= ${periodStartDate}
         `,
 
         // Query 2: Top campaigns from pixel data
@@ -415,7 +411,7 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT "visitorId") as visitors,
             COUNT(DISTINCT CASE WHEN "eventType" = 'lead' OR "eventType" = 'form_submit' THEN "visitorId" END) as leads
           FROM "tracking_events"
-          WHERE "createdAt" >= ${interval}::timestamp
+          WHERE "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE("utmCampaign", '(direto)')
           ORDER BY leads DESC
           LIMIT 10
@@ -428,7 +424,7 @@ export async function GET(request: NextRequest) {
           FROM (
             SELECT "visitorId", COUNT(*) as total_events
             FROM "tracking_events"
-            WHERE "createdAt" >= ${interval}::timestamp
+            WHERE "createdAt" >= ${periodStartDate}
             GROUP BY "visitorId"
           ) sub
         `,
@@ -440,7 +436,7 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT "visitorId") as visitors
           FROM "tracking_events"
           WHERE "eventType" = 'scroll_depth'
-            AND "createdAt" >= ${interval}::timestamp
+            AND "createdAt" >= ${periodStartDate}
             AND metadata->>'depth' IS NOT NULL
           GROUP BY (metadata->>'depth')::int
           ORDER BY depth
@@ -453,7 +449,7 @@ export async function GET(request: NextRequest) {
             ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (metadata->>'time_on_page')::numeric))::text as median_seconds
           FROM "tracking_events"
           WHERE "eventType" = 'pageview_duration'
-            AND "createdAt" >= ${interval}::timestamp
+            AND "createdAt" >= ${periodStartDate}
             AND metadata->>'time_on_page' IS NOT NULL
         `,
 
@@ -465,7 +461,7 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT "visitorId") as unique_visitors
           FROM "tracking_events"
           WHERE "eventType" = 'whatsapp_click'
-            AND "createdAt" >= ${interval}::timestamp
+            AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE(metadata->>'source', '(principal)')
           ORDER BY clicks DESC
         `,
@@ -483,7 +479,7 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT v."visitorId")::text as visitors,
             COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN v."visitorId" END)::text as leads
           FROM "tracking_visitors" v
-          WHERE v."lastSeenAt" >= ${interval}::timestamp
+          WHERE v."lastSeenAt" >= ${periodStartDate}
           GROUP BY
             CASE
               WHEN LOWER("userAgent") LIKE '%mobile%' OR LOWER("userAgent") LIKE '%android%' OR LOWER("userAgent") LIKE '%iphone%'
@@ -512,7 +508,7 @@ export async function GET(request: NextRequest) {
           FROM "tracking_events" e
           LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
           WHERE e."eventType" = 'pageview'
-            AND e."createdAt" >= ${interval}::timestamp
+            AND e."createdAt" >= ${periodStartDate}
           GROUP BY
             CASE
               WHEN e."referrer" IS NULL OR e."referrer" = '' THEN '(direto)'
@@ -536,7 +532,7 @@ export async function GET(request: NextRequest) {
           FROM "tracking_events" e
           LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
           WHERE e."eventType" = 'pageview'
-            AND e."createdAt" >= ${interval}::timestamp
+            AND e."createdAt" >= ${periodStartDate}
           GROUP BY COALESCE("pageUrl", '(desconhecida)')
           ORDER BY COUNT(*) DESC
           LIMIT 10
@@ -548,11 +544,11 @@ export async function GET(request: NextRequest) {
             SELECT e."visitorId", v."leadId", COUNT(*) OVER (PARTITION BY e."visitorId") AS event_count
             FROM tracking_events e
             LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
-            WHERE e."createdAt" >= ${interval}::timestamp
+            WHERE e."createdAt" >= ${periodStartDate}
           ),
           pv_visitors AS (
             SELECT COUNT(DISTINCT "visitorId")::text AS cnt FROM base WHERE EXISTS (
-              SELECT 1 FROM tracking_events e2 WHERE e2."visitorId" = base."visitorId" AND e2."eventType" = 'pageview' AND e2."createdAt" >= ${interval}::timestamp
+              SELECT 1 FROM tracking_events e2 WHERE e2."visitorId" = base."visitorId" AND e2."eventType" = 'pageview' AND e2."createdAt" >= ${periodStartDate}
             )
           ),
           engaged AS (
@@ -576,7 +572,7 @@ export async function GET(request: NextRequest) {
             COUNT(*)::text as count
           FROM "tracking_events"
           WHERE "eventType" = 'web_vital'
-            AND "createdAt" >= ${interval}::timestamp
+            AND "createdAt" >= ${periodStartDate}
             AND metadata->>'metric' IS NOT NULL
             AND metadata->>'value' IS NOT NULL
           GROUP BY metadata->>'metric'
@@ -591,7 +587,7 @@ export async function GET(request: NextRequest) {
             ROUND(AVG((metadata->>'total_images')::numeric))::text as avg_images
           FROM "tracking_events"
           WHERE "eventType" = 'gallery_click'
-            AND "createdAt" >= ${interval}::timestamp
+            AND "createdAt" >= ${periodStartDate}
         `,
 
         // Query 13: FAQ engagement
@@ -602,7 +598,7 @@ export async function GET(request: NextRequest) {
             COUNT(*)::text as opens
           FROM "tracking_events"
           WHERE "eventType" = 'faq_open'
-            AND "createdAt" >= ${interval}::timestamp
+            AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE((metadata->>'question_index')::int, 0), COALESCE(metadata->>'question', '(sem texto)')
           ORDER BY opens DESC
         `,
@@ -616,7 +612,7 @@ export async function GET(request: NextRequest) {
             COUNT(*) FILTER (WHERE "eventType" = 'form_blur')::text as blur_count
           FROM "tracking_events"
           WHERE ("eventType" = 'form_focus' OR "eventType" = 'form_blur')
-            AND "createdAt" >= ${interval}::timestamp
+            AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE(metadata->>'field', '(desconhecido)')
           ORDER BY avg_time_ms::numeric DESC
         `,
@@ -628,7 +624,7 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT "visitorId")::text as visitors
           FROM "tracking_events"
           WHERE "eventType" = 'section_view'
-            AND "createdAt" >= ${interval}::timestamp
+            AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE(metadata->>'section', '(desconhecida)')
           ORDER BY visitors DESC
         `,
@@ -646,7 +642,7 @@ export async function GET(request: NextRequest) {
             COUNT(*) FILTER (WHERE "eventType" = 'print')::text as prints,
             COUNT(*) FILTER (WHERE "eventType" = 'form_abandon')::text as form_abandons
           FROM "tracking_events"
-          WHERE "createdAt" >= ${interval}::timestamp
+          WHERE "createdAt" >= ${periodStartDate}
         `,
 
         // Query 17: Timezone breakdown
@@ -656,7 +652,7 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT "visitorId")::text as visitors
           FROM "tracking_events"
           WHERE "eventType" = 'pageview'
-            AND "createdAt" >= ${interval}::timestamp
+            AND "createdAt" >= ${periodStartDate}
             AND metadata->>'timezone' IS NOT NULL
           GROUP BY COALESCE(metadata->>'timezone', '(desconhecido)')
           ORDER BY visitors DESC
@@ -670,7 +666,7 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT "visitorId")::text as visitors
           FROM "tracking_events"
           WHERE "eventType" = 'pageview'
-            AND "createdAt" >= ${interval}::timestamp
+            AND "createdAt" >= ${periodStartDate}
             AND metadata->>'language' IS NOT NULL
           GROUP BY COALESCE(metadata->>'language', '(desconhecido)')
           ORDER BY visitors DESC
@@ -685,7 +681,7 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT tv."visitorId")::text as visitors,
             COUNT(DISTINCT CASE WHEN tv."leadId" IS NOT NULL THEN tv."visitorId" END)::text as leads
           FROM "tracking_visitors" tv
-          WHERE tv."lastSeenAt" >= ${interval}::timestamp
+          WHERE tv."lastSeenAt" >= ${periodStartDate}
             AND tv."country" IS NOT NULL
           GROUP BY tv."country", tv."city"
           ORDER BY visitors DESC
@@ -716,7 +712,7 @@ export async function GET(request: NextRequest) {
               ) AS max_attention_sec
             FROM "tracking_events" e
             LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
-            WHERE e."createdAt" >= ${interval}::timestamp
+            WHERE e."createdAt" >= ${periodStartDate}
             GROUP BY e."visitorId", v."leadId"
           )
           SELECT
@@ -745,7 +741,7 @@ export async function GET(request: NextRequest) {
               ) AS max_sec
             FROM "tracking_events" e
             LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
-            WHERE e."createdAt" >= ${interval}::timestamp
+            WHERE e."createdAt" >= ${periodStartDate}
             GROUP BY e."visitorId", v."leadId"
           )
           SELECT
@@ -775,13 +771,13 @@ export async function GET(request: NextRequest) {
         }[]>`
           WITH all_visitors AS (
             SELECT DISTINCT "visitorId" FROM "tracking_events"
-            WHERE "createdAt" >= ${interval}::timestamp
+            WHERE "createdAt" >= ${periodStartDate}
           ),
           visitors_with_lead AS (
             SELECT DISTINCT v."visitorId"
             FROM "tracking_visitors" v
             WHERE v."leadId" IS NOT NULL
-              AND v."lastSeenAt" >= ${interval}::timestamp
+              AND v."lastSeenAt" >= ${periodStartDate}
           ),
           engagement_events AS (
             SELECT DISTINCT unnest(ARRAY['gallery_click', 'faq_open', 'scroll_depth', 'section_view', 'whatsapp_click', 'exit_intent']) AS evt
@@ -792,7 +788,7 @@ export async function GET(request: NextRequest) {
               COUNT(DISTINCT e."visitorId") AS visitors_with,
               COUNT(DISTINCT CASE WHEN wvl."visitorId" IS NOT NULL THEN e."visitorId" END) AS converters_with
             FROM engagement_events ee
-            LEFT JOIN "tracking_events" e ON e."eventType" = ee.evt AND e."createdAt" >= ${interval}::timestamp
+            LEFT JOIN "tracking_events" e ON e."eventType" = ee.evt AND e."createdAt" >= ${periodStartDate}
             LEFT JOIN visitors_with_lead wvl ON wvl."visitorId" = e."visitorId"
             GROUP BY ee.evt
           ),
@@ -829,7 +825,7 @@ export async function GET(request: NextRequest) {
               COUNT(*) OVER (PARTITION BY e."visitorId") AS total_events
             FROM "tracking_events" e
             WHERE e."eventType" = 'pageview'
-              AND e."createdAt" >= ${interval}::timestamp
+              AND e."createdAt" >= ${periodStartDate}
           ),
           page_bounce AS (
             SELECT
@@ -844,7 +840,7 @@ export async function GET(request: NextRequest) {
               ROUND(AVG((e.metadata->>'time_on_page')::numeric))::text AS avg_time
             FROM "tracking_events" e
             WHERE e."eventType" = 'pageview_duration'
-              AND e."createdAt" >= ${interval}::timestamp
+              AND e."createdAt" >= ${periodStartDate}
             GROUP BY e."pageUrl"
           ),
           page_scroll AS (
@@ -853,7 +849,7 @@ export async function GET(request: NextRequest) {
               ROUND(AVG((e.metadata->>'depth')::numeric))::text AS avg_scroll_max
             FROM "tracking_events" e
             WHERE e."eventType" = 'scroll_depth'
-              AND e."createdAt" >= ${interval}::timestamp
+              AND e."createdAt" >= ${periodStartDate}
               AND e.metadata->>'depth' IS NOT NULL
             GROUP BY e."pageUrl"
           ),
@@ -865,7 +861,7 @@ export async function GET(request: NextRequest) {
             FROM "tracking_events" e
             LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
             WHERE e."eventType" = 'pageview'
-              AND e."createdAt" >= ${interval}::timestamp
+              AND e."createdAt" >= ${periodStartDate}
             GROUP BY COALESCE(e."pageUrl", '(desconhecida)')
           )
           SELECT
@@ -896,7 +892,7 @@ export async function GET(request: NextRequest) {
           FROM "tracking_events" e
           LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
           WHERE e."eventType" = 'pageview'
-            AND e."createdAt" >= ${interval}::timestamp
+            AND e."createdAt" >= ${periodStartDate}
           GROUP BY EXTRACT(HOUR FROM e."createdAt")
           ORDER BY hour
         `,
@@ -915,7 +911,7 @@ export async function GET(request: NextRequest) {
             MIN("createdAt")::text as first_seen
           FROM "tracking_events"
           WHERE "eventType" = 'js_error'
-            AND "createdAt" >= ${interval}::timestamp
+            AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE(metadata->>'message', '(sem mensagem)'), metadata->>'filename'
           ORDER BY COUNT(*) DESC
           LIMIT 5
@@ -939,7 +935,7 @@ export async function GET(request: NextRequest) {
               COUNT(DISTINCT CASE WHEN e."eventType" = 'heartbeat' AND (e.metadata->>'time_on_page')::int >= 60 THEN 1 END) AS long_attention
             FROM "tracking_events" e
             LEFT JOIN "tracking_visitors" v ON v."visitorId" = e."visitorId"
-            WHERE e."createdAt" >= ${interval}::timestamp
+            WHERE e."createdAt" >= ${periodStartDate}
             GROUP BY e."visitorId", v."leadId"
           ),
           scored AS (
