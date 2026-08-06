@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SessionProviderWrapper } from '@/components/auth/session-provider';
 import "./globals.css";
@@ -13,6 +13,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export const metadata: Metadata = {
   title: "CRM Pro - Sistema de Gestão de Clientes",
   description: "Sistema completo de gestão de relacionamento com clientes. Gerencie clientes, tags, lembretes e muito mais.",
@@ -20,11 +26,6 @@ export const metadata: Metadata = {
   authors: [{ name: "CRM Pro Team" }],
   icons: {
     icon: "/logo.svg",
-  },
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    viewportFit: "cover",
   },
   openGraph: {
     title: "CRM Pro - Sistema de Gestão de Clientes",
