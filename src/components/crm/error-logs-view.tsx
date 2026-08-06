@@ -145,7 +145,7 @@ export function ErrorLogsView() {
 
   return (
     <div className="space-y-5">
-      {/* Header */
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
@@ -202,7 +202,7 @@ export function ErrorLogsView() {
         })}
       </div>
 
-      {/* Filters */
+      {/* Filters */}
       <Card>
         <CardContent className="p-3">
           <div className="flex flex-col sm:flex-row gap-2">
@@ -243,7 +243,7 @@ export function ErrorLogsView() {
         </CardContent>
       </Card>
 
-      {/* Error list */
+      {/* Error list */}
       {errors.length === 0 && !loading ? (
         <Card>
           <CardContent className="p-12 text-center">
