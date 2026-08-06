@@ -19,6 +19,7 @@ import {
   EyeOff,
   MessageSquare,
   CalendarDays,
+  Bug,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,6 +53,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { EnterpriseManagement } from '@/components/crm/enterprise-management';
+import { ErrorLogsTab } from '@/components/crm/error-logs-view';
 
 interface UserItem {
   id: string;
@@ -251,7 +253,7 @@ export function AdminPanel() {
       </div>
 
       <Tabs defaultValue="users" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
+        <TabsList className="grid w-full grid-cols-3 max-w-lg">
           <TabsTrigger value="users" className="gap-2">
             <Users className="h-4 w-4" />
             Usuários
@@ -259,6 +261,10 @@ export function AdminPanel() {
           <TabsTrigger value="enterprises" className="gap-2">
             <Building2 className="h-4 w-4" />
             Empreendimentos
+          </TabsTrigger>
+          <TabsTrigger value="error-logs" className="gap-2">
+            <Bug className="h-4 w-4" />
+            Erros do Cliente
           </TabsTrigger>
         </TabsList>
 
@@ -566,6 +572,10 @@ export function AdminPanel() {
 
         <TabsContent value="enterprises">
           <EnterpriseManagement />
+        </TabsContent>
+
+        <TabsContent value="error-logs">
+          <ErrorLogsTab />
         </TabsContent>
       </Tabs>
     </div>

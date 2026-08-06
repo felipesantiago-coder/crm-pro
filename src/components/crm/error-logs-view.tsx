@@ -59,7 +59,7 @@ const TYPE_CONFIG: Record<string, { label: string; icon: React.ReactNode; color:
   },
 };
 
-export function ErrorLogsView() {
+export function ErrorLogsTab() {
   const [errors, setErrors] = useState<ErrorLog[]>([]);
   const [stats, setStats] = useState<Stats[]>([]);
   const [unresolvedCount, setUnresolvedCount] = useState(0);
@@ -144,16 +144,18 @@ export function ErrorLogsView() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
+      {/* Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Bug className="h-5 w-5 text-rose-500" />
-            Erros do Cliente
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Erros JavaScript capturados nas landing pages
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+            <Bug className="h-4.5 w-4.5 text-rose-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Erros do Cliente</h2>
+            <p className="text-sm text-muted-foreground">
+              Erros JavaScript capturados nas landing pages
+            </p>
+          </div>
         </div>
         <Button
           variant="outline"
