@@ -15,7 +15,7 @@ model Client {
   id                String    @id @default(cuid()) @map("id")
   name              String    @map("name")
   phone             String?   @map("phone")
-  email             String?   @map("email")
+  email             String?   @unique @map("email")
   region            String?   @map("region")
   enterprise        String?   @map("enterprise")
   enterpriseId      String?   @map("enterpriseId")

@@ -333,11 +333,48 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          // Atualizar lastInteractionAt
-          await db.client.update({
-            where: { id: existing.id },
-            data: { lastInteractionAt: new Date() },
-          });
+          // FIX: Also update phone if new one provided
+          if (phone) {
+            await db.client.update({
+              where: { id: existing.id },
+              data: { lastInteractionAt: new Date(), ...(phone !== existing.phone ? { phone } : {}) },
+            }).catch(() => {});
+          } else {
+            await db.client.update({
+              where: { id: existing.id },
+              data: { lastInteractionAt: new Date() },
+            }).catch(() => {});
+          }
+
+          // FIX: Assign via queue even for existing clients (was missing!)
+          try {
+            const assignResult = await assignLeadToUser({
+              leadId: existing.id,
+              source: `meta_ads:${(campaignName || adName || '').slice(0, 200)}`,
+            });
+            if (assignResult.assigned && assignResult.userId) {
+              const assignedUserId = assignResult.userId;
+              db.user.findUnique({ where: { id: assignedUserId }, select: { telegramChatId: true, name: true } }).then((user) => {
+                if (user?.telegramChatId) {
+                  notifyNewLead(user.telegramChatId, {
+                    leadName: existing.name,
+                    leadPhone: phone || existing.phone || '',
+                    leadEmail: email || existing.email || '',
+                    enterpriseName: undefined,
+                    utmCampaign: campaignName || null,
+                    utmSource: 'meta_ads',
+                    slug: undefined,
+                    assignedUserName: assignResult.userName,
+                    customAnswers: undefined,
+                  }).catch((err) => console.warn('[Meta Webhook] Falha na notificação (lead existente):', err));
+                } else {
+                  console.warn(`[Meta Webhook] Usuário ${user?.name || assignedUserId} sem Telegram. Lead existente ${existing.id} sem notificação.`);
+                }
+              }).catch(() => {});
+            }
+          } catch (queueErr) {
+            console.warn(`[Meta Webhook] Falha na atribuição de fila (lead existente):`, queueErr);
+          }
 
           results.push({
             success: true,

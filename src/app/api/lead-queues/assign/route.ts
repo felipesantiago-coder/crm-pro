@@ -18,11 +18,10 @@ export async function POST(request: NextRequest) {
     try {
       body = await request.json();
     } catch {
-      // sendBeacon sends text/plain — try to parse manually
-      const text = await request.text();
-      try { body = JSON.parse(text); } catch { /* empty body */ }
+      // Fallback: if JSON parse fails (e.g., malformed request), treat as empty
+      body = {};
     }
-    const { leadId, queueId, source } = body;
+    const { leadId, queueId, source } = body as { leadId?: string; queueId?: string; source?: string };
 
     // Basic validation
     if (queueId && typeof queueId !== 'string') {
