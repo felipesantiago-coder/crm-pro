@@ -200,10 +200,13 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const [isFormSectionVisible, setIsFormSectionVisible] = useState(false);
 
   // Meta Pixel helper — fires fbq events only if Meta Pixel is loaded
-  const trackMetaPixel = useCallback((event: string, data?: Record<string, unknown>) => {
+  // Supports optional eventId for CAPI deduplication
+  const trackMetaPixel = useCallback((event: string, data?: Record<string, unknown>, eventId?: string) => {
     if (typeof window !== 'undefined' && typeof (window as unknown as Record<string, unknown>).fbq === 'function') {
       const fbq = (window as unknown as Record<string, unknown>).fbq as (...args: unknown[]) => void;
-      if (data) {
+      if (data && eventId) {
+        fbq('track', event, data, { eventID: eventId });
+      } else if (data) {
         fbq('track', event, data);
       } else {
         fbq('track', event);
@@ -484,6 +487,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     }
 
     setFormSubmitting(true);
+    // Generate a shared event_id for Meta CAPI deduplication (browser + server use same ID)
+    const metaEventId = generateMetaEventId();
     try {
       // Build clean custom answers (label -> value)
       const answersData: Record<string, string> = {};
@@ -510,6 +515,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           utmCampaign: utmParams.utm_campaign || undefined,
           utmContent: utmParams.utm_content || undefined,
           utmTerm: utmParams.utm_term || undefined,
+          metaEventId,
         }),
       });
 
@@ -523,13 +529,13 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             window.CRMPIXEL.identify(data.clientId);
           }
         }
-        // Track Meta Pixel — Lead event (for ad optimization)
+        // Track Meta Pixel — Lead event with eventID for CAPI deduplication
         trackMetaPixel('Lead', {
           content_name: enterprise?.name,
           content_category: 'empreendimento',
           value: 1,
           currency: 'BRL',
-        });
+        }, metaEventId);
 
         // Redirect to success page
         const params = new URLSearchParams();

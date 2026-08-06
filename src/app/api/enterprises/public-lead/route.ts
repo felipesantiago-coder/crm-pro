@@ -9,9 +9,6 @@ import { assignLeadToUser, type AssignResult } from '@/lib/lead-queue';
  * PUBLIC endpoint — no auth required.
  * Receives a lead submission from a landing page form.
  * Creates a Client record and assigns it via the lead queue.
- *
- * FIXED: Client creation happens FIRST, then queue assignment.
- * This prevents wasting a queue turn if client creation fails.
  */
 export async function POST(request: NextRequest) {
   // Rate limit: 5 submissions per minute per IP
@@ -20,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, phone, email, slug, customAnswers, utmSource, utmMedium, utmCampaign, utmContent, utmTerm } = body;
+    const { name, phone, email, slug, customAnswers, utmSource, utmMedium, utmCampaign, utmContent, utmTerm, metaEventId } = body;
 
     // ── Validate slug format ──
     if (slug && !/^[a-z0-9-]{1,100}$/.test(slug)) {
@@ -79,6 +76,39 @@ export async function POST(request: NextRequest) {
       select: { id: true, name: true, stage: true, enterpriseId: true, phone: true, email: true },
     });
 
+    // ── Helper: fire Meta CAPI event (fire-and-forget, ad-blocker proof) ──
+    // Uses the shared event_id from the browser for deduplication.
+    const fireMetaCAPI = () => {
+      if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) return;
+      const fbp = request.cookies.get('_fbp')?.value;
+      const fbc = request.cookies.get('_fbc')?.value;
+      fetch('/api/meta-capi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: 'Lead',
+          event_id: metaEventId || undefined,
+          action_source: 'website',
+          user_data: {
+            email: cleanEmail || undefined,
+            phone: cleanPhone.length >= 10 ? cleanPhone : undefined,
+            name: name.trim(),
+            fbp: fbp || undefined,
+            fbc: fbc || undefined,
+            ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined,
+            user_agent: request.headers.get('user-agent') || undefined,
+            page_url: slug ? `${process.env.NEXT_PUBLIC_APP_URL || ''}/empreendimentos/${slug}` : undefined,
+          },
+          custom_data: {
+            content_name: enterpriseName || undefined,
+            content_category: 'empreendimento',
+            value: 1,
+            currency: 'BRL',
+          },
+        }),
+      }).catch((err) => console.warn('[Public Lead] Meta CAPI fire-and-forget failed:', err?.message));
+    };
+
     if (existingClient) {
       // Create interaction recording the repeat contact
       await db.interaction.create({
@@ -88,10 +118,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // CRITICAL FIX: Even for existing clients, still assign via queue
-      // so the lead reaches the next available agent.
-      // This was previously returning assignedUser: null for existing clients,
-      // meaning repeat leads had NO queue assignment.
       let assignedUser: AssignResult | null = null;
       try {
         assignedUser = await assignLeadToUser({
@@ -103,7 +129,6 @@ export async function POST(request: NextRequest) {
       }
 
       // Send Telegram notification for repeat lead
-      // FIX: include assignedUserName so the agent knows it's their turn
       if (assignedUser?.assigned && assignedUser.userId) {
         db.user.findUnique({
           where: { id: assignedUser.userId },
@@ -122,14 +147,15 @@ export async function POST(request: NextRequest) {
               customAnswers: undefined,
             }).catch((err) => console.warn('[Public Lead] Falha na notificação (lead existente):', err));
           } else {
-            // FIX: Log when assigned user has no Telegram configured — admin should know
             console.warn(`[Public Lead] Usuário ${assignedUser.userName} (${assignedUser.userId}) atribuído mas sem Telegram configurado. Lead ${existingClient.id} sem notificação.`);
           }
-        }).catch(() => { /* non-critical: DB lookup failed, lead is still saved */ });
+        }).catch(() => { /* non-critical */ });
       } else {
-        // FIX: Log when no queue was available — admin should know leads are coming without notification
         console.warn(`[Public Lead] Lead existente ${existingClient.id} sem fila disponível. Nenhuma notificação enviada.`);
       }
+
+      // Fire Meta CAPI for existing client too (still a conversion)
+      fireMetaCAPI();
 
       return NextResponse.json({
         success: true,
@@ -145,7 +171,6 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Find a user to assign as createdBy ──
-    // createdBy is a required FK — if no user exists, we cannot create the client
     const firstUser = await db.user.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
     if (!firstUser) {
       console.error('[Public Lead] Nenhum usuário encontrado no sistema. Lead perdido.');
@@ -158,7 +183,7 @@ export async function POST(request: NextRequest) {
     if (customAnswers && typeof customAnswers === 'object' && Object.keys(customAnswers).length > 0) {
       const lines = Object.entries(customAnswers)
         .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
-        .slice(0, 20) // Limit to 20 custom fields
+        .slice(0, 20)
         .map(([k, v]) => `  • ${String(k).slice(0, 50)}: ${String(v).slice(0, 500)}`);
       if (lines.length > 0) {
         customAnswersText = '\n\nRespostas do formulário:\n' + lines.join('\n');
@@ -166,7 +191,6 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Create client FIRST ──
-    // FIX: client creation before queue assignment prevents wasted queue turns
     const client = await db.client.create({
       data: {
         name: name.trim(),
@@ -186,16 +210,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // ── Assign via lead queue (direct function call, NOT HTTP) ──
-    // FIX: replaced fragile self-referential HTTP call with direct function import
+    // ── Assign via lead queue ──
     let assignedUser: AssignResult | null = null;
     try {
       assignedUser = await assignLeadToUser({
         leadId: client.id,
         source: slug ? `landing_form:${slug}` : 'landing_form',
       });
-
-      // If queue assigned a user, update client's createdBy to that user
       if (assignedUser?.assigned && assignedUser.userId) {
         await db.client.update({
           where: { id: client.id },
@@ -203,7 +224,6 @@ export async function POST(request: NextRequest) {
         }).catch(() => { /* non-critical */ });
       }
     } catch (err) {
-      // Queue assignment failed — lead is still saved, just not assigned
       console.error('[Public Lead] Falha na atribuição de fila (lead salvo sem atribuição):', err);
     }
 
@@ -216,8 +236,6 @@ export async function POST(request: NextRequest) {
     });
 
     // ── Send Telegram notification ──
-    // FIX: Pass assignedUserName so the agent knows it's their turn.
-    // FIX: Log when no Telegram is configured so admin can diagnose.
     const notifyUserId = assignedUser?.assigned ? assignedUser.userId : createdByUserId;
     if (notifyUserId) {
       db.user.findUnique({
@@ -244,11 +262,13 @@ export async function POST(request: NextRequest) {
             console.warn('[Public Lead] Falha na notificação:', err)
           );
         } else {
-          // FIX: Log when user has no Telegram — critical for ops visibility
           console.warn(`[Public Lead] Usuário ${user?.name || notifyUserId} atribuído mas sem Telegram configurado. Lead ${client.id} sem notificação.`);
         }
-      }).catch(() => { /* non-critical: DB lookup failed, lead is still saved */ });
+      }).catch(() => { /* non-critical */ });
     }
+
+    // ── Fire Meta CAPI event (server-side, ad-blocker proof) ──
+    fireMetaCAPI();
 
     return NextResponse.json({
       success: true,
@@ -261,40 +281,6 @@ export async function POST(request: NextRequest) {
         userPhone: assignedUser.userPhone,
       } : null,
     });
-
-    // ── Fire Meta CAPI event (server-side, ad-blocker proof) ──
-    // Fire-and-forget: don't block the response
-    if (process.env.META_PIXEL_ID && process.env.META_ACCESS_TOKEN) {
-      const eventId = `lead_${client.id}_${Date.now()}`;
-      // Read Meta cookies from request for deduplication
-      const fbp = request.cookies.get('_fbp')?.value;
-      const fbc = request.cookies.get('_fbc')?.value;
-      fetch('/api/meta-capi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event_name: 'Lead',
-          event_id: eventId,
-          action_source: 'website',
-          user_data: {
-            email: cleanEmail || undefined,
-            phone: cleanPhone.length >= 10 ? cleanPhone : undefined,
-            name: name.trim(),
-            fbp: fbp || undefined,
-            fbc: fbc || undefined,
-            ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined,
-            user_agent: request.headers.get('user-agent') || undefined,
-            page_url: slug ? `${process.env.NEXT_PUBLIC_APP_URL || ''}/empreendimentos/${slug}` : undefined,
-          },
-          custom_data: {
-            content_name: enterpriseName || undefined,
-            content_category: 'empreendimento',
-            value: 1,
-            currency: 'BRL',
-          },
-        }),
-      }).catch((err) => console.warn('[Public Lead] Meta CAPI fire-and-forget failed:', err?.message));
-    }
   } catch (error) {
     console.error('[Public Lead] Erro:', error);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
