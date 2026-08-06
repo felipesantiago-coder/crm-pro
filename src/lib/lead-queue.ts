@@ -102,39 +102,46 @@ export async function assignLeadToUser(opts: {
           return null;
         }
 
-        const idx = freshQueue.currentIdx % activeMembers.length;
-        const member = activeMembers[idx];
+        // Find a valid member by scanning from currentIdx.
+        // This skips members whose user was deleted (data integrity issue).
+        // In practice this shouldn't happen due to FK constraints + Cascade,
+        // but defensive coding prevents silent assignment failure.
+        let assignedMember: typeof activeMembers[0] | null = null;
+        let scanOffset = 0;
+        while (scanOffset < activeMembers.length) {
+          const idx = (freshQueue.currentIdx + scanOffset) % activeMembers.length;
+          const candidate = activeMembers[idx];
+          if (candidate.user) {
+            assignedMember = candidate;
+            break;
+          }
+          console.error(`[Lead Queue] Member ${candidate.id} has no user — skipping`);
+          scanOffset++;
+        }
 
-        // Safety: if member's user was somehow deleted, skip to next
-        // This should not happen due to FK constraints, but defensive coding
-        if (!member.user) {
-          console.error(`[Lead Queue] Member ${member.id} has no user — data integrity issue`);
-          // Still increment to avoid infinite loop on this index
-          await tx.leadQueue.update({
-            where: { id: queue.id },
-            data: { currentIdx: { increment: 1 } },
-          });
+        if (!assignedMember) {
+          console.error(`[Lead Queue] All ${activeMembers.length} active members have no user`);
           return null;
         }
 
         await tx.leadQueue.update({
           where: { id: queue.id },
-          data: { currentIdx: { increment: 1 } },
+          data: { currentIdx: { increment: 1 + scanOffset } },
         });
 
         await tx.leadQueueAssignment.create({
           data: {
             queueId: queue.id,
-            userId: member.userId,
+            userId: assignedMember.userId,
             leadId: leadId || null,
             source: (source || 'api').slice(0, 200),
           },
         });
 
         return {
-          userId: member.userId,
-          userName: member.user.name,
-          userPhone: member.user.phone,
+          userId: assignedMember.userId,
+          userName: assignedMember.user.name,
+          userPhone: assignedMember.user.phone,
           queueId: queue.id,
         };
       }, {
@@ -218,27 +225,20 @@ export async function peekNextUser(opts: { queueId?: string; slug?: string } = {
   const idx = queue.currentIdx % queue.members.length;
   const member = queue.members[idx];
 
-  // Defensive: member should always have a user due to FK, but check anyway
-  if (!member?.user) {
-    // Try next member if current one is invalid
-    if (queue.members.length > 1) {
-      const fallback = queue.members[(idx + 1) % queue.members.length];
-      if (fallback?.user) {
-        return {
-          userId: fallback.userId,
-          userName: fallback.user.name,
-          userPhone: fallback.user.phone || null,
-          queueId: queue.id,
-        };
-      }
+  // Defensive: scan members starting from idx to find one with a valid user
+  // This handles the edge case where a user was deleted but the member row
+  // wasn't cleaned up (shouldn't happen with Cascade, but defensive)
+  for (let offset = 0; offset < queue.members.length; offset++) {
+    const candidate = queue.members[(idx + offset) % queue.members.length];
+    if (candidate?.user) {
+      return {
+        userId: candidate.userId,
+        userName: candidate.user.name,
+        userPhone: candidate.user.phone || null,
+        queueId: queue.id,
+      };
     }
-    return null;
   }
 
-  return {
-    userId: member.userId,
-    userName: member.user.name,
-    userPhone: member.user.phone || null,
-    queueId: queue.id,
-  };
+  return null;
 }
