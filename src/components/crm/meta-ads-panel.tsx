@@ -6,9 +6,9 @@ import {
   Copy, ExternalLink, Loader2, Save, Users, TrendingUp, Target,
   ArrowUpRight, ArrowDownRight, Search, BarChart3, Brain,
   ChevronDown, ChevronUp, Phone, Mail, MapPin, Calendar,
-  AlertTriangle, Filter, Download, ChevronLeft, ChevronRight,
+  AlertTriangle, Download, ChevronLeft, ChevronRight,
   UserPlus, Sparkles, Activity, PieChart, Crosshair, Globe, UsersRound,
-  HeartHandshake,
+  HeartHandshake, Building2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -46,20 +46,29 @@ interface Metrics {
 
 interface LeadItem {
   id: string;
-  name: string;
+  name: string | null;
   phone: string | null;
   email: string | null;
   region: string | null;
-  stage: string;
+  stage: string | null;
   notes: string | null;
   createdAt: string;
   lastInteractionAt: string | null;
   enterprise: string | null;
-  adName: string;
-  campaignName: string;
-  formName: string;
-  leadId: string;
+  adName: string | null;
+  campaignName: string | null;
+  formName: string | null;
+  leadId: string | null;
+  leadSource: 'meta_webhook' | 'landing_form' | 'whatsapp_click';
+  slug: string | null;
+  whatsappSource: string | null;
   _count: { interactions: number };
+}
+
+interface SourceCounts {
+  meta_webhook: number;
+  landing_form: number;
+  whatsapp_click: number;
 }
 
 interface ChartPoint {
@@ -467,6 +476,43 @@ function KpiCard({ title, value, icon, iconBg, iconColor, subtitle, trend }: {
 // ============================================================
 // Tab: Leads
 // ============================================================
+const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  meta_webhook: {
+    label: 'Meta Ads',
+    color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    icon: <Megaphone className="h-3 w-3" />,
+  },
+  landing_form: {
+    label: 'Landing Page',
+    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    icon: <Globe className="h-3 w-3" />,
+  },
+  whatsapp_click: {
+    label: 'WhatsApp',
+    color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    icon: <Phone className="h-3 w-3" />,
+  },
+};
+
+const WHATSAPP_SOURCE_LABELS: Record<string, string> = {
+  hero: 'Botão principal',
+  form_section: 'Seção do formulário',
+  faq_cta: 'FAQ',
+  footer: 'Rodapé',
+  floating_bar: 'Barra flutuante',
+};
+
+function SourceBadge({ source }: { source: string }) {
+  const cfg = SOURCE_CONFIG[source];
+  if (!cfg) return null;
+  return (
+    <Badge className={`text-[10px] h-5 px-1.5 ${cfg.color}`}>
+      {cfg.icon}
+      <span className="ml-0.5">{cfg.label}</span>
+    </Badge>
+  );
+}
+
 function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -474,6 +520,8 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [period, setPeriod] = useState('30');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [sourceCounts, setSourceCounts] = useState<SourceCounts | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchLeads = useCallback(async (p = 1) => {
@@ -486,12 +534,14 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
       });
       if (search) params.set('search', search);
       if (stageFilter && stageFilter !== 'all') params.set('stage', stageFilter);
+      if (sourceFilter && sourceFilter !== 'all') params.set('source', sourceFilter);
 
       const res = await fetch(`/api/meta-ads/leads?${params}`);
       if (res.ok) {
         const data = await res.json();
         setLeads(data.leads);
         setPagination(data.pagination);
+        if (data.sourceCounts) setSourceCounts(data.sourceCounts);
       } else {
         toast.error('Erro ao buscar leads');
       }
@@ -500,7 +550,7 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
     } finally {
       setLoading(false);
     }
-  }, [search, stageFilter, period]);
+  }, [search, stageFilter, period, sourceFilter]);
 
   useEffect(() => {
     onLeadsNeeded();
@@ -514,20 +564,48 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* Source count pills + Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Leads do Meta Ads</h2>
+          <h2 className="text-lg font-semibold">Leads</h2>
           <p className="text-sm text-muted-foreground">
-            {pagination.total} lead{pagination.total !== 1 ? 's' : ''} recebido{pagination.total !== 1 ? 's' : ''} via Facebook/Instagram
+            {pagination.total} resultado{pagination.total !== 1 ? 's' : ''}
+            {sourceFilter === 'all' ? ' de todas as origens' : ` — ${SOURCE_CONFIG[sourceFilter]?.label || sourceFilter}`}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline" className="text-[11px]">
-            <Filter className="h-3 w-3 mr-1" />
-            {pagination.total} resultado{pagination.total !== 1 ? 's' : ''}
-          </Badge>
-        </div>
+        {sourceCounts && sourceFilter === 'all' && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              onClick={() => setSourceFilter('all')}
+              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'all' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+            >
+              Todos ({sourceCounts.meta_webhook + sourceCounts.landing_form + sourceCounts.whatsapp_click})
+            </button>
+            <button
+              onClick={() => setSourceFilter('meta_webhook')}
+              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'meta_webhook' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:opacity-80'}`}
+            >
+              <Megaphone className="h-2.5 w-2.5" /> {sourceCounts.meta_webhook}
+            </button>
+            <button
+              onClick={() => setSourceFilter('landing_form')}
+              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'landing_form' ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:opacity-80'}`}
+            >
+              <Globe className="h-2.5 w-2.5" /> {sourceCounts.landing_form}
+            </button>
+            <button
+              onClick={() => setSourceFilter('whatsapp_click')}
+              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'whatsapp_click' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:opacity-80'}`}
+            >
+              <Phone className="h-2.5 w-2.5" /> {sourceCounts.whatsapp_click}
+            </button>
+          </div>
+        )}
+        {sourceFilter !== 'all' && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSourceFilter('all')}>
+            Limpar filtro de origem
+          </Button>
+        )}
       </div>
 
       {/* Filtros */}
@@ -535,23 +613,25 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nome, email ou telefone..."
+            placeholder={sourceFilter === 'whatsapp_click' ? 'Buscar por campanha ou slug...' : 'Buscar por nome, email ou telefone...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 h-9 text-sm"
           />
         </div>
-        <Select value={stageFilter} onValueChange={(v) => setStageFilter(v)}>
-          <SelectTrigger className="w-full sm:w-[160px] h-9 text-sm">
-            <SelectValue placeholder="Etapa" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as etapas</SelectItem>
-            {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
-              <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {sourceFilter !== 'whatsapp_click' && (
+          <Select value={stageFilter} onValueChange={(v) => setStageFilter(v)}>
+            <SelectTrigger className="w-full sm:w-[160px] h-9 text-sm">
+              <SelectValue placeholder="Etapa" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as etapas</SelectItem>
+              {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
+                <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={period} onValueChange={(v) => setPeriod(v)}>
           <SelectTrigger className="w-full sm:w-[140px] h-9 text-sm">
             <SelectValue />
@@ -578,114 +658,160 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center mb-3">
-                <Megaphone className="h-6 w-6 text-muted-foreground" />
+                <Users className="h-6 w-6 text-muted-foreground" />
               </div>
               <p className="text-sm font-medium text-muted-foreground">Nenhum lead encontrado</p>
               <p className="text-xs text-muted-foreground mt-1">
-                {search || stageFilter !== 'all'
+                {search || stageFilter !== 'all' || sourceFilter !== 'all'
                   ? 'Tente ajustar os filtros'
-                  : 'Os leads aparecerão aqui quando o webhook receber formulários do Meta Ads'}
+                  : 'Os leads aparecerão aqui quando houver cadastros ou cliques'}
               </p>
             </CardContent>
           </Card>
         ) : (
-          leads.map((lead) => (
-            <Card
-              key={lead.id}
-              className="hover:shadow-md transition-shadow duration-200 cursor-pointer"
-              onClick={() => setExpandedId(expandedId === lead.id ? null : lead.id)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  {/* Avatar */}
-                  <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-                    <span className="text-blue-600 dark:text-blue-400 text-sm font-bold">
-                      {lead.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
-                    </span>
-                  </div>
+          leads.map((lead) => {
+            const isWhatsApp = lead.leadSource === 'whatsapp_click';
+            const displayName = lead.name || (isWhatsApp ? 'Clique WhatsApp' : 'Sem nome');
+            const initials = lead.name
+              ? lead.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
+              : '?';
+            const avatarBg = lead.leadSource === 'meta_webhook'
+              ? 'bg-blue-100 dark:bg-blue-900/30'
+              : lead.leadSource === 'landing_form'
+                ? 'bg-emerald-100 dark:bg-emerald-900/30'
+                : 'bg-green-100 dark:bg-green-900/30';
+            const avatarColor = lead.leadSource === 'meta_webhook'
+              ? 'text-blue-600 dark:text-blue-400'
+              : lead.leadSource === 'landing_form'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-green-600 dark:text-green-400';
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold truncate">{lead.name}</span>
-                      <StageBadge stage={lead.stage} />
-                    </div>
-                    <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
-                      {lead.phone && (
-                        <span className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {lead.phone}
-                        </span>
+            return (
+              <Card
+                key={lead.id}
+                className="hover:shadow-md transition-shadow duration-200 cursor-pointer"
+                onClick={() => setExpandedId(expandedId === lead.id ? null : lead.id)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    {/* Avatar */}
+                    <div className={`h-10 w-10 rounded-lg ${avatarBg} flex items-center justify-center flex-shrink-0`}>
+                      {isWhatsApp ? (
+                        <Phone className={`h-5 w-5 ${avatarColor}`} />
+                      ) : (
+                        <span className={`${avatarColor} text-sm font-bold`}>{initials}</span>
                       )}
-                      {lead.email && (
-                        <span className="flex items-center gap-1">
-                          <Mail className="h-3 w-3" />
-                          {lead.email}
-                        </span>
-                      )}
-                      {lead.region && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {lead.region}
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {format(parseISO(lead.createdAt), "dd/MM/yyyy")}
-                      </span>
                     </div>
 
-                    {/* Expanded details */}
-                    {expandedId === lead.id && (
-                      <div className="mt-3 pt-3 border-t space-y-2">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                          <div>
-                            <span className="text-muted-foreground">Anúncio: </span>
-                            <span className="font-medium">{lead.adName}</span>
-                          </div>
-                          {lead.campaignName && (
-                            <div>
-                              <span className="text-muted-foreground">Campanha: </span>
-                              <span className="font-medium">{lead.campaignName}</span>
-                            </div>
-                          )}
-                          {lead.formName && (
-                            <div>
-                              <span className="text-muted-foreground">Formulário: </span>
-                              <span className="font-medium">{lead.formName}</span>
-                            </div>
-                          )}
-                          {lead.leadId && (
-                            <div>
-                              <span className="text-muted-foreground">Lead ID: </span>
-                              <span className="font-mono">{lead.leadId}</span>
-                            </div>
-                          )}
-                          <div>
-                            <span className="text-muted-foreground">Interações: </span>
-                            <span className="font-medium">{lead._count.interactions}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Última interação: </span>
-                            <span className="font-medium">
-                              {lead.lastInteractionAt
-                                ? format(parseISO(lead.lastInteractionAt), "dd/MM/yyyy HH:mm")
-                                : 'Nenhuma'}
-                            </span>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold truncate">{displayName}</span>
+                        <SourceBadge source={lead.leadSource} />
+                        {lead.stage && <StageBadge stage={lead.stage} />}
+                        {isWhatsApp && lead.whatsappSource && (
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                            {WHATSAPP_SOURCE_LABELS[lead.whatsappSource] || lead.whatsappSource}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
+                        {lead.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {lead.phone}
+                          </span>
+                        )}
+                        {lead.email && (
+                          <span className="flex items-center gap-1">
+                            <Mail className="h-3 w-3" /> {lead.email}
+                          </span>
+                        )}
+                        {lead.enterprise && (
+                          <span className="flex items-center gap-1">
+                            <Building2 className="h-3 w-3" /> {lead.enterprise}
+                          </span>
+                        )}
+                        {lead.region && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" /> {lead.region}
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {format(parseISO(lead.createdAt), "dd/MM/yyyy HH:mm")}
+                        </span>
+                      </div>
+
+                      {/* Expanded details */}
+                      {expandedId === lead.id && (
+                        <div className="mt-3 pt-3 border-t space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                            {lead.adName && (
+                              <div>
+                                <span className="text-muted-foreground">Anúncio: </span>
+                                <span className="font-medium">{lead.adName}</span>
+                              </div>
+                            )}
+                            {lead.campaignName && (
+                              <div>
+                                <span className="text-muted-foreground">Campanha: </span>
+                                <span className="font-medium">{lead.campaignName}</span>
+                              </div>
+                            )}
+                            {lead.formName && (
+                              <div>
+                                <span className="text-muted-foreground">Formulário: </span>
+                                <span className="font-medium">{lead.formName}</span>
+                              </div>
+                            )}
+                            {lead.leadId && (
+                              <div>
+                                <span className="text-muted-foreground">Lead ID: </span>
+                                <span className="font-mono">{lead.leadId}</span>
+                              </div>
+                            )}
+                            {lead.slug && (
+                              <div>
+                                <span className="text-muted-foreground">Slug: </span>
+                                <span className="font-mono">{lead.slug}</span>
+                              </div>
+                            )}
+                            {isWhatsApp && lead.whatsappSource && (
+                              <div>
+                                <span className="text-muted-foreground">Local do clique: </span>
+                                <span className="font-medium">{WHATSAPP_SOURCE_LABELS[lead.whatsappSource] || lead.whatsappSource}</span>
+                              </div>
+                            )}
+                            {!isWhatsApp && (
+                              <div>
+                                <span className="text-muted-foreground">Interações: </span>
+                                <span className="font-medium">{lead._count.interactions}</span>
+                              </div>
+                            )}
+                            {!isWhatsApp && (
+                              <div>
+                                <span className="text-muted-foreground">Última interação: </span>
+                                <span className="font-medium">
+                                  {lead.lastInteractionAt
+                                    ? format(parseISO(lead.lastInteractionAt), "dd/MM/yyyy HH:mm")
+                                    : 'Nenhuma'}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
 
-                  {/* Expand icon */}
-                  <div className="flex-shrink-0 text-muted-foreground">
-                    {expandedId === lead.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    {/* Expand icon */}
+                    <div className="flex-shrink-0 text-muted-foreground">
+                      {expandedId === lead.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
+                </CardContent>
+              </Card>
+            );
+          })
         )}
       </div>
 
