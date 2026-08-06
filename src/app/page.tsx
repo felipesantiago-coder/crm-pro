@@ -46,6 +46,9 @@ const ReportsView = lazy(() =>
 const LostLeadsView = lazy(() =>
   import('@/components/crm/lost-leads-view').then((m) => ({ default: m.LostLeadsView }))
 );
+const ErrorLogsView = lazy(() =>
+  import('@/components/crm/error-logs-view').then((m) => ({ default: m.ErrorLogsView }))
+);
 
 function ViewLoader() {
   return (
@@ -120,6 +123,8 @@ function CRMApp() {
         return <ReportsView />;
       case 'lost-leads':
         return <LostLeadsView />;
+      case 'error-logs':
+        return <ErrorLogsView />;
       default:
         return <DashboardView />;
     }

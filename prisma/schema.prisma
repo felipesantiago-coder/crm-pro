@@ -385,3 +385,29 @@ model LostLead {
   @@index([email])
   @@map("lost_leads")
 }
+
+// ============================================================
+// CLIENT ERROR LOG — JS error capture for landing page debug
+// Catches window.onerror, unhandledrejection, React errors
+// ============================================================
+model ClientErrorLog {
+  id          String   @id @default(cuid()) @map("id")
+  type        String   @map("type")          // 'js_error' | 'promise_rejection' | 'react_error'
+  message     String   @map("message")
+  source      String?  @map("source")        // file/URL where error occurred
+  lineNumber  Int?     @map("lineNumber")
+  colNumber   Int?     @map("colNumber")
+  stackTrace  String?  @map("stackTrace")    // full stack trace
+  pageUrl     String?  @map("pageUrl")
+  userAgent   String?  @map("userAgent")
+  slug        String?  @map("slug")          // enterprise slug if on landing page
+  resolved    Boolean  @default(false) @map("resolved")
+  createdAt   DateTime @default(now()) @map("createdAt")
+
+  @@index([type])
+  @@index([resolved])
+  @@index([createdAt])
+  @@index([slug])
+  @@index([message])
+  @@map("client_error_logs")
+}

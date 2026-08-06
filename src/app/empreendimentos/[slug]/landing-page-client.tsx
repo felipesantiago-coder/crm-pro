@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useClientErrorCapture } from '@/hooks/use-client-error-capture';
 import Image from 'next/image';
 import {
   Building2, MapPin, ArrowLeft, ChevronLeft, ChevronRight,
@@ -152,6 +153,9 @@ const faqItems = [
    ================================================================ */
 export default function LandingPageClient({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = React.use(params);
+
+  // ── ERROR CAPTURE: catches ALL JS errors on this page ──
+  useClientErrorCapture({ slug });
   const [enterprise, setEnterprise] = useState<Enterprise | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
