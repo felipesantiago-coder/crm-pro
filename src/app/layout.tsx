@@ -21,6 +21,11 @@ export const metadata: Metadata = {
   icons: {
     icon: "/logo.svg",
   },
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    viewportFit: "cover",
+  },
   openGraph: {
     title: "CRM Pro - Sistema de Gestão de Clientes",
     description: "Sistema completo de gestão de relacionamento com clientes.",

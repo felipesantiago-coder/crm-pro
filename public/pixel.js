@@ -69,8 +69,14 @@
     var utm = {};
     for (var i = 0; i < q.length; i++) {
       var p = q[i].split("=");
-      var k = decodeURIComponent(p[0]);
-      if (k.indexOf("utm_") === 0 && p[1]) utm[k] = decodeURIComponent(p[1].replace(/\+/g, " "));
+      try {
+        var k = decodeURIComponent(p[0]);
+        if (k.indexOf("utm_") === 0 && p[1]) {
+          utm[k] = decodeURIComponent(p[1].replace(/\+/g, " "));
+        }
+      } catch (e) {
+        /* Malformed URI component — skip this parameter */
+      }
     }
     return utm;
   }
@@ -305,7 +311,26 @@
   /* ── JS Error tracking ──────────────────────────────── */
   function trackErrors() {
     var _errorCount = 0;
+    // Known third-party error patterns to suppress (reduce noise from Meta Pixel, etc.)
+    var _thirdPartyPatterns = [
+      /^Script error\.?$/i,
+      /fbevents/i,
+      /fbq/i,
+      /facebook/i,
+      /Meta Pixel/i,
+      /net\.facebook/i,
+      /connect\.facebook/i,
+    ];
+    function isThirdParty(msg, filename) {
+      for (var i = 0; i < _thirdPartyPatterns.length; i++) {
+        if (_thirdPartyPatterns[i].test(msg) || (filename && _thirdPartyPatterns[i].test(filename))) return true;
+      }
+      return false;
+    }
+
     window.addEventListener("error", function (event) {
+      // Suppress known third-party script errors (Meta Pixel, etc.)
+      if (isThirdParty(event.message || "", event.filename || "")) return;
       _errorCount++;
       // Cap at 5 errors per session to avoid spam
       if (_errorCount > 5) return;
@@ -318,10 +343,12 @@
     });
     // Unhandled promise rejections
     window.addEventListener("unhandledrejection", function (event) {
-      _errorCount++;
-      if (_errorCount > 5) return;
       var reason = event.reason;
       var msg = (reason && reason.message) ? reason.message : String(reason);
+      // Suppress known third-party promise errors
+      if (isThirdParty(msg, "")) return;
+      _errorCount++;
+      if (_errorCount > 5) return;
       send(basePayload("js_error", {
         message: ("Promise: " + msg).substring(0, 200),
         filename: null,
