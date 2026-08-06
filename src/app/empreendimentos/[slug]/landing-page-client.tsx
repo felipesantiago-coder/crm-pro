@@ -466,6 +466,29 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     ? `https://wa.me/${whatsappNumber.startsWith('55') ? whatsappNumber : '55' + whatsappNumber}?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`
     : `https://wa.me/?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`;
 
+  // Register WhatsApp click as a queue assignment (fire-and-forget)
+  // Uses sendBeacon so the navigation to wa.me isn't blocked
+  const whatsappAssignRef = useRef(false);
+  const registerWhatsAppClick = useCallback((source: string) => {
+    if (whatsappAssignRef.current || !queueUser?.userId) return;
+    // Prevent double-registration within the same session for this queue user
+    whatsappAssignRef.current = true;
+    const payload = JSON.stringify({
+      source: `whatsapp_click:${slug}:${source}`,
+    });
+    // Prefer sendBeacon (works even if page unloads)
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/lead-queues/assign', payload);
+    } else {
+      fetch('/api/lead-queues/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    }
+  }, [queueUser?.userId, slug]);
+
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -944,6 +967,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => {
+                registerWhatsAppClick('hero');
                 if (typeof window !== 'undefined' && window.CRMPIXEL) {
                   window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'hero', userId: queueUser?.userId });
                 }
@@ -1804,6 +1828,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => {
+                    registerWhatsAppClick('form_section');
                     if (typeof window !== 'undefined' && window.CRMPIXEL) {
                       window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'form_section', userId: queueUser?.userId });
                     }
@@ -2149,6 +2174,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => {
+                  registerWhatsAppClick('faq_cta');
                   if (typeof window !== 'undefined' && window.CRMPIXEL) {
                     window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'faq_cta', userId: queueUser?.userId });
                   }
@@ -2213,6 +2239,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => {
+                    registerWhatsAppClick('footer');
                     if (typeof window !== 'undefined' && window.CRMPIXEL) {
                       window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'footer', userId: queueUser?.userId });
                     }
@@ -2250,6 +2277,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => {
+                registerWhatsAppClick('floating_bar');
                 if (typeof window !== 'undefined' && window.CRMPIXEL) {
                   window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'floating_bar', userId: queueUser?.userId });
                 }
@@ -2324,7 +2352,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 <a href="#cadastro" className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-bold hover:bg-[#D4B87E] transition-all hover:shadow-[#C9A96E]/20">
                   Quero saber mais
                 </a>
-                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="px-5 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-semibold hover:bg-[#20bd5a] transition-colors">
+                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={() => { registerWhatsAppClick('desktop_sticky'); trackMetaPixel('Contact', { content_name: e.name, content_category: 'empreendimento' }); }} className="px-5 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-semibold hover:bg-[#20bd5a] transition-colors">
                   WhatsApp
                 </a>
               </div>
@@ -2387,6 +2415,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 rel="noopener noreferrer"
                 onClick={() => {
                   setExitPopupOpen(false);
+                  registerWhatsAppClick('exit_popup');
                   if (typeof window !== 'undefined' && window.CRMPIXEL) {
                     window.CRMPIXEL.track('exit_popup_cta', { enterprise: e.name, action: 'whatsapp' });
                   }
