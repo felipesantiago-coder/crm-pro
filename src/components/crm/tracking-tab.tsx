@@ -7,7 +7,7 @@ import {
   MousePointerClick, Globe, FileCode, AlertTriangle, BarChart3,
   Activity, Trophy, Trash2, Loader2, Monitor, Smartphone, Tablet,
   MapPin, Clock, ExternalLink, UserCheck, Layers, Hash, ArrowRight,
-  CircleDot, Wifi, Image, Gauge,
+  CircleDot, Wifi, Image, Gauge, FileText,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -379,6 +379,7 @@ export function TrackingTab() {
   const [loading, setLoading] = useState(true);
   const [setupOpen, setSetupOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   const fetchData = useCallback(async (p: string) => {
     setLoading(true);
@@ -420,6 +421,34 @@ export function TrackingTab() {
       setResetting(false);
     }
   }, [period, fetchData]);
+
+  const handleGenerateReport = useCallback(async () => {
+    setGeneratingReport(true);
+    try {
+      const res = await fetch(`/api/tracking/report?period=${period}`, {
+        headers: { Accept: 'text/markdown' },
+      });
+      if (!res.ok) {
+        toast.error(`Erro ao gerar relatório (${res.status})`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const periodLabel = PERIOD_OPTIONS.find(p => p.value === period)?.label ?? period;
+      a.download = `relatorio-tracking-${periodLabel.toLowerCase().replace(/\s/g, '-')}-${new Date().toISOString().split('T')[0]}.md`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Relatório Markdown gerado e baixado!');
+    } catch {
+      toast.error('Erro de conexão ao gerar relatório.');
+    } finally {
+      setGeneratingReport(false);
+    }
+  }, [period]);
 
   useEffect(() => { fetchData(period); }, [period, fetchData]);
 
@@ -585,6 +614,19 @@ export function TrackingTab() {
           </Badge>
         </div>
         <div className="flex items-center gap-2">
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-xs text-[#C9A96E] hover:text-[#C9A96E]/80 hover:bg-[#C9A96E]/10 h-9 px-3" onClick={handleGenerateReport} disabled={generatingReport}>
+                  {generatingReport ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <FileText className="h-3.5 w-3.5 mr-1.5" />}
+                  {generatingReport ? 'Gerando...' : 'Relatório MD'}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="text-xs max-w-xs">
+                Gera um relatório Markdown completo com todos os dados do período para usar como contexto de IA para otimização de campanha.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button variant="ghost" size="sm" className="text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10 h-9 px-3" onClick={handleReset} disabled={resetting}>
             {resetting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Trash2 className="h-3.5 w-3.5 mr-1.5" />}
             {resetting ? 'Resetando...' : 'Resetar Dados'}
