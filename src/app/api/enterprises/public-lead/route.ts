@@ -318,25 +318,15 @@ export async function POST(request: NextRequest) {
 
     const { client, isNew } = clientResult;
 
-    // ── Create interaction record ──
-    await db.interaction.create({
-      data: {
-        name: name.trim(),
-        phone: cleanPhone.length >= 10 ? cleanPhone : null,
-        email: cleanEmail || null,
-        region: enterpriseRegion,
-        enterprise: enterpriseName || undefined,
-        enterpriseId: enterpriseId || undefined,
-        stage: 'LEAD',
-        createdBy: createdByUserId,
-        utmSource: typeof utmSource === 'string' ? utmSource.slice(0, 200) : undefined,
-        utmMedium: typeof utmMedium === 'string' ? utmMedium.slice(0, 100) : undefined,
-        utmCampaign: typeof utmCampaign === 'string' ? utmCampaign.slice(0, 200) : undefined,
-        utmContent: typeof utmContent === 'string' ? utmContent.slice(0, 200) : undefined,
-        utmTerm: typeof utmTerm === 'string' ? utmTerm.slice(0, 200) : undefined,
-        notes: `[Landing Page] Cadastro realizado via formulário${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? `\nSlug: ${slug}` : ''}${utmCampaign ? `\nCampanha: ${utmCampaign}` : ''}${customAnswersText}`,
-      },
-    });
+    // ── Create interaction record for new clients ──
+    if (isNew) {
+      await db.interaction.create({
+        data: {
+          clientId: client.id,
+          description: `[Landing Page] Cliente cadastrado via formulário${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? ` (slug: ${slug})` : ''}${utmCampaign ? ` | Campanha: ${utmCampaign}` : ''}.`,
+        },
+      });
+    }
 
     // ── Assign via lead queue ──
     let assignedUser: AssignResult | null = null;
