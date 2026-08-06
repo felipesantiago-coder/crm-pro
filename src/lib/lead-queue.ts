@@ -183,6 +183,37 @@ export async function assignLeadToUser(opts: {
 }
 
 /**
+ * Admin: manually set the next user in the queue.
+ * Calculates the correct currentIdx so that the next assignLeadToUser()
+ * call will pick the specified user.
+ *
+ * @param queueId - The queue to modify
+ * @param userId  - The user who should receive the next lead
+ * @returns The updated currentIdx, or throws if user not in queue
+ */
+export async function setNextUser(queueId: string, userId: string): Promise<{ currentIdx: number; userName: string }> {
+  const activeMembers = await db.leadQueueMember.findMany({
+    where: { queueId, isActive: true },
+    orderBy: { order: 'asc' },
+    select: { userId: true, user: { select: { name: true } } },
+  });
+
+  const targetIdx = activeMembers.findIndex((m) => m.userId === userId);
+  if (targetIdx === -1) {
+    throw new Error('Usuário não está na fila ou está inativo');
+  }
+
+  // Set currentIdx directly to targetIdx so that
+  // currentIdx % activeMembers.length === targetIdx
+  await db.leadQueue.update({
+    where: { id: queueId },
+    data: { currentIdx: targetIdx },
+  });
+
+  return { currentIdx: targetIdx, userName: activeMembers[targetIdx].user.name };
+}
+
+/**
  * Peek at the next user in the queue WITHOUT advancing the counter.
  * Used by landing pages to display the agent's info.
  *
