@@ -357,3 +357,31 @@ model LandingFormField {
   @@index([enterpriseId])
   @@map("landing_form_fields")
 }
+
+// ============================================================
+// LOST LEADS — Safety net for leads that failed to register
+// Captured via sendBeacon (page close) or retry queue
+// ============================================================
+model LostLead {
+  id          String    @id @default(cuid()) @map("id")
+  name        String?   @map("name")
+  phone       String?   @map("phone")
+  email       String?   @map("email")
+  slug        String?   @map("slug")
+  source      String    @map("source")      // 'beacon' | 'retry_queue'
+  formData    Json?     @map("formData")
+  userAgent   String?   @map("userAgent")
+  utmSource   String?   @map("utmSource")
+  utmMedium   String?   @map("utmMedium")
+  utmCampaign String?   @map("utmCampaign")
+  utmContent  String?   @map("utmContent")
+  utmTerm     String?   @map("utmTerm")
+  isRecovered Boolean   @default(false) @map("isRecovered")
+  recoveredToClientId String?  @map("recoveredToClientId")
+  createdAt   DateTime  @default(now()) @map("createdAt")
+
+  @@index([isRecovered])
+  @@index([createdAt])
+  @@index([email])
+  @@map("lost_leads")
+}
