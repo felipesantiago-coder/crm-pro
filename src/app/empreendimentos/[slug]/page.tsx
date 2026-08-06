@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { db } from '@/lib/db';
 import LandingPageClient from './landing-page-client';
+import { LandingErrorBoundary } from './landing-error-boundary';
 
 // ── Static data for known slugs (fallback when DB lookup fails) ──
 import enterprisesCatalog from '@/data/enterprises-catalog';
@@ -88,5 +89,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default function LandingPage({ params }: PageProps) {
-  return <LandingPageClient params={params} />;
+  return (
+    <LandingErrorBoundary>
+      <LandingPageClient params={params} />
+    </LandingErrorBoundary>
+  );
 }
