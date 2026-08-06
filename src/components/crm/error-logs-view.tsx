@@ -6,7 +6,7 @@ import {
   Filter, Search, ExternalLink, ChevronDown, ChevronUp,
   Trash2, Loader2, Bug, MonitorSmartphone, Zap,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -135,7 +135,6 @@ export function ErrorLogsView() {
 
   function formatUAgent(ua: string | null): string {
     if (!ua) return '—';
-    // Extract browser + OS
     const browserMatch = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)\/?\s*[\d.]+/);
     const osMatch = ua.match(/\(([^)]+)\)/);
     const browser = browserMatch ? browserMatch[0] : 'Desconhecido';
@@ -272,7 +271,7 @@ export function ErrorLogsView() {
                 }
               >
                 <CardContent className="p-3">
-                  {/* Header row */
+                  {/* Header row */}
                   <div
                     className="flex items-start gap-3 cursor-pointer"
                     onClick={() => setExpandedId(isExpanded ? null : error.id)}
@@ -323,10 +322,10 @@ export function ErrorLogsView() {
                     </div>
                   </div>
 
-                  {/* Expanded detail */
+                  {/* Expanded detail */}
                   {isExpanded && (
                     <div className="mt-3 pt-3 border-t space-y-3">
-                      {/* Stack trace */
+                      {/* Stack trace */}
                       {error.stackTrace && (
                         <div>
                           <p className="text-xs font-semibold text-muted-foreground mb-1">
@@ -383,7 +382,7 @@ export function ErrorLogsView() {
                             toggleResolved(error.id, error.resolved);
                           }}
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+                          <CheckCircle2 className="h-3.5 w-3 mr-1.5" />
                           {error.resolved ? 'Reabrir' : 'Marcar como resolvido'}
                         </Button>
                         <Button
@@ -395,7 +394,7 @@ export function ErrorLogsView() {
                             deleteError(error.id);
                           }}
                         >
-                          <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                          <Trash2 className="h-3.5 w-3 mr-1.5" />
                           Excluir
                         </Button>
                       </div>
@@ -406,7 +405,7 @@ export function ErrorLogsView() {
             );
           })}
 
-          {/* Load more */
+          {/* Load more */}
           {hasMore && (
             <div className="text-center">
               <Button
