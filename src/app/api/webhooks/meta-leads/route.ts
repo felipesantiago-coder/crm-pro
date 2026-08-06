@@ -353,8 +353,14 @@ export async function POST(request: NextRequest) {
               source: `meta_ads:${(campaignName || adName || '').slice(0, 200)}`,
             });
             if (assignResult.assigned && assignResult.userId) {
-              const assignedUserId = assignResult.userId;
-              db.user.findUnique({ where: { id: assignedUserId }, select: { telegramChatId: true, name: true } }).then((user) => {
+              assignedUserName = assignResult.userName;
+              // Update client's createdBy to the assigned user
+              await db.client.update({
+                where: { id: existing.id },
+                data: { createdBy: assignResult.userId },
+              }).catch(() => {});
+              // Send Telegram notification
+              db.user.findUnique({ where: { id: assignResult.userId }, select: { telegramChatId: true, name: true } }).then((user) => {
                 if (user?.telegramChatId) {
                   notifyNewLead(user.telegramChatId, {
                     leadName: existing.name,
@@ -368,63 +374,12 @@ export async function POST(request: NextRequest) {
                     customAnswers: undefined,
                   }).catch((err) => console.warn('[Meta Webhook] Falha na notificação (lead existente):', err));
                 } else {
-                  console.warn(`[Meta Webhook] Usuário ${user?.name || assignedUserId} sem Telegram. Lead existente ${existing.id} sem notificação.`);
+                  console.warn(`[Meta Webhook] Usuário ${user?.name || assignResult.userId} sem Telegram. Lead existente ${existing.id} sem notificação.`);
                 }
               }).catch(() => {});
             }
           } catch (queueErr) {
             console.warn(`[Meta Webhook] Falha na atribuição de fila (lead existente):`, queueErr);
-          }
-
-          // CRITICAL FIX: Assign existing lead to queue — same as public-lead
-          // Previously this branch returned WITHOUT calling assignLeadToUser(),
-          // so repeat Meta leads had NO queue assignment (user stayed null).
-          let assignedUserName: string | undefined;
-          try {
-            const assignResult = await assignLeadToUser({
-              leadId: existing.id,
-              source: `meta_ads:${(campaignName || adName || '').slice(0, 200)}`,
-            });
-            if (assignResult.assigned && assignResult.userId) {
-              assignedUserName = assignResult.userName;
-              // Update client's createdBy to the assigned user
-              await db.client.update({
-                where: { id: existing.id },
-                data: { createdBy: assignResult.userId },
-              }).catch(() => {});
-            }
-          } catch (queueErr) {
-            console.error(`[Meta Webhook] Falha na atribuição de fila (lead existente ${existing.id}):`, queueErr);
-          }
-
-          // Send Telegram notification for existing lead
-          try {
-            const existingWithUser = await db.client.findUnique({
-              where: { id: existing.id },
-              select: { createdBy: true },
-            });
-            const notifyUserId = existingWithUser?.createdBy;
-            if (notifyUserId && assignedUserName) {
-              db.user.findUnique({
-                where: { id: notifyUserId },
-                select: { telegramChatId: true },
-              }).then((notifyUser) => {
-                if (notifyUser?.telegramChatId) {
-                  notifyNewLead(notifyUser.telegramChatId, {
-                    leadName: existing.name,
-                    leadPhone: existing.phone || '',
-                    leadEmail: existing.email || '',
-                    enterpriseName: undefined,
-                    utmCampaign: campaignName || null,
-                    utmSource: 'meta_ads',
-                    assignedUserName,
-                    customAnswers: undefined,
-                  }).catch((err) => console.warn('[Meta Webhook] Falha na notificação (lead existente):', err));
-                }
-              }).catch(() => {});
-            }
-          } catch {
-            // non-critical: notification failed, lead is still assigned
           }
 
           results.push({
