@@ -309,24 +309,46 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     return () => observer.disconnect();
   }, []);
 
-  // Tracking: exit intent (desktop only) — show popup + track (medium priority #8)
+  // Tracking: exit intent — desktop (mouseleave) + mobile (visibilitychange)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const handler = (e: MouseEvent) => {
-      if ((e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth) && e.relatedTarget === null) {
-        if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL?.trackExitIntent();
-        // Show exit-intent popup only once per session, only if user hasn't submitted form
-        if (!exitPopupShownRef.current && !formSubmitting) {
-          exitPopupShownRef.current = true;
-          setExitPopupOpen(true);
-          if (typeof window !== 'undefined' && window.CRMPIXEL) {
-            window.CRMPIXEL.track('exit_popup_shown', { enterprise: enterprise?.name });
-          }
+
+    const showExitPopup = () => {
+      if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL?.trackExitIntent();
+      if (!exitPopupShownRef.current && !formSubmitting) {
+        exitPopupShownRef.current = true;
+        setExitPopupOpen(true);
+        if (typeof window !== 'undefined' && window.CRMPIXEL) {
+          window.CRMPIXEL.track('exit_popup_shown', { enterprise: enterprise?.name });
         }
       }
     };
-    document.addEventListener('mouseleave', handler);
-    return () => document.removeEventListener('mouseleave', handler);
+
+    // Desktop: mouse leaves viewport
+    const mouseHandler = (e: MouseEvent) => {
+      if ((e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth) && e.relatedTarget === null) {
+        showExitPopup();
+      }
+    };
+    document.addEventListener('mouseleave', mouseHandler);
+
+    // Mobile: tab/page visibility change (user switches app or closes tab)
+    const visibilityHandler = () => {
+      if (document.visibilityState === 'hidden') {
+        showExitPopup();
+      }
+    };
+    document.addEventListener('visibilitychange', visibilityHandler);
+
+    // Mobile: pagehide (tab close / navigation away)
+    const pageHideHandler = () => { showExitPopup(); };
+    window.addEventListener('pagehide', pageHideHandler);
+
+    return () => {
+      document.removeEventListener('mouseleave', mouseHandler);
+      document.removeEventListener('visibilitychange', visibilityHandler);
+      window.removeEventListener('pagehide', pageHideHandler);
+    };
   }, [formSubmitting, enterprise?.name]);
 
   const fetchEnterprise = useCallback(async () => {
@@ -411,7 +433,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     const onScroll = () => {
       const scrollY = window.scrollY;
       const heroHeight = window.innerHeight;
-      setShowFloatingWhatsApp(scrollY > heroHeight * 0.4);
+      // Always show WhatsApp bar on mobile (even at top) — critical for 96% mobile traffic
+      setShowFloatingWhatsApp(window.innerWidth < 640);
 
       // Sticky form submit: show on mobile when form section is in viewport
       if (formSectionRef.current && window.innerWidth < 640) {
@@ -750,7 +773,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       </nav>
 
       {/* ── Hero Section ───────────────────────────────── */}
-      <section className="relative min-h-[75dvh] sm:min-h-[100dvh] flex items-end">
+      <section className="relative min-h-[55dvh] sm:min-h-[85dvh] flex items-end">
         {/* Background image */}
         {heroImage && (
           <div className="absolute inset-0">
@@ -840,14 +863,91 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             </p>
           )}
 
-          {/* CTA row — optimized for conversion with benefit-driven copy */}
-          <div className="mt-6 sm:mt-10 flex flex-wrap items-center gap-3 sm:gap-4">
+          {/* ★ Mini-form directly in hero — name + phone for instant conversion on mobile */}
+          <div className="mt-6 sm:mt-10 animate-fade-in-up">
+            <form
+              id="hero-mini-form"
+              onSubmit={(ev) => {
+                ev.preventDefault();
+                const heroName = (document.getElementById('hero-name') as HTMLInputElement)?.value?.trim() || '';
+                const heroPhone = (document.getElementById('hero-phone') as HTMLInputElement)?.value?.replace(/\D/g, '') || '';
+                if (heroName.length < 2) { setFormName(heroName); return; }
+                if (heroPhone.length < 10 && heroPhone.length > 0) return;
+                // Sync to main form and submit
+                setFormName(heroName);
+                setFormPhone(heroPhone.length >= 10 ? (document.getElementById('hero-phone') as HTMLInputElement)?.value || '' : '');
+                // Navigate to form section and let it handle submission
+                const form = document.getElementById('landing-form') as HTMLFormElement | null;
+                if (form) {
+                  // Pre-fill email if empty so validation passes
+                  if (!formEmail.trim()) {
+                    setFormEmail(`${heroName.toLowerCase().replace(/\s+/g, '.')}@cadastro.temp`);
+                  }
+                  setTimeout(() => {
+                    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setTimeout(() => {
+                      if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                      } else {
+                        form.submit();
+                      }
+                    }, 600);
+                  }, 100);
+                }
+              }}
+              className="w-full max-w-lg"
+            >
+              <div className="flex flex-col sm:flex-row gap-2.5">
+                <div className="flex-1 relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                  <input
+                    id="hero-name"
+                    type="text"
+                    placeholder="Seu nome"
+                    autoComplete="name"
+                    required
+                    className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-white/[0.08] border border-white/[0.12] text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                  />
+                </div>
+                <div className="flex-1 relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                  <input
+                    id="hero-phone"
+                    type="tel"
+                    placeholder="(11) 99999-9999"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    onChange={(ev) => {
+                      const digits = ev.target.value.replace(/\D/g, '').slice(0, 11);
+                      let masked = '';
+                      if (digits.length > 0) masked += `(${digits.slice(0, 2)}`;
+                      if (digits.length > 2) masked += `) ${digits.slice(2, 7)}`;
+                      if (digits.length > 7) masked += `-${digits.slice(7)}`;
+                      ev.target.value = masked;
+                    }}
+                    className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-white/[0.08] border border-white/[0.12] text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="flex-shrink-0 flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-sm hover:bg-[#D4B87E] transition-all shadow-lg shadow-[#C9A96E]/25 hover:shadow-[#C9A96E]/40 active:scale-[0.98]"
+                >
+                  <Send className="h-4 w-4" />
+                  <span className="sm:hidden">Cadastrar</span>
+                  <span className="hidden sm:inline">Garantir minha unidade</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-white/25 mt-2 text-center sm:text-left">Telefone opcional · Resposta em até 24h</p>
+            </form>
+          </div>
+          {/* Secondary CTAs — below mini-form */}
+          <div className="mt-3 flex flex-wrap items-center gap-3 sm:gap-4">
             <a
               href="#cadastro"
-              className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-4 sm:px-9 sm:py-4.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-sm sm:text-base hover:bg-[#D4B87E] transition-all shadow-lg shadow-[#C9A96E]/25 hover:shadow-[#C9A96E]/40 hover:scale-[1.02] active:scale-[0.98]"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-medium text-xs sm:text-sm hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
             >
-              <Send className="h-4 w-4" />
-              Quero minha unidade
+              <MessageSquare className="h-3.5 w-3.5" />
+              Preencher cadastro completo
             </a>
             <a
               href={whatsappUrl}
@@ -857,16 +957,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 if (typeof window !== 'undefined' && window.CRMPIXEL) {
                   window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source: 'hero', userId: queueUser?.userId });
                 }
-                // Track Meta Pixel — Contact event
                 trackMetaPixel('Contact', {
                   content_name: e.name,
                   content_category: 'empreendimento',
                 });
               }}
-              className="animate-fade-in-up inline-flex items-center gap-2.5 px-7 py-4 sm:px-9 sm:py-4.5 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-semibold text-sm sm:text-base hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
-              style={{ animationDelay: '0.1s' }}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-medium text-xs sm:text-sm hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
             >
-              <Phone className="h-4 w-4" />
+              <Phone className="h-3.5 w-3.5" />
               Falar com consultor
             </a>
             {e._count && e._count.clients > 0 ? (
@@ -2135,7 +2233,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
         </div>
       </footer>
 
-      {/* ★ NEW: Floating Sticky WhatsApp CTA (Mobile) — hidden when form is visible to avoid overlap */}
+      {/* ★ Floating Sticky WhatsApp CTA (Mobile) — always visible, only hidden when form submit bar shows */}
       {showFloatingWhatsApp && !showStickyFormSubmit && (
         <div className="fixed bottom-0 left-0 right-0 z-50 sm:hidden animate-slide-up-bar">
           <div className="bg-gradient-to-r from-[#C9A96E] to-[#A8893E] shadow-[0_-4px_20px_rgba(201,169,110,0.3)]">
@@ -2179,7 +2277,12 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   const form = document.getElementById('landing-form') as HTMLFormElement | null;
                   if (form && !isSubmittingRef.current) {
                     isSubmittingRef.current = true;
-                    form.requestSubmit();
+                    // Fallback for older browsers (Safari < 16.4) that don't support requestSubmit()
+                    if (typeof form.requestSubmit === 'function') {
+                      form.requestSubmit();
+                    } else {
+                      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                    }
                     setTimeout(() => { isSubmittingRef.current = false; }, 3000);
                   }
                 }}

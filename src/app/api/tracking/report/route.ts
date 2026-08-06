@@ -514,7 +514,7 @@ export async function GET(request: Request) {
           FROM tracking_events e
           WHERE e."createdAt" >= ${startDate}::timestamptz
             AND (e."eventType" = 'lead' OR e."eventType" = 'form_submit')
-            AND (LOWER(e."utmSource") LIKE '%meta%' OR LOWER(e."utmSource") LIKE '%facebook%')
+            AND (LOWER(e."utmSource") LIKE '%meta%' OR LOWER(e."utmSource") LIKE '%facebook%' OR LOWER(e."utmSource") LIKE '%ig%' OR LOWER(e."utmSource") LIKE '%instagram%' OR LOWER(e."utmSource") LIKE '%fb%')
         `,
       ),
 
@@ -537,7 +537,7 @@ export async function GET(request: Request) {
           JOIN clients c ON c.id = v."leadId" AND c."notes" LIKE '%[Meta Ads]%'
           WHERE e."createdAt" >= ${startDate}::timestamptz
             AND (e."eventType" = 'lead' OR e."eventType" = 'form_submit')
-            AND (LOWER(e."utmSource") LIKE '%meta%' OR LOWER(e."utmSource") LIKE '%facebook%')
+            AND (LOWER(e."utmSource") LIKE '%meta%' OR LOWER(e."utmSource") LIKE '%facebook%' OR LOWER(e."utmSource") LIKE '%ig%' OR LOWER(e."utmSource") LIKE '%instagram%' OR LOWER(e."utmSource") LIKE '%fb%')
         `,
       ),
 
