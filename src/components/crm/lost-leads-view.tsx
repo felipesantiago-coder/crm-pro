@@ -11,13 +11,12 @@ import {
   Clock,
   Mail,
   Phone,
-  User,
   Globe,
   ExternalLink,
   Search,
   Filter,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -45,7 +44,7 @@ interface LostLeadItem {
   createdAt: string;
 }
 
-export function LostLeadsView() {
+export function LostLeadsTab() {
   const [items, setItems] = useState<LostLeadItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -158,15 +157,16 @@ export function LostLeadsView() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-sm">
             <HeartHandshake className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">Leads Perdidos</h1>
+            <h2 className="text-lg font-semibold">Leads Perdidos</h2>
             <p className="text-sm text-muted-foreground">
-              Leads capturados pela rede de segurança que não completaram o cadastro
+              Capturados pela rede de segurança que não completaram o cadastro
             </p>
           </div>
         </div>
