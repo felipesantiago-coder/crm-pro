@@ -8,7 +8,7 @@ import {
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Copy, Check, User, Send, AlertCircle,
   Shield, ChevronDown, CalendarDays, TrendingUp, Users, Layers, Car, LayoutGrid,
-  Eye, Timer,
+  Eye,
 } from 'lucide-react';
 
 /* ================================================================
