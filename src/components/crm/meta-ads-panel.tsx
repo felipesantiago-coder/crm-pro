@@ -8,6 +8,7 @@ import {
   ChevronDown, ChevronUp, Phone, Mail, MapPin, Calendar,
   AlertTriangle, Filter, Download, ChevronLeft, ChevronRight,
   UserPlus, Sparkles, Activity, PieChart, Crosshair, Globe, UsersRound,
+  HeartHandshake,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import { format, parseISO } from 'date-fns';
 import { TrackingTab } from './tracking-tab';
 import { LandingPagesTab } from './landing-pages-tab';
 import { QueuesTab } from './queues-tab';
+import { LostLeadsTab } from './lost-leads-view';
 import { ptBR } from 'date-fns/locale';
 
 // ============================================================
@@ -1402,12 +1404,13 @@ export function MetaAdsPanel() {
               <SelectItem value="tracking"><span className="flex items-center gap-2"><Crosshair className="h-4 w-4" />Tracking</span></SelectItem>
               <SelectItem value="landing"><span className="flex items-center gap-2"><Globe className="h-4 w-4" />Landing Pages</span></SelectItem>
               <SelectItem value="queues"><span className="flex items-center gap-2"><UsersRound className="h-4 w-4" />Filas</span></SelectItem>
+              <SelectItem value="lost-leads"><span className="flex items-center gap-2"><HeartHandshake className="h-4 w-4" />Leads Perdidos</span></SelectItem>
               <SelectItem value="config"><span className="flex items-center gap-2"><Zap className="h-4 w-4" />Config</span></SelectItem>
             </SelectContent>
           </Select>
         </div>
         {/* Desktop tabs */}
-        <TabsList className="hidden lg:grid lg:grid-cols-7 lg:max-w-3xl w-full gap-1 p-0.5">
+        <TabsList className="hidden lg:grid lg:grid-cols-8 lg:max-w-4xl w-full gap-1 p-0.5">
           <TabsTrigger value="overview" className="text-sm gap-1.5 whitespace-nowrap">
             <BarChart3 className="h-3.5 w-3.5" />
             Visão Geral
@@ -1431,6 +1434,10 @@ export function MetaAdsPanel() {
           <TabsTrigger value="queues" className="text-sm gap-1.5 whitespace-nowrap">
             <UsersRound className="h-3.5 w-3.5" />
             Filas
+          </TabsTrigger>
+          <TabsTrigger value="lost-leads" className="text-sm gap-1.5 whitespace-nowrap">
+            <HeartHandshake className="h-3.5 w-3.5" />
+            Leads Perdidos
           </TabsTrigger>
           <TabsTrigger value="config" className="text-sm gap-1.5 whitespace-nowrap">
             <Zap className="h-3.5 w-3.5" />
@@ -1466,6 +1473,10 @@ export function MetaAdsPanel() {
 
         <TabsContent value="queues">
           <QueuesTab />
+        </TabsContent>
+
+        <TabsContent value="lost-leads">
+          <LostLeadsTab />
         </TabsContent>
 
         <TabsContent value="config">

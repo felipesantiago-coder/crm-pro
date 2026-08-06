@@ -18,7 +18,6 @@ import {
   Trophy,
   Building2,
   BarChart3,
-  HeartHandshake,
   Bug,
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
@@ -57,7 +56,6 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
     { view: 'reminders', label: 'Lembretes', icon: <Bell className="h-5 w-5" /> },
     { view: 'reports', label: 'Relatórios', icon: <BarChart3 className="h-5 w-5" /> },
     { view: 'meta-ads', label: 'Anúncios Meta', icon: <Megaphone className="h-5 w-5" />, adminOnly: true },
-    { view: 'lost-leads', label: 'Leads Perdidos', icon: <HeartHandshake className="h-5 w-5" />, adminOnly: true },
     { view: 'error-logs', label: 'Erros do Cliente', icon: <Bug className="h-5 w-5" />, adminOnly: true },
     { view: 'admin', label: 'Administração', icon: <ShieldCheck className="h-5 w-5" />, adminOnly: true },
     { view: 'settings', label: 'Configurações', icon: <Settings className="h-5 w-5" /> },

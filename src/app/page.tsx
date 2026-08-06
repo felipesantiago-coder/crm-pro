@@ -43,9 +43,6 @@ const MetaAdsPanel = lazy(() =>
 const ReportsView = lazy(() =>
   import('@/components/crm/reports-view').then((m) => ({ default: m.ReportsView }))
 );
-const LostLeadsView = lazy(() =>
-  import('@/components/crm/lost-leads-view').then((m) => ({ default: m.LostLeadsView }))
-);
 const ErrorLogsView = lazy(() =>
   import('@/components/crm/error-logs-view').then((m) => ({ default: m.ErrorLogsView }))
 );
@@ -121,8 +118,6 @@ function CRMApp() {
         return <MetaAdsPanel />;
       case 'reports':
         return <ReportsView />;
-      case 'lost-leads':
-        return <LostLeadsView />;
       case 'error-logs':
         return <ErrorLogsView />;
       default:
