@@ -5,7 +5,7 @@ import {
   Users, Plus, Trash2, Loader2, Save, GripVertical, Phone,
   CheckCircle2, XCircle, Star, Eye, EyeOff, RefreshCw,
   ChevronDown, ChevronUp, UserPlus, AlertTriangle, ArrowUp, ArrowDown,
-  Circle, Crown,
+  Circle, Crown, SkipForward,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -206,6 +206,25 @@ export function QueuesTab() {
         toast.error('Erro ao remover membro');
       }
     } catch { toast.error('Erro ao remover membro'); }
+  }
+
+  async function setNextUser(queueId: string, userId: string, userName: string) {
+    try {
+      const res = await fetch(`/api/lead-queues/${queueId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nextUserId: userId }),
+      });
+      if (res.ok) {
+        toast.success(`Próximo atendente: ${userName}`);
+        fetchQueues();
+      } else {
+        const d = await res.json();
+        throw new Error(d.error || 'Erro');
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao definir próximo');
+    }
   }
 
   async function moveMember(queueId: string, memberId: string, direction: 'up' | 'down', currentOrder: number, allMembers: QueueMember[]) {
@@ -467,6 +486,23 @@ export function QueuesTab() {
                             </div>
 
                             <div className="flex items-center gap-1 flex-shrink-0">
+                              {/* Skip-to button: set this user as next in queue */}
+                              {m.isActive && active.length > 0 && (() => {
+                                const activeIdx = q.currentIdx % active.length;
+                                const activeMember = active[activeIdx];
+                                const isCurrentTurn = activeMember?.id === m.id;
+                                return !isCurrentTurn;
+                              })() && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                                  onClick={() => setNextUser(q.id, m.userId, m.user.name)}
+                                  title="Definir como próximo atendente"
+                                >
+                                  <SkipForward className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -553,6 +589,7 @@ export function QueuesTab() {
               <li><strong>Fila padrão:</strong> apenas uma fila pode ser marcada como padrão — é ela que as landing pages usam</li>
               <li><strong>Pausar membro:</strong> temporariamente remove o atendente da rotação sem excluí-lo</li>
               <li><strong>Ordem:</strong> use as setas para definir a prioridade dos atendentes</li>
+              <li><strong>Interferir na fila:</strong> clique no ícone <SkipForward className="inline h-3 w-3" /> ao lado de um atendente para colocá-lo como próximo da vez</li>
               <li>Os usuários precisam ter o <strong>telefone cadastrado</strong> nas Configurações para aparecer no WhatsApp</li>
             </ul>
           </div>
