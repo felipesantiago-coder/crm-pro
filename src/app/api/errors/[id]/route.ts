@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 
 /**
@@ -10,11 +9,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getServerSession(authOptions);
-  const userRole = (session?.user as { role?: string })?.role;
-  if (userRole !== 'ADMIN') {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
-  }
+  const { error } = await requireAdmin();
+  if (error) return error;
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
@@ -42,11 +38,8 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getServerSession(authOptions);
-  const userRole = (session?.user as { role?: string })?.role;
-  if (userRole !== 'ADMIN') {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
-  }
+  const { error } = await requireAdmin();
+  if (error) return error;
 
   const { id } = await params;
 

@@ -167,7 +167,7 @@ export function ErrorLogsView() {
         </Button>
       </div>
 
-      {/* Stats cards */
+      {/* Stats cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card>
           <CardContent className="p-4">

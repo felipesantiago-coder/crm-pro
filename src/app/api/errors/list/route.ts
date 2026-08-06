@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 
 /**
@@ -8,11 +7,8 @@ import { db } from '@/lib/db';
  * Supports ?resolved=true|false, ?slug=xxx, ?type=js_error, ?limit=N, ?cursor=xxx
  */
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  const userRole = (session?.user as { role?: string })?.role;
-  if (userRole !== 'ADMIN') {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
-  }
+  const { error } = await requireAdmin();
+  if (error) return error;
 
   const { searchParams } = new URL(request.url);
   const resolved = searchParams.get('resolved');
