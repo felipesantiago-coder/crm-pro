@@ -14,7 +14,14 @@ export async function POST(request: NextRequest) {
   if (rateLimitResult) return rateLimitResult;
 
   try {
-    const body = await request.json();
+    let body: Record<string, unknown> = {};
+    try {
+      body = await request.json();
+    } catch {
+      // sendBeacon sends text/plain — try to parse manually
+      const text = await request.text();
+      try { body = JSON.parse(text); } catch { /* empty body */ }
+    }
     const { leadId, queueId, source } = body;
 
     // Basic validation
