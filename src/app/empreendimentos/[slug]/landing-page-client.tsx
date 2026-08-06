@@ -476,9 +476,10 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     const payload = JSON.stringify({
       source: `whatsapp_click:${slug}:${source}`,
     });
-    // Prefer sendBeacon (works even if page unloads)
+    // Use Blob to force application/json content-type (sendBeacon defaults to text/plain)
+    const blob = new Blob([payload], { type: 'application/json' });
     if (navigator.sendBeacon) {
-      navigator.sendBeacon('/api/lead-queues/assign', payload);
+      navigator.sendBeacon('/api/lead-queues/assign', blob);
     } else {
       fetch('/api/lead-queues/assign', {
         method: 'POST',
@@ -886,26 +887,24 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 const heroPhone = (document.getElementById('hero-phone') as HTMLInputElement)?.value?.replace(/\D/g, '') || '';
                 if (heroName.length < 2) { setFormName(heroName); return; }
                 if (heroPhone.length < 10 && heroPhone.length > 0) return;
-                // Sync to main form and submit
+                // Sync to main form and scroll to it
                 setFormName(heroName);
                 setFormPhone(heroPhone.length >= 10 ? (document.getElementById('hero-phone') as HTMLInputElement)?.value || '' : '');
-                // Navigate to form section and let it handle submission
+                // CRITICAL FIX: No longer generates fake .temp email.
+                // User must fill email in the main form — scroll there and highlight.
                 const form = document.getElementById('landing-form') as HTMLFormElement | null;
                 if (form) {
-                  // Pre-fill email if empty so validation passes
-                  if (!formEmail.trim()) {
-                    setFormEmail(`${heroName.toLowerCase().replace(/\s+/g, '.')}@cadastro.temp`);
-                  }
+                  form.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   setTimeout(() => {
-                    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    setTimeout(() => {
-                      if (typeof form.requestSubmit === 'function') {
-                        form.requestSubmit();
-                      } else {
-                        form.submit();
-                      }
-                    }, 600);
-                  }, 100);
+                    // Focus the email field to guide the user
+                    const emailInput = document.getElementById('form-email') as HTMLInputElement | null;
+                    if (emailInput && !formEmail.trim()) {
+                      emailInput.focus();
+                      // Visual cue: pulse the email field
+                      emailInput.classList.add('ring-2', 'ring-[#C9A96E]');
+                      setTimeout(() => emailInput.classList.remove('ring-2', 'ring-[#C9A96E]'), 3000);
+                    }
+                  }, 600);
                 }
               }}
               className="w-full max-w-lg"
