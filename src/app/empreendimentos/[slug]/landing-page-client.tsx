@@ -8,7 +8,6 @@ import {
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Copy, Check, User, Send, AlertCircle,
   Shield, ChevronDown, CalendarDays, TrendingUp, Users, Layers, Car, LayoutGrid,
-  Eye,
 } from 'lucide-react';
 
 /* ================================================================
@@ -719,12 +718,6 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
       {/* ── Custom Keyframes ────────────────────────────── */}
       <style>{`
-        @keyframes pulse-urgency {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.6; }
-        }
-        .animate-pulse-urgency { animation: pulse-urgency 2s ease-in-out infinite; }
-
         @keyframes slide-up-bar {
           from { transform: translateY(100%); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
@@ -766,7 +759,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               href="#cadastro"
               className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-semibold hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20"
             >
-              Cadastre-se
+              Quero saber mais
             </a>
           </div>
         </div>
@@ -841,12 +834,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             )}
             {/* ★ NEW: Urgency Badge — only for Lançamento or Em Construção */}
             {showUrgencyBadge && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 animate-pulse-urgency">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400" />
-                </span>
-                Vagas limitadas
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                <Clock className="h-3 w-3 flex-shrink-0" />
+                Condições de lançamento
               </span>
             )}
           </div>
@@ -933,11 +923,11 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   className="flex-shrink-0 flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-sm hover:bg-[#D4B87E] transition-all shadow-lg shadow-[#C9A96E]/25 hover:shadow-[#C9A96E]/40 active:scale-[0.98]"
                 >
                   <Send className="h-4 w-4" />
-                  <span className="sm:hidden">Cadastrar</span>
-                  <span className="hidden sm:inline">Garantir minha unidade</span>
+                  <span className="sm:hidden">Saber mais</span>
+                  <span className="hidden sm:inline">Quero saber mais</span>
                 </button>
               </div>
-              <p className="text-[11px] text-white/25 mt-2 text-center sm:text-left">Telefone opcional · Resposta em até 24h</p>
+              <p className="text-[11px] text-white/25 mt-2 text-center sm:text-left">Sem compromisso · Resposta em até 24h</p>
             </form>
           </div>
           {/* Secondary CTAs — below mini-form */}
@@ -947,7 +937,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-medium text-xs sm:text-sm hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
             >
               <MessageSquare className="h-3.5 w-3.5" />
-              Preencher cadastro completo
+              Ver mais detalhes
             </a>
             <a
               href={whatsappUrl}
@@ -1076,6 +1066,19 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   </div>
                 </a>
               ))}
+            </div>
+            {/* Inline info CTA — soft prompt to get more details */}
+            <div className="mt-5 flex items-center justify-between rounded-xl bg-[#C9A96E]/[0.06] border border-[#C9A96E]/10 px-4 py-3.5">
+              <p className="text-sm text-white/50">
+                <span className="text-white/70 font-medium">Quer ver valores e plantas?</span> Solicite informações gratuitas.
+              </p>
+              <a
+                href="#cadastro"
+                className="flex-shrink-0 inline-flex items-center gap-1.5 text-sm font-semibold text-[#C9A96E] hover:text-[#D4B87E] transition-colors ml-3"
+              >
+                Solicitar
+                <ChevronRight className="h-3.5 w-3.5" />
+              </a>
             </div>
           </div>
         </section>
@@ -1674,7 +1677,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 <h3 className="text-base font-semibold text-white/90 mb-2">Atendimento Exclusivo</h3>
                 <p className="text-sm text-white/50 leading-relaxed">
                   {e._count && e._count.clients > 0
-                    ? `${e._count.clients} pessoa${e._count.clients !== 1 ? 's' : ''} já demonstraram interesse. Cadastre-se e receba atendimento individualizado.`
+                    ? `${e._count.clients} pessoa${e._count.clients !== 1 ? 's' : ''} já solicitaram informações. Preencha o formulário e receba atendimento individualizado.`
                     : 'Consultoria dedicada para acompanhar cada etapa, da simulação até a entrega das chaves.'}
                 </p>
               </div>
@@ -1717,10 +1720,15 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 <Clock className="h-5 w-5 text-[#C9A96E]/50" />
                 <span className="text-xs sm:text-sm text-white/40 font-medium">Resposta em até 24h</span>
               </div>
-              {e._count && e._count.clients > 0 && (
+              {e._count && e._count.clients > 0 ? (
                 <div className="flex flex-col items-center gap-2 text-center">
                   <Users className="h-5 w-5 text-[#C9A96E]/50" />
                   <span className="text-xs sm:text-sm text-white/40 font-medium">{e._count.clients} pessoas interessadas</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <Navigation className="h-5 w-5 text-[#C9A96E]/50" />
+                  <span className="text-xs sm:text-sm text-white/40 font-medium">Agende uma visita</span>
                 </div>
               )}
             </div>
@@ -1736,7 +1744,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             <div className="flex items-center gap-4 mb-8 sm:mb-12">
               <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
               <div className="text-center">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Cadastre-se</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Solicite informações</h2>
                 <p className="text-sm text-white/40 mt-1">São apenas 2 campos obrigatórios — nome e e-mail</p>
               </div>
               <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
@@ -1752,14 +1760,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   Interessado no <span className="text-[#C9A96E]">{e.name}</span>?
                 </h2>
                 <p className="text-[#C9A96E]/80 text-sm sm:text-base font-medium mb-2">
-                  {showUrgencyBadge ? 'Vagas limitadas — garanta sua unidade antes do lançamento.' : priceText ? `A partir de ${priceText.replace('a partir de ', '')} — condições exclusivas.` : 'Oportunidade exclusiva no mercado imobiliário.'}
+                  {showUrgencyBadge ? `${status} — solicite informações e conheça as condições disponíveis.` : priceText ? `A partir de ${priceText.replace('a partir de ', '')} — condições especiais para você.` : 'Condições especiais disponíveis para este empreendimento.'}
                 </p>
                 {/* Dynamic selling points based on available data */}
                 <div className="space-y-2 mb-6 sm:mb-8">
                   <p className="text-white/50 max-w-lg text-sm sm:text-base leading-relaxed">
                     {e.landingDescription
                       ? e.landingDescription
-                      : `Cadastre-se e receba atendimento personalizado. Nossa equipe entrará em contato para agendar uma visita ao ${e.name}${info?.location?.neighborhood ? ` no ${info.location.neighborhood}` : ''} e apresentar todas as condições comerciais.`}
+                      : `Solicite informações e receba atendimento personalizado. Nossa equipe entrará em contato para apresentar o ${e.name}${info?.location?.neighborhood ? ` no ${info.location.neighborhood}` : ''}, agendar uma visita e detalhar todas as condições comerciais.`}
                   </p>
                   {/* Quick-value bullets from available data */}
                   <ul className="space-y-1.5">
@@ -1804,7 +1812,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15"
                 >
                   <Phone className="h-4 w-4" />
-                  Prefere o WhatsApp? Fale agora
+                  Prefere o WhatsApp? Fale conosco
                 </a>
               </div>
 
@@ -1835,7 +1843,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         />
                       </div>
                     )}
-                    <p className="text-sm text-white/40 mt-1">Preencha seus dados para receber atendimento</p>
+                    <p className="text-sm text-white/40 mt-1">Preencha para receber informações e condições</p>
                   </div>
 
                   {/* Error */}
@@ -2039,12 +2047,12 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     ) : formProgress === 100 ? (
                       <>
                         <Send className="h-4 w-4" />
-                        Enviar cadastro agora
+                        Receber informações
                       </>
                     ) : (
                       <>
                         <Send className="h-4 w-4" />
-                        Garantir minha unidade
+                        Quero saber mais
                       </>
                     )}
                   </button>
@@ -2066,7 +2074,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   </div>
 
                   <p className="text-xs text-white/25 text-center">
-                    Ao se cadastrar, você concorda em receber informações sobre este empreendimento.
+                    Ao solicitar informações, você concorda em receber detalhes sobre este empreendimento.
                   </p>
                 </form>
               </div>
@@ -2135,7 +2143,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
             {/* CTA after FAQ */}
             <div className="mt-8 sm:mt-10 text-center">
-              <p className="text-sm text-white/40 mb-4">Ainda tem dúvidas?</p>
+              <p className="text-sm text-white/40 mb-4">Ficou com alguma dúvida?</p>
               <a
                 href={whatsappUrl}
                 target="_blank"
@@ -2190,7 +2198,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 </li>
                 <li>
                   <a href="#cadastro" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
-                    Cadastre-se
+                    Solicitar informações
                   </a>
                 </li>
               </ul>
@@ -2289,7 +2297,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 className="flex-shrink-0 flex items-center gap-2 px-5 py-3 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-sm hover:bg-[#D4B87E] transition-all active:scale-95 shadow-lg shadow-[#C9A96E]/20"
               >
                 <Send className="h-4 w-4" />
-                Cadastrar
+                Quero saber mais
               </button>
             </div>
             <div className="h-[env(safe-area-inset-bottom)]" />
@@ -2314,7 +2322,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </div>
               <div className="flex items-center gap-3">
                 <a href="#cadastro" className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-bold hover:bg-[#D4B87E] transition-all hover:shadow-[#C9A96E]/20">
-                  Garantir minha unidade
+                  Quero saber mais
                 </a>
                 <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="px-5 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-semibold hover:bg-[#20bd5a] transition-colors">
                   WhatsApp
@@ -2346,18 +2354,16 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             {/* Icon */}
             <div className="flex items-center justify-center mb-5">
               <div className="h-14 w-14 rounded-2xl bg-[#C9A96E]/15 flex items-center justify-center">
-                <Eye className="h-7 w-7 text-[#C9A96E]" />
+                <MessageSquare className="h-7 w-7 text-[#C9A96E]" />
               </div>
             </div>
 
             {/* Heading */}
             <h3 className="text-xl font-bold text-center mb-2">
-              Espera! Antes de sair...
+              Tem interesse no {e.name}?
             </h3>
             <p className="text-sm text-white/50 text-center mb-6 leading-relaxed">
-              {showUrgencyBadge
-                ? `As vagas para o ${e.name} são limitadas. Cadastre-se agora e garanta condições exclusivas de lançamento.`
-                : `O ${e.name} tem condições especiais disponíveis. Preencha apenas nome e e-mail para receber atendimento.`}
+              Receba materiais, valores e condições comerciais diretamente no seu e-mail ou WhatsApp. Sem compromisso.
             </p>
 
             {/* CTA buttons */}
@@ -2373,7 +2379,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 className="w-full flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-sm hover:bg-[#D4B87E] transition-all shadow-lg shadow-[#C9A96E]/20"
               >
                 <Send className="h-4 w-4" />
-                Quero garantir minha unidade
+                Quero saber mais
               </a>
               <a
                 href={whatsappUrl}
