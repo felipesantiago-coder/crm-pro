@@ -191,6 +191,96 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const formSectionRef = useRef<HTMLDivElement>(null);
   const isSubmittingRef = useRef(false); // prevent double-submit
   const handleFormSubmitRef = useRef<(ev: React.FormEvent) => Promise<void> | null>(null); // for sticky button
+  const utmParamsRef = useRef<Record<string, string>>({});
+
+  // ── SAFETY NET: Auto-save form data to localStorage (debounced) ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hasData = formName.trim() || formEmail.trim() || formPhone.trim();
+    if (!hasData) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(`lp_draft_${slug || 'default'}`, JSON.stringify({
+          name: formName,
+          phone: formPhone,
+          email: formEmail,
+          customAnswers,
+          utmSource: utmParamsRef.current.utm_source || null,
+          utmMedium: utmParamsRef.current.utm_medium || null,
+          utmCampaign: utmParamsRef.current.utm_campaign || null,
+          utmContent: utmParamsRef.current.utm_content || null,
+          utmTerm: utmParamsRef.current.utm_term || null,
+          savedAt: Date.now(),
+        }));
+      } catch { /* localStorage full or unavailable */ }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [formName, formPhone, formEmail, customAnswers, slug]);
+
+  // ── SAFETY NET: Restore draft from localStorage on mount ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const draft = localStorage.getItem(`lp_draft_${slug || 'default'}`);
+      if (draft) {
+        const data = JSON.parse(draft);
+        if (data.name) setFormName(data.name);
+        if (data.phone) setFormPhone(data.phone);
+        if (data.email) setFormEmail(data.email);
+        if (data.customAnswers) setCustomAnswers(data.customAnswers);
+        localStorage.removeItem(`lp_draft_${slug || 'default'}`);
+      }
+    } catch { /* ignore */ }
+  }, [slug]);
+
+  // ── SAFETY NET: Retry failed submissions on mount ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let cancelled = false;
+    async function retryFailed() {
+      try {
+        const raw = localStorage.getItem('lp_failed_queue');
+        if (!raw) return;
+        const queue: Array<{ payload: Record<string, unknown>; timestamp: number }> = JSON.parse(raw);
+        if (!Array.isArray(queue) || queue.length === 0) return;
+        const fresh = queue.filter((item) => Date.now() - item.timestamp < 24 * 60 * 60 * 1000);
+        if (fresh.length === 0) { localStorage.removeItem('lp_failed_queue'); return; }
+        for (const item of fresh) {
+          if (cancelled) return;
+          try { await fetch('/api/enterprises/public-lead', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item.payload) }); } catch { /* will retry next visit */ }
+        }
+        localStorage.removeItem('lp_failed_queue');
+      } catch { /* ignore */ }
+    }
+    const timer = setTimeout(retryFailed, 2000);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, []);
+
+  // ── SAFETY NET: sendBeacon on page close if form has data ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    function handleUnload() {
+      const hasSignificantData = formName.trim().length >= 2 && formEmail.trim().length >= 5;
+      if (!hasSignificantData) return;
+      try {
+        const payload = new URLSearchParams();
+        payload.set('name', formName.trim());
+        if (formPhone.trim()) payload.set('phone', formPhone.replace(/\D/g, ''));
+        payload.set('email', formEmail.trim());
+        payload.set('slug', slug || '');
+        payload.set('source', 'beacon');
+        const utm = utmParamsRef.current;
+        if (utm.utm_source) payload.set('utmSource', utm.utm_source);
+        if (utm.utm_campaign) payload.set('utmCampaign', utm.utm_campaign);
+        if (utm.utm_medium) payload.set('utmMedium', utm.utm_medium);
+        if (utm.utm_content) payload.set('utmContent', utm.utm_content);
+        if (utm.utm_term) payload.set('utmTerm', utm.utm_term);
+        navigator.sendBeacon('/api/leads/safety-net', payload);
+      } catch { /* sendBeacon can fail silently */ }
+    }
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [formName, formPhone, formEmail, slug]);
 
   // NEW: Exit-intent popup (medium priority #8)
   const [exitPopupOpen, setExitPopupOpen] = useState(false);
@@ -288,6 +378,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     });
     return map;
   }, []);
+  utmParamsRef.current = utmParams;
 
   // Tracking: section visibility (IntersectionObserver)
   useEffect(() => {
@@ -547,18 +638,17 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     isSubmittingRef.current = true;
     // Generate a shared event_id for Meta CAPI deduplication (browser + server use same ID)
     const metaEventId = generateMetaEventId();
-    try {
-      // Build clean custom answers (label -> value)
-      const answersData: Record<string, string> = {};
-      if (enterprise?.formFields) {
-        for (const field of enterprise.formFields) {
-          const val = customAnswers[field.id];
-          if (val !== undefined && val !== null && String(val).trim() !== '') {
-            answersData[field.label] = String(val).trim();
-          }
+    // Build clean custom answers (label -> value) — outside try so catch can access it
+    const answersData: Record<string, string> = {};
+    if (enterprise?.formFields) {
+      for (const field of enterprise.formFields) {
+        const val = customAnswers[field.id];
+        if (val !== undefined && val !== null && String(val).trim() !== '') {
+          answersData[field.label] = String(val).trim();
         }
       }
-
+    }
+    try {
       const res = await fetch('/api/enterprises/public-lead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -580,6 +670,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       const data = await res.json();
 
       if (res.ok && data.success) {
+        // SAFETY NET: Clear draft data on success
+        try { localStorage.removeItem(`lp_draft_${slug || 'default'}`); } catch { /* ignore */ }
+
         // Track CRM pixel event + identify visitor with new lead
         if (typeof window !== 'undefined' && window.CRMPIXEL) {
           window.CRMPIXEL.track('form_submit', { enterprise: enterprise?.name });
@@ -607,7 +700,28 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       } else {
         setFormError(data.error || 'Erro ao enviar. Tente novamente.');
       }
-    } catch {
+    } catch (submitErr) {
+      // SAFETY NET: Save failed submission to localStorage retry queue
+      try {
+        const failQueueRaw = localStorage.getItem('lp_failed_queue');
+        const failQueue: Array<{ payload: Record<string, unknown>; timestamp: number }> = failQueueRaw ? JSON.parse(failQueueRaw) : [];
+        failQueue.push({
+          payload: {
+            name: formName.trim(),
+            phone: cleanPhone.length >= 10 ? cleanPhone : undefined,
+            email: cleanEmail,
+            slug: slug || undefined,
+            customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined,
+            utmSource: utmParams.utm_source || undefined,
+            utmMedium: utmParams.utm_medium || undefined,
+            utmCampaign: utmParams.utm_campaign || undefined,
+            utmContent: utmParams.utm_content || undefined,
+            utmTerm: utmParams.utm_term || undefined,
+          },
+          timestamp: Date.now(),
+        });
+        localStorage.setItem('lp_failed_queue', JSON.stringify(failQueue));
+      } catch { /* localStorage unavailable */ }
       setFormError('Erro de conexão. Verifique sua internet e tente novamente.');
     } finally {
       setFormSubmitting(false);
