@@ -10,7 +10,7 @@ interface CRMPIXEL {
   trackFAQOpen(index: number, question: string): void;
   trackFormFocus(field: string): void;
   trackFormBlur(field: string, durationMs?: number): void;
-  _setFormFieldsFilled(count: number): void;
+  _setFormFieldsFilled(countOrFields: number | Record<string, string>): void;
 }
 
 declare global {

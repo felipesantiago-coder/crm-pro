@@ -92,6 +92,10 @@ function ScrollReveal({ children, className = '' }: React.PropsWithChildren<{ cl
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return;
+    }
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -199,17 +203,22 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const [isFormSectionVisible, setIsFormSectionVisible] = useState(false);
 
   // Meta Pixel helper — fires fbq events only if Meta Pixel is loaded
-  // Supports optional eventId for CAPI deduplication
+  // Wrapped in try/catch to prevent third-party script errors from blocking the page
   const trackMetaPixel = useCallback((event: string, data?: Record<string, unknown>, eventId?: string) => {
-    if (typeof window !== 'undefined' && typeof (window as unknown as Record<string, unknown>).fbq === 'function') {
-      const fbq = (window as unknown as Record<string, unknown>).fbq as (...args: unknown[]) => void;
-      if (data && eventId) {
-        fbq('track', event, data, { eventID: eventId });
-      } else if (data) {
-        fbq('track', event, data);
-      } else {
-        fbq('track', event);
+    try {
+      if (typeof window !== 'undefined' && typeof (window as unknown as Record<string, unknown>).fbq === 'function') {
+        const fbq = (window as unknown as Record<string, unknown>).fbq as (...args: unknown[]) => void;
+        if (data && eventId) {
+          fbq('track', event, data, { eventID: eventId });
+        } else if (data) {
+          fbq('track', event, data);
+        } else {
+          fbq('track', event);
+        }
       }
+    } catch (e) {
+      // Meta Pixel errors should never block page functionality
+      console.warn('[Meta Pixel] Track error:', e instanceof Error ? e.message : e);
     }
   }, []);
 
@@ -282,6 +291,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   // Tracking: section visibility (IntersectionObserver)
   useEffect(() => {
     if (typeof window === 'undefined' || !window.CRMPIXEL) return;
+    if (typeof IntersectionObserver === 'undefined') return;
     const sectionNames: Record<string, string> = {
       'galeria': 'galeria',
       'ficha técnica': 'ficha-tecnica',
@@ -382,7 +392,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     fetch(`/api/lead-queues/next-user?slug=${encodeURIComponent(slug)}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.hasQueue && data.userPhone) {
+        if (data.hasQueue && data.userPhone && data.userId && data.userName) {
           setQueueUser({ userId: data.userId, userName: data.userName, userPhone: data.userPhone });
         }
       })
@@ -1279,7 +1289,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     </div>
                     <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Plantas</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85">{(info?.apartmentTypes?.length || 0) > 0 ? `${info!.apartmentTypes.length} tipo${info!.apartmentTypes.length > 1 ? 's' : ''} de unidade` : 'Consulte'}</p>
+                  <p className="text-sm font-semibold text-white/85">{(info?.apartmentTypes?.length || 0) > 0 ? `${info?.apartmentTypes.length} tipo${(info?.apartmentTypes.length ?? 0) > 1 ? 's' : ''} de unidade` : 'Consulte'}</p>
                   {areaRange && <p className="text-xs text-white/40 mt-1">{areaRange}</p>}
                 </div>
 
@@ -2316,7 +2326,18 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     if (typeof form.requestSubmit === 'function') {
                       form.requestSubmit();
                     } else {
-                      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                      // Safari < 16.4 fallback: use HTMLFormElement.submit() for
+                      // native validation, then call React handler if validation passes
+                      try {
+                        if (form.checkValidity()) {
+                          form.requestSubmit?.() || form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                        } else {
+                          // Trigger native validation UI (shows inline error messages)
+                          form.reportValidity();
+                        }
+                      } catch {
+                        form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                      }
                     }
                     setTimeout(() => { isSubmittingRef.current = false; }, 3000);
                   }
