@@ -28,6 +28,9 @@ export function useClientErrorCapture({ slug, enabled = true }: ErrorCaptureOpti
     }) => {
       if (typeof window === 'undefined' || !enabled) return;
 
+      // Ignore noise from Facebook/Instagram In-App Browser injected scripts
+      if (errorData.source?.startsWith('iabjs://')) return;
+
       // Dedup: skip if same message+source was seen in the last 10s
       const dedupKey = `${errorData.type}:${errorData.message}:${errorData.source}`;
       const now = Date.now();
@@ -92,6 +95,8 @@ export function useClientErrorCapture({ slug, enabled = true }: ErrorCaptureOpti
     // --- window.onerror ---
     const prevOnerror = window.onerror;
     window.onerror = (message, source, lineno, colno, error) => {
+      // Skip Facebook/Instagram IAB injected script errors early
+      if (source?.startsWith('iabjs://')) return false;
       sendError({
         type: 'js_error',
         message: String(message),
