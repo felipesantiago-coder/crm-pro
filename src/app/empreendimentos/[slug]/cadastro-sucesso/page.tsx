@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useState, useMemo } from 'react';
 import {
   CheckCircle2, Phone, ArrowLeft, Building2, MessageSquare,
-  Loader2, User, Sparkles, ShieldCheck, Clock, Timer,
+  Loader2, User, Sparkles, ShieldCheck, Clock,
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 
@@ -89,17 +89,6 @@ function CadastroSucessoContent() {
   const [clientName, setClientName] = useState('');
   const [assignedUser, setAssignedUser] = useState<AssignedUser | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Countdown urgency timer (5 min)
-  const [countdown, setCountdown] = useState(300);
-  useEffect(() => {
-    if (countdown <= 0) return;
-    const t = setInterval(() => setCountdown((p) => Math.max(0, p - 1)), 1000);
-    return () => clearInterval(t);
-  }, [countdown]);
-  const countdownText = countdown > 0
-    ? `Sua vaga reservada por ${Math.floor(countdown / 60)}:${(countdown % 60).toString().padStart(2, '0')}`
-    : 'Vaga disponivel - fale agora';
 
   useEffect(() => {
     const name = searchParams.get('empreendimento') || '';
@@ -285,10 +274,7 @@ function CadastroSucessoContent() {
                     <p className="text-xs text-white/50">Fale agora com {assignedUser.userName}</p>
                   </div>
                 </div>
-                <div className="flex items-center justify-center gap-2 mb-5">
-                  <Timer className="h-4 w-4 text-[#C9A96E]/70" />
-                  <span className="text-xs text-white/40">{countdownText}</span>
-                </div>
+
                 <a
                   href={whatsappUrl}
                   target="_blank"
