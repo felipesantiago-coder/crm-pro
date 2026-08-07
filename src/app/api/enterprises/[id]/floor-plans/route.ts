@@ -13,8 +13,6 @@ const ALLOWED_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/avif',
-  'image/heic',
-  'image/heif',
 ]);
 
 async function compressImage(buffer: Buffer): Promise<Buffer> {
@@ -118,7 +116,7 @@ export async function POST(
     }
     if (!ALLOWED_TYPES.has(file.type)) {
       return NextResponse.json(
-        { error: 'Tipo de arquivo inválido. Use WebP, JPEG, PNG, AVIF ou HEIC.' },
+        { error: 'Tipo de arquivo inválido. Use WebP, JPEG, PNG ou AVIF.' },
         { status: 400 },
       );
     }
