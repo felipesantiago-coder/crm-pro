@@ -8,7 +8,7 @@ import {
   X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Copy, Check, User, Send, AlertCircle,
-  Shield, ChevronDown, CalendarDays, Users, Layers, Car, LayoutGrid,
+  Shield, ChevronDown, CalendarDays, TrendingUp, Users, Layers, Car, LayoutGrid,
 } from 'lucide-react';
 
 /* ================================================================
@@ -437,22 +437,22 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     };
     document.addEventListener('mouseleave', mouseHandler);
 
-    // Mobile: tab/page visibility change (user switches app or closes tab)
+    // Mobile: page visibility hidden (user switches app/tab)
+    // Debounced 3s — avoids false positives when user briefly switches to WhatsApp
+    let mobileTimer: ReturnType<typeof setTimeout> | null = null;
     const visibilityHandler = () => {
       if (document.visibilityState === 'hidden') {
-        showExitPopup();
+        mobileTimer = setTimeout(showExitPopup, 3000);
+      } else {
+        if (mobileTimer) { clearTimeout(mobileTimer); mobileTimer = null; }
       }
     };
     document.addEventListener('visibilitychange', visibilityHandler);
 
-    // Mobile: pagehide (tab close / navigation away)
-    const pageHideHandler = () => { showExitPopup(); };
-    window.addEventListener('pagehide', pageHideHandler);
-
     return () => {
       document.removeEventListener('mouseleave', mouseHandler);
       document.removeEventListener('visibilitychange', visibilityHandler);
-      window.removeEventListener('pagehide', pageHideHandler);
+      if (mobileTimer) clearTimeout(mobileTimer);
     };
   }, [formSubmitting, enterprise?.name]);
 
