@@ -625,9 +625,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       return;
     }
     const cleanPhone = formPhone.replace(/\D/g, '');
-    // Phone is now optional — if provided, validate format
-    if (cleanPhone.length > 0 && cleanPhone.length < 10) {
-      setFormError('Informe um telefone válido com DDD (mínimo 10 dígitos) ou deixe em branco.');
+    if (cleanPhone.length < 10) {
+      setFormError('Informe um telefone válido com DDD (mínimo 10 dígitos).');
       return;
     }
 
@@ -664,7 +663,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formName.trim(),
-          phone: cleanPhone.length >= 10 ? cleanPhone : undefined,
+          phone: cleanPhone,
           email: cleanEmail,
           slug: slug || undefined,
           customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined,
@@ -718,7 +717,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         failQueue.push({
           payload: {
             name: formName.trim(),
-            phone: cleanPhone.length >= 10 ? cleanPhone : undefined,
+            phone: cleanPhone,
             email: cleanEmail,
             slug: slug || undefined,
             customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined,
@@ -1056,10 +1055,25 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                     }
                     return;
                   }
-                  if (heroPhone.length < 10 && heroPhone.length > 0) return;
+                  if (heroPhone.length < 10) {
+                    setFormName(heroName);
+                    const form = document.getElementById('landing-form') as HTMLFormElement | null;
+                    if (form) {
+                      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      setTimeout(() => {
+                        const phoneInput = document.getElementById('form-phone') as HTMLInputElement | null;
+                        if (phoneInput) {
+                          phoneInput.focus();
+                          phoneInput.classList.add('ring-2', 'ring-[#C9A96E]');
+                          setTimeout(() => phoneInput.classList.remove('ring-2', 'ring-[#C9A96E]'), 3000);
+                        }
+                      }, 600);
+                    }
+                    return;
+                  }
                   // Sync to main form and scroll to it
                   setFormName(heroName);
-                  setFormPhone(heroPhone.length >= 10 ? (document.getElementById('hero-phone') as HTMLInputElement)?.value || '' : '');
+                  setFormPhone((document.getElementById('hero-phone') as HTMLInputElement)?.value || '');
                   // CRITICAL FIX: No longer generates fake .temp email.
                   // User must fill email in the main form — scroll there and highlight.
                   const form = document.getElementById('landing-form') as HTMLFormElement | null;
@@ -1102,6 +1116,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                     inputMode="numeric"
                     placeholder="(11) 99999-9999"
                     autoComplete="tel"
+                    required
                     onChange={(ev) => {
                       const digits = ev.target.value.replace(/\D/g, '').slice(0, 11);
                       let masked = '';
@@ -2109,10 +2124,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                     </div>
                   </div>
 
-                  {/* Phone — now OPTIONAL to reduce 41% form abandonment */}
+                  {/* Phone — required for lead contact */
                   <div>
                     <label htmlFor="form-phone" className="block text-sm font-medium text-white/70 mb-1.5">
-                      Telefone <span className="text-white/30 font-normal text-xs">(opcional)</span>
+                      Telefone *
                     </label>
                     <p className="text-[11px] text-white/25 mb-2 -mt-1">Seu consultor poderá entrar em contato mais rapidamente.</p>
                     <div className="relative">
@@ -2121,6 +2136,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                         id="form-phone"
                         type="tel"
                         value={formPhone}
+                        required
                         onChange={(ev) => { handlePhoneChange(ev.target.value); updatePixelFormFields(formName, ev.target.value, formEmail, customAnswers); }}
                         onFocus={() => { fieldFocusTime.current.phone = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('phone'); }}
                         onBlur={() => { const t = fieldFocusTime.current.phone || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('phone', Date.now() - t); }}
