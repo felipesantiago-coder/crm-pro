@@ -1753,8 +1753,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                           />
                         </div>
                         {plan.altText && (
-                          <div className="px-3 py-2 border-t border-white/[0.04]">
-                            <p className="text-[11px] sm:text-xs text-white/50 leading-tight line-clamp-2">{plan.altText}</p>
+                          <div className="px-3 py-2.5 border-t border-white/[0.06] bg-white/[0.02]">
+                            <p className="text-xs sm:text-sm text-white/80 font-medium leading-snug line-clamp-2">{plan.altText}</p>
                           </div>
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-3">
@@ -2656,9 +2656,11 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
             onClick={(ev) => ev.stopPropagation()}
           />
           {enterprise.floorPlans[activeFloorIdx]?.altText && (
-            <p className="mt-3 sm:mt-4 text-sm sm:text-base text-white/70 text-center max-w-lg px-4 leading-relaxed">
-              {enterprise.floorPlans[activeFloorIdx].altText}
-            </p>
+            <div className="mt-3 sm:mt-4 max-w-lg px-4">
+              <p className="text-sm sm:text-base text-white/90 font-medium text-center leading-relaxed">
+                {enterprise.floorPlans[activeFloorIdx].altText}
+              </p>
+            </div>
           )}
           {enterprise.floorPlans.length > 1 && (
             <>
