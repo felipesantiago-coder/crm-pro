@@ -8,7 +8,7 @@ import {
   X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Copy, Check, User, Send, AlertCircle,
-  Shield, ChevronDown, CalendarDays, TrendingUp, Users, Layers, Car, LayoutGrid,
+  Shield, ChevronDown, CalendarDays, Users, Layers, Car, LayoutGrid,
 } from 'lucide-react';
 
 /* ================================================================
@@ -1116,7 +1116,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   <span className="hidden sm:inline">Quero saber mais</span>
                 </button>
               </div>
-              <p className="text-[11px] text-white/25 mt-2 text-center sm:text-left">Sem compromisso · Resposta em até 24h</p>
+              <p className="text-[11px] text-white/25 mt-2 text-center sm:text-left">Sem compromisso · Atendimento imediato</p>
             </form>
           </div>
           {/* Secondary CTAs — below mini-form */}
@@ -1146,10 +1146,10 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   /* tracking errors must never block navigation */
                 }
               }}
-              className="min-h-[44px] inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-medium text-xs sm:text-sm hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
+              className="min-h-[44px] inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#25D366]/15 border border-[#25D366]/30 text-[#25D366] font-semibold text-xs sm:text-sm hover:bg-[#25D366]/25 transition-all"
             >
               <Phone className="h-3.5 w-3.5" />
-              Falar com consultor
+              Falar pelo WhatsApp
             </a>
             {e._count && e._count.clients > 0 ? (
               <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/30" style={{ animationDelay: '0.2s' }}>
@@ -1157,17 +1157,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#C9A96E] opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-[#C9A96E]" />
                 </span>
-                {e._count.clients} pessoa{e._count.clients !== 1 ? 's' : ''} interessada{e._count.clients !== 1 ? 's' : ''}
+                <span className="font-medium">{e._count.clients} pessoa{e._count.clients !== 1 ? 's' : ''}</span> já cadastrada{e._count.clients !== 1 ? 's' : ''} — não fique de fora
               </div>
-            ) : (
-              <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/30" style={{ animationDelay: '0.2s' }}>
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-                </span>
-                <span>{socialProofPool[socialProofIdx]?.name} {socialProofPool[socialProofIdx]?.action.toLowerCase()} há {socialProofPool[socialProofIdx]?.time}</span>
-              </div>
-            )}
+            ) : null}
           </div>
 
           {/* Metrics overlay bar */}
@@ -2042,7 +2034,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         />
                       </div>
                     )}
-                    <p className="text-sm text-white/40 mt-1">Preencha para receber informações e condições</p>
+                    <p className="text-sm text-white/40 mt-1">Cadastre-se e receba valores, plantas e condições especiais</p>
                   </div>
 
                   {/* Error */}
@@ -2268,7 +2260,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-white/30">
                       <Clock className="h-3.5 w-3.5 text-[#C9A96E]/50" />
-                      <span>Atendimento em até 24h</span>
+                      <span>Resposta rápida</span>
                     </div>
                   </div>
 
@@ -2490,7 +2482,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-white/50 truncate">{e.name}</p>
-                <p className="text-[11px] text-white/30">Apenas nome + e-mail</p>
+                <p className="text-[11px] text-white/30">Preencha e envie em segundos</p>
               </div>
               <button
                 type="button"

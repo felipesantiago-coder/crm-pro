@@ -36,44 +36,35 @@ export default function EmpreendimentosLayout({
 }) {
   return (
     <>
+      {/* Preconnect: resolve DNS/TLS early for Meta Pixel */}
+      <link rel="preconnect" href="https://connect.facebook.net" />
+
       {/* Meta Pixel (Facebook) — fires PageView on load */}
       {META_PIXEL_ID && (
-        <>
-          <Script
-            id="meta-pixel-init"
-            strategy="afterInteractive"
-            dangerouslySetInnerHTML={{
-              __html: `
-                !function(f,b,e,v,n,t,s)
-                {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-                n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-                if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-                n.queue=[];t=b.createElement(e);t.async=!0;
-                t.src='https://connect.facebook.net/en_US/fbevents.js';
-                s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window, document,'script');
-                fbq('init', '${META_PIXEL_ID}');
-                fbq('track', 'PageView');
-              `,
-            }}
-          />
-          {/* Meta Pixel noscript fallback */}
-          <noscript>
-            <img
-              height="1"
-              width="1"
-              style={{ display: 'none' }}
-              src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
-              alt=""
-            />
-          </noscript>
-        </>
+        <Script
+          id="meta-pixel-init"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              !function(f,b,e,v,n,t,s)
+              {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+              n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+              if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+              n.queue=[];t=b.createElement(e);t.async=!0;
+              t.src='https://connect.facebook.net/en_US/fbevents.js';
+              s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window, document,'script');
+              fbq('init', '${META_PIXEL_ID}');
+              fbq('track', 'PageView');
+            `,
+          }}
+        />
       )}
 
-      {/* CRM Tracking Pixel */}
+      {/* CRM Tracking Pixel — lazyOnload to avoid blocking first paint */}
       <Script
         src="/pixel.js"
         data-site-id="default"
-        strategy="afterInteractive"
+        strategy="lazyOnload"
       />
       {children}
     </>
