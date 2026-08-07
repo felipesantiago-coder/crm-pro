@@ -565,6 +565,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll, { passive: true });
+    // Run once on mount so floating WhatsApp bar shows immediately on mobile
+    onScroll();
     return () => {
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
