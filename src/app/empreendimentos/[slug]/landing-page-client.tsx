@@ -878,7 +878,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
      Render
      ================================================================ */
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-white overflow-x-hidden [word-break:break-word] overscroll-y-contain">
+    <div className="min-h-screen bg-[#0A0A0A] text-white [word-break:break-word]">
 
       {/* ── Custom Keyframes ────────────────────────────── */}
       <style>{`
