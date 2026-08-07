@@ -2124,7 +2124,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                     </div>
                   </div>
 
-                  {/* Phone — required for lead contact */
+                  {/* Phone — required for lead contact */}
                   <div>
                     <label htmlFor="form-phone" className="block text-sm font-medium text-white/70 mb-1.5">
                       Telefone *
