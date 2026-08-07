@@ -116,6 +116,29 @@ export async function DELETE(
       // Continue with DB deletion even if storage cleanup fails
     }
 
+    // 1b. Clean up floor plans from Supabase Storage
+    try {
+      const floorPlans = await db.enterpriseFloorPlan.findMany({
+        where: { enterpriseId: id },
+        select: { url: true },
+      });
+      if (floorPlans.length > 0) {
+        const paths: string[] = [];
+        for (const fp of floorPlans) {
+          try {
+            const url = new URL(fp.url);
+            const storagePath = url.pathname.split('/enterprise-images/')[1];
+            if (storagePath) paths.push(storagePath);
+          } catch { /* skip malformed URLs */ }
+        }
+        if (paths.length > 0) {
+          await supabaseServer.storage.from('enterprise-images').remove(paths);
+        }
+      }
+    } catch (storageErr) {
+      console.warn('[Enterprise DELETE] Erro ao limpar plantas do Storage:', storageErr);
+    }
+
     // 2. Set enterpriseId to null on all linked clients and delete enterprise atomically
     await db.$transaction([
       db.client.updateMany({

@@ -151,13 +151,19 @@ const faqItems = [
 /* ================================================================
    Page
    ================================================================ */
-export default function LandingPageClient({ params }: { params: Promise<{ slug: string }> }) {
+interface LandingPageClientProps {
+  params: Promise<{ slug: string }>;
+  initialData?: Enterprise | null;
+  initialQueueUser?: { userId: string; userName: string; userPhone: string | null } | null;
+}
+
+export default function LandingPageClient({ params, initialData, initialQueueUser }: LandingPageClientProps) {
   const { slug } = React.use(params);
 
   // ── ERROR CAPTURE: catches ALL JS errors on this page ──
   useClientErrorCapture({ slug });
-  const [enterprise, setEnterprise] = useState<Enterprise | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [enterprise, setEnterprise] = useState<Enterprise | null>(initialData ?? null);
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
   const [activeImgIdx, setActiveImgIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -165,7 +171,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const [floorLightboxOpen, setFloorLightboxOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [queueUser, setQueueUser] = useState<{ userId: string; userName: string; userPhone: string | null } | null>(null);
+  const [queueUser, setQueueUser] = useState<{ userId: string; userName: string; userPhone: string | null } | null>(initialQueueUser ?? null);
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -482,9 +488,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Fetch queue user for dynamic WhatsApp
+  // Fetch queue user for dynamic WhatsApp (skip if already provided via SSR)
   useEffect(() => {
-    if (!slug) return;
+    if (!slug || queueUser) return;
     fetch(`/api/lead-queues/next-user?slug=${encodeURIComponent(slug)}`)
       .then((r) => r.json())
       .then((data) => {
@@ -493,7 +499,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
         }
       })
       .catch(() => { /* silent — fallback to generic WhatsApp */ });
-  }, [slug]);
+  }, [slug, queueUser]);
 
   // Lightbox keyboard navigation & scroll lock (hook must be before conditional returns)
   useEffect(() => {
