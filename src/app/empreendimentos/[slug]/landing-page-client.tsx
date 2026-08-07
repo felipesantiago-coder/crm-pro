@@ -604,18 +604,6 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     }
   }, [queueUser?.userId, slug]);
 
-  // Adblocker-resistant WhatsApp navigation — AdGuard blocks <a href="https://wa.me/...">
-  // Using button + window.open avoids having wa.me in the DOM as an href attribute
-  const openWhatsApp = useCallback((source: string) => {
-    try {
-      registerWhatsAppClick(source);
-      if (typeof window !== 'undefined' && window.CRMPIXEL) {
-        window.CRMPIXEL.track('whatsapp_click', { enterprise: e.name, source, userId: queueUser?.userId });
-      }
-      trackMetaPixel('Contact', { content_name: e.name, content_category: 'empreendimento' });
-    } catch { /* tracking errors must never block navigation */ }
-    window.open(whatsappUrl, '_blank', 'noopener');
-  }, [whatsappUrl, e.name, queueUser?.userId, registerWhatsAppClick, trackMetaPixel]);
 
   const handleCopyLink = async () => {
     try {
@@ -797,6 +785,20 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
   /* ─── Derived ─────────────────────────────────────────── */
   const e = enterprise;
+
+  // Adblocker-resistant WhatsApp navigation — AdGuard blocks <a href="https://wa.me/...">
+  // Using button + window.open avoids having wa.me in the DOM as an href attribute
+  const openWhatsApp = useCallback((source: string) => {
+    try {
+      registerWhatsAppClick(source);
+      if (typeof window !== 'undefined' && window.CRMPIXEL) {
+        window.CRMPIXEL.track('whatsapp_click', { enterprise: e?.name, source, userId: queueUser?.userId });
+      }
+      trackMetaPixel('Contact', { content_name: e?.name, content_category: 'empreendimento' });
+    } catch { /* tracking errors must never block navigation */ }
+    window.open(whatsappUrl, '_blank', 'noopener');
+  }, [whatsappUrl, e?.name, queueUser?.userId, registerWhatsAppClick, trackMetaPixel]);
+
   const images = e.images.length > 0 ? e.images : [];
   const heroImage = e.imageUrl || images[0]?.url || null;
   const info = e.cachedInfo;
@@ -2574,7 +2576,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               </a>
               <button
                 type="button"
-                onClick={() => openWhatsApp('exit_popup')}
+                onClick={() => { setExitPopupOpen(false); openWhatsApp('exit_popup'); }}
                 className="w-full min-h-[44px] flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors cursor-pointer"
               >
                 <Phone className="h-4 w-4" />
