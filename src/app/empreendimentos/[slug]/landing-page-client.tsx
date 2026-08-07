@@ -1084,18 +1084,18 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
             >
               <div className="flex flex-col sm:flex-row gap-2.5">
                 <div className="flex-1 relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
                   <input
                     id="hero-name"
                     type="text"
                     placeholder="Seu nome"
                     autoComplete="name"
                     required
-                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3.5 rounded-xl bg-white/[0.08] border border-white/[0.12] text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3.5 rounded-xl bg-white/[0.15] border border-white/[0.20] text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#C9A96E]/60 focus:ring-1 focus:ring-[#C9A96E]/30 transition-all
                   />
                 </div>
                 <div className="flex-1 relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
                   <input
                     id="hero-phone"
                     type="tel"
@@ -1110,7 +1110,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                       if (digits.length > 7) masked += `-${digits.slice(7)}`;
                       ev.target.value = masked;
                     }}
-                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3.5 rounded-xl bg-white/[0.08] border border-white/[0.12] text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3.5 rounded-xl bg-white/[0.15] border border-white/[0.20] text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#C9A96E]/60 focus:ring-1 focus:ring-[#C9A96E]/30 transition-all"
                   />
                 </div>
                 <button
@@ -2068,10 +2068,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                         placeholder="Seu nome completo"
                         autoComplete="name"
                         required
-                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.04] border text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-1 transition-all ${
+                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.10] border text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-all ${
                           formName.trim().length >= 2
                             ? 'border-emerald-500/40 focus:border-emerald-500/50 focus:ring-emerald-500/20'
-                            : 'border-white/[0.08] focus:border-[#C9A96E]/50 focus:ring-[#C9A96E]/20'
+                            : 'border-white/[0.15] focus:border-[#C9A96E]/60 focus:ring-[#C9A96E]/30'
                         }`}
                       />
                       {formName.trim().length >= 2 && (
@@ -2097,10 +2097,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                         placeholder="seuemail@exemplo.com"
                         autoComplete="email"
                         required
-                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.04] border text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-1 transition-all ${
+                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.10] border text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-all ${
                           /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formEmail.trim().toLowerCase())
                             ? 'border-emerald-500/40 focus:border-emerald-500/50 focus:ring-emerald-500/20'
-                            : 'border-white/[0.08] focus:border-[#C9A96E]/50 focus:ring-[#C9A96E]/20'
+                            : 'border-white/[0.15] focus:border-[#C9A96E]/60 focus:ring-[#C9A96E]/30'
                         }`}
                       />
                       {/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formEmail.trim().toLowerCase()) && (
@@ -2127,10 +2127,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                         placeholder="(11) 99999-9999"
                         inputMode="numeric"
                         autoComplete="tel"
-                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.04] border text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-1 transition-all ${
+                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.10] border text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-all ${
                           formPhone.replace(/\D/g, '').length >= 10
                             ? 'border-emerald-500/40 focus:border-emerald-500/50 focus:ring-emerald-500/20'
-                            : 'border-white/[0.08] focus:border-[#C9A96E]/50 focus:ring-[#C9A96E]/20'
+                            : 'border-white/[0.15] focus:border-[#C9A96E]/60 focus:ring-[#C9A96E]/30'
                         }`}
                       />
                       {formPhone.replace(/\D/g, '').length >= 10 && (
@@ -2162,7 +2162,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                                 onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.value }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                 placeholder={field.placeholder || undefined}
                                 required={field.required}
-                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.10] border border-white/[0.15] text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#C9A96E]/60 focus:ring-1 focus:ring-[#C9A96E]/30 transition-all"
                               />
                             )}
 
@@ -2174,7 +2174,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                                 onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.value }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                 placeholder={field.placeholder || undefined}
                                 required={field.required}
-                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.10] border border-white/[0.15] text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#C9A96E]/60 focus:ring-1 focus:ring-[#C9A96E]/30 transition-all"
                               />
                             )}
 
@@ -2186,7 +2186,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                                 placeholder={field.placeholder || undefined}
                                 required={field.required}
                                 rows={3}
-                                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all resize-none"
+                                className="w-full px-4 py-3 rounded-xl bg-white/[0.10] border border-white/[0.15] text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#C9A96E]/60 focus:ring-1 focus:ring-[#C9A96E]/30 transition-all resize-none"
                               />
                             )}
 
@@ -2196,7 +2196,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                                 value={val}
                                 onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.value }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                 required={field.required}
-                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all appearance-none cursor-pointer"
+                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.10] border border-white/[0.15] text-sm text-white focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all appearance-none cursor-pointer"
                                 style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
                               >
                                 <option value="" disabled className="bg-[#1a1a1a]">{field.placeholder || 'Selecione uma opção...'}</option>
