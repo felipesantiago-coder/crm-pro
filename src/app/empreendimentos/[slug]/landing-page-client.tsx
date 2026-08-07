@@ -1091,7 +1091,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                     placeholder="Seu nome"
                     autoComplete="name"
                     required
-                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3.5 rounded-xl bg-white/[0.15] border border-white/[0.20] text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#C9A96E]/60 focus:ring-1 focus:ring-[#C9A96E]/30 transition-all
+                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3.5 rounded-xl bg-white/[0.15] border border-white/[0.20] text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#C9A96E]/60 focus:ring-1 focus:ring-[#C9A96E]/30 transition-all"
                   />
                 </div>
                 <div className="flex-1 relative">
