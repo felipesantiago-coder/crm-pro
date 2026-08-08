@@ -406,7 +406,7 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT "utmContent") as creatives_count
           FROM "tracking_events"
           WHERE "createdAt" >= ${periodStartDate}
-        `,
+        `),
 
         // Query 2: Top campaigns from pixel data
         safe(db.$queryRaw<{
@@ -423,7 +423,7 @@ export async function GET(request: NextRequest) {
           GROUP BY COALESCE("utmCampaign", '(direto)')
           ORDER BY leads DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 3: Bounce rate
         safe(db.$queryRaw<{ bounce_rate: string | number }[]>`
@@ -435,7 +435,7 @@ export async function GET(request: NextRequest) {
             WHERE "createdAt" >= ${periodStartDate}
             GROUP BY "visitorId"
           ) sub
-        `,
+        `),
 
         // Query 4: Scroll depth distribution
         safe(db.$queryRaw<{ depth: number; visitors: string | number }[]>`
@@ -448,7 +448,7 @@ export async function GET(request: NextRequest) {
             AND metadata->>'depth' IS NOT NULL
           GROUP BY (metadata->>'depth')::int
           ORDER BY depth
-        `,
+        `),
 
         // Query 5: Average time on page
         safe(db.$queryRaw<{ avg_seconds: string | number; median_seconds: string | number }[]>`
@@ -459,7 +459,7 @@ export async function GET(request: NextRequest) {
           WHERE "eventType" = 'pageview_duration'
             AND "createdAt" >= ${periodStartDate}
             AND metadata->>'time_on_page' IS NOT NULL
-        `,
+        `),
 
         // Query 6: WhatsApp click breakdown
         safe(db.$queryRaw<{ source: string; clicks: string | number; unique_visitors: string | number }[]>`
@@ -472,7 +472,7 @@ export async function GET(request: NextRequest) {
             AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE(metadata->>'source', '(principal)')
           ORDER BY clicks DESC
-        `,
+        `),
 
         // Query 7: Device breakdown
         safe(db.$queryRaw<{ device: string; visitors: string | number; leads: string | number }[]>`
@@ -497,7 +497,7 @@ export async function GET(request: NextRequest) {
               ELSE 'Desktop'
             END
           ORDER BY visitors DESC
-        `,
+        `),
 
         // Query 8: Referrer breakdown
         safe(db.$queryRaw<{ referrer: string; visitors: string | number; leads: string | number }[]>`
@@ -529,7 +529,7 @@ export async function GET(request: NextRequest) {
             END
           ORDER BY visitors DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 9: Top landing pages with conversion
         safe(db.$queryRaw<{ url: string; views: string | number; leads: string | number }[]>`
@@ -544,7 +544,7 @@ export async function GET(request: NextRequest) {
           GROUP BY COALESCE("pageUrl", '(desconhecida)')
           ORDER BY COUNT(*) DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 10: Full funnel stages
         safe(db.$queryRaw<{ stage: string; count: string | number }[]>`
@@ -570,7 +570,7 @@ export async function GET(request: NextRequest) {
           SELECT 'engagement' AS stage, (SELECT cnt FROM engaged) AS count
           UNION ALL
           SELECT 'lead' AS stage, (SELECT cnt FROM leads) AS count
-        `,
+        `),
 
         // Query 11: Web Vitals
         safe(db.$queryRaw<{ metric: string; avg_value: string | number; count: string | number }[]>`
@@ -585,7 +585,7 @@ export async function GET(request: NextRequest) {
             AND metadata->>'value' IS NOT NULL
           GROUP BY metadata->>'metric'
           ORDER BY avg_value::numeric DESC
-        `,
+        `),
 
         // Query 12: Gallery engagement
         safe(db.$queryRaw<{ total_clicks: string | number; visitors_clicked: string | number; avg_images: string | number }[]>`
@@ -596,7 +596,7 @@ export async function GET(request: NextRequest) {
           FROM "tracking_events"
           WHERE "eventType" = 'gallery_click'
             AND "createdAt" >= ${periodStartDate}
-        `,
+        `),
 
         // Query 13: FAQ engagement
         safe(db.$queryRaw<{ question_index: number; question: string; opens: string | number }[]>`
@@ -609,7 +609,7 @@ export async function GET(request: NextRequest) {
             AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE((metadata->>'question_index')::int, 0), COALESCE(metadata->>'question', '(sem texto)')
           ORDER BY opens DESC
-        `,
+        `),
 
         // Query 14: Form field drop-off
         safe(db.$queryRaw<{ field: string; avg_time_ms: string | number; focus_count: string | number; blur_count: string | number }[]>`
@@ -623,7 +623,7 @@ export async function GET(request: NextRequest) {
             AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE(metadata->>'field', '(desconhecido)')
           ORDER BY avg_time_ms::numeric DESC
-        `,
+        `),
 
         // Query 15: Section views
         safe(db.$queryRaw<{ section: string; visitors: string | number }[]>`
@@ -635,7 +635,7 @@ export async function GET(request: NextRequest) {
             AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE(metadata->>'section', '(desconhecida)')
           ORDER BY visitors DESC
-        `,
+        `),
 
         // Query 16: Exit intent, JS errors, print, form abandon counts
         safe(db.$queryRaw<{
@@ -651,7 +651,7 @@ export async function GET(request: NextRequest) {
             COUNT(*) FILTER (WHERE "eventType" = 'form_abandon')::text as form_abandons
           FROM "tracking_events"
           WHERE "createdAt" >= ${periodStartDate}
-        `,
+        `),
 
         // Query 17: Timezone breakdown
         safe(db.$queryRaw<{ timezone: string; visitors: string | number }[]>`
@@ -665,7 +665,7 @@ export async function GET(request: NextRequest) {
           GROUP BY COALESCE(metadata->>'timezone', '(desconhecido)')
           ORDER BY visitors DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 18: Language breakdown
         safe(db.$queryRaw<{ language: string; visitors: string | number }[]>`
@@ -679,7 +679,7 @@ export async function GET(request: NextRequest) {
           GROUP BY COALESCE(metadata->>'language', '(desconhecido)')
           ORDER BY visitors DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 19: Geographic breakdown
         safe(db.$queryRaw<{ country: string; city: string; visitors: string | number; leads: string | number }[]>`
@@ -694,7 +694,7 @@ export async function GET(request: NextRequest) {
           GROUP BY tv."country", tv."city"
           ORDER BY visitors DESC
           LIMIT 20
-        `,
+        `),
 
         // ═══════════════════════════════════════════
         // NEW QUERIES (20-25) — 6 improvements
@@ -730,7 +730,7 @@ export async function GET(request: NextRequest) {
             COUNT(*)::text as visitors
           FROM visitor_stats
           GROUP BY ("leadId" IS NOT NULL)
-        `,
+        `),
 
         // Query 21 — Improvement 1b: Attention distribution buckets for converters vs non-converters
         safe(db.$queryRaw<{
@@ -766,7 +766,7 @@ export async function GET(request: NextRequest) {
           FROM visitor_max_time
           GROUP BY bucket
           ORDER BY MIN(max_sec)
-        `,
+        `),
 
         // Query 22 — Improvement 2: Event-conversion correlation
         // For each engagement event, compare conversion rate of visitors who did vs didn't do it
@@ -815,7 +815,7 @@ export async function GET(request: NextRequest) {
             (t.total_converters - ev.converters_with)::text as converters_without
           FROM event_visitors ev
           CROSS JOIN totals t
-        `,
+        `),
 
         // Query 23 — Improvement 3: Per-landing-page detailed metrics
         safe(db.$queryRaw<{
@@ -885,7 +885,7 @@ export async function GET(request: NextRequest) {
           LEFT JOIN page_scroll ps ON ps."pageUrl" = pl.url
           ORDER BY pl.visitors::int DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 24 — Improvement 4: Hourly conversion analysis
         safe(db.$queryRaw<{
@@ -903,7 +903,7 @@ export async function GET(request: NextRequest) {
             AND e."createdAt" >= ${periodStartDate}
           GROUP BY EXTRACT(HOUR FROM e."createdAt")
           ORDER BY hour
-        `,
+        `),
 
         // Query 25 — Improvement 5: JS Error details (top 5 messages with context)
         safe(db.$queryRaw<{
@@ -923,7 +923,7 @@ export async function GET(request: NextRequest) {
           GROUP BY COALESCE(metadata->>'message', '(sem mensagem)'), metadata->>'filename'
           ORDER BY COUNT(*) DESC
           LIMIT 5
-        `,
+        `),
 
         // Query 26 — Improvement 6: Engagement score segmentation (cold/warm/hot)
         safe(db.$queryRaw<{
@@ -968,7 +968,7 @@ export async function GET(request: NextRequest) {
             ELSE 'frio'
           END
           ORDER BY MIN(score) DESC
-        `,
+        `),
       ]);
 
       // ── Process existing query results ──
