@@ -98,6 +98,10 @@ interface AnalysisResponse {
     recentLeads: number;
     conversionRate: number;
     withoutInteraction: number;
+    pixelDataIncluded?: boolean;
+    pixelQueriesSuccessful?: number;
+    pixelVisitors?: number;
+    pixelLeads?: number;
   };
 }
 
@@ -854,6 +858,7 @@ function AnalysisTab() {
   const [error, setError] = useState<string | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
+  const [pixelStatus, setPixelStatus] = useState<{ included: boolean; visitors?: number } | null>(null);
 
   async function runAnalysis() {
     setLoading(true);
@@ -866,6 +871,7 @@ function AnalysisTab() {
         if (data.analysis) {
           setAnalysis(data.analysis);
           setGeneratedAt(data.generatedAt || null);
+          setPixelStatus(data.dataPoints ? { included: !!data.dataPoints.pixelDataIncluded, visitors: data.dataPoints.pixelVisitors } : null);
           toast.success('Análise gerada com sucesso');
         } else if (data.error) {
           setError(data.error);
@@ -955,6 +961,7 @@ function AnalysisTab() {
               <SelectItem value="24h">Últimas 24 horas</SelectItem>
               <SelectItem value="48h">Últimas 48 horas</SelectItem>
               <SelectItem value="7d">Última semana</SelectItem>
+              <SelectItem value="15d">Últimos 15 dias</SelectItem>
               <SelectItem value="30d">Último mês</SelectItem>
             </SelectContent>
           </Select>
@@ -1031,11 +1038,26 @@ function AnalysisTab() {
                 <Brain className="h-4 w-4 text-purple-500" />
                 Relatório de Análise
               </CardTitle>
-              {generatedAt && (
-                <span className="text-[10px] text-muted-foreground">
-                  Gerado em {format(parseISO(generatedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {pixelStatus && (
+                  pixelStatus.included ? (
+                    <span className="flex items-center gap-1 text-[10px] text-emerald-500">
+                      <Activity className="h-3 w-3" />
+                      Pixel: {pixelStatus.visitors?.toLocaleString('pt-BR')} visitantes
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-[10px] text-amber-500">
+                      <AlertTriangle className="h-3 w-3" />
+                      Dados do pixel não incluídos
+                    </span>
+                  )
+                )}
+                {generatedAt && (
+                  <span className="text-[10px] text-muted-foreground">
+                    Gerado em {format(parseISO(generatedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                  </span>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="prose prose-sm max-w-none">
