@@ -1354,9 +1354,10 @@ export async function GET(request: Request) {
       },
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error('[Tracking Report] Error:', err);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: message },
       { status: 500 },
     );
   }
