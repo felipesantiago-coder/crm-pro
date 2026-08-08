@@ -26,12 +26,14 @@ const PERIOD_MS: Record<string, number> = {
   '48h': 172_800_000,
   '7d':  604_800_000,
   '30d': 2_592_000_000,
+  '15d': 1_296_000_000,
 };
 
 const PERIOD_LABELS: Record<string, string> = {
   '24h': 'últimas 24 horas',
   '48h': 'últimas 48 horas',
   '7d':  'última semana',
+  '15d': 'últimos 15 dias',
   '30d': 'último mês',
 };
 
@@ -1473,7 +1475,11 @@ ${Object.entries(byMonth).sort((a, b) => a[0].localeCompare(b[0])).map(([m, c]) 
 ${JSON.stringify(sampleLeads, null, 2)}
 `;
 
-    const dataSummary = `${crmSection}${pixelSection}`.trim();
+    const dataSummary = `${crmSection}${pixelSection}
+
+---
+FIM DOS DADOS. Os dados acima são os ÚNICOS dados disponíveis. Não existem mais dados além dos listados acima. Não invente, estime ou assuma nenhum dado adicional.
+---`.trim();
 
     const systemPrompt = `Você é um consultor especialista em marketing digital e Meta Ads (Facebook/Instagram) para o mercado imobiliário brasileiro.
 Seu papel é analisar os dados de leads (do webhook Meta, de landing pages com UTM Meta e do pixel próprio) e fornecer insights acionáveis em português brasileiro.
@@ -1504,11 +1510,20 @@ Analise os dados fornecidos e gere um relatório estruturado com as seguintes se
 15. **Alertas e Problemas** — Leads sem interação, estagnados, alta taxa de rejeição, discrepância pixel vs CRM, erros de JS (com detalhes técnicos).
 16. **Recomendações** — 10-15 recomendações práticas e específicas para melhorar os resultados. PRIORIZE recomendações baseadas nos dados de correlação e score de engajamento. Inclua sugestões sobre otimização de cada landing page individualmente, CTAs, campanhas, formulário, horários de atendimento e acompanhamento de leads.
 
-IMPORTANTE:
+## REGRAS ABSOLUTAS — NUNCA VIOLE
+
+1. **USE APENAS OS DADOS FORNECIDOS.** Todos os números, percentuais e métricas que você citar DEVEM existir nos dados fornecidos. É **ESTRITAMENTE PROIBIDO** inventar, estimar, assumir ou fabricar qualquer dado numérico.
+2. **Se um dado não estiver disponível**, escreva explicitamente "Dados não disponíveis". NUNCA invente um valor substituto.
+3. **Cada afirmação numérica deve ser rastreável** aos dados fornecidos. Se você não encontrar um número nos dados, não o cite.
+4. **Não generalize além dos dados.** Se há dados de apenas 1 landing page, não faça comparações entre "múltiplas landing pages". Se há apenas 1 campanha, não diga "as campanhas mostram...".
+5. **Não invente nomes** de campanhas, criativos ou landing pages que não estejam listados nos dados.
+6. **Não assuma comportamentos** que não foram registrados pelo pixel.
+7. **Quando não houver dados para uma seção**, diga claramente que não há dados e pule para a próxima. Não preencha com suposições.
+
+CONTEXTO:
 - Período da análise: ${periodLabel}.
 - Leads do webhook Meta Ads chegam diretamente do Facebook e NÃO geram eventos de pixel. A discrepancia entre pixel e CRM e esperada nesse caso.
 - Leads cadastrados via formulario das landing pages GERAM eventos de pixel (form_submit) e campos UTM.
-- Use dados numericos em TODOS os argumentos. Nunca faca afirmações vagas.
 - Foque no que importa para um corretor/consultor imobiliário.
 - Se houver dados de dispositivo, analise se mobile ou desktop tem melhor conversão.
 - Se houver dados de Web Vitals, identifique problemas de performance (LCP > 2500ms, CLS > 0.1, FID > 100ms).
@@ -1535,7 +1550,7 @@ IMPORTANTE:
             system_instruction: { parts: [{ text: systemPrompt }] },
             contents: [{ role: 'user', parts: [{ text: dataSummary }] }],
             generationConfig: {
-              temperature: 0.4,
+              temperature: 0.1,
               maxOutputTokens: 8192,
             },
           }),
@@ -1564,7 +1579,7 @@ IMPORTANTE:
               { role: 'system', content: systemPrompt },
               { role: 'user', content: dataSummary },
             ],
-            temperature: 0.4,
+            temperature: 0.1,
             max_tokens: 8192,
           }),
         });
