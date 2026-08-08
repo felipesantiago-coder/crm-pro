@@ -3,11 +3,13 @@ import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
 import { Prisma } from '@prisma/client';
 
+// Negative = hours from now; Positive = calendar days from midnight
 const PERIOD_DAYS: Record<string, number> = {
-  'today': 0,
+  '24h': -24,
+  '48h': -48,
   '7d': 7,
+  '15d': 15,
   '30d': 30,
-  '90d': 90,
 };
 
 export async function GET(request: Request) {
@@ -20,9 +22,11 @@ export async function GET(request: Request) {
     const siteId = searchParams.get('siteId') ?? null;
 
     const startDate = new Date();
-    if (period === 0) {
-      startDate.setUTCHours(0, 0, 0, 0);
+    if (period < 0) {
+      // Hour-based filter: subtract hours from now
+      startDate.setHours(startDate.getHours() + period);
     } else {
+      // Day-based filter: subtract calendar days, start at midnight
       startDate.setDate(startDate.getDate() - period);
       startDate.setHours(0, 0, 0, 0);
     }

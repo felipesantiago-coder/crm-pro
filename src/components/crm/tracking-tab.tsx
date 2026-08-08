@@ -170,10 +170,11 @@ const ROSE = '#F43F5E';
 const AMBER = '#F59E0B';
 
 const PERIOD_OPTIONS = [
-  { value: 'today', label: 'Hoje' },
+  { value: '24h', label: '24 horas' },
+  { value: '48h', label: '48 horas' },
   { value: '7d', label: '7 dias' },
+  { value: '15d', label: '15 dias' },
   { value: '30d', label: '30 dias' },
-  { value: '90d', label: '90 dias' },
 ];
 
 const FUNNEL_LABELS: Record<string, string> = {
@@ -938,7 +939,7 @@ export function TrackingTab() {
                   const found = data.hourlyData.find(x => x.hour === h);
                   const visitors = found?.visitors ?? 0;
                   const pct = (visitors / maxHourly) * 100;
-                  const isNow = new Date().getHours() === h && period === 'today';
+                  const isNow = new Date().getHours() === h && period === '24h';
                   return (
                     <TooltipProvider key={h} delayDuration={50}>
                       <Tooltip>
