@@ -10,6 +10,13 @@ const safe = <T,>(p: Promise<T>): Promise<T | []> =>
     return [] as unknown as T;
   });
 
+// Format a date value (string or Date) to 'YYYY-MM-DD HH:mm:ss'
+const fmtTs = (v: string | Date | null | undefined): string => {
+  if (!v) return '—';
+  const s = v instanceof Date ? v.toISOString() : String(v);
+  return s.replace('T', ' ').replace('Z', '').slice(0, 19);
+};
+
 // Negative = hours from now; Positive = calendar days from midnight
 const PERIOD_DAYS: Record<string, number> = {
   '24h': -24,
@@ -1067,7 +1074,7 @@ export async function GET(request: Request) {
       );
       recentLeads.forEach((lead, idx) => {
         line(
-          `| ${idx + 1} | ${lead.clientName ?? '—'} | ${lead.utmSource ?? '—'} | ${lead.utmCampaign ?? '—'} | ${lead.utmMedium ?? '—'} | ${lead.utmContent ?? '—'} | ${lead.city ?? '—'} | ${lead.country ?? '—'} | ${lead.pageUrl ?? '—'} | ${lead.firstSeenAt ? lead.firstSeenAt.replace('T', ' ').replace('Z', '').slice(0, 19) : '—'} | ${lead.convertedAt.replace('T', ' ').replace('Z', '').slice(0, 19)} |`,
+          `| ${idx + 1} | ${lead.clientName ?? '—'} | ${lead.utmSource ?? '—'} | ${lead.utmCampaign ?? '—'} | ${lead.utmMedium ?? '—'} | ${lead.utmContent ?? '—'} | ${lead.city ?? '—'} | ${lead.country ?? '—'} | ${lead.pageUrl ?? '—'} | ${fmtTs(lead.firstSeenAt)} | ${fmtTs(lead.convertedAt)} |`,
         );
       });
       line();
@@ -1113,10 +1120,7 @@ export async function GET(request: Request) {
         line('| # | Timestamp | Tipo | Nome | Página |');
         line('|---|-----------|------|------|--------|');
         events.forEach((ev, i) => {
-          const ts = ev.createdAt
-            .replace('T', ' ')
-            .replace('Z', '')
-            .slice(0, 19);
+          const ts = fmtTs(ev.createdAt);
           line(
             `| ${i + 1} | ${ts} | ${ev.eventType} | ${ev.eventName ?? '—'} | ${ev.pageUrl ?? '—'} |`,
           );
