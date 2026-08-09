@@ -394,7 +394,8 @@ export function TrackingTab() {
           toast.error('Erro: formato inesperado dos dados');
         }
       } else {
-        toast.error(`Erro ao carregar tracking (${res.status})`);
+        const errBody = await res.json().catch(() => ({}));
+        toast.error(`Erro ao carregar tracking (${res.status}): ${errBody.details ?? 'desconhecido'}`);
       }
     } catch {
       toast.error('Erro de conexão ao carregar tracking');
@@ -430,7 +431,8 @@ export function TrackingTab() {
         headers: { Accept: 'text/markdown' },
       });
       if (!res.ok) {
-        toast.error(`Erro ao gerar relatório (${res.status})`);
+        const errBody = await res.json().catch(() => ({}));
+        toast.error(`Erro ao gerar relatório (${res.status}): ${errBody.details ?? 'desconhecido'}`);
         return;
       }
       const blob = await res.blob();
