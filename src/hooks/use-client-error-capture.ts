@@ -33,6 +33,11 @@ export function useClientErrorCapture({ slug, enabled = true }: ErrorCaptureOpti
       const iabNoise = errorData.message || errorData.stackTrace || '';
       if (/sendDataToNative|sendPageHideMessage|iabjs:\/\//.test(iabNoise)) return;
 
+      // Ignore generic "Script error." from cross-origin scripts (e.g. Meta Pixel
+      // fbevents.js failing inside Instagram/Facebook In-App Browser). These are
+      // harmless CORS-masked errors that cannot be acted on.
+      if (errorData.type === 'js_error' && errorData.message === 'Script error.' && !errorData.source) return;
+
       // Dedup: skip if same message+source was seen in the last 10s
       const dedupKey = `${errorData.type}:${errorData.message}:${errorData.source}`;
       const now = Date.now();
@@ -101,6 +106,10 @@ export function useClientErrorCapture({ slug, enabled = true }: ErrorCaptureOpti
       if (source?.startsWith('iabjs://')) return false;
       const msg = String(message);
       if (/sendDataToNative|sendPageHideMessage/.test(msg)) return false;
+
+      // Skip generic "Script error." from cross-origin third-party scripts
+      // (e.g. Meta Pixel fbevents.js inside IG/FB In-App Browser)
+      if (msg === 'Script error.' && !source) return false;
       sendError({
         type: 'js_error',
         message: String(message),
