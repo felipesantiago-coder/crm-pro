@@ -412,7 +412,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         setExitPopupCountdown(15);
         setExitPopupOpen(true);
         if (typeof window !== 'undefined' && window.CRMPIXEL) {
-          window.CRMPIXEL.track('exit_popup_shown', { enterprise: enterprise?.name, scroll_depth: Math.round((window.scrollY / (document.documentElement.scrollHeight - window.innerHeight)) * 100) });
+          const docH = document.documentElement.scrollHeight - window.innerHeight;
+          window.CRMPIXEL.track('exit_popup_shown', { enterprise: enterprise?.name, scroll_depth: docH > 0 ? Math.round((window.scrollY / docH) * 100) : 0 });
         }
       }
     };
@@ -830,7 +831,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       }
       trackMetaPixel('Contact', { content_name: e?.name, content_category: 'empreendimento' });
     } catch { /* tracking errors must never block navigation */ }
-    window.open(whatsappUrl, '_blank', 'noopener');
+    try { window.open(whatsappUrl, '_blank', 'noopener'); } catch { /* IAB may block window.open */ }
   }, [whatsappUrl, e?.name, queueUser?.userId, registerWhatsAppClick, trackMetaPixel]);
 
   const images = e.images.length > 0 ? e.images : [];

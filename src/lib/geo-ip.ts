@@ -133,6 +133,9 @@ export async function resolveGeoIP(ip: string, geoHint?: string | null): Promise
     }
   }
 
+  // Normalize country/city names to canonical Portuguese forms
+  result = normalizeGeoNames(result);
+
   // Evict old entries if cache is too large
   if (cache.size >= MAX_CACHE_SIZE) {
     const now = Date.now();
@@ -143,4 +146,29 @@ export async function resolveGeoIP(ip: string, geoHint?: string | null): Promise
 
   cache.set(ip, { result, ts: Date.now() });
   return result;
+}
+
+/**
+ * Normalize geo names to canonical Portuguese forms.
+ * Ensures consistent reporting: "Brasil" not "Brazil", "Brasília" not "Brasilia".
+ */
+const CITY_FIXES: Record<string, string> = {
+  'Brasilia': 'Brasília',
+  'Sao Paulo': 'São Paulo',
+  'Rio de Janeiro': 'Rio de Janeiro',
+  'Belo Horizonte': 'Belo Horizonte',
+  'Curitiba': 'Curitiba',
+  'Salvador': 'Salvador',
+  'Fortaleza': 'Fortaleza',
+  'Goiania': 'Goiânia',
+  'Aparecida de Goiania': 'Aparecida de Goiânia',
+  'Aguas Lindas de Goias': 'Águas Lindas de Goiás',
+  'Caldas Novas': 'Caldas Novas',
+};
+
+function normalizeGeoNames(result: GeoResult): GeoResult {
+  let { country, city } = result;
+  if (country === 'Brazil') country = 'Brasil';
+  if (city && CITY_FIXES[city]) city = CITY_FIXES[city];
+  return { country, city };
 }
