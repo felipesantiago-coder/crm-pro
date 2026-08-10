@@ -9,6 +9,7 @@ import {
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Copy, Check, User, Send, AlertCircle,
   Shield, ChevronDown, CalendarDays, TrendingUp, Users, Layers, Car, LayoutGrid,
+  UserCheck,
 } from 'lucide-react';
 
 /* ================================================================
@@ -298,9 +299,6 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   const [exitPopupCountdown, setExitPopupCountdown] = useState(0);
   const exitPopupTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // NEW: Social proof notification cycling (medium priority #7)
-  const [socialProofIdx, setSocialProofIdx] = useState(0);
-
   // NEW: Sticky desktop CTA — show only after scrolling past hero
   const [showDesktopSticky, setShowDesktopSticky] = useState(false);
   const [isFormSectionVisible, setIsFormSectionVisible] = useState(false);
@@ -332,27 +330,6 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
   // NEW: FAQ accordion state
   const [faqOpenIndex, setFaqOpenIndex] = useState<number | null>(null);
-
-  // Social proof names pool for simulated live notifications
-  const socialProofPool = React.useMemo(() => [
-    { name: 'Maria', action: 'se cadastrou', time: '2 min' },
-    { name: 'Carlos', action: 'solicitou informações', time: '5 min' },
-    { name: 'Ana', action: 'agendou visita', time: '8 min' },
-    { name: 'Pedro', action: 'se cadastrou', time: '12 min' },
-    { name: 'Juliana', action: 'pediu condições', time: '15 min' },
-    { name: 'Rafael', action: 'se cadastrou', time: '18 min' },
-    { name: 'Fernanda', action: 'solicitou visita', time: '22 min' },
-    { name: 'Lucas', action: 'se cadastrou', time: '25 min' },
-  ], []);
-
-  // Cycle social proof every 6s
-  useEffect(() => {
-    if (socialProofPool.length === 0) return;
-    const timer = setInterval(() => {
-      setSocialProofIdx((prev) => (prev + 1) % socialProofPool.length);
-    }, 6000);
-    return () => clearInterval(timer);
-  }, [socialProofPool.length]);
 
   // Calculate form progress (for progress bar — medium priority #9)
   const formProgress = React.useMemo(() => {
@@ -815,6 +792,37 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   /* ─── Derived ─────────────────────────────────────────── */
   const e = enterprise;
 
+  // ── Social Proof System ──────────────────────────────
+  // Threshold: only show real count when >= MIN_COUNT; below that, use
+  // activity-based messaging + floating toast to convey credibility.
+  const MIN_SOCIAL_COUNT = 5;
+  const clientCount = e._count?.clients ?? 0;
+  const showRealCount = clientCount >= MIN_SOCIAL_COUNT;
+
+  const [socialProofIdx, setSocialProofIdx] = useState(0);
+  const [toastVisible, setToastVisible] = useState(false);
+
+  const socialProofPool = React.useMemo(() => [
+    { name: 'Maria', action: 'se cadastrou', time: '2 min' },
+    { name: 'Carlos', action: 'solicitou informações', time: '5 min' },
+    { name: 'Ana', action: 'agendou visita', time: '8 min' },
+    { name: 'Pedro', action: 'se cadastrou', time: '12 min' },
+    { name: 'Juliana', action: 'pediu condições', time: '15 min' },
+    { name: 'Rafael', action: 'se cadastrou', time: '18 min' },
+    { name: 'Fernanda', action: 'solicitou visita', time: '22 min' },
+    { name: 'Lucas', action: 'se cadastrou', time: '25 min' },
+  ], []);
+
+  // Cycle social proof every 8s; show toast after 10s initial delay
+  useEffect(() => {
+    if (socialProofPool.length === 0) return;
+    const showDelay = setTimeout(() => setToastVisible(true), 10000);
+    const timer = setInterval(() => {
+      setSocialProofIdx((prev) => (prev + 1) % socialProofPool.length);
+    }, 8000);
+    return () => { clearTimeout(showDelay); clearInterval(timer); };
+  }, [socialProofPool.length]);
+
   // Adblocker-resistant WhatsApp navigation — AdGuard blocks <a href="https://wa.me/...">
   // Using button + window.open avoids having wa.me in the DOM as an href attribute
   const openWhatsApp = useCallback((source: string) => {
@@ -1202,13 +1210,21 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               </svg>
               Falar pelo WhatsApp
             </button>
-            {e._count && e._count.clients > 0 ? (
+            {clientCount > 0 ? (
               <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/30" style={{ animationDelay: '0.2s' }}>
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#C9A96E] opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-[#C9A96E]" />
                 </span>
-                <span className="font-medium">{e._count.clients} pessoa{e._count.clients !== 1 ? 's' : ''}</span> já cadastrada{e._count.clients !== 1 ? 's' : ''} — não fique de fora
+                {showRealCount ? (
+                  <>
+                    <span className="font-medium">{clientCount} pessoa{clientCount !== 1 ? 's' : ''}</span> já cadastrada{clientCount !== 1 ? 's' : ''} — não fique de fora
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium">Pessoas estão demonstrando interesse</span> — garanta sua vaga
+                  </>
+                )}
               </div>
             ) : null}
           </div>
@@ -1957,15 +1973,15 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 <Clock className="h-5 w-5 text-[#C9A96E]/50" />
                 <span className="text-xs sm:text-sm text-white/40 font-medium">Resposta em até 24h</span>
               </div>
-              {e._count && e._count.clients > 0 ? (
+              {showRealCount ? (
                 <div className="flex flex-col items-center gap-2 text-center">
                   <Users className="h-5 w-5 text-[#C9A96E]/50" />
-                  <span className="text-xs sm:text-sm text-white/40 font-medium">{e._count.clients} pessoas interessadas</span>
+                  <span className="text-xs sm:text-sm text-white/40 font-medium">{clientCount} pessoas interessadas</span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2 text-center">
                   <Navigation className="h-5 w-5 text-[#C9A96E]/50" />
-                  <span className="text-xs sm:text-sm text-white/40 font-medium">Agende uma visita</span>
+                  <span className="text-xs sm:text-sm text-white/40 font-medium">Atendimento personalizado</span>
                 </div>
               )}
             </div>
@@ -1989,8 +2005,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
                   </span>
-                  {e._count && e._count.clients > 0
-                    ? <span><strong className="text-white/50">{e._count.clients}</strong> pessoa{e._count.clients !== 1 ? 's' : ''} já cadastrada{e._count.clients !== 1 ? 's' : ''}</span>
+                  {showRealCount
+                    ? <span><strong className="text-white/50">{clientCount}</strong> pessoa{clientCount !== 1 ? 's' : ''} já cadastrada{clientCount !== 1 ? 's' : ''}</span>
                     : <span>Atendimento imediato</span>}
                 </div>
               </div>
@@ -2641,8 +2657,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
             <p className="text-[11px] text-white/25 text-center mt-4">
               <Shield className="h-3 w-3 inline-block mr-1 text-[#C9A96E]/40" />
               Seus dados estão seguros e não enviamos spam.
-              {e._count && e._count.clients > 0 && (
-                <span className="ml-2 text-emerald-400/60">{e._count.clients} pessoa{e._count.clients !== 1 ? 's' : ''} já se cadastraram.</span>
+              {showRealCount && (
+                <span className="ml-2 text-emerald-400/60">{clientCount} pessoa{clientCount !== 1 ? 's' : ''} já se cadastraram.</span>
               )}
             </p>
           </div>
@@ -2690,6 +2706,29 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── Floating Social Proof Toast ─────────────────── */}
+      {toastVisible && socialProofPool.length > 0 && (
+        <div
+          className="fixed bottom-4 left-4 z-50 animate-fade-in-up"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-3 bg-[#1A1A1A]/95 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-3 shadow-2xl shadow-black/40 max-w-[280px]">
+            <div className="flex-shrink-0 h-9 w-9 rounded-full bg-[#C9A96E]/20 flex items-center justify-center">
+              <UserCheck className="h-4 w-4 text-[#C9A96E]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-white/90 font-medium leading-tight truncate">
+                {socialProofPool[socialProofIdx].name} {socialProofPool[socialProofIdx].action.toLowerCase()}
+              </p>
+              <p className="text-[10px] text-white/35 mt-0.5">
+                há {socialProofPool[socialProofIdx].time}
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
