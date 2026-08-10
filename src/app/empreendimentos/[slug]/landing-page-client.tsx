@@ -295,6 +295,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   // NEW: Exit-intent popup (medium priority #8)
   const [exitPopupOpen, setExitPopupOpen] = useState(false);
   const exitPopupShownRef = useRef(false); // show only once per session
+  const [exitPopupCountdown, setExitPopupCountdown] = useState(0);
+  const exitPopupTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // NEW: Social proof notification cycling (medium priority #7)
   const [socialProofIdx, setSocialProofIdx] = useState(0);
@@ -420,7 +422,9 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     return () => observer.disconnect();
   }, []);
 
-  // Tracking: exit intent — desktop (mouseleave) + mobile (visibilitychange)
+  // Tracking: exit intent — desktop (mouseleave from top only) + mobile (visibilitychange)
+  // IMPROVEMENT: Added scroll-depth gate — only show after user has scrolled past 20%
+  // This prevents false positives from users who haven't engaged yet.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -428,27 +432,34 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL?.trackExitIntent();
       if (!exitPopupShownRef.current && !formSubmitting) {
         exitPopupShownRef.current = true;
+        setExitPopupCountdown(15);
         setExitPopupOpen(true);
         if (typeof window !== 'undefined' && window.CRMPIXEL) {
-          window.CRMPIXEL.track('exit_popup_shown', { enterprise: enterprise?.name });
+          window.CRMPIXEL.track('exit_popup_shown', { enterprise: enterprise?.name, scroll_depth: Math.round((window.scrollY / (document.documentElement.scrollHeight - window.innerHeight)) * 100) });
         }
       }
     };
 
-    // Desktop: mouse leaves viewport
+    const getScrollPct = () => {
+      const docH = document.documentElement.scrollHeight - window.innerHeight;
+      return docH > 0 ? window.scrollY / docH : 0;
+    };
+
+    // Desktop: mouse leaves viewport from TOP only (not left/right/bottom)
     const mouseHandler = (e: MouseEvent) => {
-      if ((e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth) && e.relatedTarget === null) {
+      // Only trigger when mouse leaves from the TOP edge
+      if (e.clientY <= 0 && e.relatedTarget === null && getScrollPct() > 0.2) {
         showExitPopup();
       }
     };
     document.addEventListener('mouseleave', mouseHandler);
 
     // Mobile: page visibility hidden (user switches app/tab)
-    // Debounced 3s — avoids false positives when user briefly switches to WhatsApp
+    // Increased to 5s debounce — avoids false positives when user briefly switches to WhatsApp
     let mobileTimer: ReturnType<typeof setTimeout> | null = null;
     const visibilityHandler = () => {
-      if (document.visibilityState === 'hidden') {
-        mobileTimer = setTimeout(showExitPopup, 3000);
+      if (document.visibilityState === 'hidden' && getScrollPct() > 0.2) {
+        mobileTimer = setTimeout(showExitPopup, 5000);
       } else {
         if (mobileTimer) { clearTimeout(mobileTimer); mobileTimer = null; }
       }
@@ -461,6 +472,24 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       if (mobileTimer) clearTimeout(mobileTimer);
     };
   }, [formSubmitting, enterprise?.name]);
+
+  // Exit popup countdown timer
+  useEffect(() => {
+    if (exitPopupOpen && exitPopupCountdown > 0) {
+      exitPopupTimerRef.current = setInterval(() => {
+        setExitPopupCountdown((c) => {
+          if (c <= 1) {
+            if (exitPopupTimerRef.current) clearInterval(exitPopupTimerRef.current);
+            return 0;
+          }
+          return c - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (exitPopupTimerRef.current) clearInterval(exitPopupTimerRef.current);
+    };
+  }, [exitPopupOpen, exitPopupCountdown]);
 
   const fetchEnterprise = useCallback(async () => {
     if (!slug) return;
@@ -1954,6 +1983,16 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               <div className="text-center">
                 <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Solicite informações</h2>
                 <p className="text-sm text-white/40 mt-1">São apenas 2 campos obrigatórios — nome e e-mail</p>
+                {/* Mobile: micro social proof below section header */}
+                <div className="sm:hidden mt-3 flex items-center justify-center gap-2 text-xs text-white/30">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                  </span>
+                  {e._count && e._count.clients > 0
+                    ? <span><strong className="text-white/50">{e._count.clients}</strong> pessoa{e._count.clients !== 1 ? 's' : ''} já cadastrada{e._count.clients !== 1 ? 's' : ''}</span>
+                    : <span>Atendimento imediato</span>}
+                </div>
               </div>
               <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
             </div>
@@ -2017,7 +2056,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 </button>
               </div>
 
-              {/* Right side — Form */}
+              {/* Right side — Form (mobile: shown first via order-1) */}
               <div ref={formSectionRef} className="relative order-1 lg:order-2">
                 <div className="absolute -inset-1 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/15 via-transparent to-[#C9A96E]/10 rounded-3xl blur-sm sm:blur-xl" />
                 <form
@@ -2526,7 +2565,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         </div>
       )}
 
-      {/* ── Exit-Intent Popup (medium priority #8) — show once per session ── */}
+      {/* ── Exit-Intent Popup (improved: urgency + countdown + WhatsApp-first CTA) ── */}
       {exitPopupOpen && (
         <div
           className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
@@ -2536,13 +2575,23 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
             className="relative max-w-md w-full rounded-2xl bg-[#141414] border border-white/10 p-6 sm:p-8 shadow-2xl"
             onClick={(ev) => ev.stopPropagation()}
           >
-            {/* Close button */}
-            <button
-              onClick={() => setExitPopupOpen(false)}
-              className="absolute top-4 right-4 text-white/30 hover:text-white transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            {/* Close button — hidden during countdown to create urgency */}
+            {exitPopupCountdown === 0 && (
+              <button
+                onClick={() => setExitPopupOpen(false)}
+                className="absolute top-4 right-4 text-white/30 hover:text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            )}
+
+            {/* Urgency countdown badge */}
+            {exitPopupCountdown > 0 && (
+              <div className="absolute top-4 right-4 flex items-center gap-1.5 text-xs font-medium text-amber-300 bg-amber-500/15 border border-amber-500/25 px-2.5 py-1 rounded-full">
+                <Clock className="h-3 w-3" />
+                {exitPopupCountdown}s
+              </div>
+            )}
 
             {/* Icon */}
             <div className="flex items-center justify-center mb-5">
@@ -2551,16 +2600,28 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               </div>
             </div>
 
-            {/* Heading */}
+            {/* Heading — personalized with urgency */}
             <h3 className="text-xl font-bold text-center mb-2">
-              Tem interesse no {e.name}?
+              {priceText
+                ? <>Condições especiais para o <span className="text-[#C9A96E]">{e.name}</span></>
+                : <>Tem interesse no <span className="text-[#C9A96E]">{e.name}</span>?</>}
             </h3>
             <p className="text-sm text-white/50 text-center mb-6 leading-relaxed">
-              Receba materiais, valores e condições comerciais diretamente no seu e-mail ou WhatsApp. Sem compromisso.
+              {showUrgencyBadge
+                ? 'As condições de lançamento são por tempo limitado. Fale agora com um consultor e garanta as melhores condições.'
+                : 'Receba materiais, valores e condições comerciais diretamente no seu WhatsApp. Sem compromisso.'}
             </p>
 
-            {/* CTA buttons */}
+            {/* CTA buttons — WhatsApp FIRST (higher mobile conversion) */}
             <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => { setExitPopupOpen(false); openWhatsApp('exit_popup'); }}
+                className="w-full min-h-[44px] flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors cursor-pointer"
+              >
+                <Phone className="h-4 w-4" />
+                Falar pelo WhatsApp
+              </button>
               <a
                 href="#cadastro"
                 onClick={() => {
@@ -2574,20 +2635,15 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 <Send className="h-4 w-4" />
                 Quero saber mais
               </a>
-              <button
-                type="button"
-                onClick={() => { setExitPopupOpen(false); openWhatsApp('exit_popup'); }}
-                className="w-full min-h-[44px] flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors cursor-pointer"
-              >
-                <Phone className="h-4 w-4" />
-                Falar pelo WhatsApp
-              </button>
             </div>
 
-            {/* Trust signal */}
+            {/* Trust signal + social proof */}
             <p className="text-[11px] text-white/25 text-center mt-4">
               <Shield className="h-3 w-3 inline-block mr-1 text-[#C9A96E]/40" />
               Seus dados estão seguros e não enviamos spam.
+              {e._count && e._count.clients > 0 && (
+                <span className="ml-2 text-emerald-400/60">{e._count.clients} pessoa{e._count.clients !== 1 ? 's' : ''} já se cadastraram.</span>
+              )}
             </p>
           </div>
         </div>

@@ -83,6 +83,38 @@
 
   var utmParams = parseUTM();
 
+  /* ── UTM first-touch persistence ───────────────────── */
+  (function persistUTM() {
+    var hasUTM = utmParams.utm_source || utmParams.utm_campaign;
+    if (!hasUTM) {
+      // No UTM in current URL — restore from localStorage
+      try {
+        var saved = lsGet('_crmpx_utm_first');
+        if (saved) {
+          var parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') utmParams = parsed;
+        }
+      } catch (e) { /* noop */ }
+    } else {
+      // Save first-touch UTM (don't overwrite)
+      try {
+        if (!lsGet('_crmpx_utm_first')) {
+          lsSet('_crmpx_utm_first', JSON.stringify(utmParams));
+        }
+      } catch (e) { /* noop */ }
+    }
+  })();
+
+  /* ── Sanitize URL: strip fbclid/gclid click IDs to prevent truncation ── */
+  (function sanitizeURL() {
+    try {
+      if (location.search.indexOf('fbclid=') !== -1 || location.search.indexOf('gclid=') !== -1 || location.search.indexOf('igshid=') !== -1) {
+        var clean = location.pathname + location.search.replace(/[?&](fbclid|gclid|igshid)=[^&]*/gi, '').replace(/^&/, '?').replace(/[?&]$/, '');
+        history.replaceState(null, '', clean + location.hash);
+      }
+    } catch (e) { /* noop */ }
+  })();
+
   /* ── Visitor context (detected once) ────────────────── */
   var _visitorCtx = {};
   try {
@@ -118,6 +150,8 @@
       timezone: _visitorCtx.timezone || undefined,
       language: _visitorCtx.language || undefined,
       connection: _visitorCtx.connection || undefined,
+      // Include timezone-based geo hint for when IP geo fails (e.g. IG IAB)
+      geo_hint: _visitorCtx.timezone || undefined,
       ts: Date.now()
     };
     // Merge cookie consent flag if Cookiebot / OneTrust / custom global exists
@@ -537,6 +571,21 @@
       }
     }, 5000); // Run 5s after page load to catch deferred errors
   }
+
+  /* ── Global error boundary — prevent third-party scripts from crashing pixel ── */
+  (function globalCatch() {
+    var origOnError = window.onerror;
+    window.onerror = function (msg, src, line, col, err) {
+      // Let our error tracker handle it (or the third-party filter)
+      if (origOnError) origOnError(msg, src, line, col, err);
+      return true; // prevent default — swallow unhandled errors from Meta Pixel, etc.
+    };
+    var origOnRejection = window.onunhandledrejection;
+    window.onunhandledrejection = function (ev) {
+      if (origOnRejection) origOnRejection(ev);
+      ev.preventDefault(); // swallow unhandled promise rejections
+    };
+  })();
 
   /* ── Public API ─────────────────────────────────────── */
   var CRMPIXEL = {
