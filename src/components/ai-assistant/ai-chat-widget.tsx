@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -89,10 +90,16 @@ function SimpleMarkdown({ text }: { text: string }) {
     .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 list-decimal">$2</li>')
     .replace(/\n/g, '<br/>');
 
+  // Sanitize HTML to prevent XSS — strips <script>, <iframe>, event handlers, etc.
+  const cleanHtml = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['strong', 'em', 'code', 'li', 'br', 'span', 'p', 'ul', 'ol'],
+    ALLOWED_ATTR: ['class'],
+  });
+
   return (
     <span
       className="text-sm leading-relaxed"
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: cleanHtml }}
     />
   );
 }

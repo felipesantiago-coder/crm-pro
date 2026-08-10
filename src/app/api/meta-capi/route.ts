@@ -28,6 +28,27 @@ async function sha256(str: string): Promise<string> {
 }
 
 export async function POST(request: NextRequest) {
+  // Security: Only accept requests from same-origin (internal server-side calls)
+  // Prevents external abuse of the Meta CAPI endpoint
+  const origin = request.headers.get('origin');
+  const host = request.headers.get('host');
+  const referer = request.headers.get('referer');
+  const appUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || '';
+  const isInternal =
+    // Same-origin fetch (no origin header = server-side)
+    !origin ||
+    // Origin matches the app URL
+    (appUrl && origin === appUrl) ||
+    // Referer matches the app domain
+    (appUrl && referer && referer.startsWith(appUrl)) ||
+    // No origin, no referer, has host = likely server-side
+    (!origin && !referer && !!host);
+
+  if (!isInternal) {
+    console.warn(`[Meta CAPI] Blocked external request: origin=${origin} referer=${referer} host=${host}`);
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const pixelId = process.env.META_PIXEL_ID;
   const accessToken = process.env.META_ACCESS_TOKEN;
 
