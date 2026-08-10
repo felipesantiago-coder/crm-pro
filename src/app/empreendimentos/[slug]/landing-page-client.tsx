@@ -367,8 +367,9 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   utmParamsRef.current = utmParams;
 
   // Tracking: section visibility (IntersectionObserver)
+  // Retry up to 5 times (2s apart) in case pixel.js loads after mount
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.CRMPIXEL) return;
+    if (typeof window === 'undefined') return;
     if (typeof IntersectionObserver === 'undefined') return;
     const sectionNames: Record<string, string> = {
       'galeria': 'galeria',
@@ -378,22 +379,38 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       'cadastre-se': 'cadastro',
       'perguntas frequentes': 'faq',
     };
-    const headings = document.querySelectorAll('h2');
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          const text = (entry.target.textContent || '').toLowerCase();
-          for (const [key, name] of Object.entries(sectionNames)) {
-            if (text.includes(key)) {
-              window.CRMPIXEL?.trackSectionView(name);
-              break;
+    let observer: IntersectionObserver | null = null;
+    let retries = 0;
+    const maxRetries = 5;
+    function initObserver() {
+      if (!window.CRMPIXEL || retries >= maxRetries) return;
+      const headings = document.querySelectorAll('h2');
+      if (headings.length === 0) return;
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const text = (entry.target.textContent || '').toLowerCase();
+            for (const [key, name] of Object.entries(sectionNames)) {
+              if (text.includes(key)) {
+                try { window.CRMPIXEL?.trackSectionView(name); } catch { /* non-critical */ }
+                break;
+              }
             }
           }
-        }
-      });
-    }, { threshold: 0.2 });
-    headings.forEach((h) => observer.observe(h));
-    return () => observer.disconnect();
+        });
+      }, { threshold: 0.2 });
+      headings.forEach((h) => observer?.observe(h));
+    }
+    initObserver();
+    if (!observer && retries < maxRetries) {
+      const timer = setInterval(() => {
+        retries++;
+        initObserver();
+        if (observer || retries >= maxRetries) clearInterval(timer);
+      }, 2000);
+      return () => clearInterval(timer);
+    }
+    return () => observer?.disconnect();
   }, []);
 
   // Tracking: exit intent — desktop (mouseleave from top only) + mobile (visibilitychange)
