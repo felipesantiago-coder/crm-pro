@@ -467,6 +467,7 @@
   /* ── Performance Diagnostic (runs once after page load) ── */
   function runPerformanceDiagnostic() {
     setTimeout(function () {
+      try {
       var issues = [];
 
       // Check for missing jQuery (common issue on external LPs)
@@ -569,25 +570,11 @@
           image_count: imgs.length
         }));
       }
+      } catch(e) { /* diagnostic errors are non-critical */ }
     }, 5000); // Run 5s after page load to catch deferred errors
   }
 
-  /* ── Global error boundary — prevent third-party scripts from crashing pixel ── */
-  (function globalCatch() {
-    var origOnError = window.onerror;
-    window.onerror = function (msg, src, line, col, err) {
-      // Let our error tracker handle it (or the third-party filter)
-      if (origOnError) origOnError(msg, src, line, col, err);
-      return true; // prevent default — swallow unhandled errors from Meta Pixel, etc.
-    };
-    var origOnRejection = window.onunhandledrejection;
-    window.onunhandledrejection = function (ev) {
-      if (origOnRejection) origOnRejection(ev);
-      ev.preventDefault(); // swallow unhandled promise rejections
-    };
-  })();
-
-  /* ── Public API ─────────────────────────────────────── */
+  /* ──   /* ── Public API ─────────────────────────────────────── */
   var CRMPIXEL = {
     /**
      * Fire a custom event.
