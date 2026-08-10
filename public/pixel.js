@@ -345,7 +345,7 @@
   /* ── JS Error tracking ──────────────────────────────── */
   function trackErrors() {
     var _errorCount = 0;
-    // Known third-party error patterns to suppress (reduce noise from Meta Pixel, etc.)
+    // Known third-party error patterns to suppress (reduce noise from Meta Pixel, IG IAB, etc.)
     var _thirdPartyPatterns = [
       /^Script error\.?$/i,
       /fbevents/i,
@@ -354,6 +354,8 @@
       /Meta Pixel/i,
       /net\.facebook/i,
       /connect\.facebook/i,
+      // Instagram In-App Browser specific
+      /atndmt\.com/i,
     ];
     function isThirdParty(msg, filename) {
       for (var i = 0; i < _thirdPartyPatterns.length; i++) {
