@@ -94,6 +94,7 @@ export async function GET(request: Request) {
       avgSessionDuration,
       returningVisitors,
       engagementByDayOfWeek,
+      whatsappClicks,
     ] = await Promise.all([
       // 1. Core KPIs
       safe(db.$queryRaw<
@@ -685,6 +686,17 @@ export async function GET(request: Request) {
           ORDER BY dow
         `,
       )),
+
+      // 29. WhatsApp clicks (unique visitors)
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
+        Prisma.sql`
+          SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
+          FROM tracking_events e
+          WHERE e."eventType" = 'whatsapp_click'
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+        `,
+      )),
     ]);
 
     console.log('[Tracking Report] Queries completed, building markdown...');
@@ -711,6 +723,10 @@ export async function GET(request: Request) {
     const returnVisitors = Number(returningVisitors[0]?.returning ?? 0);
     const newVisitors = Number(returningVisitors[0]?.new ?? 0);
     const exitIntents = Number(exitIntentCount[0]?.count ?? 0);
+    const whatsappClicksCount = Number(whatsappClicks[0]?.count ?? 0);
+    const totalConversions = uniqueLeads + whatsappClicksCount;
+    const realConversionRate =
+      totalVisitors > 0 ? (totalConversions / totalVisitors) * 100 : 0;
 
     const pixelLeads = Number(metaPixelLeads[0]?.count ?? 0);
     const crmMetaLeads = Number(metaCrmLeads[0]?.count ?? 0);
@@ -754,11 +770,11 @@ export async function GET(request: Request) {
     // ──────────────────────────────────────────
     h2('1. Resumo Executivo');
     p(
-      `No período analisado, a landing page registrou **${fmt(totalVisitors)} visitantes únicos** que geraram **${fmt(totalPageviews)} visualizações de página** e **${fmt(totalEvents)} eventos de tracking**. Foram capturados **${fmt(uniqueLeads)} leads** rastreados, resultando em uma taxa de conversão global de **${pct(round2(conversionRate))}**. A taxa de rejeição ficou em **${pct(round2(bounceRate))}** e os visitantes interagiram com uma média de **${round2(avgEventsPerVisitor)} eventos cada**.`,
+      `No período analisado, a landing page registrou **${fmt(totalVisitors)} visitantes únicos** que geraram **${fmt(totalPageviews)} visualizações de página** e **${fmt(totalEvents)} eventos de tracking**. Foram capturados **${fmt(uniqueLeads)} leads** rastreados e **${fmt(whatsappClicksCount)} cliques em WhatsApp**, totalizando **${fmt(totalConversions)} conversões** (taxa real: **${pct(round2(realConversionRate))}**). A taxa de conversão por formulário é de **${pct(round2(conversionRate))}**. A taxa de rejeição ficou em **${pct(round2(bounceRate))}** e os visitantes interagiram com uma média de **${round2(avgEventsPerVisitor)} eventos cada**.`,
     );
-    if (uniqueLeads > 0) {
+    if (totalConversions > 0) {
       p(
-        `O funil de conversão mostra que de ${fmt(pageviewCount)} visitantes que visualizaram a página, ${fmt(engagementCount)} engajaram (>1 evento) e ${fmt(leadCount)} se tornaram leads. A taxa de engajamento é de ${pct(round2(pageviewCount > 0 ? (engagementCount / pageviewCount) * 100 : 0))}.`,
+        `O funil de conversão mostra que de ${fmt(pageviewCount)} visitantes que visualizaram a página, ${fmt(engagementCount)} engajaram (>1 evento), ${fmt(whatsappClicksCount)} clicaram em WhatsApp e ${fmt(leadCount)} preencheram o formulário. A taxa de engajamento é de ${pct(round2(pageviewCount > 0 ? (engagementCount / pageviewCount) * 100 : 0))}.`,
       );
     }
 
@@ -772,8 +788,11 @@ export async function GET(request: Request) {
     line(`| Pageviews Totais | ${fmt(totalPageviews)} |`);
     line(`| Eventos Totais | ${fmt(totalEvents)} |`);
     line(`| Leads Rastreados | ${fmt(uniqueLeads)} |`);
+    line(`| Cliques em WhatsApp | ${fmt(whatsappClicksCount)} |`);
+    line(`| Total de Conversões (leads + WhatsApp) | ${fmt(totalConversions)} |`);
     line(`| Sessões Únicas | ${fmt(uniqueSessions)} |`);
-    line(`| Taxa de Conversão (visitante → lead) | ${pct(round2(conversionRate))} |`);
+    line(`| Taxa de Conversão Real (visitante → qualquer conversão) | ${pct(round2(realConversionRate))} |`);
+    line(`| Taxa de Conversão por Formulário (visitante → lead) | ${pct(round2(conversionRate))} |`);
     line(`| Taxa de Rejeição | ${pct(round2(bounceRate))} |`);
     line(`| Eventos por Visitante | ${round2(avgEventsPerVisitor)} |`);
     line(`| Pageviews por Sessão | ${round2(pageviewsPerSession)} |`);
@@ -804,13 +823,24 @@ export async function GET(request: Request) {
     line(
       `| Engajamento | ${fmt(engagementCount)} | ${pct(engRate)} | -${pct(engDrop)} |`,
     );
+    const waRate =
+      pageviewCount > 0
+        ? round2((whatsappClicksCount / pageviewCount) * 100)
+        : 0;
+    const waDrop =
+      engagementCount > 0
+        ? round2(((engagementCount - whatsappClicksCount) / engagementCount) * 100)
+        : 0;
+    line(
+      `| Clique em WhatsApp | ${fmt(whatsappClicksCount)} | ${pct(waRate)} | -${pct(waDrop)} |`,
+    );
     const leadRate =
       pageviewCount > 0
         ? round2((leadCount / pageviewCount) * 100)
         : 0;
     const leadDrop =
-      engagementCount > 0
-        ? round2(((engagementCount - leadCount) / engagementCount) * 100)
+      whatsappClicksCount > 0
+        ? round2(((whatsappClicksCount - leadCount) / whatsappClicksCount) * 100)
         : 0;
     line(
       `| Lead Capturado | ${fmt(leadCount)} | ${pct(leadRate)} | -${pct(leadDrop)} |`,
