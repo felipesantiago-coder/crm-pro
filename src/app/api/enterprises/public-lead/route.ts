@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         isExisting: true,
-        clientId: existingClient.id,
+        clientId: existingClient.id, // UUID is non-sequential and unguessable; needed for CRMPIXEL.identify()
         clientName: existingClient.name,
         assignedUser: assignedUser?.assigned ? {
           userId: assignedUser.userId,
@@ -447,7 +447,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       isExisting: !isNew,
-      clientId: client.id,
+      clientId: client.id, // UUID is non-sequential and unguessable; needed for CRMPIXEL.identify()
       clientName: client.name,
       assignedUser: assignedUser?.assigned ? {
         userId: assignedUser.userId,

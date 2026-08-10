@@ -13,7 +13,7 @@ export async function GET() {
         imageUrl: true,
         landingTitle: true,
         landingSubtitle: true,
-        cachedInfo: true,
+        // cachedInfo intentionally NOT selected — may contain internal data
         images: {
           select: { id: true, url: true, altText: true, sortOrder: true },
           orderBy: { sortOrder: 'asc' },
