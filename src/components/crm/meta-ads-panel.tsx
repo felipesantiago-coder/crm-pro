@@ -4,10 +4,10 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Megaphone, Eye, EyeOff, RefreshCw, Zap, CheckCircle2, Circle,
   Copy, ExternalLink, Loader2, Save, Users, TrendingUp, Target,
-  ArrowUpRight, ArrowDownRight, Search, BarChart3, Brain,
+  ArrowUpRight, ArrowDownRight, Search, BarChart3,
   ChevronDown, ChevronUp, Phone, Mail, MapPin, Calendar,
   AlertTriangle, Download, ChevronLeft, ChevronRight,
-  UserPlus, Sparkles, Activity, PieChart, Crosshair, Globe, UsersRound,
+  UserPlus, Activity, PieChart, Crosshair, Globe, UsersRound,
   HeartHandshake, Building2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -84,25 +84,6 @@ interface CampaignStat {
 interface RegionStat {
   region: string;
   count: number;
-}
-
-interface AnalysisResponse {
-  analysis: string | null;
-  error?: string;
-  message?: string;
-  generatedAt?: string;
-  period?: string;
-  periodLabel?: string;
-  dataPoints?: {
-    totalLeads: number;
-    recentLeads: number;
-    conversionRate: number;
-    withoutInteraction: number;
-    pixelDataIncluded?: boolean;
-    pixelQueriesSuccessful?: number;
-    pixelVisitors?: number;
-    pixelLeads?: number;
-  };
 }
 
 // ============================================================
@@ -850,226 +831,6 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
 }
 
 // ============================================================
-// Tab: Análise IA
-// ============================================================
-function AnalysisTab() {
-  const [loading, setLoading] = useState(false);
-  const [analysis, setAnalysis] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState('30d');
-  const [pixelStatus, setPixelStatus] = useState<{ included: boolean; visitors?: number } | null>(null);
-
-  async function runAnalysis() {
-    setLoading(true);
-    setError(null);
-    setAnalysis(null);
-    try {
-      const res = await fetch(`/api/meta-ads/analyze?period=${selectedPeriod}`);
-      if (res.ok) {
-        const data: AnalysisResponse = await res.json();
-        if (data.analysis) {
-          setAnalysis(data.analysis);
-          setGeneratedAt(data.generatedAt || null);
-          setPixelStatus(data.dataPoints ? { included: !!data.dataPoints.pixelDataIncluded, visitors: data.dataPoints.pixelVisitors } : null);
-          toast.success('Análise gerada com sucesso');
-        } else if (data.error) {
-          setError(data.error);
-          toast.error(data.error);
-        } else if (data.message) {
-          setError(data.message);
-        }
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || 'Erro ao gerar análise');
-        toast.error('Erro ao gerar análise');
-      }
-    } catch {
-      setError('Falha de conexão');
-      toast.error('Falha de conexão ao servidor');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function renderMarkdown(text: string) {
-    // Simple markdown renderer: headings, bold, lists, line breaks
-    const lines = text.split('\n');
-    return lines.map((line, i) => {
-      // Headings
-      if (line.startsWith('### ')) {
-        return <h3 key={i} className="text-sm font-bold mt-4 mb-1">{line.slice(4)}</h3>;
-      }
-      if (line.startsWith('## ')) {
-        return <h2 key={i} className="text-base font-bold mt-5 mb-2">{line.slice(3)}</h2>;
-      }
-      if (line.startsWith('# ')) {
-        return <h1 key={i} className="text-lg font-bold mt-4 mb-2">{line.slice(2)}</h1>;
-      }
-      // Bold
-      const parts = line.split(/(\*\*[^*]+\*\*)/g);
-      const rendered = parts.map((part, j) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-          return <strong key={j}>{part.slice(2, -2)}</strong>;
-        }
-        return <span key={j}>{part}</span>;
-      });
-      // List items
-      if (line.startsWith('- ')) {
-        return (
-          <li key={i} className="ml-4 text-sm list-disc text-muted-foreground">
-            {rendered}
-          </li>
-        );
-      }
-      if (line.match(/^\d+\.\s/)) {
-        const numMatch = line.match(/^(\d+)\.\s(.*)$/);
-        return (
-          <li key={i} className="ml-4 text-sm list-decimal text-muted-foreground">
-            {numMatch ? numMatch[2] : rendered}
-          </li>
-        );
-      }
-      // Empty line
-      if (line.trim() === '') {
-        return <div key={i} className="h-2" />;
-      }
-      // Regular paragraph
-      return <p key={i} className="text-sm text-muted-foreground leading-relaxed">{rendered}</p>;
-    });
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Brain className="h-5 w-5 text-purple-500" />
-            Análise por IA
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Insights e recomendações inteligentes sobre seus anúncios
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-            <SelectTrigger className="w-[160px] h-9 text-xs">
-              <Calendar className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="24h">Últimas 24 horas</SelectItem>
-              <SelectItem value="48h">Últimas 48 horas</SelectItem>
-              <SelectItem value="7d">Última semana</SelectItem>
-              <SelectItem value="15d">Últimos 15 dias</SelectItem>
-              <SelectItem value="30d">Último mês</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            onClick={runAnalysis}
-            disabled={loading}
-            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Analisando...
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4 mr-2" />
-                Gerar Análise
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-
-      {/* Info card */}
-      <Card className="border-purple-200/50 dark:border-purple-800/30 bg-purple-50/30 dark:bg-purple-950/10">
-        <CardContent className="p-4 flex items-start gap-3">
-          <Sparkles className="h-5 w-5 text-purple-500 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">Como funciona</p>
-            <p className="mt-1">
-              A IA analisa seus leads do webhook Meta Ads, leads de landing pages com UTM do Meta e dados do
-              pixel próprio (comportamento, scroll, atenção/heartbeat, dispositivos, Web Vitals, formulário).
-              Inclui correlação entre eventos e conversão, diagnóstico por landing page, análise por horário,
-              score de engajamento e detalhes de erros de JS. Selecione o período desejado e clique em Gerar Análise.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Loading state */}
-      {loading && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
-            <div className="relative">
-              <div className="h-12 w-12 rounded-full border-4 border-purple-200 dark:border-purple-800" />
-              <div className="absolute inset-0 h-12 w-12 rounded-full border-4 border-transparent border-t-purple-500 animate-spin" />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-medium">Analisando seus dados de anúncios...</p>
-              <p className="text-xs text-muted-foreground mt-1">Isso pode levar alguns segundos</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Error state */}
-      {error && !loading && (
-        <Card className="border-red-200 dark:border-red-800/50">
-          <CardContent className="p-4 flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-red-600 dark:text-red-400">{error}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Analysis result */}
-      {analysis && !loading && (
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Brain className="h-4 w-4 text-purple-500" />
-                Relatório de Análise
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                {pixelStatus && (
-                  pixelStatus.included ? (
-                    <span className="flex items-center gap-1 text-[10px] text-emerald-500">
-                      <Activity className="h-3 w-3" />
-                      Pixel: {pixelStatus.visitors?.toLocaleString('pt-BR')} visitantes
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-[10px] text-amber-500">
-                      <AlertTriangle className="h-3 w-3" />
-                      Dados do pixel não incluídos
-                    </span>
-                  )
-                )}
-                {generatedAt && (
-                  <span className="text-[10px] text-muted-foreground">
-                    Gerado em {format(parseISO(generatedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                  </span>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="prose prose-sm max-w-none">
-            {renderMarkdown(analysis)}
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
 // Tab: Configuração (migrado do painel original)
 // ============================================================
 function ConfigTab() {
@@ -1548,7 +1309,6 @@ export function MetaAdsPanel() {
             <SelectContent>
               <SelectItem value="overview"><span className="flex items-center gap-2"><BarChart3 className="h-4 w-4" />Visão Geral</span></SelectItem>
               <SelectItem value="leads"><span className="flex items-center gap-2"><Users className="h-4 w-4" />Leads</span></SelectItem>
-              <SelectItem value="analysis"><span className="flex items-center gap-2"><Brain className="h-4 w-4" />Análise IA</span></SelectItem>
               <SelectItem value="tracking"><span className="flex items-center gap-2"><Crosshair className="h-4 w-4" />Tracking</span></SelectItem>
               <SelectItem value="landing"><span className="flex items-center gap-2"><Globe className="h-4 w-4" />Landing Pages</span></SelectItem>
               <SelectItem value="queues"><span className="flex items-center gap-2"><UsersRound className="h-4 w-4" />Filas</span></SelectItem>
@@ -1558,7 +1318,7 @@ export function MetaAdsPanel() {
           </Select>
         </div>
         {/* Desktop tabs */}
-        <TabsList className="hidden lg:grid lg:grid-cols-8 lg:max-w-4xl w-full gap-1 p-0.5">
+        <TabsList className="hidden lg:grid lg:grid-cols-7 lg:max-w-4xl w-full gap-1 p-0.5">
           <TabsTrigger value="overview" className="text-sm gap-1.5 whitespace-nowrap">
             <BarChart3 className="h-3.5 w-3.5" />
             Visão Geral
@@ -1566,10 +1326,6 @@ export function MetaAdsPanel() {
           <TabsTrigger value="leads" className="text-sm gap-1.5 whitespace-nowrap">
             <Users className="h-3.5 w-3.5" />
             Leads
-          </TabsTrigger>
-          <TabsTrigger value="analysis" className="text-sm gap-1.5 whitespace-nowrap">
-            <Brain className="h-3.5 w-3.5" />
-            Análise IA
           </TabsTrigger>
           <TabsTrigger value="tracking" className="text-sm gap-1.5 whitespace-nowrap">
             <Crosshair className="h-3.5 w-3.5" />
@@ -1605,10 +1361,6 @@ export function MetaAdsPanel() {
 
         <TabsContent value="leads">
           <LeadsTab onLeadsNeeded={fetchOverview} />
-        </TabsContent>
-
-        <TabsContent value="analysis">
-          <AnalysisTab />
         </TabsContent>
 
         <TabsContent value="tracking">
