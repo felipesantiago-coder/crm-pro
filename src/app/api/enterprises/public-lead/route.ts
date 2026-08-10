@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
-import { notifyNewLead } from '@/lib/telegram';
+import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
 import { rateLimit } from '@/lib/rate-limit';
-import { assignLeadToUser, type AssignResult } from '@/lib/lead-queue';
+import { assignLeadToUser, peekNextUser, type AssignResult } from '@/lib/lead-queue';
 
 /**
  * PUBLIC endpoint — no auth required.
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
 
       // Send Telegram notification for repeat lead
       // FIX: include assignedUserName so the agent knows it's their turn
-      if (assignedUser?.assigned && assignedUser.userId) {
+      if (assignedUser?.assigned && assignedUser.userId && assignedUser.message !== 'already_assigned') {
         db.user.findUnique({
           where: { id: assignedUser.userId },
           select: { telegramChatId: true },
@@ -136,10 +136,28 @@ export async function POST(request: NextRequest) {
               customAnswers: undefined,
             }).catch((err) => console.warn('[Public Lead] Falha na notificação (lead existente):', err));
           } else {
-            // FIX: Log when assigned user has no Telegram configured — admin should know
             console.warn(`[Public Lead] Usuário ${assignedUser.userName} (${assignedUser.userId}) atribuído mas sem Telegram configurado. Lead ${existingClient.id} sem notificação.`);
           }
         }).catch(() => { /* non-critical: DB lookup failed, lead is still saved */ });
+
+        // ── Notify admin about queue rotation (fire-and-forget) ──
+        (async () => {
+          try {
+            const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+            if (!admin?.telegramChatId) return;
+            const nextUser = await peekNextUser({ queueId: assignedUser.queueId });
+            await notifyQueueUpdate(admin.telegramChatId, {
+              source: slug ? `landing_form:${slug}` : 'landing_form',
+              assignedUserName: assignedUser.userName || 'Desconhecido',
+              nextUserName: nextUser?.userName || null,
+              leadName: existingClient.name,
+              leadPhone: existingClient.phone,
+              enterpriseName,
+            });
+          } catch (err) {
+            console.warn('[Public Lead] Admin queue notification failed (existing):', err instanceof Error ? err.message : err);
+          }
+        })();
       } else {
         // FIX: Log when no queue was available — admin should know leads are coming without notification
         console.warn(`[Public Lead] Lead existente ${existingClient.id} sem fila disponível. Nenhuma notificação enviada.`);
@@ -383,8 +401,8 @@ export async function POST(request: NextRequest) {
       console.error(`[Public Lead] Falha na atribuição de fila (${isNew ? 'lead novo' : 'lead existente'}):`, err);
     }
 
-    // ── Send Telegram notification ──
-    if (assignedUser?.assigned && assignedUser.userId) {
+    // ── Send Telegram notification to assigned agent ──
+    if (assignedUser?.assigned && assignedUser.userId && assignedUser.message !== 'already_assigned') {
       sendNotification(assignedUser.userId, {
         leadName: client.name,
         leadPhone: client.phone || '',
@@ -400,6 +418,25 @@ export async function POST(request: NextRequest) {
             ) as Record<string, string>
           : undefined,
       }, client.name);
+
+      // ── Notify admin about queue rotation (fire-and-forget) ──
+      (async () => {
+        try {
+          const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+          if (!admin?.telegramChatId) return;
+          const nextUser = await peekNextUser({ queueId: assignedUser.queueId });
+          await notifyQueueUpdate(admin.telegramChatId, {
+            source: slug ? `landing_form:${slug}` : 'landing_form',
+            assignedUserName: assignedUser.userName || 'Desconhecido',
+            nextUserName: nextUser?.userName || null,
+            leadName: client.name,
+            leadPhone: client.phone,
+            enterpriseName,
+          });
+        } catch (err) {
+          console.warn('[Public Lead] Admin queue notification failed (new):', err instanceof Error ? err.message : err);
+        }
+      })();
     } else {
       console.warn(`[Public Lead] Lead ${client.id} (${client.name}) sem fila disponível. Nenhuma notificação enviada.`);
     }

@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { assignLeadToUser } from '@/lib/lead-queue';
+import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
+import { notifyQueueUpdate } from '@/lib/telegram';
 import { rateLimit } from '@/lib/rate-limit';
+import { db } from '@/lib/db';
 
 /**
  * PUBLIC — used by external integrations that need HTTP access.
  * Prefer using assignLeadToUser() directly from server code instead.
+ *
+ * Also sends an admin Telegram notification with:
+ *   - Source type (WhatsApp click, form, etc.)
+ *   - Who was assigned
+ *   - Who is next in the queue
  *
  * Rate limited to prevent abuse.
  */
@@ -35,6 +42,32 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await assignLeadToUser({ leadId, queueId, source });
+
+    // ── Fire-and-forget: notify admin about queue rotation ──
+    if (result.assigned && result.message !== 'already_assigned') {
+      (async () => {
+        try {
+          // Find admin's Telegram chat ID
+          const admin = await db.user.findFirst({
+            where: { role: 'ADMIN' },
+            select: { telegramChatId: true },
+          });
+          if (!admin?.telegramChatId) return;
+
+          // Peek who is NEXT (without advancing the counter)
+          const nextUser = await peekNextUser({ queueId: result.queueId });
+
+          await notifyQueueUpdate(admin.telegramChatId, {
+            source: source || 'api',
+            assignedUserName: result.userName || 'Desconhecido',
+            nextUserName: nextUser?.userName || null,
+          });
+        } catch (err) {
+          console.warn('[Queue Assign] Admin notification failed:', err instanceof Error ? err.message : err);
+        }
+      })();
+    }
+
     return NextResponse.json(result);
   } catch (error) {
     console.error('[Queue Assign] Erro:', error);
