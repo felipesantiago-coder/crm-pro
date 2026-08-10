@@ -58,6 +58,7 @@ export async function GET(request: Request) {
       metaPixelLeads,
       metaCrmLeads,
       metaMatched,
+      whatsappClicks,
     ] = await Promise.all([
       // ── 1. Core KPIs ──
       safe(db.$queryRaw<
@@ -440,6 +441,17 @@ export async function GET(request: Request) {
             AND (LOWER(e."utmSource") LIKE '%meta%' OR LOWER(e."utmSource") LIKE '%facebook%' OR LOWER(e."utmSource") LIKE '%ig%' OR LOWER(e."utmSource") LIKE '%instagram%' OR LOWER(e."utmSource") LIKE '%fb%')
         `,
       )),
+
+      // ── 17. WhatsApp clicks (unique visitors who clicked WhatsApp) ──
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
+        Prisma.sql`
+          SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
+          FROM tracking_events e
+          WHERE e."eventType" = 'whatsapp_click'
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+        `,
+      )),
     ]);
 
     // ── Compute derived metrics ──
@@ -454,6 +466,9 @@ export async function GET(request: Request) {
     const avgEventsPerVisitor = totalVisitors > 0 ? totalEvents / totalVisitors : 0;
     const bounceRate = totalVisitors > 0 ? (bounced / totalVisitors) * 100 : 0;
     const pageviewsPerSession = uniqueSessions > 0 ? totalPageviews / uniqueSessions : 0;
+    const whatsappClicksCount = Number(whatsappClicks[0]?.count ?? 0);
+    const totalConversions = uniqueLeads + whatsappClicksCount;
+    const realConversionRate = totalVisitors > 0 ? (totalConversions / totalVisitors) * 100 : 0;
 
     // ── Funnel ──
     const pageviewCount = Number(funnelData.find((f) => f.stage === 'pageview')?.count ?? 0);
@@ -466,6 +481,11 @@ export async function GET(request: Request) {
         stage: 'Engagement',
         count: engagementCount,
         rate: pageviewCount > 0 ? (engagementCount / pageviewCount) * 100 : 0,
+      },
+      {
+        stage: 'WhatsApp',
+        count: whatsappClicksCount,
+        rate: pageviewCount > 0 ? (whatsappClicksCount / pageviewCount) * 100 : 0,
       },
       {
         stage: 'Lead',
@@ -575,8 +595,11 @@ export async function GET(request: Request) {
         totalPageviews,
         totalEvents,
         uniqueLeads,
+        whatsappClicks: whatsappClicksCount,
+        totalConversions,
         uniqueSessions,
         conversionRate: round2(conversionRate),
+        realConversionRate: round2(realConversionRate),
         avgEventsPerVisitor: round2(avgEventsPerVisitor),
         bounceRate: round2(bounceRate),
         pageviewsPerSession: round2(pageviewsPerSession),
