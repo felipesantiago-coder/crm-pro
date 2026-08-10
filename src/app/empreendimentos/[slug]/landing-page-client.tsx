@@ -803,14 +803,11 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   const [toastVisible, setToastVisible] = useState(false);
 
   const socialProofPool = React.useMemo(() => [
-    { name: 'Maria', action: 'se cadastrou', time: '2 min' },
-    { name: 'Carlos', action: 'solicitou informações', time: '5 min' },
-    { name: 'Ana', action: 'agendou visita', time: '8 min' },
-    { name: 'Pedro', action: 'se cadastrou', time: '12 min' },
-    { name: 'Juliana', action: 'pediu condições', time: '15 min' },
-    { name: 'Rafael', action: 'se cadastrou', time: '18 min' },
-    { name: 'Fernanda', action: 'solicitou visita', time: '22 min' },
-    { name: 'Lucas', action: 'se cadastrou', time: '25 min' },
+    { message: 'Mais uma pessoa acabou de se cadastrar', time: 'agora' },
+    { message: 'Alguém acabou de solicitar informações', time: '1 min' },
+    { message: 'Mais uma pessoa se cadastrou agora', time: '2 min' },
+    { message: 'Alguém solicitou condições de pagamento', time: '3 min' },
+    { message: 'Outra pessoa acabou de se cadastrar', time: '5 min' },
   ], []);
 
   // Cycle social proof every 8s; show toast after 10s initial delay
@@ -2721,8 +2718,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               <UserCheck className="h-4 w-4 text-[#C9A96E]" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-white/90 font-medium leading-tight truncate">
-                {socialProofPool[socialProofIdx].name} {socialProofPool[socialProofIdx].action.toLowerCase()}
+              <p className="text-xs text-white/90 font-medium leading-tight">
+                {socialProofPool[socialProofIdx].message}
               </p>
               <p className="text-[10px] text-white/35 mt-0.5">
                 há {socialProofPool[socialProofIdx].time}
