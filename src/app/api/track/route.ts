@@ -154,6 +154,7 @@ export async function POST(request: NextRequest) {
           if (r.timezone) m.timezone = r.timezone;
           if (r.language) m.language = r.language;
           if (r.connection) m.connection = r.connection;
+          if (r.geo_hint) m.geo_hint = r.geo_hint;
           if (r.ts) m.client_ts = r.ts;
           return Object.keys(m).length > 0 ? m : undefined;
         })(),
@@ -258,10 +259,15 @@ export async function POST(request: NextRequest) {
       }),
     );
 
-    // ── STEP 2: Resolve Geo-IP in background (fire-and-forget) ──
-    // This does NOT block the response. Geo data is updated asynchronously.
-    const visitorIds = [...new Set(validEvents.map((e) => e.visitorId))];
-    resolveGeoIP(ip)
+  // Parse and extract geo_hint from first event's metadata for Geo-IP fallback
+  const geoHint = validEvents[0]?.metadata as Record<string, unknown> | undefined;
+  const geoHintTz = (geoHint?.geo_hint as string) || null;
+
+  // ── STEP 2: Resolve Geo-IP in background (fire-and-forget) ──
+  // This does NOT block the response. Geo data is updated asynchronously.
+  // Uses geo_hint (client timezone) as fallback when IP providers fail (e.g. IG IAB).
+  const visitorIds = [...new Set(validEvents.map((e) => e.visitorId))];
+  resolveGeoIP(ip, geoHintTz)
       .then((geo) => {
         if (geo.country || geo.city) {
           Promise.all(
