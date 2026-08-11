@@ -17,7 +17,7 @@ const ENTERPRISE_SELECT = {
   cachedInfo: true, createdAt: true,
   _count: { select: { clients: true } },
   images: { select: { id: true, url: true, altText: true, sortOrder: true }, orderBy: { sortOrder: 'asc' } },
-  floorPlans: { select: { id: true, url: true, altText: true, sortOrder: true }, orderBy: { sortOrder: 'asc' } },
+  floorPlans: { select: { id: true, url: true, altText: true, sortOrder: true, name: true, area: true, bedrooms: true, suites: true, hasBalcony: true, isGarden: true, isPenthouse: true, description: true }, orderBy: { sortOrder: 'asc' } },
   formFields: {
     where: { isActive: true },
     select: { id: true, label: true, fieldType: true, placeholder: true, options: true, required: true, sortOrder: true },

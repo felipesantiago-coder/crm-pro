@@ -22,9 +22,17 @@ interface EnterpriseImage {
 
 interface FloorPlan {
   id: string;
-  url: string;
+  url: string | null;
   altText: string | null;
   sortOrder: number;
+  name: string | null;
+  area: string | null;
+  bedrooms: number | null;
+  suites: number | null;
+  hasBalcony: boolean | null;
+  isGarden: boolean | null;
+  isPenthouse: boolean | null;
+  description: string | null;
 }
 
 interface FormField {
@@ -1301,7 +1309,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                       >
                         <div className="aspect-[4/3] bg-white/[0.01] flex items-center justify-center p-3">
                           <img
-                            src={plan.url}
+                            src={plan.url || ''}
                             alt={plan.altText || `Planta ${idx + 1}`}
                             className="w-full h-full object-contain"
                           />
@@ -1965,7 +1973,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             Planta {activeFloorIdx + 1} / {enterprise.floorPlans.length}
           </div>
           <img
-            src={enterprise.floorPlans[activeFloorIdx]?.url}
+            src={enterprise.floorPlans[activeFloorIdx]?.url || ''}
             alt={enterprise.floorPlans[activeFloorIdx]?.altText || `Planta ${activeFloorIdx + 1}`}
             className="max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] object-contain rounded-xl"
             onClick={(ev) => ev.stopPropagation()}
