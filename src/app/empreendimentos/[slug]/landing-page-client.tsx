@@ -1793,21 +1793,12 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               {/* Floor Plans */}
               {e.floorPlans && e.floorPlans.length > 0 && (
               <div className="mt-10 sm:mt-14">
-                  <div className="flex items-center justify-between mb-6 sm:mb-8">
-                    <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 mb-6 sm:mb-8">
                       <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center">
                         <LayoutGrid className="h-4 w-4 text-blue-600" />
                       </div>
                       <h3 className="text-lg sm:text-xl font-semibold text-[#1a1a1a]">Plantas das Unidades</h3>
                       <span className="text-xs text-[#1a1a1a]/25 font-medium">{e.floorPlans.length} planta{e.floorPlans.length !== 1 ? 's' : ''}</span>
-                    </div>
-                    <a
-                      href="#cadastro"
-                      className="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#33492F] text-white text-sm font-semibold hover:bg-[#33492F]/90 transition-colors"
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                      Book Completo
-                    </a>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                     {e.floorPlans.map((plan, idx) => (
@@ -1834,15 +1825,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                       </button>
                     ))}
                   </div>
-                  <div className="mt-4 sm:hidden text-center">
-                    <a
-                      href="#cadastro"
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#33492F] text-white text-sm font-semibold"
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                      Solicitar Book Completo
-                    </a>
-                  </div>
+
                 </div>
               )}
 
