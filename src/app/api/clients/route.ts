@@ -29,8 +29,12 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
     const needsUpdate = searchParams.get('needsUpdate') === 'true';
     const utmCampaign = searchParams.get('utmCampaign') || '';
-    const sortBy = searchParams.get('sortBy') || 'createdAt';
-    const sortOrder = searchParams.get('sortOrder') || 'desc';
+    const VALID_SORT_FIELDS = ['name', 'createdAt', 'updatedAt', 'lastInteractionAt', 'stage', 'region', 'enterprise', 'phone', 'email'] as const;
+    const sortByRaw = searchParams.get('sortBy') || 'createdAt';
+    const sortBy = VALID_SORT_FIELDS.includes(sortByRaw as typeof VALID_SORT_FIELDS[number])
+      ? sortByRaw
+      : 'createdAt';
+    const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
 
     // ADMIN vê todos; USER vê apenas os que criou + os que é parceiro
     const isAdminUser = currentUser.role === 'ADMIN';

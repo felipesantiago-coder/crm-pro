@@ -83,6 +83,38 @@
 
   var utmParams = parseUTM();
 
+  /* ── UTM first-touch persistence ───────────────────── */
+  (function persistUTM() {
+    var hasUTM = utmParams.utm_source || utmParams.utm_campaign;
+    if (!hasUTM) {
+      // No UTM in current URL — restore from localStorage
+      try {
+        var saved = lsGet('_crmpx_utm_first');
+        if (saved) {
+          var parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') utmParams = parsed;
+        }
+      } catch (e) { /* noop */ }
+    } else {
+      // Save first-touch UTM (don't overwrite)
+      try {
+        if (!lsGet('_crmpx_utm_first')) {
+          lsSet('_crmpx_utm_first', JSON.stringify(utmParams));
+        }
+      } catch (e) { /* noop */ }
+    }
+  })();
+
+  /* ── Sanitize URL: strip fbclid/gclid click IDs to prevent truncation ── */
+  (function sanitizeURL() {
+    try {
+      if (location.search.indexOf('fbclid=') !== -1 || location.search.indexOf('gclid=') !== -1 || location.search.indexOf('igshid=') !== -1) {
+        var clean = location.pathname + location.search.replace(/[?&](fbclid|gclid|igshid)=[^&]*/gi, '').replace(/^&/, '?').replace(/[?&]$/, '');
+        history.replaceState(null, '', clean + location.hash);
+      }
+    } catch (e) { /* noop */ }
+  })();
+
   /* ── Visitor context (detected once) ────────────────── */
   var _visitorCtx = {};
   try {
@@ -118,6 +150,8 @@
       timezone: _visitorCtx.timezone || undefined,
       language: _visitorCtx.language || undefined,
       connection: _visitorCtx.connection || undefined,
+      // Include timezone-based geo hint for when IP geo fails (e.g. IG IAB)
+      geo_hint: _visitorCtx.timezone || undefined,
       ts: Date.now()
     };
     // Merge cookie consent flag if Cookiebot / OneTrust / custom global exists
@@ -223,22 +257,26 @@
     // LCP (Largest Contentful Paint)
     try {
       new PerformanceObserver(function (list) {
-        var entries = list.getEntries();
-        if (entries.length > 0) {
-          var last = entries[entries.length - 1];
-          send(basePayload("web_vital", { metric: "LCP", value: Math.round(last.startTime) }));
-        }
+        try {
+          var entries = list.getEntries();
+          if (entries.length > 0) {
+            var last = entries[entries.length - 1];
+            send(basePayload("web_vital", { metric: "LCP", value: Math.round(last.startTime) }));
+          }
+        } catch (e) { /* callback error — non-critical */ }
       }).observe({ type: "largest-contentful-paint", buffered: true });
     } catch (e) { /* unsupported */ }
 
     // FID (First Input Delay)
     try {
       new PerformanceObserver(function (list) {
-        var entries = list.getEntries();
-        for (var i = 0; i < entries.length; i++) {
-          var entry = entries[i];
-          send(basePayload("web_vital", { metric: "FID", value: Math.round(entry.processingStart - entry.startTime) }));
-        }
+        try {
+          var entries = list.getEntries();
+          for (var i = 0; i < entries.length; i++) {
+            var entry = entries[i];
+            send(basePayload("web_vital", { metric: "FID", value: Math.round(entry.processingStart - entry.startTime) }));
+          }
+        } catch (e) { /* callback error — non-critical */ }
       }).observe({ type: "first-input", buffered: true });
     } catch (e) { /* unsupported */ }
 
@@ -247,46 +285,54 @@
       var clsValue = 0;
       var clsEntries = [];
       new PerformanceObserver(function (list) {
-        for (var i = 0; i < list.getEntries().length; i++) {
-          var entry = list.getEntries()[i];
-          if (!entry.hadRecentInput) {
-            clsValue += entry.value;
-            clsEntries.push(entry);
+        try {
+          for (var i = 0; i < list.getEntries().length; i++) {
+            var entry = list.getEntries()[i];
+            if (!entry.hadRecentInput) {
+              clsValue += entry.value;
+              clsEntries.push(entry);
+            }
           }
-        }
+        } catch (e) { /* callback error — non-critical */ }
       }).observe({ type: "layout-shift", buffered: true });
       // Report CLS on page hide
       window.addEventListener("visibilitychange", function () {
-        if (document.visibilityState === "hidden") {
-          send(basePayload("web_vital", { metric: "CLS", value: Math.round(clsValue * 1000) / 1000 }));
-        }
+        try {
+          if (document.visibilityState === "hidden") {
+            send(basePayload("web_vital", { metric: "CLS", value: Math.round(clsValue * 1000) / 1000 }));
+          }
+        } catch (e) { /* visibility callback error — non-critical */ }
       });
     } catch (e) { /* unsupported */ }
 
     // FCP (First Contentful Paint) — use "paint" type, filter by name
     try {
       new PerformanceObserver(function (list) {
-        var entries = list.getEntries();
-        for (var i = 0; i < entries.length; i++) {
-          if (entries[i].name === "first-contentful-paint") {
-            send(basePayload("web_vital", { metric: "FCP", value: Math.round(entries[i].startTime) }));
-            break;
+        try {
+          var entries = list.getEntries();
+          for (var i = 0; i < entries.length; i++) {
+            if (entries[i].name === "first-contentful-paint") {
+              send(basePayload("web_vital", { metric: "FCP", value: Math.round(entries[i].startTime) }));
+              break;
+            }
           }
-        }
+        } catch (e) { /* callback error — non-critical */ }
       }).observe({ type: "paint", buffered: true });
     } catch (e) { /* unsupported */ }
 
     // TTFB (Time to First Byte)
     try {
       new PerformanceObserver(function (list) {
-        var entries = list.getEntries();
-        if (entries.length > 0) {
-          var nav = entries[0];
-          send(basePayload("web_vital", {
-            metric: "TTFB",
-            value: Math.round(nav.responseStart - nav.requestStart)
-          }));
-        }
+        try {
+          var entries = list.getEntries();
+          if (entries.length > 0) {
+            var nav = entries[0];
+            send(basePayload("web_vital", {
+              metric: "TTFB",
+              value: Math.round(nav.responseStart - nav.requestStart)
+            }));
+          }
+        } catch (e) { /* callback error — non-critical */ }
       }).observe({ type: "navigation", buffered: true });
     } catch (e) { /* unsupported */ }
 
@@ -294,16 +340,20 @@
     try {
       var inpValue = 0;
       new PerformanceObserver(function (list) {
-        for (var i = 0; i < list.getEntries().length; i++) {
-          var entry = list.getEntries()[i];
-          var duration = entry.duration;
-          if (duration > inpValue) inpValue = duration;
-        }
+        try {
+          for (var i = 0; i < list.getEntries().length; i++) {
+            var entry = list.getEntries()[i];
+            var duration = entry.duration;
+            if (duration > inpValue) inpValue = duration;
+          }
+        } catch (e) { /* callback error — non-critical */ }
       }).observe({ type: "event", buffered: true, durationThreshold: 16 });
       window.addEventListener("visibilitychange", function () {
-        if (document.visibilityState === "hidden") {
-          send(basePayload("web_vital", { metric: "INP", value: Math.round(inpValue) }));
-        }
+        try {
+          if (document.visibilityState === "hidden") {
+            send(basePayload("web_vital", { metric: "INP", value: Math.round(inpValue) }));
+          }
+        } catch (e) { /* visibility callback error — non-critical */ }
       });
     } catch (e) { /* unsupported */ }
   }
@@ -311,15 +361,29 @@
   /* ── JS Error tracking ──────────────────────────────── */
   function trackErrors() {
     var _errorCount = 0;
-    // Known third-party error patterns to suppress (reduce noise from Meta Pixel, etc.)
+    // Known third-party error patterns to suppress (reduce noise from Meta Pixel, IG IAB, etc.)
     var _thirdPartyPatterns = [
       /^Script error\.?$/i,
+      /^Uncaught Script error\.?$/i,
+      /^Uncaught Error: Script error/i,
       /fbevents/i,
       /fbq/i,
       /facebook/i,
       /Meta Pixel/i,
       /net\.facebook/i,
       /connect\.facebook/i,
+      /staticxx\.facebook/i,
+      /static\.facebook/i,
+      // Instagram In-App Browser specific
+      /atndmt\.com/i,
+      /browsi\.com/i,
+      /cdninstagram\.com/i,
+      /fbcdn\.net/i,
+      /ig\.com/i,
+      /instagram\.com/i,
+      // Generic cross-origin noise
+      /cross-origin/i,
+      /CORS/i,
     ];
     function isThirdParty(msg, filename) {
       for (var i = 0; i < _thirdPartyPatterns.length; i++) {
@@ -433,6 +497,7 @@
   /* ── Performance Diagnostic (runs once after page load) ── */
   function runPerformanceDiagnostic() {
     setTimeout(function () {
+      try {
       var issues = [];
 
       // Check for missing jQuery (common issue on external LPs)
@@ -535,6 +600,7 @@
           image_count: imgs.length
         }));
       }
+      } catch(e) { /* diagnostic errors are non-critical */ }
     }, 5000); // Run 5s after page load to catch deferred errors
   }
 

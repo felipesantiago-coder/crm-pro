@@ -154,6 +154,90 @@ export async function notifyNewLead(
 }
 
 /**
+ * Sends a queue rotation notification to admins.
+ * Called whenever the queue advances (lead form submission or WhatsApp click).
+ *
+ * @param data.source        - Raw source string (e.g. 'landing_form:slug', 'whatsapp_click:slug:hero')
+ * @param data.assignedUserName - Name of the user who received the assignment
+ * @param data.nextUserName     - Name of the user who is NEXT in line
+ * @param data.leadName        - Lead name (for form submissions)
+ * @param data.leadPhone       - Lead phone (for form submissions)
+ * @param data.enterpriseName  - Enterprise name (if available)
+ */
+export interface QueueUpdateData {
+  source: string;
+  assignedUserName: string;
+  nextUserName: string | null;
+  leadName?: string | null;
+  leadPhone?: string | null;
+  enterpriseName?: string | null;
+}
+
+export async function notifyQueueUpdate(
+  telegramChatId: string,
+  data: QueueUpdateData,
+): Promise<boolean> {
+  // Parse source into readable type and detail
+  const src = data.source || 'desconhecida';
+  let sourceType: string;
+  let sourceDetail: string;
+
+  if (src.startsWith('whatsapp_click')) {
+    sourceType = '💬 WhatsApp';
+    // Format: whatsapp_click:slug:location
+    const parts = src.split(':');
+    sourceDetail = parts.length >= 3 ? parts.slice(2).join(':') : (parts[1] || '');
+  } else if (src.startsWith('landing_form')) {
+    sourceType = '📝 Cadastro';
+    const parts = src.split(':');
+    sourceDetail = parts[1] || '';
+  } else if (src.startsWith('meta_ads')) {
+    sourceType = '📢 Meta Ads';
+    const parts = src.split(':');
+    sourceDetail = parts.slice(1).join(':');
+  } else if (src.startsWith('recovered_lost_lead')) {
+    sourceType = '🔄 Lead recuperado';
+    const parts = src.split(':');
+    sourceDetail = parts[1] || '';
+  } else {
+    sourceType = '🔗 API';
+    sourceDetail = src;
+  }
+
+  // Build the notification
+  let text = `🔄 <b>Fila de Atualizada</b>\n\n`;
+
+  // Source info
+  text += `📋 <b>Fonte:</b> ${escapeHtml(sourceType)}`;
+  if (sourceDetail) text += ` (${escapeHtml(sourceDetail)})`;
+  text += '\n';
+
+  // Who received the assignment
+  text += `👤 <b>Atendimento atribuído a:</b> ${escapeHtml(data.assignedUserName)}\n`;
+
+  // Who is next
+  if (data.nextUserName) {
+    text += `⏭️ <b>Próximo na fila:</b> ${escapeHtml(data.nextUserName)}\n`;
+  }
+
+  // Lead info (only for form submissions, not WhatsApp clicks)
+  if (data.leadName) {
+    text += `\n📊 <b>Lead:</b> ${escapeHtml(data.leadName)}`;
+    if (data.leadPhone) text += ` — ${escapeHtml(data.leadPhone)}`;
+    text += '\n';
+  }
+
+  // Enterprise
+  if (data.enterpriseName) {
+    text += `🏗️ <b>Empreendimento:</b> ${escapeHtml(data.enterpriseName)}\n`;
+  }
+
+  text += `\n⏰ ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`;
+
+  return sendTelegramMessage(telegramChatId, text);
+}
+
+/**
  * Sends a test notification (for the settings page).
  */
 export async function sendTestNotification(

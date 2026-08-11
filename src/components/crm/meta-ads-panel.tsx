@@ -4,10 +4,11 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Megaphone, Eye, EyeOff, RefreshCw, Zap, CheckCircle2, Circle,
   Copy, ExternalLink, Loader2, Save, Users, TrendingUp, Target,
-  ArrowUpRight, ArrowDownRight, Search, BarChart3, Brain,
+  ArrowUpRight, ArrowDownRight, Search, BarChart3,
   ChevronDown, ChevronUp, Phone, Mail, MapPin, Calendar,
-  AlertTriangle, Filter, Download, ChevronLeft, ChevronRight,
-  UserPlus, Sparkles, Activity, PieChart, Crosshair, Globe, UsersRound,
+  AlertTriangle, Download, ChevronLeft, ChevronRight,
+  UserPlus, Activity, PieChart, Crosshair, Globe, UsersRound,
+  HeartHandshake, Building2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import { format, parseISO } from 'date-fns';
 import { TrackingTab } from './tracking-tab';
 import { LandingPagesTab } from './landing-pages-tab';
 import { QueuesTab } from './queues-tab';
+import { LostLeadsTab } from './lost-leads-view';
 import { ptBR } from 'date-fns/locale';
 
 // ============================================================
@@ -44,20 +46,29 @@ interface Metrics {
 
 interface LeadItem {
   id: string;
-  name: string;
+  name: string | null;
   phone: string | null;
   email: string | null;
   region: string | null;
-  stage: string;
+  stage: string | null;
   notes: string | null;
   createdAt: string;
   lastInteractionAt: string | null;
   enterprise: string | null;
-  adName: string;
-  campaignName: string;
-  formName: string;
-  leadId: string;
+  adName: string | null;
+  campaignName: string | null;
+  formName: string | null;
+  leadId: string | null;
+  leadSource: 'meta_webhook' | 'landing_form' | 'whatsapp_click';
+  slug: string | null;
+  whatsappSource: string | null;
   _count: { interactions: number };
+}
+
+interface SourceCounts {
+  meta_webhook: number;
+  landing_form: number;
+  whatsapp_click: number;
 }
 
 interface ChartPoint {
@@ -73,21 +84,6 @@ interface CampaignStat {
 interface RegionStat {
   region: string;
   count: number;
-}
-
-interface AnalysisResponse {
-  analysis: string | null;
-  error?: string;
-  message?: string;
-  generatedAt?: string;
-  period?: string;
-  periodLabel?: string;
-  dataPoints?: {
-    totalLeads: number;
-    recentLeads: number;
-    conversionRate: number;
-    withoutInteraction: number;
-  };
 }
 
 // ============================================================
@@ -465,6 +461,43 @@ function KpiCard({ title, value, icon, iconBg, iconColor, subtitle, trend }: {
 // ============================================================
 // Tab: Leads
 // ============================================================
+const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  meta_webhook: {
+    label: 'Meta Ads',
+    color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    icon: <Megaphone className="h-3 w-3" />,
+  },
+  landing_form: {
+    label: 'Landing Page',
+    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    icon: <Globe className="h-3 w-3" />,
+  },
+  whatsapp_click: {
+    label: 'WhatsApp',
+    color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    icon: <Phone className="h-3 w-3" />,
+  },
+};
+
+const WHATSAPP_SOURCE_LABELS: Record<string, string> = {
+  hero: 'Botão principal',
+  form_section: 'Seção do formulário',
+  faq_cta: 'FAQ',
+  footer: 'Rodapé',
+  floating_bar: 'Barra flutuante',
+};
+
+function SourceBadge({ source }: { source: string }) {
+  const cfg = SOURCE_CONFIG[source];
+  if (!cfg) return null;
+  return (
+    <Badge className={`text-[10px] h-5 px-1.5 ${cfg.color}`}>
+      {cfg.icon}
+      <span className="ml-0.5">{cfg.label}</span>
+    </Badge>
+  );
+}
+
 function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -472,6 +505,8 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [period, setPeriod] = useState('30');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [sourceCounts, setSourceCounts] = useState<SourceCounts | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchLeads = useCallback(async (p = 1) => {
@@ -484,12 +519,14 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
       });
       if (search) params.set('search', search);
       if (stageFilter && stageFilter !== 'all') params.set('stage', stageFilter);
+      if (sourceFilter && sourceFilter !== 'all') params.set('source', sourceFilter);
 
       const res = await fetch(`/api/meta-ads/leads?${params}`);
       if (res.ok) {
         const data = await res.json();
         setLeads(data.leads);
         setPagination(data.pagination);
+        if (data.sourceCounts) setSourceCounts(data.sourceCounts);
       } else {
         toast.error('Erro ao buscar leads');
       }
@@ -498,7 +535,7 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
     } finally {
       setLoading(false);
     }
-  }, [search, stageFilter, period]);
+  }, [search, stageFilter, period, sourceFilter]);
 
   useEffect(() => {
     onLeadsNeeded();
@@ -512,20 +549,48 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* Source count pills + Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Leads do Meta Ads</h2>
+          <h2 className="text-lg font-semibold">Leads</h2>
           <p className="text-sm text-muted-foreground">
-            {pagination.total} lead{pagination.total !== 1 ? 's' : ''} recebido{pagination.total !== 1 ? 's' : ''} via Facebook/Instagram
+            {pagination.total} resultado{pagination.total !== 1 ? 's' : ''}
+            {sourceFilter === 'all' ? ' de todas as origens' : ` — ${SOURCE_CONFIG[sourceFilter]?.label || sourceFilter}`}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline" className="text-[11px]">
-            <Filter className="h-3 w-3 mr-1" />
-            {pagination.total} resultado{pagination.total !== 1 ? 's' : ''}
-          </Badge>
-        </div>
+        {sourceCounts && sourceFilter === 'all' && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              onClick={() => setSourceFilter('all')}
+              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'all' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+            >
+              Todos ({sourceCounts.meta_webhook + sourceCounts.landing_form + sourceCounts.whatsapp_click})
+            </button>
+            <button
+              onClick={() => setSourceFilter('meta_webhook')}
+              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'meta_webhook' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:opacity-80'}`}
+            >
+              <Megaphone className="h-2.5 w-2.5" /> {sourceCounts.meta_webhook}
+            </button>
+            <button
+              onClick={() => setSourceFilter('landing_form')}
+              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'landing_form' ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:opacity-80'}`}
+            >
+              <Globe className="h-2.5 w-2.5" /> {sourceCounts.landing_form}
+            </button>
+            <button
+              onClick={() => setSourceFilter('whatsapp_click')}
+              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'whatsapp_click' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:opacity-80'}`}
+            >
+              <Phone className="h-2.5 w-2.5" /> {sourceCounts.whatsapp_click}
+            </button>
+          </div>
+        )}
+        {sourceFilter !== 'all' && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSourceFilter('all')}>
+            Limpar filtro de origem
+          </Button>
+        )}
       </div>
 
       {/* Filtros */}
@@ -533,23 +598,25 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nome, email ou telefone..."
+            placeholder={sourceFilter === 'whatsapp_click' ? 'Buscar por campanha ou slug...' : 'Buscar por nome, email ou telefone...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 h-9 text-sm"
           />
         </div>
-        <Select value={stageFilter} onValueChange={(v) => setStageFilter(v)}>
-          <SelectTrigger className="w-full sm:w-[160px] h-9 text-sm">
-            <SelectValue placeholder="Etapa" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as etapas</SelectItem>
-            {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
-              <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {sourceFilter !== 'whatsapp_click' && (
+          <Select value={stageFilter} onValueChange={(v) => setStageFilter(v)}>
+            <SelectTrigger className="w-full sm:w-[160px] h-9 text-sm">
+              <SelectValue placeholder="Etapa" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as etapas</SelectItem>
+              {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
+                <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={period} onValueChange={(v) => setPeriod(v)}>
           <SelectTrigger className="w-full sm:w-[140px] h-9 text-sm">
             <SelectValue />
@@ -576,114 +643,160 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center mb-3">
-                <Megaphone className="h-6 w-6 text-muted-foreground" />
+                <Users className="h-6 w-6 text-muted-foreground" />
               </div>
               <p className="text-sm font-medium text-muted-foreground">Nenhum lead encontrado</p>
               <p className="text-xs text-muted-foreground mt-1">
-                {search || stageFilter !== 'all'
+                {search || stageFilter !== 'all' || sourceFilter !== 'all'
                   ? 'Tente ajustar os filtros'
-                  : 'Os leads aparecerão aqui quando o webhook receber formulários do Meta Ads'}
+                  : 'Os leads aparecerão aqui quando houver cadastros ou cliques'}
               </p>
             </CardContent>
           </Card>
         ) : (
-          leads.map((lead) => (
-            <Card
-              key={lead.id}
-              className="hover:shadow-md transition-shadow duration-200 cursor-pointer"
-              onClick={() => setExpandedId(expandedId === lead.id ? null : lead.id)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  {/* Avatar */}
-                  <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-                    <span className="text-blue-600 dark:text-blue-400 text-sm font-bold">
-                      {lead.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
-                    </span>
-                  </div>
+          leads.map((lead) => {
+            const isWhatsApp = lead.leadSource === 'whatsapp_click';
+            const displayName = lead.name || (isWhatsApp ? 'Clique WhatsApp' : 'Sem nome');
+            const initials = lead.name
+              ? lead.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
+              : '?';
+            const avatarBg = lead.leadSource === 'meta_webhook'
+              ? 'bg-blue-100 dark:bg-blue-900/30'
+              : lead.leadSource === 'landing_form'
+                ? 'bg-emerald-100 dark:bg-emerald-900/30'
+                : 'bg-green-100 dark:bg-green-900/30';
+            const avatarColor = lead.leadSource === 'meta_webhook'
+              ? 'text-blue-600 dark:text-blue-400'
+              : lead.leadSource === 'landing_form'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-green-600 dark:text-green-400';
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold truncate">{lead.name}</span>
-                      <StageBadge stage={lead.stage} />
-                    </div>
-                    <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
-                      {lead.phone && (
-                        <span className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {lead.phone}
-                        </span>
+            return (
+              <Card
+                key={lead.id}
+                className="hover:shadow-md transition-shadow duration-200 cursor-pointer"
+                onClick={() => setExpandedId(expandedId === lead.id ? null : lead.id)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    {/* Avatar */}
+                    <div className={`h-10 w-10 rounded-lg ${avatarBg} flex items-center justify-center flex-shrink-0`}>
+                      {isWhatsApp ? (
+                        <Phone className={`h-5 w-5 ${avatarColor}`} />
+                      ) : (
+                        <span className={`${avatarColor} text-sm font-bold`}>{initials}</span>
                       )}
-                      {lead.email && (
-                        <span className="flex items-center gap-1">
-                          <Mail className="h-3 w-3" />
-                          {lead.email}
-                        </span>
-                      )}
-                      {lead.region && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {lead.region}
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {format(parseISO(lead.createdAt), "dd/MM/yyyy")}
-                      </span>
                     </div>
 
-                    {/* Expanded details */}
-                    {expandedId === lead.id && (
-                      <div className="mt-3 pt-3 border-t space-y-2">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                          <div>
-                            <span className="text-muted-foreground">Anúncio: </span>
-                            <span className="font-medium">{lead.adName}</span>
-                          </div>
-                          {lead.campaignName && (
-                            <div>
-                              <span className="text-muted-foreground">Campanha: </span>
-                              <span className="font-medium">{lead.campaignName}</span>
-                            </div>
-                          )}
-                          {lead.formName && (
-                            <div>
-                              <span className="text-muted-foreground">Formulário: </span>
-                              <span className="font-medium">{lead.formName}</span>
-                            </div>
-                          )}
-                          {lead.leadId && (
-                            <div>
-                              <span className="text-muted-foreground">Lead ID: </span>
-                              <span className="font-mono">{lead.leadId}</span>
-                            </div>
-                          )}
-                          <div>
-                            <span className="text-muted-foreground">Interações: </span>
-                            <span className="font-medium">{lead._count.interactions}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Última interação: </span>
-                            <span className="font-medium">
-                              {lead.lastInteractionAt
-                                ? format(parseISO(lead.lastInteractionAt), "dd/MM/yyyy HH:mm")
-                                : 'Nenhuma'}
-                            </span>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold truncate">{displayName}</span>
+                        <SourceBadge source={lead.leadSource} />
+                        {lead.stage && <StageBadge stage={lead.stage} />}
+                        {isWhatsApp && lead.whatsappSource && (
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                            {WHATSAPP_SOURCE_LABELS[lead.whatsappSource] || lead.whatsappSource}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
+                        {lead.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {lead.phone}
+                          </span>
+                        )}
+                        {lead.email && (
+                          <span className="flex items-center gap-1">
+                            <Mail className="h-3 w-3" /> {lead.email}
+                          </span>
+                        )}
+                        {lead.enterprise && (
+                          <span className="flex items-center gap-1">
+                            <Building2 className="h-3 w-3" /> {lead.enterprise}
+                          </span>
+                        )}
+                        {lead.region && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" /> {lead.region}
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {format(parseISO(lead.createdAt), "dd/MM/yyyy HH:mm")}
+                        </span>
+                      </div>
+
+                      {/* Expanded details */}
+                      {expandedId === lead.id && (
+                        <div className="mt-3 pt-3 border-t space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                            {lead.adName && (
+                              <div>
+                                <span className="text-muted-foreground">Anúncio: </span>
+                                <span className="font-medium">{lead.adName}</span>
+                              </div>
+                            )}
+                            {lead.campaignName && (
+                              <div>
+                                <span className="text-muted-foreground">Campanha: </span>
+                                <span className="font-medium">{lead.campaignName}</span>
+                              </div>
+                            )}
+                            {lead.formName && (
+                              <div>
+                                <span className="text-muted-foreground">Formulário: </span>
+                                <span className="font-medium">{lead.formName}</span>
+                              </div>
+                            )}
+                            {lead.leadId && (
+                              <div>
+                                <span className="text-muted-foreground">Lead ID: </span>
+                                <span className="font-mono">{lead.leadId}</span>
+                              </div>
+                            )}
+                            {lead.slug && (
+                              <div>
+                                <span className="text-muted-foreground">Slug: </span>
+                                <span className="font-mono">{lead.slug}</span>
+                              </div>
+                            )}
+                            {isWhatsApp && lead.whatsappSource && (
+                              <div>
+                                <span className="text-muted-foreground">Local do clique: </span>
+                                <span className="font-medium">{WHATSAPP_SOURCE_LABELS[lead.whatsappSource] || lead.whatsappSource}</span>
+                              </div>
+                            )}
+                            {!isWhatsApp && (
+                              <div>
+                                <span className="text-muted-foreground">Interações: </span>
+                                <span className="font-medium">{lead._count.interactions}</span>
+                              </div>
+                            )}
+                            {!isWhatsApp && (
+                              <div>
+                                <span className="text-muted-foreground">Última interação: </span>
+                                <span className="font-medium">
+                                  {lead.lastInteractionAt
+                                    ? format(parseISO(lead.lastInteractionAt), "dd/MM/yyyy HH:mm")
+                                    : 'Nenhuma'}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
 
-                  {/* Expand icon */}
-                  <div className="flex-shrink-0 text-muted-foreground">
-                    {expandedId === lead.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    {/* Expand icon */}
+                    <div className="flex-shrink-0 text-muted-foreground">
+                      {expandedId === lead.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
+                </CardContent>
+              </Card>
+            );
+          })
         )}
       </div>
 
@@ -712,208 +825,6 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// Tab: Análise IA
-// ============================================================
-function AnalysisTab() {
-  const [loading, setLoading] = useState(false);
-  const [analysis, setAnalysis] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState('30d');
-
-  async function runAnalysis() {
-    setLoading(true);
-    setError(null);
-    setAnalysis(null);
-    try {
-      const res = await fetch(`/api/meta-ads/analyze?period=${selectedPeriod}`);
-      if (res.ok) {
-        const data: AnalysisResponse = await res.json();
-        if (data.analysis) {
-          setAnalysis(data.analysis);
-          setGeneratedAt(data.generatedAt || null);
-          toast.success('Análise gerada com sucesso');
-        } else if (data.error) {
-          setError(data.error);
-          toast.error(data.error);
-        } else if (data.message) {
-          setError(data.message);
-        }
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || 'Erro ao gerar análise');
-        toast.error('Erro ao gerar análise');
-      }
-    } catch {
-      setError('Falha de conexão');
-      toast.error('Falha de conexão ao servidor');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function renderMarkdown(text: string) {
-    // Simple markdown renderer: headings, bold, lists, line breaks
-    const lines = text.split('\n');
-    return lines.map((line, i) => {
-      // Headings
-      if (line.startsWith('### ')) {
-        return <h3 key={i} className="text-sm font-bold mt-4 mb-1">{line.slice(4)}</h3>;
-      }
-      if (line.startsWith('## ')) {
-        return <h2 key={i} className="text-base font-bold mt-5 mb-2">{line.slice(3)}</h2>;
-      }
-      if (line.startsWith('# ')) {
-        return <h1 key={i} className="text-lg font-bold mt-4 mb-2">{line.slice(2)}</h1>;
-      }
-      // Bold
-      const parts = line.split(/(\*\*[^*]+\*\*)/g);
-      const rendered = parts.map((part, j) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-          return <strong key={j}>{part.slice(2, -2)}</strong>;
-        }
-        return <span key={j}>{part}</span>;
-      });
-      // List items
-      if (line.startsWith('- ')) {
-        return (
-          <li key={i} className="ml-4 text-sm list-disc text-muted-foreground">
-            {rendered}
-          </li>
-        );
-      }
-      if (line.match(/^\d+\.\s/)) {
-        const numMatch = line.match(/^(\d+)\.\s(.*)$/);
-        return (
-          <li key={i} className="ml-4 text-sm list-decimal text-muted-foreground">
-            {numMatch ? numMatch[2] : rendered}
-          </li>
-        );
-      }
-      // Empty line
-      if (line.trim() === '') {
-        return <div key={i} className="h-2" />;
-      }
-      // Regular paragraph
-      return <p key={i} className="text-sm text-muted-foreground leading-relaxed">{rendered}</p>;
-    });
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Brain className="h-5 w-5 text-purple-500" />
-            Análise por IA
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Insights e recomendações inteligentes sobre seus anúncios
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-            <SelectTrigger className="w-[160px] h-9 text-xs">
-              <Calendar className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="24h">Últimas 24 horas</SelectItem>
-              <SelectItem value="48h">Últimas 48 horas</SelectItem>
-              <SelectItem value="7d">Última semana</SelectItem>
-              <SelectItem value="30d">Último mês</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            onClick={runAnalysis}
-            disabled={loading}
-            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Analisando...
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4 mr-2" />
-                Gerar Análise
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-
-      {/* Info card */}
-      <Card className="border-purple-200/50 dark:border-purple-800/30 bg-purple-50/30 dark:bg-purple-950/10">
-        <CardContent className="p-4 flex items-start gap-3">
-          <Sparkles className="h-5 w-5 text-purple-500 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">Como funciona</p>
-            <p className="mt-1">
-              A IA analisa seus leads do webhook Meta Ads, leads de landing pages com UTM do Meta e dados do
-              pixel próprio (comportamento, scroll, atenção/heartbeat, dispositivos, Web Vitals, formulário).
-              Inclui correlação entre eventos e conversão, diagnóstico por landing page, análise por horário,
-              score de engajamento e detalhes de erros de JS. Selecione o período desejado e clique em Gerar Análise.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Loading state */}
-      {loading && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
-            <div className="relative">
-              <div className="h-12 w-12 rounded-full border-4 border-purple-200 dark:border-purple-800" />
-              <div className="absolute inset-0 h-12 w-12 rounded-full border-4 border-transparent border-t-purple-500 animate-spin" />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-medium">Analisando seus dados de anúncios...</p>
-              <p className="text-xs text-muted-foreground mt-1">Isso pode levar alguns segundos</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Error state */}
-      {error && !loading && (
-        <Card className="border-red-200 dark:border-red-800/50">
-          <CardContent className="p-4 flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-red-600 dark:text-red-400">{error}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Analysis result */}
-      {analysis && !loading && (
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Brain className="h-4 w-4 text-purple-500" />
-                Relatório de Análise
-              </CardTitle>
-              {generatedAt && (
-                <span className="text-[10px] text-muted-foreground">
-                  Gerado em {format(parseISO(generatedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                </span>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="prose prose-sm max-w-none">
-            {renderMarkdown(analysis)}
-          </CardContent>
-        </Card>
       )}
     </div>
   );
@@ -1398,16 +1309,16 @@ export function MetaAdsPanel() {
             <SelectContent>
               <SelectItem value="overview"><span className="flex items-center gap-2"><BarChart3 className="h-4 w-4" />Visão Geral</span></SelectItem>
               <SelectItem value="leads"><span className="flex items-center gap-2"><Users className="h-4 w-4" />Leads</span></SelectItem>
-              <SelectItem value="analysis"><span className="flex items-center gap-2"><Brain className="h-4 w-4" />Análise IA</span></SelectItem>
               <SelectItem value="tracking"><span className="flex items-center gap-2"><Crosshair className="h-4 w-4" />Tracking</span></SelectItem>
               <SelectItem value="landing"><span className="flex items-center gap-2"><Globe className="h-4 w-4" />Landing Pages</span></SelectItem>
               <SelectItem value="queues"><span className="flex items-center gap-2"><UsersRound className="h-4 w-4" />Filas</span></SelectItem>
+              <SelectItem value="lost-leads"><span className="flex items-center gap-2"><HeartHandshake className="h-4 w-4" />Leads Perdidos</span></SelectItem>
               <SelectItem value="config"><span className="flex items-center gap-2"><Zap className="h-4 w-4" />Config</span></SelectItem>
             </SelectContent>
           </Select>
         </div>
         {/* Desktop tabs */}
-        <TabsList className="hidden lg:grid lg:grid-cols-7 lg:max-w-3xl w-full gap-1 p-0.5">
+        <TabsList className="hidden lg:grid lg:grid-cols-7 lg:max-w-4xl w-full gap-1 p-0.5">
           <TabsTrigger value="overview" className="text-sm gap-1.5 whitespace-nowrap">
             <BarChart3 className="h-3.5 w-3.5" />
             Visão Geral
@@ -1415,10 +1326,6 @@ export function MetaAdsPanel() {
           <TabsTrigger value="leads" className="text-sm gap-1.5 whitespace-nowrap">
             <Users className="h-3.5 w-3.5" />
             Leads
-          </TabsTrigger>
-          <TabsTrigger value="analysis" className="text-sm gap-1.5 whitespace-nowrap">
-            <Brain className="h-3.5 w-3.5" />
-            Análise IA
           </TabsTrigger>
           <TabsTrigger value="tracking" className="text-sm gap-1.5 whitespace-nowrap">
             <Crosshair className="h-3.5 w-3.5" />
@@ -1431,6 +1338,10 @@ export function MetaAdsPanel() {
           <TabsTrigger value="queues" className="text-sm gap-1.5 whitespace-nowrap">
             <UsersRound className="h-3.5 w-3.5" />
             Filas
+          </TabsTrigger>
+          <TabsTrigger value="lost-leads" className="text-sm gap-1.5 whitespace-nowrap">
+            <HeartHandshake className="h-3.5 w-3.5" />
+            Leads Perdidos
           </TabsTrigger>
           <TabsTrigger value="config" className="text-sm gap-1.5 whitespace-nowrap">
             <Zap className="h-3.5 w-3.5" />
@@ -1452,10 +1363,6 @@ export function MetaAdsPanel() {
           <LeadsTab onLeadsNeeded={fetchOverview} />
         </TabsContent>
 
-        <TabsContent value="analysis">
-          <AnalysisTab />
-        </TabsContent>
-
         <TabsContent value="tracking">
           <TrackingTab />
         </TabsContent>
@@ -1466,6 +1373,10 @@ export function MetaAdsPanel() {
 
         <TabsContent value="queues">
           <QueuesTab />
+        </TabsContent>
+
+        <TabsContent value="lost-leads">
+          <LostLeadsTab />
         </TabsContent>
 
         <TabsContent value="config">

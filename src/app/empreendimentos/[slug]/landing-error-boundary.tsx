@@ -33,7 +33,7 @@ export class LandingErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log to tracking pixel if available
+    // 1. Log to tracking pixel if available
     try {
       if (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).CRMPIXEL) {
         const px = (window as unknown as Record<string, unknown>).CRMPIXEL as {
@@ -47,6 +47,24 @@ export class LandingErrorBoundary extends React.Component<Props, State> {
     } catch {
       /* tracking itself failed — non-critical */
     }
+
+    // 2. Send to /api/errors/log via sendBeacon (survives page close)
+    try {
+      if (typeof window !== 'undefined' && navigator.sendBeacon) {
+        const blob = new Blob([JSON.stringify({
+          type: 'react_error',
+          message: (error?.message || 'Unknown React error').substring(0, 2000),
+          source: errorInfo?.componentStack?.split('\n')[0] || undefined,
+          stackTrace: (error?.stack || errorInfo?.componentStack || '').substring(0, 5000),
+          pageUrl: window.location.href,
+          userAgent: navigator.userAgent,
+        })], { type: 'application/json' });
+        navigator.sendBeacon('/api/errors/log', blob);
+      }
+    } catch {
+      /* sendBeacon failed — non-critical */
+    }
+
     console.error('[LandingPage] Error Boundary caught:', error, errorInfo);
   }
 
