@@ -77,7 +77,7 @@ export async function GET(
           orderBy: { sortOrder: 'asc' },
         },
         floorPlans: {
-          select: { id: true, url: true, altText: true, sortOrder: true },
+          select: { id: true, url: true, altText: true, sortOrder: true, name: true, area: true, bedrooms: true, suites: true, hasBalcony: true, isGarden: true, isPenthouse: true, description: true },
           orderBy: { sortOrder: 'asc' },
         },
         formFields: {

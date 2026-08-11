@@ -412,16 +412,17 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     }
   }, [exitPopupOpen, exitPopupCountdown]);
 
-  /* ── Fetch enterprise ── */
+  /* ── Fetch enterprise (skip if server already provided initialData) ── */
   const fetchEnterprise = useCallback(async () => {
     if (!slug) return;
+    if (initialData) { setLoading(false); return; }
     try {
       const res = await fetch(`/api/enterprises/public/${slug}`);
       if (res.ok) { const data = await res.json(); setEnterprise(data); document.title = `${data.landingTitle || data.name} | Empreendimentos`; }
       else setError('Empreendimento não encontrado.');
     } catch { setError('Erro de conexão.'); }
     finally { setLoading(false); }
-  }, [slug]);
+  }, [slug, initialData]);
   useEffect(() => { fetchEnterprise(); }, [fetchEnterprise]);
 
   /* ── Scroll / resize listeners ── */
