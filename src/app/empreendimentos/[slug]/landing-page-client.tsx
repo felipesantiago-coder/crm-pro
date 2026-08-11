@@ -631,8 +631,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   /* ─── Loading ─────────────────────────────────────────── */
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 text-[#C9A96E] animate-spin" />
+      <div className="min-h-screen bg-[#F7F6F3] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 text-[#33492F] animate-spin" />
       </div>
     );
   }
@@ -640,14 +640,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   /* ─── Error ───────────────────────────────────────────── */
   if (error || !enterprise) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#F7F6F3] flex items-center justify-center p-4">
         <div className="text-center max-w-md">
-          <Building2 className="h-16 w-16 text-white/10 mx-auto mb-6" />
-          <h1 className="text-2xl font-bold text-white mb-2">Não encontrado</h1>
-          <p className="text-white/40 mb-8">{error || 'Este empreendimento não existe ou foi removido.'}</p>
+          <Building2 className="h-16 w-16 text-[#33492F]/20 mx-auto mb-6" />
+          <h1 className="text-2xl font-bold text-[#1a1a1a] mb-2">Não encontrado</h1>
+          <p className="text-gray-500 mb-8">{error || 'Este empreendimento não existe ou foi removido.'}</p>
           <a
             href="/empreendimentos"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-semibold text-sm hover:bg-[#D4B87E] transition-colors"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#33492F] text-white font-semibold text-sm hover:bg-[#33492F]/90 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             Ver todos os empreendimentos
@@ -753,8 +753,53 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   /* ================================================================
      Render
      ================================================================ */
+
+  // ── Differential categorization for tab-based display ──
+  const diffCategories = React.useMemo(() => {
+    if (!info?.differentials || info.differentials.length === 0) return [];
+    const cats: { name: string; keywords: string[]; icon: string }[] = [
+      { name: 'Social & Lazer', keywords: ['churrasqueira', 'salão', 'festa', 'playground', 'brinquedoteca', 'piscina', 'spa', 'quadra', 'sauna', 'jogos', 'cinema', 'pet', 'dog', 'bike', 'bicicleta', 'gourmet', 'esport', 'lazer', 'ginásio', 'ginasio'], icon: 'Users' },
+      { name: 'Conforto & Conveniência', keywords: ['varanda', 'sacada', 'terraço', 'cozinha', 'armário', 'closet', 'depósito', 'elevador', 'portaria', 'lavanderia', 'delivery', 'estacionamento', 'garagem', 'água quente', 'ar condicionado', 'ventilação', 'iluminação natural', 'pé-direito', 'acabamento', 'porcelanato', 'hidráulica', 'mármore', 'amplo'], icon: 'LayoutGrid' },
+      { name: 'Tecnologia & Segurança', keywords: ['automat', 'smart', 'inteligente', 'fibra', 'internet', 'digital', 'biometria', 'segurança', 'camer', 'monitoramento', 'cerca', 'alarme', 'câmera', 'vigilância', 'porteiro', 'controle', '24h', '24 horas'], icon: 'Shield' },
+      { name: 'Sustentabilidade', keywords: ['sustent', 'solar', 'painel', 'energia', 'reaproveitamento', 'recicl', 'verde', 'natural', 'ecol', 'permeável', 'jardim', 'paisagism', 'biodiversidade', 'captação', 'reuso', 'água pluvial'], icon: 'TrendingUp' },
+    ];
+    const assigned: number[] = [];
+    const result: { name: string; icon: string; items: string[] }[] = [];
+    for (const cat of cats) {
+      const items: string[] = [];
+      (info!.differentials).forEach((d, i) => {
+        if (assigned.includes(i)) return;
+        const lower = d.toLowerCase();
+        if (cat.keywords.some((k) => lower.includes(k))) {
+          items.push(d);
+          assigned.push(i);
+        }
+      });
+      if (items.length > 0) result.push({ name: cat.name, icon: cat.icon, items });
+    }
+    const remaining = info!.differentials.filter((_, i) => !assigned.includes(i));
+    if (remaining.length > 0) {
+      result.push({ name: 'Outros Diferenciais', icon: 'Sparkles', items: remaining });
+    }
+    return result;
+  }, [info?.differentials]);
+
+  const [activeDiffTab, setActiveDiffTab] = React.useState(0);
+
+  const diffIconMap: Record<string, React.ReactNode> = {
+    Users: <Users className="h-4 w-4" />,
+    LayoutGrid: <LayoutGrid className="h-4 w-4" />,
+    Shield: <Shield className="h-4 w-4" />,
+    TrendingUp: <TrendingUp className="h-4 w-4" />,
+    Sparkles: <Sparkles className="h-4 w-4" />,
+  };
+
+
+  /* ================================================================
+     Render
+     ================================================================ */
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-white overflow-x-hidden [word-break:break-word] overscroll-y-contain">
+    <div className="min-h-screen bg-[#F7F6F3] text-[#1a1a1a] overflow-x-hidden [word-break:break-word] overscroll-y-contain">
 
       {/* ── Custom Keyframes ────────────────────────────── */}
       <style>{`
@@ -788,29 +833,31 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       <nav
         className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
           scrolled
-            ? 'bg-[#0A0A0A]/90 backdrop-blur-xl border-b border-white/[0.06] shadow-2xl'
+            ? 'bg-white/95 backdrop-blur-xl border-b border-[#1a1a1a]/[0.06] shadow-lg shadow-black/[0.04]'
             : 'bg-transparent'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-20 flex items-center justify-between">
           <a href="/empreendimentos" className="flex items-center gap-3 group">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/20 group-hover:shadow-[#C9A96E]/40 transition-shadow">
+            <div className="h-9 w-9 rounded-xl bg-[#33492F] flex items-center justify-center shadow-lg shadow-[#33492F]/20 group-hover:shadow-[#33492F]/40 transition-shadow">
               <Building2 className="h-4 w-4 text-white" />
             </div>
-            <span className="text-base font-bold tracking-tight hidden sm:block">Empreendimentos</span>
+            <span className={`text-base font-bold tracking-tight hidden sm:block ${scrolled ? 'text-[#1a1a1a]' : 'text-white'}`}>Empreendimentos</span>
           </a>
 
           <div className="flex items-center gap-3">
             <button
               onClick={handleCopyLink}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors ${
+                scrolled ? 'text-[#1a1a1a]/50 hover:text-[#1a1a1a] hover:bg-[#1a1a1a]/[0.04]' : 'text-white/60 hover:text-white hover:bg-white/10'
+              }`}
             >
-              {copiedLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+              {copiedLink ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
               <span className="hidden sm:inline">{copiedLink ? 'Copiado!' : 'Compartilhar'}</span>
             </button>
             <a
               href="#cadastro"
-              className="min-h-[44px] inline-flex items-center justify-center px-5 py-3 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-semibold hover:bg-[#D4B87E] transition-colors shadow-lg shadow-[#C9A96E]/20"
+              className="min-h-[44px] inline-flex items-center justify-center px-5 py-3 rounded-xl bg-[#33492F] text-white text-sm font-semibold hover:bg-[#33492F]/90 transition-colors shadow-lg shadow-[#33492F]/20"
             >
               Quero saber mais
             </a>
@@ -819,7 +866,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       </nav>
 
       {/* ── Hero Section ───────────────────────────────── */}
-      <section className="relative min-h-[55dvh] sm:min-h-[85dvh] flex items-end">
+      <section className="relative min-h-[100dvh] min-h-[640px] flex items-end">
         {/* Background image */}
         {heroImage && (
           <div className="absolute inset-0">
@@ -831,19 +878,15 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               priority
               sizes="100vw"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/50 to-[#0A0A0A]/20" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/30 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-black/10" />
           </div>
         )}
 
-        {/* Decorative gold line */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-32 bg-gradient-to-b from-[#C9A96E]/40 to-transparent" />
-
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pb-10 sm:pb-24 pt-24 sm:pt-32 w-full">
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pb-12 sm:pb-24 pt-28 sm:pt-36 w-full">
           {/* Breadcrumb */}
           <a
             href="/empreendimentos"
-            className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-[#C9A96E] transition-colors mb-4 sm:mb-6 group"
+            className="inline-flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors mb-4 sm:mb-6 group"
           >
             <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
             Empreendimentos
@@ -855,14 +898,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border backdrop-blur-sm ${
                 status === 'Entregue' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
                 status === 'Em Construção' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
-                'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                'bg-[#33492F]/20 text-[#a8c4a0] border-[#33492F]/30'
               }`}>
                 <CheckCircle2 className="h-3 w-3" />
                 {status}
               </span>
             )}
             {priceText && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 max-w-[200px] sm:max-w-none">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-[#C9A96E]/15 text-[#C9A96E] border border-[#C9A96E]/25 max-w-[200px] sm:max-w-none">
                 <DollarSign className="h-3 w-3 flex-shrink-0" />
                 <span className="truncate">{priceText}</span>
               </span>
@@ -874,20 +917,19 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </span>
             )}
             {deliveryText && status !== 'Entregue' && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 max-w-[200px] sm:max-w-none">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white/80 border border-white/20 max-w-[200px] sm:max-w-none">
                 <Clock className="h-3 w-3 flex-shrink-0" />
                 <span className="truncate">Previsão: {deliveryText}</span>
               </span>
             )}
             {e.region && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white/70 border border-white/10 max-w-[180px] sm:max-w-none">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-white/10 text-white/70 border border-white/15 max-w-[180px] sm:max-w-none">
                 <MapPin className="h-3 w-3 flex-shrink-0" />
                 <span className="truncate">{e.region}</span>
               </span>
             )}
-            {/* ★ NEW: Urgency Badge — only for Lançamento or Em Construção */}
             {showUrgencyBadge && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/25">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-[#C9A96E]/15 text-[#C9A96E] border border-[#C9A96E]/25">
                 <Clock className="h-3 w-3 flex-shrink-0" />
                 Condições de lançamento
               </span>
@@ -895,18 +937,18 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           </div>
 
           {/* Title */}
-          <h1 className="text-3xl sm:text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1] max-w-4xl">
+          <h1 className="text-3xl sm:text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1] max-w-4xl text-white drop-shadow-lg">
             {displayTitle}
           </h1>
 
           {/* Subtitle */}
           {displaySubtitle && (
-            <p className="mt-3 sm:mt-6 text-base sm:text-xl text-white/60 max-w-2xl leading-relaxed">
+            <p className="mt-3 sm:mt-6 text-base sm:text-xl text-white/70 max-w-2xl leading-relaxed">
               {displaySubtitle}
             </p>
           )}
 
-          {/* ★ Mini-form directly in hero — name + phone for instant conversion on mobile */}
+          {/* Mini-form directly in hero */}
           <div className="mt-6 sm:mt-10 animate-fade-in-up">
             <form
               id="hero-mini-form"
@@ -917,7 +959,6 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   const heroPhone = (document.getElementById('hero-phone') as HTMLInputElement)?.value?.replace(/\D/g, '') || '';
                   if (heroName.length < 2) {
                     setFormName(heroName);
-                    // Scroll to main form and focus name field with visual cue
                     const form = document.getElementById('landing-form') as HTMLFormElement | null;
                     if (form) {
                       form.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -925,30 +966,25 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         const nameInput = document.getElementById('form-name') as HTMLInputElement | null;
                         if (nameInput) {
                           nameInput.focus();
-                          nameInput.classList.add('ring-2', 'ring-[#C9A96E]');
-                          setTimeout(() => nameInput.classList.remove('ring-2', 'ring-[#C9A96E]'), 3000);
+                          nameInput.classList.add('ring-2', 'ring-[#33492F]');
+                          setTimeout(() => nameInput.classList.remove('ring-2', 'ring-[#33492F]'), 3000);
                         }
                       }, 600);
                     }
                     return;
                   }
                   if (heroPhone.length < 10 && heroPhone.length > 0) return;
-                  // Sync to main form and scroll to it
                   setFormName(heroName);
                   setFormPhone(heroPhone.length >= 10 ? (document.getElementById('hero-phone') as HTMLInputElement)?.value || '' : '');
-                  // CRITICAL FIX: No longer generates fake .temp email.
-                  // User must fill email in the main form — scroll there and highlight.
                   const form = document.getElementById('landing-form') as HTMLFormElement | null;
                   if (form) {
                     form.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     setTimeout(() => {
-                      // Focus the email field to guide the user
                       const emailInput = document.getElementById('form-email') as HTMLInputElement | null;
                       if (emailInput && !formEmail.trim()) {
                         emailInput.focus();
-                        // Visual cue: pulse the email field
-                        emailInput.classList.add('ring-2', 'ring-[#C9A96E]');
-                        setTimeout(() => emailInput.classList.remove('ring-2', 'ring-[#C9A96E]'), 3000);
+                        emailInput.classList.add('ring-2', 'ring-[#33492F]');
+                        setTimeout(() => emailInput.classList.remove('ring-2', 'ring-[#33492F]'), 3000);
                       }
                     }, 600);
                   }
@@ -960,18 +996,18 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             >
               <div className="flex flex-col sm:flex-row gap-2.5">
                 <div className="flex-1 relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
                   <input
                     id="hero-name"
                     type="text"
                     placeholder="Seu nome"
                     autoComplete="name"
                     required
-                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3.5 rounded-xl bg-white/[0.08] border border-white/[0.12] text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3.5 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#33492F]/50 focus:ring-1 focus:ring-[#33492F]/20 transition-all"
                   />
                 </div>
                 <div className="flex-1 relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
                   <input
                     id="hero-phone"
                     type="tel"
@@ -986,26 +1022,27 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                       if (digits.length > 7) masked += `-${digits.slice(7)}`;
                       ev.target.value = masked;
                     }}
-                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3.5 rounded-xl bg-white/[0.08] border border-white/[0.12] text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3.5 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#33492F]/50 focus:ring-1 focus:ring-[#33492F]/20 transition-all"
                   />
                 </div>
                 <button
                   type="submit"
-                  className="flex-shrink-0 min-h-[44px] flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-sm hover:bg-[#D4B87E] transition-all shadow-lg shadow-[#C9A96E]/25 hover:shadow-[#C9A96E]/40 active:scale-[0.98]"
+                  className="flex-shrink-0 min-h-[44px] flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-[#33492F] text-white font-bold text-sm hover:bg-[#33492F]/90 transition-all shadow-lg shadow-[#33492F]/25 hover:shadow-[#33492F]/40 active:scale-[0.98]"
                 >
                   <Send className="h-4 w-4" />
                   <span className="sm:hidden">Saber mais</span>
                   <span className="hidden sm:inline">Quero saber mais</span>
                 </button>
               </div>
-              <p className="text-[11px] text-white/25 mt-2 text-center sm:text-left">Sem compromisso · Resposta em até 24h</p>
+              <p className="text-[11px] text-white/30 mt-2 text-center sm:text-left">Sem compromisso · Resposta em até 24h</p>
             </form>
           </div>
-          {/* Secondary CTAs — below mini-form */}
+
+          {/* Secondary CTAs */}
           <div className="mt-3 flex flex-wrap items-center gap-3 sm:gap-4">
             <a
               href="#cadastro"
-              className="min-h-[44px] inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-medium text-xs sm:text-sm hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
+              className="min-h-[44px] inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/[0.08] border border-white/[0.15] text-white font-medium text-xs sm:text-sm hover:bg-white/[0.15] hover:border-white/[0.25] transition-all backdrop-blur-sm"
             >
               <MessageSquare className="h-3.5 w-3.5" />
               Ver mais detalhes
@@ -1028,73 +1065,29 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   /* tracking errors must never block navigation */
                 }
               }}
-              className="min-h-[44px] inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white font-medium text-xs sm:text-sm hover:bg-white/[0.10] hover:border-white/[0.18] transition-all backdrop-blur-sm"
+              className="min-h-[44px] inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/[0.08] border border-white/[0.15] text-white font-medium text-xs sm:text-sm hover:bg-white/[0.15] hover:border-white/[0.25] transition-all backdrop-blur-sm"
             >
               <Phone className="h-3.5 w-3.5" />
               Falar com consultor
             </a>
             {e._count && e._count.clients > 0 ? (
-              <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/30" style={{ animationDelay: '0.2s' }}>
+              <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/40" style={{ animationDelay: '0.2s' }}>
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#C9A96E] opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#C9A96E]" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#33492F] opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#33492F]" />
                 </span>
                 {e._count.clients} pessoa{e._count.clients !== 1 ? 's' : ''} interessada{e._count.clients !== 1 ? 's' : ''}
               </div>
             ) : (
-              <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/30" style={{ animationDelay: '0.2s' }}>
+              <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/40" style={{ animationDelay: '0.2s' }}>
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#33492F] opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#33492F]" />
                 </span>
                 <span>{socialProofPool[socialProofIdx]?.name} {socialProofPool[socialProofIdx]?.action.toLowerCase()} há {socialProofPool[socialProofIdx]?.time}</span>
               </div>
             )}
           </div>
-
-          {/* Metrics overlay bar */}
-          {(status || info?.totalUnits || areaRange || deliveryText) && (
-            <div className="mt-6 sm:mt-8">
-              <div className="inline-flex flex-wrap items-center bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl divide-x divide-white/10">
-                {status && (
-                  <div className="flex items-center gap-2 px-4 py-3">
-                    <CheckCircle2 className="h-4 w-4 text-[#C9A96E]/70" />
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-white/40 leading-none">Status</p>
-                      <p className="text-sm font-bold text-white leading-tight mt-0.5">{status}</p>
-                    </div>
-                  </div>
-                )}
-                {info?.totalUnits != null && info.totalUnits > 0 && (
-                  <div className="flex items-center gap-2 px-4 py-3">
-                    <Users className="h-4 w-4 text-[#C9A96E]/70" />
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-white/40 leading-none">Unidades</p>
-                      <p className="text-sm font-bold text-white leading-tight mt-0.5">{info.totalUnits}</p>
-                    </div>
-                  </div>
-                )}
-                {areaRange && (
-                  <div className="flex items-center gap-2 px-4 py-3">
-                    <Ruler className="h-4 w-4 text-[#C9A96E]/70" />
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-white/40 leading-none">Área</p>
-                      <p className="text-sm font-bold text-white leading-tight mt-0.5">{areaRange}</p>
-                    </div>
-                  </div>
-                )}
-                {deliveryText && status !== 'Entregue' && (
-                  <div className="flex items-center gap-2 px-4 py-3">
-                    <CalendarDays className="h-4 w-4 text-[#C9A96E]/70" />
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-white/40 leading-none">Entrega</p>
-                      <p className="text-sm font-bold text-white leading-tight mt-0.5">{deliveryText}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Scroll indicator */}
@@ -1104,31 +1097,31 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
         </div>
       </section>
 
-      {/* ── Quick-Access Gallery Teaser (between Hero and Stats to incentivize scroll) ── */}
+      {/* ── Quick-Access Gallery Teaser ── */}
       {images.length > 0 && (
-        <section className="border-t border-white/[0.04]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
-            <div className="flex items-center justify-between mb-5">
+        <section className="bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+            <div className="flex items-center justify-between mb-8">
               <div>
-                <h2 className="text-lg sm:text-xl font-bold tracking-tight">Conheça o empreendimento</h2>
-                <p className="text-sm text-white/40 mt-1">Veja as imagens, plantas e detalhes</p>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Conheça o empreendimento</h2>
+                <p className="text-sm text-[#1a1a1a]/50 mt-1">Veja as imagens, plantas e detalhes</p>
               </div>
               <a
                 href="#galeria"
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-[#C9A96E] hover:text-[#D4B87E] transition-colors group"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-[#33492F] hover:text-[#33492F]/80 transition-colors group"
               >
                 Ver galeria
                 <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </a>
             </div>
-            {/* Thumbnail strip — horizontal scroll on mobile */}
-            <div className="mobile-scroll-x flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible sm:grid sm:grid-cols-4 lg:grid-cols-5">
+            {/* Thumbnail strip */}
+            <div className="mobile-scroll-x flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible sm:grid sm:grid-cols-4 lg:grid-cols-5">
               {images.slice(0, 5).map((img, idx) => (
                 <a
                   key={img.id}
                   href="#galeria"
                   onClick={() => { setActiveImgIdx(idx); }}
-                  className="relative flex-shrink-0 w-40 sm:w-full aspect-[4/3] rounded-xl overflow-hidden group"
+                  className="relative flex-shrink-0 w-40 sm:w-full aspect-[4/3] rounded-2xl overflow-hidden group shadow-sm hover:shadow-md transition-shadow bg-gray-100"
                 >
                   <img
                     src={img.url}
@@ -1136,21 +1129,21 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     loading={idx === 0 ? 'eager' : 'lazy'}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                     <ZoomIn className="h-5 w-5 text-white" />
                   </div>
                 </a>
               ))}
             </div>
-            {/* Inline info CTA — soft prompt to get more details */}
-            <div className="mt-5 flex items-center justify-between rounded-xl bg-[#C9A96E]/[0.06] border border-[#C9A96E]/10 px-4 py-3.5">
-              <p className="text-sm text-white/50">
-                <span className="text-white/70 font-medium">Quer ver valores e plantas?</span> Solicite informações gratuitas.
+            {/* Inline CTA */}
+            <div className="mt-6 flex items-center justify-between rounded-2xl bg-[#33492F]/[0.04] border border-[#33492F]/10 px-5 py-4">
+              <p className="text-sm text-[#1a1a1a]/50">
+                <span className="text-[#1a1a1a]/70 font-medium">Quer ver valores e plantas?</span> Solicite informações gratuitas.
               </p>
               <a
                 href="#cadastro"
-                className="flex-shrink-0 inline-flex items-center gap-1.5 text-sm font-semibold text-[#C9A96E] hover:text-[#D4B87E] transition-colors ml-3"
+                className="flex-shrink-0 inline-flex items-center gap-1.5 text-sm font-semibold text-[#33492F] hover:text-[#33492F]/80 transition-colors ml-3"
               >
                 Solicitar
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -1163,25 +1156,25 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       {/* ── Numbers / Stats Section ───────────────────── */}
       <ScrollReveal>
         {(info?.totalUnits || areaRange || deliveryText) ? (
-          <section className="py-12 sm:py-20 bg-gradient-to-b from-[#C9A96E]/[0.03] to-transparent">
-            <div className="max-w-4xl mx-auto px-4 sm:px-6">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8">
+          <section className="bg-[#F7F6F3]">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-12">
                 {info?.totalUnits != null && info.totalUnits > 0 && (
-                  <div className="text-center border-t-2 border-[#C9A96E]/30 pt-6">
-                    <p className="text-4xl sm:text-5xl font-bold text-[#C9A96E]">{info.totalUnits}</p>
-                    <p className="text-sm text-white/40 mt-2">Unidades</p>
+                  <div className="text-center">
+                    <p className="text-5xl sm:text-6xl font-bold text-[#33492F]">{info.totalUnits}</p>
+                    <p className="text-sm text-[#1a1a1a]/50 mt-2">Unidades</p>
                   </div>
                 )}
                 {areaRange && (
-                  <div className="text-center border-t-2 border-[#C9A96E]/30 pt-6">
-                    <p className="text-4xl sm:text-5xl font-bold text-[#C9A96E]">{areaRange}</p>
-                    <p className="text-sm text-white/40 mt-2">Metragem</p>
+                  <div className="text-center">
+                    <p className="text-4xl sm:text-5xl font-bold text-[#33492F]">{areaRange}</p>
+                    <p className="text-sm text-[#1a1a1a]/50 mt-2">Metragem</p>
                   </div>
                 )}
                 {deliveryText && (
-                  <div className="text-center border-t-2 border-[#C9A96E]/30 pt-6">
-                    <p className="text-2xl sm:text-3xl font-bold text-[#C9A96E]">{deliveryText}</p>
-                    <p className="text-sm text-white/40 mt-2">Previsão de Entrega</p>
+                  <div className="text-center">
+                    <p className="text-2xl sm:text-3xl font-bold text-[#33492F]">{deliveryText}</p>
+                    <p className="text-sm text-[#1a1a1a]/50 mt-2">Previsão de Entrega</p>
                   </div>
                 )}
               </div>
@@ -1193,32 +1186,32 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       {/* ── Gallery Section ────────────────────────────── */}
       <ScrollReveal>
         {images.length > 0 && (
-          <section id="galeria" className="py-12 sm:py-24 border-t border-white/[0.04]">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <section id="galeria" className="bg-white">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
               {/* Section header */}
               <div className="flex items-center gap-4 mb-8 sm:mb-12">
-                <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
+                <div className="h-px flex-1 bg-[#1a1a1a]/[0.08]" />
                 <div className="text-center">
-                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Galeria</h2>
-                  <p className="text-sm text-white/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''} do empreendimento</p>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Galeria</h2>
+                  <p className="text-sm text-[#1a1a1a]/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''} do empreendimento</p>
                 </div>
                 {images.length > 1 ? (
                   <div className="flex items-center gap-2">
-                    <button onClick={goPrev} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+                    <button onClick={goPrev} className="h-11 w-11 rounded-full border border-[#1a1a1a]/[0.12] flex items-center justify-center hover:border-[#33492F]/40 hover:bg-[#33492F]/[0.06] transition-all text-[#1a1a1a]/60">
                       <ChevronLeft className="h-5 w-5" />
                     </button>
-                    <button onClick={goNext} className="h-11 w-11 rounded-full border border-white/10 flex items-center justify-center hover:border-[#C9A96E]/50 hover:bg-[#C9A96E]/10 transition-all">
+                    <button onClick={goNext} className="h-11 w-11 rounded-full border border-[#1a1a1a]/[0.12] flex items-center justify-center hover:border-[#33492F]/40 hover:bg-[#33492F]/[0.06] transition-all text-[#1a1a1a]/60">
                       <ChevronRight className="h-5 w-5" />
                     </button>
                   </div>
                 ) : (
-                  <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+                  <div className="h-px flex-1 bg-[#1a1a1a]/[0.08]" />
                 )}
               </div>
 
               {/* Main image */}
               <div
-                className="relative aspect-[3/2] sm:aspect-[16/9] rounded-2xl overflow-hidden bg-white/5 cursor-pointer group"
+                className="relative aspect-[3/2] sm:aspect-[16/9] rounded-2xl overflow-hidden bg-gray-100 cursor-pointer group shadow-sm"
                 onClick={() => {
                   if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackGalleryClick(activeImgIdx, images.length);
                   setLightboxOpen(true);
@@ -1231,15 +1224,15 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   className="object-cover transition-transform duration-500 group-hover:scale-[1.02]"
                   sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 960px"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10 pointer-events-none" />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-black/5 pointer-events-none" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors" />
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="bg-black/50 backdrop-blur-sm rounded-full p-4">
-                    <ZoomIn className="h-6 w-6 text-white" />
+                  <div className="bg-white/80 backdrop-blur-sm rounded-full p-4 shadow-lg">
+                    <ZoomIn className="h-6 w-6 text-[#1a1a1a]" />
                   </div>
                 </div>
                 {images.length > 1 && (
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full">
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-sm text-[#1a1a1a] text-xs px-4 py-2 rounded-full shadow-sm">
                     {activeImgIdx + 1} / {images.length}
                   </div>
                 )}
@@ -1257,7 +1250,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                       }}
                       className={`relative flex-shrink-0 w-20 h-14 sm:w-28 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${
                         idx === activeImgIdx
-                          ? 'border-[#C9A96E] ring-2 ring-[#C9A96E]/20'
+                          ? 'border-[#33492F] ring-2 ring-[#33492F]/20'
                           : 'border-transparent opacity-50 hover:opacity-80'
                       }`}
                     >
@@ -1273,170 +1266,166 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
       {/* ── Ficha Técnica do Empreendimento ─────────────── */}
       <ScrollReveal>
-        <section className="py-12 sm:py-24 border-t border-white/[0.04] bg-white/[0.01]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <section className="bg-[#F7F6F3]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
             {/* Section header */}
-            <div className="flex items-center gap-4 mb-8 sm:mb-12">
-              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
-              <div className="text-center">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Ficha Técnica</h2>
-                <p className="text-sm text-white/40 mt-1">Dados oficiais do {e.name}</p>
-              </div>
-              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+            <div className="text-center mb-10 sm:mb-14">
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#1a1a1a]">Ficha Técnica</h2>
+              <p className="text-sm text-[#1a1a1a]/50 mt-2">Dados oficiais do {e.name}</p>
             </div>
 
             {/* Spec grid */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
               {/* Status */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              <div className="relative group rounded-2xl bg-white border border-[#1a1a1a]/[0.06] p-5 sm:p-6 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
                     <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${
-                      status === 'Lançamento' ? 'bg-emerald-500/15' : status === 'Em Construção' ? 'bg-amber-500/15' : status === 'Entregue' ? 'bg-blue-500/15' : 'bg-white/5'
+                      status === 'Lançamento' ? 'bg-emerald-50' : status === 'Em Construção' ? 'bg-amber-50' : status === 'Entregue' ? 'bg-blue-50' : 'bg-gray-50'
                     }`}>
-                      <Clock className={`h-4 w-4 ${status === 'Lançamento' ? 'text-emerald-400' : status === 'Em Construção' ? 'text-amber-400' : status === 'Entregue' ? 'text-blue-400' : 'text-white/20'}`} />
+                      <Clock className={`h-4 w-4 ${status === 'Lançamento' ? 'text-emerald-600' : status === 'Em Construção' ? 'text-amber-600' : status === 'Entregue' ? 'text-blue-600' : 'text-gray-400'}`} />
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Status</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Status</span>
                   </div>
-                  <p className={`text-sm font-semibold ${status === 'Lançamento' ? 'text-emerald-400' : status === 'Em Construção' ? 'text-amber-400' : status === 'Entregue' ? 'text-blue-400' : 'text-white/40'}`}>{status || 'A definir'}</p>
+                  <p className={`text-sm font-semibold ${status === 'Lançamento' ? 'text-emerald-700' : status === 'Em Construção' ? 'text-amber-700' : status === 'Entregue' ? 'text-blue-700' : 'text-[#1a1a1a]/40'}`}>{status || 'A definir'}</p>
                 </div>
 
               {/* Construtora */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              <div className="relative group rounded-2xl bg-white border border-[#1a1a1a]/[0.06] p-5 sm:p-6 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-orange-500/15 flex items-center justify-center">
-                      <HardHat className="h-4 w-4 text-orange-400" />
+                    <div className="h-8 w-8 rounded-lg bg-orange-50 flex items-center justify-center">
+                      <HardHat className="h-4 w-4 text-orange-600" />
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Construtora</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Construtora</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug truncate" title={info?.builder?.split('(')[0].trim() || ''}>{info?.builder?.split('(')[0].trim() || '—'}</p>
+                  <p className="text-sm font-semibold text-[#1a1a1a]/85 leading-snug truncate" title={info?.builder?.split('(')[0].trim() || ''}>{info?.builder?.split('(')[0].trim() || '—'}</p>
                 </div>
 
               {/* Localização */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              <div className="relative group rounded-2xl bg-white border border-[#1a1a1a]/[0.06] p-5 sm:p-6 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
-                      <MapPin className="h-4 w-4 text-blue-400" />
+                    <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                      <MapPin className="h-4 w-4 text-blue-600" />
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Localização</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Localização</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug truncate" title={([info?.location?.neighborhood, info?.location?.city].filter(Boolean).join(', ')) || ''}>
+                  <p className="text-sm font-semibold text-[#1a1a1a]/85 leading-snug truncate" title={([info?.location?.neighborhood, info?.location?.city].filter(Boolean).join(', ')) || ''}>
                     {[info?.location?.neighborhood, info?.location?.city].filter(Boolean).join(', ') || '—'}
                   </p>
                 </div>
 
               {/* Tipos de Unidade */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              <div className="relative group rounded-2xl bg-white border border-[#1a1a1a]/[0.06] p-5 sm:p-6 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
-                      <Building2 className="h-4 w-4 text-violet-400" />
+                    <div className="h-8 w-8 rounded-lg bg-violet-50 flex items-center justify-center">
+                      <Building2 className="h-4 w-4 text-violet-600" />
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Plantas</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Plantas</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85">{(info?.apartmentTypes?.length || 0) > 0 ? `${info?.apartmentTypes.length} tipo${(info?.apartmentTypes.length ?? 0) > 1 ? 's' : ''} de unidade` : 'Consulte'}</p>
-                  {areaRange && <p className="text-xs text-white/40 mt-1">{areaRange}</p>}
+                  <p className="text-sm font-semibold text-[#1a1a1a]/85">{(info?.apartmentTypes?.length || 0) > 0 ? `${info?.apartmentTypes.length} tipo${(info?.apartmentTypes.length ?? 0) > 1 ? 's' : ''} de unidade` : 'Consulte'}</p>
+                  {areaRange && <p className="text-xs text-[#1a1a1a]/40 mt-1">{areaRange}</p>}
                 </div>
 
-              {/* Arquitetura — only show when data exists */}
+              {/* Arquitetura */}
               {info?.architecture && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                <div className="relative group rounded-2xl bg-white border border-[#1a1a1a]/[0.06] p-5 sm:p-6 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
-                      <Palette className="h-4 w-4 text-violet-400" />
+                    <div className="h-8 w-8 rounded-lg bg-violet-50 flex items-center justify-center">
+                      <Palette className="h-4 w-4 text-violet-600" />
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Arquitetura</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Arquitetura</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info.architecture}</p>
+                  <p className="text-sm font-semibold text-[#1a1a1a]/85 leading-snug line-clamp-2">{info.architecture}</p>
                 </div>
               )}
 
-              {/* Paisagismo — only show when data exists */}
+              {/* Paisagismo */}
               {info?.landscaping && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                <div className="relative group rounded-2xl bg-white border border-[#1a1a1a]/[0.06] p-5 sm:p-6 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
-                      <Sparkles className="h-4 w-4 text-emerald-400" />
+                    <div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+                      <Sparkles className="h-4 w-4 text-emerald-600" />
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Paisagismo</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Paisagismo</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info.landscaping}</p>
+                  <p className="text-sm font-semibold text-[#1a1a1a]/85 leading-snug line-clamp-2">{info.landscaping}</p>
                 </div>
               )}
 
               {/* Preço */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+              <div className="relative group rounded-2xl bg-white border border-[#1a1a1a]/[0.06] p-5 sm:p-6 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-[#C9A96E]/15 flex items-center justify-center">
+                    <div className="h-8 w-8 rounded-lg bg-[#C9A96E]/10 flex items-center justify-center">
                       <DollarSign className="h-4 w-4 text-[#C9A96E]" />
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Investimento</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Investimento</span>
                   </div>
-                  <p className="text-sm font-bold text-[#C9A96E]">{priceText || 'Consulte valores'}</p>
+                  <p className="text-sm font-bold text-[#33492F]">{priceText || 'Consulte valores'}</p>
                 </div>
 
               {/* Previsão de Entrega */}
-              <div className={`relative group rounded-2xl border p-5 hover:border-[#C9A96E]/20 transition-colors min-w-0 ${status === 'Entregue' ? 'bg-emerald-500/[0.06] border-emerald-500/20' : 'bg-white/[0.02] border-white/[0.06]'}`}>
+              <div className={`relative group rounded-2xl border p-5 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0 ${status === 'Entregue' ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-[#1a1a1a]/[0.06]'}`}>
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${status === 'Entregue' ? 'bg-emerald-500/20' : 'bg-amber-500/15'}`}>
+                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${status === 'Entregue' ? 'bg-emerald-100' : 'bg-amber-50'}`}>
                       {status === 'Entregue'
-                        ? <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                        : <CalendarDays className="h-4 w-4 text-amber-400" />
+                        ? <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        : <CalendarDays className="h-4 w-4 text-amber-600" />
                       }
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Entrega</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Entrega</span>
                   </div>
-                  <p className={`text-sm font-semibold ${status === 'Entregue' ? 'text-emerald-400' : 'text-white/85'}`}>{deliveryText || 'A definir'}</p>
+                  <p className={`text-sm font-semibold ${status === 'Entregue' ? 'text-emerald-700' : 'text-[#1a1a1a]/85'}`}>{deliveryText || 'A definir'}</p>
                 </div>
 
-              {/* Unidades — only show when data exists */}
+              {/* Unidades */}
               {info?.totalUnits != null && info.totalUnits > 0 && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                <div className="relative group rounded-2xl bg-white border border-[#1a1a1a]/[0.06] p-5 sm:p-6 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-cyan-500/15 flex items-center justify-center">
-                      <Users className="h-4 w-4 text-cyan-400" />
+                    <div className="h-8 w-8 rounded-lg bg-cyan-50 flex items-center justify-center">
+                      <Users className="h-4 w-4 text-cyan-600" />
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Unidades</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Unidades</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85">{info.totalUnits} {info.totalUnits === 1 ? 'unidade' : 'unidades'}</p>
+                  <p className="text-sm font-semibold text-[#1a1a1a]/85">{info.totalUnits} {info.totalUnits === 1 ? 'unidade' : 'unidades'}</p>
                 </div>
               )}
 
-              {/* Pavimentos — only show when data exists */}
+              {/* Pavimentos */}
               {info?.floors != null && info.floors > 0 && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                <div className="relative group rounded-2xl bg-white border border-[#1a1a1a]/[0.06] p-5 sm:p-6 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-indigo-500/15 flex items-center justify-center">
-                      <Layers className="h-4 w-4 text-indigo-400" />
+                    <div className="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+                      <Layers className="h-4 w-4 text-indigo-600" />
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Pavimentos</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Pavimentos</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85">{info.floors} {info.floors === 1 ? 'pavimento' : 'pavimentos'}</p>
+                  <p className="text-sm font-semibold text-[#1a1a1a]/85">{info.floors} {info.floors === 1 ? 'pavimento' : 'pavimentos'}</p>
                 </div>
               )}
 
-              {/* Vagas — only show when data exists */}
+              {/* Vagas */}
               {info?.parkingSpots != null && info.parkingSpots > 0 && (
-                <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0">
+                <div className="relative group rounded-2xl bg-white border border-[#1a1a1a]/[0.06] p-5 sm:p-6 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0">
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-teal-500/15 flex items-center justify-center">
-                      <Car className="h-4 w-4 text-teal-400" />
+                    <div className="h-8 w-8 rounded-lg bg-teal-50 flex items-center justify-center">
+                      <Car className="h-4 w-4 text-teal-600" />
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Vagas</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Vagas</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85">{info.parkingSpots} {info.parkingSpots === 1 ? 'vaga' : 'vagas'}</p>
+                  <p className="text-sm font-semibold text-[#1a1a1a]/85">{info.parkingSpots} {info.parkingSpots === 1 ? 'vaga' : 'vagas'}</p>
                 </div>
               )}
 
               {/* Endereço */}
-              <div className="relative group rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 sm:p-6 hover:border-[#C9A96E]/20 transition-colors min-w-0 sm:col-span-2 lg:col-span-2">
+              <div className="relative group rounded-2xl bg-white border border-[#1a1a1a]/[0.06] p-5 sm:p-6 hover:border-[#33492F]/20 hover:shadow-sm transition-all min-w-0 sm:col-span-2 lg:col-span-2">
                   <div className="flex items-center gap-2.5 mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
-                      <Navigation className="h-4 w-4 text-blue-400" />
+                    <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                      <Navigation className="h-4 w-4 text-blue-600" />
                     </div>
-                    <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Endereço</span>
+                    <span className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 font-medium">Endereço</span>
                   </div>
-                  <p className="text-sm font-semibold text-white/85 leading-snug line-clamp-2">{info?.location?.address || '—'}</p>
+                  <p className="text-sm font-semibold text-[#1a1a1a]/85 leading-snug line-clamp-2">{info?.location?.address || '—'}</p>
                   {info?.location?.additionalInfo && (
-                    <p className="text-xs text-white/40 mt-1">{info.location.additionalInfo}</p>
+                    <p className="text-xs text-[#1a1a1a]/40 mt-1">{info.location.additionalInfo}</p>
                   )}
                 </div>
             </div>
@@ -1446,63 +1435,56 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
       {/* ── Details Section ────────────────────────────── */}
       <ScrollReveal>
-          <section className="py-12 sm:py-24 border-t border-white/[0.04]">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <section className="bg-white">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
               {/* Section header */}
-              <div className="flex items-center gap-4 mb-8 sm:mb-12">
-                <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
-                <div className="text-center">
-                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Detalhes do Empreendimento</h2>
-                </div>
-                <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+              <div className="text-center mb-10 sm:mb-14">
+                <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#1a1a1a]">Detalhes do Empreendimento</h2>
               </div>
 
-              {/* Summary — Sobre o Empreendimento */}
+              {/* Summary */}
               {info?.summary ? (
-                <div className="mb-8 sm:mb-12">
-                  <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.12] via-[#C9A96E]/[0.05] to-transparent border border-[#C9A96E]/20 p-6 sm:p-8 lg:p-12">
-                    <div className="absolute top-0 right-0 w-48 h-48 bg-[#C9A96E]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                <div className="mb-10 sm:mb-14">
+                  <div className="relative overflow-hidden rounded-2xl bg-[#33492F]/[0.04] border border-[#33492F]/10 p-6 sm:p-8 lg:p-12">
                     <div className="relative">
                       <div className="flex items-center gap-2.5 mb-4">
-                        <div className="h-1.5 w-8 rounded-full bg-[#C9A96E]" />
-                        <span className="text-xs font-semibold text-[#C9A96E] uppercase tracking-widest">Sobre o empreendimento</span>
+                        <div className="h-1.5 w-8 rounded-full bg-[#33492F]" />
+                        <span className="text-xs font-semibold text-[#33492F] uppercase tracking-widest">Sobre o empreendimento</span>
                       </div>
-                      <p className="text-sm sm:text-[15px] text-white/80 leading-[1.8] max-w-5xl">{info.summary}</p>
+                      <p className="text-sm sm:text-[15px] text-[#1a1a1a]/80 leading-[1.8] max-w-5xl">{info.summary}</p>
                     </div>
                   </div>
                 </div>
               ) : null}
 
-              {/* Info blocks — stacked, full-width, each with clear visual identity */}
+              {/* Info blocks */}
               <div className="space-y-4 sm:space-y-5">
 
                 {/* Location */}
-                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                <div className="group rounded-2xl bg-[#F7F6F3] border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/15 transition-all duration-300 overflow-hidden">
                     <div className="flex items-stretch">
-                      {/* Icon strip */}
-                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-blue-500/15 to-blue-500/5 flex items-center justify-center">
-                        <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                          <Navigation className="h-4 w-4 text-blue-400" />
+                      <div className="flex-shrink-0 w-12 sm:w-14 bg-blue-50 flex items-center justify-center">
+                        <div className="h-9 w-9 rounded-xl bg-blue-100 flex items-center justify-center">
+                          <Navigation className="h-4 w-4 text-blue-600" />
                         </div>
                       </div>
-                      {/* Content */}
                       <div className="flex-1 p-5 sm:p-6">
-                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Localização</h3>
+                        <h3 className="text-sm font-semibold text-[#1a1a1a]/90 mb-3 sm:mb-4 tracking-wide">Localização</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
                           <div>
-                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Endereço</p>
-                            <p className="text-sm text-white/70 leading-relaxed">{info?.location?.address || 'Consulte o endereço completo'}</p>
+                            <p className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 mb-1">Endereço</p>
+                            <p className="text-sm text-[#1a1a1a]/70 leading-relaxed">{info?.location?.address || 'Consulte o endereço completo'}</p>
                           </div>
                           <div>
-                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Região</p>
-                            <p className="text-sm text-white/70 leading-relaxed">
+                            <p className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 mb-1">Região</p>
+                            <p className="text-sm text-[#1a1a1a]/70 leading-relaxed">
                               {[info?.location?.neighborhood, info?.location?.city, info?.location?.state].filter(Boolean).join(', ') || e.region || '—'}
                             </p>
                           </div>
                           {info?.location?.additionalInfo && (
                             <div className="sm:col-span-2">
-                              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Referências</p>
-                              <p className="text-sm text-white/50 leading-relaxed">{info.location.additionalInfo}</p>
+                              <p className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 mb-1">Referências</p>
+                              <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">{info.location.additionalInfo}</p>
                             </div>
                           )}
                         </div>
@@ -1512,16 +1494,16 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
                 {/* Builder */}
                 {info?.builder && (
-                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                <div className="group rounded-2xl bg-[#F7F6F3] border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/15 transition-all duration-300 overflow-hidden">
                     <div className="flex items-stretch">
-                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-orange-500/15 to-orange-500/5 flex items-center justify-center">
-                        <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
-                          <HardHat className="h-4 w-4 text-orange-400" />
+                      <div className="flex-shrink-0 w-12 sm:w-14 bg-orange-50 flex items-center justify-center">
+                        <div className="h-9 w-9 rounded-xl bg-orange-100 flex items-center justify-center">
+                          <HardHat className="h-4 w-4 text-orange-600" />
                         </div>
                       </div>
                       <div className="flex-1 p-5 sm:p-6">
-                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Construtora</h3>
-                        <p className="text-sm sm:text-[15px] text-white/70 leading-relaxed max-w-3xl">{info.builder}</p>
+                        <h3 className="text-sm font-semibold text-[#1a1a1a]/90 mb-3 sm:mb-4 tracking-wide">Construtora</h3>
+                        <p className="text-sm sm:text-[15px] text-[#1a1a1a]/70 leading-relaxed max-w-3xl">{info.builder}</p>
                       </div>
                     </div>
                   </div>
@@ -1529,26 +1511,26 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
                 {/* Architecture / Landscaping */}
                 {(info?.architecture || info?.landscaping) && (
-                <div className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden">
+                <div className="group rounded-2xl bg-[#F7F6F3] border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/15 transition-all duration-300 overflow-hidden">
                     <div className="flex items-stretch">
-                      <div className="flex-shrink-0 w-12 sm:w-14 bg-gradient-to-b from-violet-500/15 to-violet-500/5 flex items-center justify-center">
-                        <div className="h-9 w-9 rounded-xl bg-violet-500/20 flex items-center justify-center">
-                          <Palette className="h-4 w-4 text-violet-400" />
+                      <div className="flex-shrink-0 w-12 sm:w-14 bg-violet-50 flex items-center justify-center">
+                        <div className="h-9 w-9 rounded-xl bg-violet-100 flex items-center justify-center">
+                          <Palette className="h-4 w-4 text-violet-600" />
                         </div>
                       </div>
                       <div className="flex-1 p-5 sm:p-6">
-                        <h3 className="text-sm font-semibold text-white/90 mb-3 sm:mb-4 tracking-wide">Projeto</h3>
+                        <h3 className="text-sm font-semibold text-[#1a1a1a]/90 mb-3 sm:mb-4 tracking-wide">Projeto</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
                           {info?.architecture && (
                           <div>
-                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Arquitetura</p>
-                            <p className="text-sm text-white/70 leading-relaxed">{info.architecture}</p>
+                            <p className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 mb-1">Arquitetura</p>
+                            <p className="text-sm text-[#1a1a1a]/70 leading-relaxed">{info.architecture}</p>
                           </div>
                           )}
                           {info?.landscaping && (
                           <div>
-                            <p className="text-[11px] uppercase tracking-wider text-white/30 mb-1">Paisagismo</p>
-                            <p className="text-sm text-white/70 leading-relaxed">{info.landscaping}</p>
+                            <p className="text-[11px] uppercase tracking-wider text-[#1a1a1a]/30 mb-1">Paisagismo</p>
+                            <p className="text-sm text-[#1a1a1a]/70 leading-relaxed">{info.landscaping}</p>
                           </div>
                           )}
                         </div>
@@ -1563,11 +1545,11 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               {info?.apartmentTypes && info.apartmentTypes.length > 0 && (
               <div className="mt-10 sm:mt-14">
                   <div className="flex items-center gap-3 mb-6 sm:mb-8">
-                    <div className="h-9 w-9 rounded-xl bg-emerald-500/15 flex items-center justify-center">
-                      <Building2 className="h-4 w-4 text-emerald-400" />
+                    <div className="h-9 w-9 rounded-xl bg-emerald-50 flex items-center justify-center">
+                      <Building2 className="h-4 w-4 text-emerald-600" />
                     </div>
-                    <h3 className="text-lg sm:text-xl font-semibold">Tipos de Unidades</h3>
-                    <span className="text-xs text-white/25 font-medium ml-auto">{(info?.apartmentTypes?.length || 0)} tipo{(info?.apartmentTypes?.length || 0) !== 1 ? 's' : ''} disponíve{(info?.apartmentTypes?.length || 0) !== 1 ? 'is' : 'l'}</span>
+                    <h3 className="text-lg sm:text-xl font-semibold text-[#1a1a1a]">Tipos de Unidades</h3>
+                    <span className="text-xs text-[#1a1a1a]/25 font-medium ml-auto">{(info?.apartmentTypes?.length || 0)} tipo{(info?.apartmentTypes?.length || 0) !== 1 ? 's' : ''} disponíve{(info?.apartmentTypes?.length || 0) !== 1 ? 'is' : 'l'}</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {(info?.apartmentTypes || []).map((apt, idx) => {
@@ -1575,61 +1557,68 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                       return (
                         <div
                           key={idx}
-                          className="group rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-emerald-500/20 hover:bg-white/[0.03] hover:scale-[1.02] transition-all duration-300 overflow-hidden"
+                          className="group rounded-2xl bg-[#F7F6F3] border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/20 hover:shadow-sm hover:scale-[1.01] transition-all duration-300 overflow-hidden"
                         >
-                          {/* Top accent bar */}
-                          <div className="h-0.5 bg-gradient-to-r from-emerald-500/40 to-transparent" />
+                          <div className="h-0.5 bg-gradient-to-r from-[#33492F]/40 to-transparent" />
                           <div className="p-5 sm:p-6">
                             <div className="flex items-start justify-between gap-3 mb-4">
-                              <h4 className="text-sm font-semibold text-white/90 leading-tight">{apt.name}</h4>
+                              <h4 className="text-sm font-semibold text-[#1a1a1a]/90 leading-tight">{apt.name}</h4>
                               {priceInDesc && (
                                 <span className="text-xs font-bold text-[#C9A96E] whitespace-nowrap flex-shrink-0 bg-[#C9A96E]/10 px-2.5 py-1 rounded-lg">
                                   {priceInDesc[0]}
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-5 text-xs text-white/50 mb-2">
+                            <div className="flex items-center gap-5 text-xs text-[#1a1a1a]/50 mb-2">
                               {apt.area && (
                                 <span className="flex items-center gap-1.5">
-                                  <Ruler className="h-3.5 w-3.5 text-white/30" />{apt.area}
+                                  <Ruler className="h-3.5 w-3.5 text-[#33492F]/50" />{apt.area}
                                 </span>
                               )}
                               {apt.bedrooms && (
                                 <span className="flex items-center gap-1.5">
-                                  <BedDouble className="h-3.5 w-3.5 text-white/30" />{apt.bedrooms}
+                                  <BedDouble className="h-3.5 w-3.5 text-[#33492F]/50" />{apt.bedrooms}
                                 </span>
                               )}
                             </div>
                             {apt.description && (
-                              <p className="text-xs text-white/40 mt-3 leading-relaxed">{apt.description}</p>
+                              <p className="text-xs text-[#1a1a1a]/40 mt-3 leading-relaxed">{apt.description}</p>
                             )}
                           </div>
                         </div>
                       );
                     })}
                   </div>
-
                 </div>
               )}
 
-              {/* Floor Plans — only show if enterprise has floor plans uploaded */}
+              {/* Floor Plans */}
               {e.floorPlans && e.floorPlans.length > 0 && (
               <div className="mt-10 sm:mt-14">
-                  <div className="flex items-center gap-3 mb-6 sm:mb-8">
-                    <div className="h-9 w-9 rounded-xl bg-blue-500/15 flex items-center justify-center">
-                      <LayoutGrid className="h-4 w-4 text-blue-400" />
+                  <div className="flex items-center justify-between mb-6 sm:mb-8">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center">
+                        <LayoutGrid className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <h3 className="text-lg sm:text-xl font-semibold text-[#1a1a1a]">Plantas das Unidades</h3>
+                      <span className="text-xs text-[#1a1a1a]/25 font-medium">{e.floorPlans.length} planta{e.floorPlans.length !== 1 ? 's' : ''}</span>
                     </div>
-                    <h3 className="text-lg sm:text-xl font-semibold">Plantas das Unidades</h3>
-                    <span className="text-xs text-white/25 font-medium ml-auto">{e.floorPlans.length} planta{e.floorPlans.length !== 1 ? 's' : ''}</span>
+                    <a
+                      href="#cadastro"
+                      className="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#33492F] text-white text-sm font-semibold hover:bg-[#33492F]/90 transition-colors"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Book Completo
+                    </a>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                     {e.floorPlans.map((plan, idx) => (
                       <button
                         key={plan.id}
                         onClick={() => { setActiveFloorIdx(idx); setFloorLightboxOpen(true); }}
-                        className="group relative rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-blue-500/20 hover:bg-white/[0.03] transition-all duration-300 overflow-hidden cursor-pointer"
+                        className="group relative rounded-2xl bg-[#F7F6F3] border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/20 hover:shadow-sm transition-all duration-300 overflow-hidden cursor-pointer"
                       >
-                        <div className="aspect-[4/3] bg-white/[0.01] flex items-center justify-center p-3">
+                        <div className="aspect-[4/3] bg-white flex items-center justify-center p-3">
                           <img
                             src={plan.url}
                             alt={plan.altText || `Planta ${idx + 1}`}
@@ -1637,40 +1626,97 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                           />
                         </div>
                         {plan.altText && (
-                          <div className="px-3 py-2 border-t border-white/[0.04]">
-                            <p className="text-[11px] sm:text-xs text-white/50 leading-tight line-clamp-2">{plan.altText}</p>
+                          <div className="px-3 py-2 border-t border-[#1a1a1a]/[0.04]">
+                            <p className="text-[11px] sm:text-xs text-[#1a1a1a]/50 leading-tight line-clamp-2">{plan.altText}</p>
                           </div>
                         )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-3">
-                          <span className="text-[10px] text-white/80 bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded-full">Visualizar</span>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-3">
+                          <span className="text-[10px] text-white bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded-full">Visualizar</span>
                         </div>
                       </button>
+                    ))}
+                  </div>
+                  <div className="mt-4 sm:hidden text-center">
+                    <a
+                      href="#cadastro"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#33492F] text-white text-sm font-semibold"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Solicitar Book Completo
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Differentials — Tabbed Categories */}
+              {diffCategories.length > 0 && (
+              <div className="mt-10 sm:mt-14">
+                  <div className="flex items-center gap-3 mb-3 sm:mb-4">
+                    <div className="h-9 w-9 rounded-xl bg-[#33492F]/10 flex items-center justify-center">
+                      <Sparkles className="h-4 w-4 text-[#33492F]" />
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-semibold text-[#1a1a1a]">Diferenciais pensados para cada fase da sua vida</h3>
+                  </div>
+                  <p className="text-sm text-[#1a1a1a]/40 mb-6 sm:mb-8">Conheça tudo que o {e.name} tem a oferecer</p>
+
+                  {/* Tab buttons */}
+                  {diffCategories.length > 1 && (
+                    <div className="mobile-scroll-x flex gap-2 mb-8 overflow-x-auto pb-1">
+                      {diffCategories.map((cat, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setActiveDiffTab(i)}
+                          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                            activeDiffTab === i
+                              ? 'bg-[#33492F] text-white shadow-sm'
+                              : 'bg-[#F7F6F3] text-[#1a1a1a]/60 hover:bg-[#F7F6F3] hover:text-[#1a1a1a]/80 border border-[#1a1a1a]/[0.06]'
+                          }`}
+                        >
+                          {diffIconMap[cat.icon]}
+                          {cat.name}
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                            activeDiffTab === i ? 'bg-white/20' : 'bg-[#1a1a1a]/[0.06]'
+                          }`}>{cat.items.length}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Tab content */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {(diffCategories[activeDiffTab]?.items || []).map((d, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-3 px-5 sm:px-6 py-4 rounded-xl bg-[#F7F6F3] border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/20 transition-colors min-w-0"
+                      >
+                        <CheckCircle2 className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
+                        <span className="text-sm text-[#1a1a1a]/70 leading-relaxed min-w-0">{d}</span>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Differentials */}
-              {info?.differentials && info.differentials.length > 0 && (
+              {/* Fallback: simple differentials list (if categorization returns empty) */}
+              {diffCategories.length === 0 && info?.differentials && info.differentials.length > 0 && (
               <div className="mt-10 sm:mt-14">
                   <div className="flex items-center gap-3 mb-6 sm:mb-8">
-                    <div className="h-9 w-9 rounded-xl bg-[#C9A96E]/15 flex items-center justify-center">
+                    <div className="h-9 w-9 rounded-xl bg-[#C9A96E]/10 flex items-center justify-center">
                       <Sparkles className="h-4 w-4 text-[#C9A96E]" />
                     </div>
-                    <h3 className="text-lg sm:text-xl font-semibold">Diferenciais</h3>
+                    <h3 className="text-lg sm:text-xl font-semibold text-[#1a1a1a]">Diferenciais</h3>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {(info?.differentials || []).map((d, i) => (
                       <div
                         key={i}
-                        className="flex items-start gap-3 px-5 sm:px-6 py-4 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:border-[#C9A96E]/20 transition-colors min-w-0"
+                        className="flex items-start gap-3 px-5 sm:px-6 py-4 rounded-xl bg-[#F7F6F3] border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/20 transition-colors min-w-0"
                       >
-                        <CheckCircle2 className="h-4 w-4 text-[#C9A96E] flex-shrink-0" />
-                        <span className="text-sm text-white/70 leading-relaxed min-w-0">{d}</span>
+                        <CheckCircle2 className="h-4 w-4 text-[#33492F] flex-shrink-0" />
+                        <span className="text-sm text-[#1a1a1a]/70 leading-relaxed min-w-0">{d}</span>
                       </div>
                     ))}
                   </div>
-
                 </div>
               )}
             </div>
@@ -1679,51 +1725,47 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
       {/* ── Por que o {e.name}? ──────────────────────────── */}
       <ScrollReveal>
-        <section className="py-12 sm:py-24 bg-gradient-to-b from-transparent via-white/[0.01] to-transparent">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <section className="bg-[#F7F6F3]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
             {/* Section header */}
-            <div className="flex items-center gap-4 mb-8 sm:mb-12">
-              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
-              <div className="text-center">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Por que o {e.name}?</h2>
-                <p className="text-sm text-white/40 mt-1">Destaques que fazem a diferença</p>
-              </div>
-              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+            <div className="text-center mb-10 sm:mb-14">
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#1a1a1a]">Por que o {e.name}?</h2>
+              <p className="text-sm text-[#1a1a1a]/50 mt-2">Destaques que fazem a diferença</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               {/* Card 1 — Localização Privilegiada */}
-              <div className="group relative rounded-2xl bg-gradient-to-br from-blue-500/[0.06] to-transparent border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+              <div className="group relative rounded-2xl bg-white border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/20 hover:shadow-sm transition-all duration-300 overflow-hidden p-6 sm:p-7">
                 <div className="h-0.5 w-12 bg-gradient-to-r from-blue-400 to-transparent mb-5 rounded-full" />
-                <div className="h-10 w-10 rounded-xl bg-blue-500/15 flex items-center justify-center mb-4">
-                  <MapPin className="h-5 w-5 text-blue-400" />
+                <div className="h-10 w-10 rounded-xl bg-blue-50 flex items-center justify-center mb-4">
+                  <MapPin className="h-5 w-5 text-blue-600" />
                 </div>
-                <h3 className="text-base font-semibold text-white/90 mb-2">Localização Privilegiada</h3>
-                <p className="text-sm text-white/50 leading-relaxed">
+                <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">Localização Privilegiada</h3>
+                <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">
                   {[info?.location?.neighborhood, info?.location?.city].filter(Boolean).join(', ') || e.region || 'Região estratégica'} com excelente infraestrutura, comércio, transporte e serviços ao seu redor.
                 </p>
               </div>
 
               {/* Card 2 — Qualidade de Construção */}
-              <div className="group relative rounded-2xl bg-gradient-to-br from-orange-500/[0.06] to-transparent border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+              <div className="group relative rounded-2xl bg-white border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/20 hover:shadow-sm transition-all duration-300 overflow-hidden p-6 sm:p-7">
                 <div className="h-0.5 w-12 bg-gradient-to-r from-orange-400 to-transparent mb-5 rounded-full" />
-                <div className="h-10 w-10 rounded-xl bg-orange-500/15 flex items-center justify-center mb-4">
-                  <HardHat className="h-5 w-5 text-orange-400" />
+                <div className="h-10 w-10 rounded-xl bg-orange-50 flex items-center justify-center mb-4">
+                  <HardHat className="h-5 w-5 text-orange-600" />
                 </div>
-                <h3 className="text-base font-semibold text-white/90 mb-2">Construtora Reconhecida</h3>
-                <p className="text-sm text-white/50 leading-relaxed">
+                <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">Construtora Reconhecida</h3>
+                <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">
                   {info?.builder?.split('(')[0].trim() || 'Construtora de renome'}, com histórico comprovado de entregas e compromisso com a qualidade em cada detalhe.
                 </p>
               </div>
 
               {/* Card 3 — Diferenciais Exclusivos */}
-              <div className="group relative rounded-2xl bg-gradient-to-br from-[#C9A96E]/[0.06] to-transparent border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
-                <div className="h-0.5 w-12 bg-gradient-to-r from-[#C9A96E] to-transparent mb-5 rounded-full" />
-                <div className="h-10 w-10 rounded-xl bg-[#C9A96E]/15 flex items-center justify-center mb-4">
-                  <Sparkles className="h-5 w-5 text-[#C9A96E]" />
+              <div className="group relative rounded-2xl bg-white border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/20 hover:shadow-sm transition-all duration-300 overflow-hidden p-6 sm:p-7">
+                <div className="h-0.5 w-12 bg-gradient-to-r from-[#33492F] to-transparent mb-5 rounded-full" />
+                <div className="h-10 w-10 rounded-xl bg-[#33492F]/10 flex items-center justify-center mb-4">
+                  <Sparkles className="h-5 w-5 text-[#33492F]" />
                 </div>
-                <h3 className="text-base font-semibold text-white/90 mb-2">Diferenciais Exclusivos</h3>
-                <p className="text-sm text-white/50 leading-relaxed">
+                <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">Diferenciais Exclusivos</h3>
+                <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">
                   {(info?.differentials && info.differentials.length > 0)
                     ? info.differentials.slice(0, 3).join(', ') + (info.differentials.length > 3 ? ' e muito mais.' : '.')
                     : 'Lazer completo, segurança 24h e acabamentos de alto padrão para o seu conforto.'}
@@ -1731,13 +1773,13 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </div>
 
               {/* Card 4 — Oportunidade de Investimento */}
-              <div className="group relative rounded-2xl bg-gradient-to-br from-emerald-500/[0.06] to-transparent border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+              <div className="group relative rounded-2xl bg-white border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/20 hover:shadow-sm transition-all duration-300 overflow-hidden p-6 sm:p-7">
                 <div className="h-0.5 w-12 bg-gradient-to-r from-emerald-400 to-transparent mb-5 rounded-full" />
-                <div className="h-10 w-10 rounded-xl bg-emerald-500/15 flex items-center justify-center mb-4">
-                  <TrendingUp className="h-5 w-5 text-emerald-400" />
+                <div className="h-10 w-10 rounded-xl bg-emerald-50 flex items-center justify-center mb-4">
+                  <TrendingUp className="h-5 w-5 text-emerald-600" />
                 </div>
-                <h3 className="text-base font-semibold text-white/90 mb-2">Oportunidade de Investimento</h3>
-                <p className="text-sm text-white/50 leading-relaxed">
+                <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">Oportunidade de Investimento</h3>
+                <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">
                   {priceText
                     ? `${priceText} em uma região com alta valorização imobiliária.`
                     : 'Valores acessíveis e condições especiais em uma região com forte valorização imobiliária.'}
@@ -1745,13 +1787,13 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </div>
 
               {/* Card 5 — Atendimento Personalizado */}
-              <div className="group relative rounded-2xl bg-gradient-to-br from-purple-500/[0.06] to-transparent border border-white/[0.06] hover:border-[#C9A96E]/20 transition-all duration-300 overflow-hidden p-6 sm:p-7">
+              <div className="group relative rounded-2xl bg-white border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/20 hover:shadow-sm transition-all duration-300 overflow-hidden p-6 sm:p-7">
                 <div className="h-0.5 w-12 bg-gradient-to-r from-purple-400 to-transparent mb-5 rounded-full" />
-                <div className="h-10 w-10 rounded-xl bg-purple-500/15 flex items-center justify-center mb-4">
-                  <Shield className="h-5 w-5 text-purple-400" />
+                <div className="h-10 w-10 rounded-xl bg-purple-50 flex items-center justify-center mb-4">
+                  <Shield className="h-5 w-5 text-purple-600" />
                 </div>
-                <h3 className="text-base font-semibold text-white/90 mb-2">Atendimento Exclusivo</h3>
-                <p className="text-sm text-white/50 leading-relaxed">
+                <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">Atendimento Exclusivo</h3>
+                <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">
                   {e._count && e._count.clients > 0
                     ? `${e._count.clients} pessoa${e._count.clients !== 1 ? 's' : ''} já solicitaram informações. Preencha o formulário e receba atendimento individualizado.`
                     : 'Consultoria dedicada para acompanhar cada etapa, da simulação até a entrega das chaves.'}
@@ -1764,47 +1806,109 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
       {/* ── Fallback: Landing Description ──────────────── */}
       {!hasInfo && e.landingDescription && (
-        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
-          <div className="max-w-3xl mx-auto px-4 sm:px-6">
+        <section className="bg-white">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
             {e.landingTitle && (
-              <h2 className="text-2xl sm:text-3xl font-bold mb-4">{e.landingTitle}</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-4 text-[#1a1a1a]">{e.landingTitle}</h2>
             )}
             {e.landingSubtitle && (
-              <p className="text-lg text-[#C9A96E] mb-6">{e.landingSubtitle}</p>
+              <p className="text-lg text-[#33492F] mb-6">{e.landingSubtitle}</p>
             )}
-            <p className="text-base text-white/60 leading-relaxed whitespace-pre-wrap">
+            <p className="text-base text-[#1a1a1a]/60 leading-relaxed whitespace-pre-wrap">
               {e.landingDescription}
             </p>
           </div>
         </section>
       )}
 
+      {/* ── Location Section (NEW) ─────────────────────── */}
+      {info?.location && (info.location.neighborhood || info.location.city) && (
+        <ScrollReveal>
+          <section className="bg-white">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24 lg:py-32">
+              <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+                <div>
+                  <div className="flex items-center gap-2.5 mb-4">
+                    <div className="h-1.5 w-8 rounded-full bg-[#33492F]" />
+                    <span className="text-xs font-semibold text-[#33492F] uppercase tracking-widest">Localização</span>
+                  </div>
+                  <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#1a1a1a] leading-tight">
+                    Um novo horizonte em{' '}
+                    <span className="text-[#33492F]">{info.location.neighborhood || info.location.city}</span>
+                  </h2>
+                  <p className="mt-4 sm:mt-6 text-base sm:text-lg text-[#1a1a1a]/60 leading-relaxed max-w-lg">
+                    {info.location.additionalInfo
+                      ? info.location.additionalInfo
+                      : `Viva em uma região privilegiada com excelente infraestrutura, comércio diversificado, transporte público e serviços essenciais ao seu alcance. ${info.location.neighborhood || info.location.city} é um bairro em constante crescimento.`}
+                  </p>
+                  <div className="mt-6 sm:mt-8 space-y-3">
+                    {info.location.address && (
+                      <div className="flex items-start gap-3">
+                        <Navigation className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-1" />
+                        <span className="text-sm text-[#1a1a1a]/70">{info.location.address}{info.location.city ? `, ${info.location.city}` : ''}{info.location.state ? ` - ${info.location.state}` : ''}</span>
+                      </div>
+                    )}
+                    {[info.location.neighborhood, info.location.city, info.location.state].filter(Boolean).length > 0 && (
+                      <div className="flex items-start gap-3">
+                        <MapPin className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-1" />
+                        <span className="text-sm text-[#1a1a1a]/70">{[info.location.neighborhood, info.location.city, info.location.state].filter(Boolean).join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-[#F7F6F3] p-8 sm:p-10">
+                  <h3 className="text-lg font-semibold text-[#1a1a1a] mb-4">Vantagens do bairro</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
+                      <span className="text-sm text-[#1a1a1a]/70">Excelente infraestrutura urbana e serviços ao redor</span>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
+                      <span className="text-sm text-[#1a1a1a]/70">Região com alta valorização imobiliária</span>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
+                      <span className="text-sm text-[#1a1a1a]/70">Fácil acesso a transporte público e vias principais</span>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
+                      <span className="text-sm text-[#1a1a1a]/70">Comércio, escolas, hospitais e lazer próximos</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </ScrollReveal>
+      )}
+
       {/* ── Trust / Social Proof Strip ────────────────── */}
       <ScrollReveal>
-        <section className="bg-[#C9A96E]/[0.04] border-y border-[#C9A96E]/10">
+        <section className="bg-[#33492F]">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8">
               <div className="flex flex-col items-center gap-2 text-center">
-                <Shield className="h-5 w-5 text-[#C9A96E]/50" />
-                <span className="text-xs sm:text-sm text-white/40 font-medium">Dados Protegidos</span>
+                <Shield className="h-5 w-5 text-white/40" />
+                <span className="text-xs sm:text-sm text-white/60 font-medium">Dados Protegidos</span>
               </div>
               <div className="flex flex-col items-center gap-2 text-center">
-                <CheckCircle2 className="h-5 w-5 text-[#C9A96E]/50" />
-                <span className="text-xs sm:text-sm text-white/40 font-medium">Sem Compromisso</span>
+                <CheckCircle2 className="h-5 w-5 text-white/40" />
+                <span className="text-xs sm:text-sm text-white/60 font-medium">Sem Compromisso</span>
               </div>
               <div className="flex flex-col items-center gap-2 text-center">
-                <Clock className="h-5 w-5 text-[#C9A96E]/50" />
-                <span className="text-xs sm:text-sm text-white/40 font-medium">Resposta em até 24h</span>
+                <Clock className="h-5 w-5 text-white/40" />
+                <span className="text-xs sm:text-sm text-white/60 font-medium">Resposta em até 24h</span>
               </div>
               {e._count && e._count.clients > 0 ? (
                 <div className="flex flex-col items-center gap-2 text-center">
-                  <Users className="h-5 w-5 text-[#C9A96E]/50" />
-                  <span className="text-xs sm:text-sm text-white/40 font-medium">{e._count.clients} pessoas interessadas</span>
+                  <Users className="h-5 w-5 text-white/40" />
+                  <span className="text-xs sm:text-sm text-white/60 font-medium">{e._count.clients} pessoas interessadas</span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2 text-center">
-                  <Navigation className="h-5 w-5 text-[#C9A96E]/50" />
-                  <span className="text-xs sm:text-sm text-white/40 font-medium">Agende uma visita</span>
+                  <Navigation className="h-5 w-5 text-white/40" />
+                  <span className="text-xs sm:text-sm text-white/60 font-medium">Agende uma visita</span>
                 </div>
               )}
             </div>
@@ -1814,67 +1918,56 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
       {/* ── Registration Form Section ───────────────────── */}
       <ScrollReveal>
-        <section id="cadastro" className="py-12 sm:py-24 border-t border-white/[0.04]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            {/* Section header */}
-            <div className="flex items-center gap-4 mb-8 sm:mb-12">
-              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
-              <div className="text-center">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Solicite informações</h2>
-                <p className="text-sm text-white/40 mt-1">São apenas 2 campos obrigatórios — nome e e-mail</p>
-              </div>
-              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
-            </div>
-
-            <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-start">
-              {/* Left side — CTA text */}
+        <section id="cadastro" className="bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24 lg:py-32">
+            <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-start">
+              {/* Left side — Emotional CTA */}
               <div className="order-2 lg:order-1">
-                <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-2xl bg-[#C9A96E]/20 flex items-center justify-center mb-4 sm:mb-6">
-                  <MessageSquare className="h-5 w-5 sm:h-7 sm:w-7 text-[#C9A96E]" />
+                <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-2xl bg-[#33492F]/10 flex items-center justify-center mb-4 sm:mb-6">
+                  <MessageSquare className="h-5 w-5 sm:h-7 sm:w-7 text-[#33492F]" />
                 </div>
-                <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">
-                  Interessado no <span className="text-[#C9A96E]">{e.name}</span>?
+                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 text-[#1a1a1a] leading-tight">
+                  Vamos conversar sobre o{' '}
+                  <span className="text-[#33492F]">seu próximo lar</span>?
                 </h2>
-                <p className="text-[#C9A96E]/80 text-sm sm:text-base font-medium mb-2">
+                <p className="text-[#33492F]/80 text-sm sm:text-base font-medium mb-2">
                   {showUrgencyBadge ? `${status} — solicite informações e conheça as condições disponíveis.` : priceText ? `A partir de ${priceText.replace('a partir de ', '')} — condições especiais para você.` : 'Condições especiais disponíveis para este empreendimento.'}
                 </p>
-                {/* Dynamic selling points based on available data */}
-                <div className="space-y-2 mb-6 sm:mb-8">
-                  <p className="text-white/50 max-w-lg text-sm sm:text-base leading-relaxed">
-                    {e.landingDescription
-                      ? e.landingDescription
-                      : `Solicite informações e receba atendimento personalizado. Nossa equipe entrará em contato para apresentar o ${e.name}${info?.location?.neighborhood ? ` no ${info.location.neighborhood}` : ''}, agendar uma visita e detalhar todas as condições comerciais.`}
-                  </p>
-                  {/* Quick-value bullets from available data */}
-                  <ul className="space-y-1.5">
-                    {areaRange && (
-                      <li className="flex items-center gap-2 text-sm text-white/40">
-                        <Ruler className="h-3.5 w-3.5 text-[#C9A96E]/50" />
-                        Unidades de {areaRange}
-                      </li>
-                    )}
-                    {info?.totalUnits && info.totalUnits > 0 && (
-                      <li className="flex items-center gap-2 text-sm text-white/40">
-                        <Building2 className="h-3.5 w-3.5 text-[#C9A96E]/50" />
-                        {info.totalUnits} unidades disponíveis
-                      </li>
-                    )}
-                    {deliveryText && deliveryText !== 'Já entregue' && (
-                      <li className="flex items-center gap-2 text-sm text-white/40">
-                        <CalendarDays className="h-3.5 w-3.5 text-[#C9A96E]/50" />
-                        Previsão de entrega: {deliveryText}
-                      </li>
-                    )}
-                    {(info?.differentials && info.differentials.length > 0) && (
-                      <li className="flex items-center gap-2 text-sm text-white/40">
-                        <Sparkles className="h-3.5 w-3.5 text-[#C9A96E]/50" />
-                        {(info.differentials || []).slice(0, 3).join(' · ')}
-                      </li>
-                    )}
-                  </ul>
+                <p className="text-[#1a1a1a]/50 max-w-lg text-sm sm:text-base leading-relaxed mb-6 sm:mb-8">
+                  {e.landingDescription
+                    ? e.landingDescription
+                    : `Um novo capítulo começa aqui. Solicite informações e receba atendimento personalizado sobre o ${e.name}${info?.location?.neighborhood ? ` no ${info.location.neighborhood}` : ''}. Sem compromisso.`}
+                </p>
+                {/* Quick-value bullets */}
+                <ul className="space-y-2 mb-6 sm:mb-8">
+                  {areaRange && (
+                    <li className="flex items-center gap-2 text-sm text-[#1a1a1a]/50">
+                      <Ruler className="h-3.5 w-3.5 text-[#33492F]/50" />
+                      Unidades de {areaRange}
+                    </li>
+                  )}
+                  {info?.totalUnits && info.totalUnits > 0 && (
+                    <li className="flex items-center gap-2 text-sm text-[#1a1a1a]/50">
+                      <Building2 className="h-3.5 w-3.5 text-[#33492F]/50" />
+                      {info.totalUnits} unidades disponíveis
+                    </li>
+                  )}
+                  {deliveryText && deliveryText !== 'Já entregue' && (
+                    <li className="flex items-center gap-2 text-sm text-[#1a1a1a]/50">
+                      <CalendarDays className="h-3.5 w-3.5 text-[#33492F]/50" />
+                      Previsão de entrega: {deliveryText}
+                    </li>
+                  )}
+                </ul>
+
+                {/* Trust signals */}
+                <div className="flex flex-wrap items-center gap-4 mb-6 sm:mb-8 text-sm text-[#1a1a1a]/50">
+                  <span className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5 text-[#33492F]/50" /> Atendimento personalizado</span>
+                  <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-[#33492F]/50" /> Resposta em até 24h</span>
+                  <span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-[#33492F]/50" /> Sem compromisso</span>
                 </div>
 
-                {/* Quick WhatsApp */}
+                {/* WhatsApp */}
                 <a
                   href={whatsappUrl}
                   target="_blank"
@@ -1899,49 +1992,49 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
               {/* Right side — Form */}
               <div ref={formSectionRef} className="relative order-1 lg:order-2">
-                <div className="absolute -inset-1 sm:-inset-4 bg-gradient-to-br from-[#C9A96E]/15 via-transparent to-[#C9A96E]/10 rounded-3xl blur-sm sm:blur-xl" />
+                <div className="absolute -inset-1 sm:-inset-4 bg-[#33492F]/[0.03] rounded-3xl blur-xl" />
                 <form
                   id="landing-form"
                   onSubmit={handleFormSubmit}
-                  className="relative z-10 rounded-2xl bg-white/[0.03] border border-white/[0.12] p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
+                  className="relative z-10 rounded-2xl bg-white border border-[#1a1a1a]/[0.08] shadow-lg p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5"
                 >
                   <div className="mb-2">
                     <div className="flex items-center justify-between mb-1">
-                      <h3 className="text-xl font-bold">Cadastro</h3>
+                      <h3 className="text-xl font-bold text-[#1a1a1a]">Cadastro</h3>
                       {formProgress > 0 && formProgress < 100 && (
-                        <span className="text-xs text-[#C9A96E]/70 font-medium">{formProgress}% completo</span>
+                        <span className="text-xs text-[#33492F]/70 font-medium">{formProgress}% completo</span>
                       )}
                     </div>
-                    {/* Progress bar (medium priority #9) */}
+                    {/* Progress bar */}
                     {formProgress > 0 && (
-                      <div className="h-1 w-full bg-white/[0.06] rounded-full overflow-hidden mb-1">
+                      <div className="h-1 w-full bg-[#1a1a1a]/[0.06] rounded-full overflow-hidden mb-1">
                         <div
                           className="h-full rounded-full transition-all duration-500 ease-out"
                           style={{
                             width: `${formProgress}%`,
-                            backgroundColor: formProgress === 100 ? '#25D366' : '#C9A96E',
+                            backgroundColor: formProgress === 100 ? '#25D366' : '#33492F',
                           }}
                         />
                       </div>
                     )}
-                    <p className="text-sm text-white/40 mt-1">Preencha para receber informações e condições</p>
+                    <p className="text-sm text-[#1a1a1a]/40 mt-1">Preencha para receber informações e condições</p>
                   </div>
 
                   {/* Error */}
                   {formError && (
-                    <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
-                      <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
-                      <p className="text-sm text-red-300">{formError}</p>
+                    <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-100">
+                      <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-red-700">{formError}</p>
                     </div>
                   )}
 
                   {/* Name */}
                   <div>
-                    <label htmlFor="form-name" className="block text-sm font-medium text-white/70 mb-2">
-                      Nome Completo <span className="text-red-400">*</span>
+                    <label htmlFor="form-name" className="block text-sm font-medium text-[#1a1a1a]/70 mb-2">
+                      Nome Completo <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
-                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#1a1a1a]/30" />
                       <input
                         id="form-name"
                         type="text"
@@ -1952,25 +2045,25 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         placeholder="Seu nome completo"
                         autoComplete="name"
                         required
-                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.04] border text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-1 transition-all ${
+                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white border text-sm text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:ring-1 transition-all ${
                           formName.trim().length >= 2
-                            ? 'border-emerald-500/40 focus:border-emerald-500/50 focus:ring-emerald-500/20'
-                            : 'border-white/[0.08] focus:border-[#C9A96E]/50 focus:ring-[#C9A96E]/20'
+                            ? 'border-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/20'
+                            : 'border-[#1a1a1a]/[0.12] focus:border-[#33492F] focus:ring-[#33492F]/20'
                         }`}
                       />
                       {formName.trim().length >= 2 && (
-                        <Check className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
+                        <Check className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500" />
                       )}
                     </div>
                   </div>
 
-                  {/* Email — moved before Phone to reduce funnel drop */}
+                  {/* Email */}
                   <div>
-                    <label htmlFor="form-email" className="block text-sm font-medium text-white/70 mb-2">
-                      E-mail <span className="text-red-400">*</span>
+                    <label htmlFor="form-email" className="block text-sm font-medium text-[#1a1a1a]/70 mb-2">
+                      E-mail <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
-                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#1a1a1a]/30" />
                       <input
                         id="form-email"
                         type="email"
@@ -1981,26 +2074,26 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         placeholder="seuemail@exemplo.com"
                         autoComplete="email"
                         required
-                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.04] border text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-1 transition-all ${
+                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white border text-sm text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:ring-1 transition-all ${
                           /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formEmail.trim().toLowerCase())
-                            ? 'border-emerald-500/40 focus:border-emerald-500/50 focus:ring-emerald-500/20'
-                            : 'border-white/[0.08] focus:border-[#C9A96E]/50 focus:ring-[#C9A96E]/20'
+                            ? 'border-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/20'
+                            : 'border-[#1a1a1a]/[0.12] focus:border-[#33492F] focus:ring-[#33492F]/20'
                         }`}
                       />
                       {/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formEmail.trim().toLowerCase()) && (
-                        <Check className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
+                        <Check className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500" />
                       )}
                     </div>
                   </div>
 
-                  {/* Phone — now OPTIONAL to reduce 41% form abandonment */}
+                  {/* Phone */}
                   <div>
-                    <label htmlFor="form-phone" className="block text-sm font-medium text-white/70 mb-1.5">
-                      Telefone <span className="text-white/30 font-normal text-xs">(opcional)</span>
+                    <label htmlFor="form-phone" className="block text-sm font-medium text-[#1a1a1a]/70 mb-1.5">
+                      Telefone <span className="text-[#1a1a1a]/30 font-normal text-xs">(opcional)</span>
                     </label>
-                    <p className="text-[11px] text-white/25 mb-2 -mt-1">Seu consultor poderá entrar em contato mais rapidamente.</p>
+                    <p className="text-[11px] text-[#1a1a1a]/30 mb-2 -mt-1">Seu consultor poderá entrar em contato mais rapidamente.</p>
                     <div className="relative">
-                      <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                      <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#1a1a1a]/30" />
                       <input
                         id="form-phone"
                         type="tel"
@@ -2011,14 +2104,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         placeholder="(11) 99999-9999"
                         inputMode="numeric"
                         autoComplete="tel"
-                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white/[0.04] border text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-1 transition-all ${
+                        className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white border text-sm text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:ring-1 transition-all ${
                           formPhone.replace(/\D/g, '').length >= 10
-                            ? 'border-emerald-500/40 focus:border-emerald-500/50 focus:ring-emerald-500/20'
-                            : 'border-white/[0.08] focus:border-[#C9A96E]/50 focus:ring-[#C9A96E]/20'
+                            ? 'border-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/20'
+                            : 'border-[#1a1a1a]/[0.12] focus:border-[#33492F] focus:ring-[#33492F]/20'
                         }`}
                       />
                       {formPhone.replace(/\D/g, '').length >= 10 && (
-                        <Check className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
+                        <Check className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500" />
                       )}
                     </div>
                   </div>
@@ -2026,16 +2119,16 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   {/* Dynamic custom fields */}
                   {e.formFields && e.formFields.length > 0 && (
                     <div className="space-y-4 pt-2">
-                      <div className="h-px bg-white/[0.06]" />
+                      <div className="h-px bg-[#1a1a1a]/[0.06]" />
                       {e.formFields.map((field) => {
                         const val = customAnswers[field.id] || '';
                         const parsedOptions = field.options ? (() => { try { return JSON.parse(field.options); } catch { return []; } })() : [];
 
                         return (
                           <div key={field.id}>
-                            <label htmlFor={`field-${field.id}`} className="block text-sm font-medium text-white/70 mb-2">
+                            <label htmlFor={`field-${field.id}`} className="block text-sm font-medium text-[#1a1a1a]/70 mb-2">
                               {field.label}
-                              {field.required && <span className="text-red-400"> *</span>}
+                              {field.required && <span className="text-red-500"> *</span>}
                             </label>
 
                             {field.fieldType === 'text' && (
@@ -2046,7 +2139,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                                 onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.value }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                 placeholder={field.placeholder || undefined}
                                 required={field.required}
-                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                                className="w-full px-4 py-3.5 rounded-xl bg-white border border-[#1a1a1a]/[0.12] text-sm text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:border-[#33492F] focus:ring-1 focus:ring-[#33492F]/20 transition-all"
                               />
                             )}
 
@@ -2058,7 +2151,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                                 onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.value }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                 placeholder={field.placeholder || undefined}
                                 required={field.required}
-                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
+                                className="w-full px-4 py-3.5 rounded-xl bg-white border border-[#1a1a1a]/[0.12] text-sm text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:border-[#33492F] focus:ring-1 focus:ring-[#33492F]/20 transition-all"
                               />
                             )}
 
@@ -2070,7 +2163,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                                 placeholder={field.placeholder || undefined}
                                 required={field.required}
                                 rows={3}
-                                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all resize-none"
+                                className="w-full px-4 py-3 rounded-xl bg-white border border-[#1a1a1a]/[0.12] text-sm text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:border-[#33492F] focus:ring-1 focus:ring-[#33492F]/20 transition-all resize-none"
                               />
                             )}
 
@@ -2080,12 +2173,12 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                                 value={val}
                                 onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.value }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                 required={field.required}
-                                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all appearance-none cursor-pointer"
-                                style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                                className="w-full px-4 py-3.5 rounded-xl bg-white border border-[#1a1a1a]/[0.12] text-sm text-[#1a1a1a] focus:outline-none focus:border-[#33492F] focus:ring-1 focus:ring-[#33492F]/20 transition-all appearance-none cursor-pointer"
+                                style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(0,0,0,0.3)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
                               >
-                                <option value="" disabled className="bg-[#1a1a1a]">{field.placeholder || 'Selecione uma opção...'}</option>
+                                <option value="" disabled className="bg-white">{field.placeholder || 'Selecione uma opção...'}</option>
                                 {parsedOptions.map((opt: string, i: number) => (
-                                  <option key={i} value={opt} className="bg-[#1a1a1a]">{opt}</option>
+                                  <option key={i} value={opt} className="bg-white">{opt}</option>
                                 ))}
                               </select>
                             )}
@@ -2097,9 +2190,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                                   type="checkbox"
                                   checked={val === 'Sim'}
                                   onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.checked ? 'Sim' : 'Não' }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
-                                  className="h-4 w-4 rounded border-white/20 bg-white/[0.04] text-[#C9A96E] focus:ring-[#C9A96E]/20 cursor-pointer accent-[#C9A96E]"
+                                  className="h-4 w-4 rounded border-[#1a1a1a]/20 bg-white text-[#33492F] focus:ring-[#33492F]/20 cursor-pointer accent-[#33492F]"
                                 />
-                                <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">
+                                <span className="text-sm text-[#1a1a1a]/50 group-hover:text-[#1a1a1a]/70 transition-colors">
                                   {field.placeholder || field.label}
                                 </span>
                               </label>
@@ -2110,14 +2203,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     </div>
                   )}
 
-                  {/* Submit — progress-aware CTA (medium priority #9) */}
+                  {/* Submit */}
                   <button
                     type="submit"
                     disabled={formSubmitting}
                     className={`w-full min-h-[44px] flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl font-bold text-base sm:text-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed mt-2 hover:scale-[1.01] active:scale-[0.99] ${
                       formProgress === 100
-                        ? 'bg-emerald-500 text-white shadow-emerald-500/20 hover:bg-emerald-400 hover:shadow-emerald-500/30'
-                        : 'bg-[#C9A96E] text-[#0A0A0A] shadow-[#C9A96E]/20 hover:bg-[#D4B87E] hover:shadow-[#C9A96E]/30'
+                        ? 'bg-emerald-500 text-white shadow-emerald-500/20 hover:bg-emerald-600 hover:shadow-emerald-500/30'
+                        : 'bg-[#33492F] text-white shadow-[#33492F]/20 hover:bg-[#33492F]/90 hover:shadow-[#33492F]/30'
                     }`}
                   >
                     {formSubmitting ? (
@@ -2138,23 +2231,23 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     )}
                   </button>
 
-                  {/* ★ NEW: Form Trust Signals */}
+                  {/* Form Trust Signals */}
                   <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 pt-1">
-                    <div className="flex items-center gap-1.5 text-xs text-white/30">
-                      <Shield className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+                    <div className="flex items-center gap-1.5 text-xs text-[#1a1a1a]/30">
+                      <Shield className="h-3.5 w-3.5 text-[#33492F]/50" />
                       <span>Seus dados estão seguros</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-xs text-white/30">
-                      <Mail className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+                    <div className="flex items-center gap-1.5 text-xs text-[#1a1a1a]/30">
+                      <Mail className="h-3.5 w-3.5 text-[#33492F]/50" />
                       <span>Sem spam</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-xs text-white/30">
-                      <Clock className="h-3.5 w-3.5 text-[#C9A96E]/50" />
+                    <div className="flex items-center gap-1.5 text-xs text-[#1a1a1a]/30">
+                      <Clock className="h-3.5 w-3.5 text-[#33492F]/50" />
                       <span>Atendimento em até 24h</span>
                     </div>
                   </div>
 
-                  <p className="text-xs text-white/25 text-center">
+                  <p className="text-xs text-[#1a1a1a]/25 text-center">
                     Ao solicitar informações, você concorda em receber detalhes sobre este empreendimento.
                   </p>
                 </form>
@@ -2166,15 +2259,11 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
       {/* ── FAQ Section ────────────────────────────────── */}
       <ScrollReveal>
-        <section className="py-12 sm:py-24 border-t border-white/[0.04]">
-          <div className="max-w-3xl mx-auto px-4 sm:px-6">
+        <section className="bg-[#F7F6F3]">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
             {/* Section header */}
-            <div className="flex items-center gap-4 mb-8 sm:mb-12">
-              <div className="h-px flex-1 bg-gradient-to-r from-[#C9A96E]/40 to-transparent" />
-              <div className="text-center">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Perguntas Frequentes</h2>
-              </div>
-              <div className="h-px flex-1 bg-gradient-to-l from-[#C9A96E]/40 to-transparent" />
+            <div className="text-center mb-10 sm:mb-12">
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#1a1a1a]">Perguntas Frequentes</h2>
             </div>
 
             {/* FAQ accordion */}
@@ -2184,8 +2273,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   key={idx}
                   className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
                     faqOpenIndex === idx
-                      ? 'border-[#C9A96E]/25 bg-[#C9A96E]/[0.04]'
-                      : 'border-white/[0.06] bg-white/[0.01] hover:border-white/[0.12]'
+                      ? 'border-[#33492F]/25 bg-white shadow-sm'
+                      : 'border-[#1a1a1a]/[0.06] bg-white hover:border-[#1a1a1a]/[0.12]'
                   }`}
                 >
                   <button
@@ -2198,13 +2287,13 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     className="w-full flex items-center justify-between gap-4 p-5 sm:p-6 text-left"
                   >
                     <span className={`text-sm sm:text-[15px] font-semibold transition-colors ${
-                      faqOpenIndex === idx ? 'text-[#C9A96E]' : 'text-white/80'
+                      faqOpenIndex === idx ? 'text-[#33492F]' : 'text-[#1a1a1a]/80'
                     }`}>
                       {item.question}
                     </span>
                     <ChevronDown
                       className={`h-5 w-5 flex-shrink-0 transition-transform duration-300 ${
-                        faqOpenIndex === idx ? 'rotate-180 text-[#C9A96E]' : 'text-white/30'
+                        faqOpenIndex === idx ? 'rotate-180 text-[#33492F]' : 'text-[#1a1a1a]/30'
                       }`}
                     />
                   </button>
@@ -2214,8 +2303,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     }`}
                   >
                     <div className="px-5 sm:px-6 pb-5 sm:pb-6">
-                      <div className="h-px bg-[#C9A96E]/15 mb-4" />
-                      <p className="text-sm text-white/60 leading-relaxed">{item.answer}</p>
+                      <div className="h-px bg-[#33492F]/10 mb-4" />
+                      <p className="text-sm text-[#1a1a1a]/60 leading-relaxed">{item.answer}</p>
                     </div>
                   </div>
                 </div>
@@ -2224,7 +2313,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
             {/* CTA after FAQ */}
             <div className="mt-8 sm:mt-10 text-center">
-              <p className="text-sm text-white/40 mb-4">Ficou com alguma dúvida?</p>
+              <p className="text-sm text-[#1a1a1a]/40 mb-4">Ficou com alguma dúvida?</p>
               <a
                 href={whatsappUrl}
                 target="_blank"
@@ -2251,39 +2340,39 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       </ScrollReveal>
 
       {/* ── Footer ─────────────────────────────────────── */}
-      <footer className="border-t border-white/[0.06]">
+      <footer className="bg-[#33492F]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           {/* Top row */}
           <div className="py-8 sm:py-12 grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-10">
             {/* Brand */}
             <div>
               <a href="/empreendimentos" className="flex items-center gap-3 mb-4 group">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/15">
+                <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center">
                   <Building2 className="h-5 w-5 text-white" />
                 </div>
-                <span className="text-base font-bold tracking-tight">Empreendimentos</span>
+                <span className="text-base font-bold tracking-tight text-white">Empreendimentos</span>
               </a>
-              <p className="text-sm text-white/30 leading-relaxed max-w-xs">
+              <p className="text-sm text-white/50 leading-relaxed max-w-xs">
                 Encontre o imóvel ideal para você e sua família. Qualidade, confiança e atendimento personalizado.
               </p>
             </div>
 
             {/* Quick links */}
             <div>
-              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Navegação</h4>
+              <h4 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-4">Navegação</h4>
               <ul className="space-y-2.5">
                 <li>
-                  <a href="/empreendimentos" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+                  <a href="/empreendimentos" className="text-sm text-white/40 hover:text-white transition-colors">
                     Todos os Empreendimentos
                   </a>
                 </li>
                 <li>
-                  <a href="#galeria" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+                  <a href="#galeria" className="text-sm text-white/40 hover:text-white transition-colors">
                     Galeria
                   </a>
                 </li>
                 <li>
-                  <a href="#cadastro" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors">
+                  <a href="#cadastro" className="text-sm text-white/40 hover:text-white transition-colors">
                     Solicitar informações
                   </a>
                 </li>
@@ -2292,7 +2381,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
             {/* Contact */}
             <div>
-              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Contato</h4>
+              <h4 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-4">Contato</h4>
               <div className="space-y-3">
                 <a
                   href={whatsappUrl}
@@ -2309,9 +2398,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                       /* tracking errors must never block navigation */
                     }
                   }}
-                  className="min-h-[44px] flex items-center gap-2.5 text-sm text-white/30 hover:text-[#C9A96E] transition-colors"
+                  className="min-h-[44px] flex items-center gap-2.5 text-sm text-white/40 hover:text-white transition-colors"
                 >
-                  <div className="h-8 w-8 rounded-lg bg-[#25D366]/10 flex items-center justify-center flex-shrink-0">
+                  <div className="h-8 w-8 rounded-lg bg-[#25D366]/15 flex items-center justify-center flex-shrink-0">
                     <Phone className="h-3.5 w-3.5 text-[#25D366]" />
                   </div>
                   WhatsApp
@@ -2321,21 +2410,21 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           </div>
 
           {/* Bottom bar */}
-          <div className="border-t border-white/[0.04] py-5 sm:py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-xs text-white/20">
+          <div className="border-t border-white/10 py-5 sm:py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-xs text-white/30">
               &copy; {new Date().getFullYear()} Todos os direitos reservados.
             </p>
-            <p className="text-xs text-white/15">
+            <p className="text-xs text-white/20">
               Todos os valores e informações são sujeitos a alteração sem aviso prévio.
             </p>
           </div>
         </div>
       </footer>
 
-      {/* ★ Floating Sticky WhatsApp CTA (Mobile) — always visible, only hidden when form submit bar shows */}
+      {/* ★ Floating Sticky WhatsApp CTA (Mobile) */}
       {showFloatingWhatsApp && !showStickyFormSubmit && (
         <div className="fixed bottom-0 left-0 right-0 z-50 sm:hidden animate-slide-up-bar">
-          <div className="bg-gradient-to-r from-[#C9A96E] to-[#A8893E] shadow-[0_-4px_20px_rgba(201,169,110,0.3)]">
+          <div className="bg-[#33492F] shadow-[0_-4px_20px_rgba(51,73,47,0.3)]">
             <a
               href={whatsappUrl}
               target="_blank"
@@ -2351,42 +2440,36 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   /* tracking errors must never block navigation */
                 }
               }}
-              className="min-h-[44px] flex items-center justify-center gap-2.5 py-3.5 px-6 text-[#0A0A0A] font-semibold text-sm"
+              className="min-h-[44px] flex items-center justify-center gap-2.5 py-3.5 px-6 text-white font-semibold text-sm"
             >
-              {/* WhatsApp SVG icon */}
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
               </svg>
               Fale com um consultor
             </a>
           </div>
-          {/* Safe area bottom for phones with home indicator */}
           <div className="h-[env(safe-area-inset-bottom)]" />
         </div>
       )}
 
-      {/* ★ Sticky Form Submit (Mobile only — replaces WhatsApp bar when form is visible) */}
+      {/* ★ Sticky Form Submit (Mobile) */}
       {showStickyFormSubmit && !formSubmitting && (
         <div className="fixed bottom-0 left-0 right-0 z-50 sm:hidden animate-slide-up-bar">
-          <div className="bg-[#0A0A0A]/90 backdrop-blur-xl border-t border-[#C9A96E]/20 shadow-[0_-4px_20px_rgba(201,169,110,0.15)]">
+          <div className="bg-white/95 backdrop-blur-xl border-t border-[#33492F]/20 shadow-[0_-4px_20px_rgba(51,73,47,0.1)]">
             <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-white/50 truncate">{e.name}</p>
-                <p className="text-[11px] text-white/30">Apenas nome + e-mail</p>
+                <p className="text-xs text-[#1a1a1a]/60 truncate">{e.name}</p>
+                <p className="text-[11px] text-[#1a1a1a]/30">Apenas nome + e-mail</p>
               </div>
               <button
                 type="button"
                 onClick={() => {
                   if (isSubmittingRef.current) return;
-                  // CRITICAL: Call handleFormSubmit DIRECTLY via ref — never rely on
-                  // dispatchEvent(new Event('submit')) which may not trigger React's
-                  // onSubmit handler, especially on Safari < 16.4 and React 19.
                   try {
                     isSubmittingRef.current = true;
                     if (handleFormSubmitRef.current) {
                       handleFormSubmitRef.current({ preventDefault: () => {} } as unknown as React.FormEvent);
                     } else {
-                      // Ultimate fallback: scroll to form so user can click submit
                       const form = document.getElementById('landing-form') as HTMLFormElement | null;
                       if (form) {
                         form.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2395,14 +2478,13 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     setTimeout(() => { isSubmittingRef.current = false; }, 3000);
                   } catch {
                     isSubmittingRef.current = false;
-                    // If direct call fails, ensure the form is still accessible
                     const form = document.getElementById('landing-form') as HTMLFormElement | null;
                     if (form) {
                       form.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                   }
                 }}
-                className="flex-shrink-0 min-h-[44px] flex items-center gap-2 px-5 py-3 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-sm hover:bg-[#D4B87E] transition-all active:scale-95 shadow-lg shadow-[#C9A96E]/20"
+                className="flex-shrink-0 min-h-[44px] flex items-center gap-2 px-5 py-3 rounded-xl bg-[#33492F] text-white font-bold text-sm hover:bg-[#33492F]/90 transition-all active:scale-95 shadow-lg shadow-[#33492F]/20"
               >
                 <Send className="h-4 w-4" />
                 Quero saber mais
@@ -2413,23 +2495,23 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
         </div>
       )}
 
-      {/* Sticky Desktop CTA — show only after scrolling past hero, hide when form visible (medium priority #11) */}
+      {/* Sticky Desktop CTA */}
       {showDesktopSticky && !isFormSectionVisible && (
         <div className="hidden sm:block fixed bottom-0 left-0 right-0 z-40 animate-slide-up-bar">
-          <div className="bg-[#0A0A0A]/80 backdrop-blur-xl border-t border-white/[0.06]">
+          <div className="bg-white/95 backdrop-blur-xl border-t border-[#1a1a1a]/[0.06] shadow-lg shadow-black/[0.04]">
             <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <span className="text-sm font-semibold text-white/80">{displayTitle}</span>
+                <span className="text-sm font-semibold text-[#1a1a1a]/80">{displayTitle}</span>
                 {status && (
                   <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                    status === 'Lançamento' ? 'bg-emerald-500/15 text-emerald-400' :
-                    status === 'Em Construção' ? 'bg-amber-500/15 text-amber-400' :
-                    'bg-blue-500/15 text-blue-400'
+                    status === 'Lançamento' ? 'bg-emerald-50 text-emerald-700' :
+                    status === 'Em Construção' ? 'bg-amber-50 text-amber-700' :
+                    'bg-blue-50 text-blue-700'
                   }`}>{status}</span>
                 )}
               </div>
               <div className="flex items-center gap-3">
-                <a href="#cadastro" className="px-5 py-2.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] text-sm font-bold hover:bg-[#D4B87E] transition-all hover:shadow-[#C9A96E]/20">
+                <a href="#cadastro" className="px-5 py-2.5 rounded-xl bg-[#33492F] text-white text-sm font-bold hover:bg-[#33492F]/90 transition-all hover:shadow-[#33492F]/20">
                   Quero saber mais
                 </a>
                 <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={() => { try { registerWhatsAppClick('desktop_sticky'); trackMetaPixel('Contact', { content_name: e.name, content_category: 'empreendimento' }); } catch { /* tracking errors must never block navigation */ } }} className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-semibold hover:bg-[#20bd5a] transition-colors">
@@ -2441,40 +2523,36 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
         </div>
       )}
 
-      {/* ── Exit-Intent Popup (medium priority #8) — show once per session ── */}
+      {/* ── Exit-Intent Popup ── */}
       {exitPopupOpen && (
         <div
-          className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setExitPopupOpen(false)}
         >
           <div
-            className="relative max-w-md w-full rounded-2xl bg-[#141414] border border-white/10 p-6 sm:p-8 shadow-2xl"
+            className="relative max-w-md w-full rounded-2xl bg-white border border-[#1a1a1a]/[0.08] p-6 sm:p-8 shadow-2xl"
             onClick={(ev) => ev.stopPropagation()}
           >
-            {/* Close button */}
             <button
               onClick={() => setExitPopupOpen(false)}
-              className="absolute top-4 right-4 text-white/30 hover:text-white transition-colors"
+              className="absolute top-4 right-4 text-[#1a1a1a]/30 hover:text-[#1a1a1a] transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
 
-            {/* Icon */}
             <div className="flex items-center justify-center mb-5">
-              <div className="h-14 w-14 rounded-2xl bg-[#C9A96E]/15 flex items-center justify-center">
-                <MessageSquare className="h-7 w-7 text-[#C9A96E]" />
+              <div className="h-14 w-14 rounded-2xl bg-[#33492F]/10 flex items-center justify-center">
+                <MessageSquare className="h-7 w-7 text-[#33492F]" />
               </div>
             </div>
 
-            {/* Heading */}
-            <h3 className="text-xl font-bold text-center mb-2">
+            <h3 className="text-xl font-bold text-center mb-2 text-[#1a1a1a]">
               Tem interesse no {e.name}?
             </h3>
-            <p className="text-sm text-white/50 text-center mb-6 leading-relaxed">
+            <p className="text-sm text-[#1a1a1a]/50 text-center mb-6 leading-relaxed">
               Receba materiais, valores e condições comerciais diretamente no seu e-mail ou WhatsApp. Sem compromisso.
             </p>
 
-            {/* CTA buttons */}
             <div className="space-y-3">
               <a
                 href="#cadastro"
@@ -2484,7 +2562,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     window.CRMPIXEL.track('exit_popup_cta', { enterprise: e.name, action: 'form' });
                   }
                 }}
-                className="w-full min-h-[44px] flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#C9A96E] text-[#0A0A0A] font-bold text-sm hover:bg-[#D4B87E] transition-all shadow-lg shadow-[#C9A96E]/20"
+                className="w-full min-h-[44px] flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#33492F] text-white font-bold text-sm hover:bg-[#33492F]/90 transition-all shadow-lg shadow-[#33492F]/20"
               >
                 <Send className="h-4 w-4" />
                 Quero saber mais
@@ -2512,9 +2590,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </a>
             </div>
 
-            {/* Trust signal */}
-            <p className="text-[11px] text-white/25 text-center mt-4">
-              <Shield className="h-3 w-3 inline-block mr-1 text-[#C9A96E]/40" />
+            <p className="text-[11px] text-[#1a1a1a]/25 text-center mt-4">
+              <Shield className="h-3 w-3 inline-block mr-1 text-[#33492F]/40" />
               Seus dados estão seguros e não enviamos spam.
             </p>
           </div>
@@ -2601,6 +2678,19 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           )}
         </div>
       )}
+
+      {/* ── Social Proof Toast ── */}
+      <div className="fixed bottom-20 sm:bottom-6 left-4 z-30 sm:hidden">
+        <div className="bg-white rounded-xl shadow-lg border border-[#1a1a1a]/[0.06] px-4 py-3 flex items-center gap-3 max-w-[280px]">
+          <div className="h-8 w-8 rounded-full bg-[#33492F]/10 flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 className="h-4 w-4 text-[#33492F]" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-[#1a1a1a] truncate">{socialProofPool[socialProofIdx]?.name}</p>
+            <p className="text-[10px] text-[#1a1a1a]/40">{socialProofPool[socialProofIdx]?.action} há {socialProofPool[socialProofIdx]?.time}</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
