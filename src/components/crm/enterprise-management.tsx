@@ -974,14 +974,14 @@ export function EnterpriseManagement() {
         open={!!editingEnterprise}
         onOpenChange={(open) => !open && setEditingEnterprise(null)}
       >
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-[520px] max-h-[90dvh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Editar Empreendimento</DialogTitle>
             <DialogDescription>
               Atualize as informações do empreendimento.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
             <div className="space-y-2">
               <Label htmlFor="edit-name">Nome *</Label>
               <Input
@@ -1140,7 +1140,7 @@ export function EnterpriseManagement() {
               </label>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0 pt-2">
             <Button variant="outline" onClick={() => setEditingEnterprise(null)} disabled={saving}>
               Cancelar
             </Button>
