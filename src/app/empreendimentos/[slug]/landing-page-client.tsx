@@ -818,36 +818,14 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
           </div>
         )}
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pb-10 sm:pb-20 pt-28 sm:pt-36 w-full">
-          {/* Trust badges */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
-            {status && (
-              <span className={`inline-flex items-center gap-1.5 text-[10px] sm:text-xs font-medium px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full border backdrop-blur-sm ${
-                status === 'Entregue' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
-                status === 'Em Construção' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
-                'bg-[#33492F]/20 text-[#a8c4a0] border-[#33492F]/30'
-              }`}><CheckCircle2 className="h-3 w-3" />{status}</span>
-            )}
-
-            {deliveryText && status !== 'Entregue' && (
-              <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-xs font-medium px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/10 text-white/80 border border-white/20">
-                <Clock className="h-3 w-3 flex-shrink-0" /><span className="truncate">Entrega: {deliveryText}</span>
-              </span>
-            )}
-            {showUrgencyBadge && (
-              <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-xs font-medium px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#C9A96E]/15 text-[#C9A96E] border border-[#C9A96E]/25">
-                <Sparkles className="h-3 w-3 flex-shrink-0" /> Condições de lançamento
-              </span>
-            )}
-          </div>
-
           {/* Title */}
-          <h1 className="text-3xl sm:text-5xl lg:text-7xl font-bold tracking-tight leading-[1.05] max-w-4xl text-white drop-shadow-xl">
+          <h1 className="text-4xl sm:text-6xl lg:text-[5.5rem] font-bold tracking-tight leading-[1.02] max-w-5xl text-white [text-shadow:0_2px_20px_rgba(0,0,0,0.4),0_1px_4px_rgba(0,0,0,0.3)]">
             {displayTitle}
           </h1>
 
           {/* Subtitle */}
           {displaySubtitle && (
-            <p className="mt-3 sm:mt-5 text-base sm:text-xl lg:text-2xl text-white/75 max-w-2xl leading-relaxed">{displaySubtitle}</p>
+            <p className="mt-4 sm:mt-6 text-lg sm:text-2xl lg:text-[1.7rem] text-white/90 max-w-2xl leading-relaxed [text-shadow:0_1px_8px_rgba(0,0,0,0.35)]">{displaySubtitle}</p>
           )}
 
           {/* Mini-form (name + phone) */}
@@ -950,11 +928,25 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       {/* ══════════════════════════════════════════════════
           4. SUMMARY SECTION
           ══════════════════════════════════════════════════ */}
-      {(info.totalUnits || areaRange || info.floors || info.parkingSpots) && (
+      {(info.totalUnits || areaRange || info.floors || info.parkingSpots || status || deliveryText) && (
         <ScrollReveal>
           <section id="summary" className="bg-white">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+                {status && (
+                  <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
+                    <CheckCircle2 className={`h-5 w-5 mx-auto mb-2 ${status === 'Entregue' ? 'text-emerald-600' : status === 'Em Construção' ? 'text-amber-600' : 'text-[#33492F]'}`} />
+                    <p className={`text-sm sm:text-base font-bold ${status === 'Entregue' ? 'text-emerald-700' : status === 'Em Construção' ? 'text-amber-700' : 'text-[#33492F]'}`}>{status}</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Status</p>
+                  </div>
+                )}
+                {deliveryText && (
+                  <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
+                    <CalendarDays className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
+                    <p className="text-sm sm:text-base font-bold text-[#33492F]">{deliveryText}</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Entrega</p>
+                  </div>
+                )}
                 {info.totalUnits != null && info.totalUnits > 0 && (
                   <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
                     <Building2 className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
