@@ -11,6 +11,8 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
+export const dynamic = 'force-dynamic';
+
 const ENTERPRISE_SELECT = {
   id: true, name: true, slug: true, region: true, imageUrl: true,
   landingTitle: true, landingSubtitle: true, landingDescription: true,
