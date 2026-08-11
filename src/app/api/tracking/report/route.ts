@@ -3,11 +3,27 @@ import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
 import { Prisma } from '@prisma/client';
 
+// Wrapper: individual query failure won't kill the entire report
+const safe = <T,>(p: Promise<T>): Promise<T | []> =>
+  p.catch((err: unknown) => {
+    console.warn('[Tracking Report] Query failed:', (err as Error)?.message || err);
+    return [] as unknown as T;
+  });
+
+// Format a date value (string or Date) to 'YYYY-MM-DD HH:mm:ss'
+const fmtTs = (v: string | Date | null | undefined): string => {
+  if (!v) return '—';
+  const s = v instanceof Date ? v.toISOString() : String(v);
+  return s.replace('T', ' ').replace('Z', '').slice(0, 19);
+};
+
+// Negative = hours from now; Positive = calendar days from midnight
 const PERIOD_DAYS: Record<string, number> = {
-  today: 0,
+  '24h': -24,
+  '48h': -48,
   '7d': 7,
+  '15d': 15,
   '30d': 30,
-  '90d': 90,
 };
 
 function round2(n: number): number {
@@ -24,25 +40,30 @@ function pct(n: number): string {
 
 export async function GET(request: Request) {
   try {
+    console.log('[Tracking Report] Starting report generation');
     const { error } = await requireAdmin();
     if (error) return error;
 
     const { searchParams } = new URL(request.url);
     const period = PERIOD_DAYS[searchParams.get('period') ?? '30d'] ?? 30;
     const siteId = searchParams.get('siteId') ?? null;
+    console.log(`[Tracking Report] period=${period}, siteId=${siteId}`);
 
     const startDate = new Date();
-    if (period === 0) {
-      startDate.setUTCHours(0, 0, 0, 0);
+    if (period < 0) {
+      // Hour-based filter: subtract hours from now
+      startDate.setHours(startDate.getHours() + period);
     } else {
+      // Day-based filter: subtract calendar days, start at midnight
       startDate.setDate(startDate.getDate() - period);
       startDate.setHours(0, 0, 0, 0);
     }
 
     const periodLabel =
-      period === 0 ? 'Hoje' : `Últimos ${period} dias`;
+      period < 0 ? `Últimas ${Math.abs(period)} horas` : `Últimos ${period} dias`;
     const generatedAt = new Date().toISOString();
 
+    console.log(`[Tracking Report] Fetching data since ${startDate.toISOString()}...`);
     // ── Fetch ALL data in parallel ──
     const [
       kpis,
@@ -73,9 +94,10 @@ export async function GET(request: Request) {
       avgSessionDuration,
       returningVisitors,
       engagementByDayOfWeek,
+      whatsappClicks,
     ] = await Promise.all([
       // 1. Core KPIs
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{
           totalVisitors: bigint;
           totalPageviews: bigint;
@@ -96,10 +118,10 @@ export async function GET(request: Request) {
           WHERE e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
         `,
-      ),
+      )),
 
       // 2. Bounced visitors
-      db.$queryRaw<Array<{ count: bigint }>>(
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(*)::bigint AS count
           FROM (
@@ -112,10 +134,10 @@ export async function GET(request: Request) {
                AND COUNT(*) = 1
           ) bounced
         `,
-      ),
+      )),
 
       // 3. Daily chart
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{
           date: string;
           visitors: bigint;
@@ -138,10 +160,10 @@ export async function GET(request: Request) {
           GROUP BY TO_CHAR(e."createdAt", 'YYYY-MM-DD')
           ORDER BY date
         `,
-      ),
+      )),
 
       // 4. Funnel
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ stage: string; count: bigint }>
       >(
         Prisma.sql`
@@ -169,10 +191,10 @@ export async function GET(request: Request) {
           UNION ALL
           SELECT 'lead' AS stage, (SELECT cnt FROM leads) AS count
         `,
-      ),
+      )),
 
       // 5. By campaign
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ campaign: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -187,10 +209,10 @@ export async function GET(request: Request) {
           GROUP BY COALESCE(e."utmCampaign", '(sem campanha)')
           ORDER BY visitors DESC
         `,
-      ),
+      )),
 
       // 6. By source
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ source: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -205,10 +227,10 @@ export async function GET(request: Request) {
           GROUP BY COALESCE(e."utmSource", '(orgânico/direto)')
           ORDER BY visitors DESC
         `,
-      ),
+      )),
 
       // 7. By UTM content
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ content: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -223,10 +245,10 @@ export async function GET(request: Request) {
           GROUP BY COALESCE(e."utmContent", '(sem conteúdo)')
           ORDER BY visitors DESC
         `,
-      ),
+      )),
 
       // 8. By UTM medium (extra for report)
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ medium: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -241,10 +263,10 @@ export async function GET(request: Request) {
           GROUP BY COALESCE(e."utmMedium", '(não definido)')
           ORDER BY visitors DESC
         `,
-      ),
+      )),
 
       // 9. By UTM term (extra for report)
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ term: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -259,10 +281,10 @@ export async function GET(request: Request) {
           GROUP BY COALESCE(e."utmTerm", '(não definido)')
           ORDER BY visitors DESC
         `,
-      ),
+      )),
 
       // 10. By event type
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ eventType: string; count: bigint }>
       >(
         Prisma.sql`
@@ -275,10 +297,10 @@ export async function GET(request: Request) {
           GROUP BY e."eventType"
           ORDER BY count DESC
         `,
-      ),
+      )),
 
       // 11. Top pages
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ url: string; views: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -295,10 +317,10 @@ export async function GET(request: Request) {
           ORDER BY views DESC
           LIMIT 20
         `,
-      ),
+      )),
 
       // 12. Top countries
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ country: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -313,10 +335,10 @@ export async function GET(request: Request) {
           ORDER BY visitors DESC
           LIMIT 10
         `,
-      ),
+      )),
 
       // 13. Top cities
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{
           city: string;
           country: string;
@@ -337,10 +359,10 @@ export async function GET(request: Request) {
           ORDER BY visitors DESC
           LIMIT 10
         `,
-      ),
+      )),
 
       // 14. Device breakdown
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ device: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -364,10 +386,10 @@ export async function GET(request: Request) {
           END
           ORDER BY visitors DESC
         `,
-      ),
+      )),
 
       // 15. Hourly distribution
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{
           hour: number;
           visitors: bigint;
@@ -388,10 +410,10 @@ export async function GET(request: Request) {
           GROUP BY EXTRACT(HOUR FROM e."createdAt")
           ORDER BY hour
         `,
-      ),
+      )),
 
       // 16. All converted leads (no limit)
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{
           visitorId: string;
           leadId: string;
@@ -431,10 +453,10 @@ export async function GET(request: Request) {
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
           ORDER BY v."visitorId", e."createdAt" DESC
         `,
-      ),
+      )),
 
       // 17. All leads with full event journey
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{
           visitorId: string;
           sessionId: string;
@@ -465,10 +487,10 @@ export async function GET(request: Request) {
           AND e."createdAt" >= ${startDate}::timestamptz
           ORDER BY e."visitorId", e."createdAt" ASC
         `,
-      ),
+      )),
 
       // 18. Referrer breakdown
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ referrer: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -505,10 +527,10 @@ export async function GET(request: Request) {
           ORDER BY visitors DESC
           LIMIT 10
         `,
-      ),
+      )),
 
       // 19. Meta pixel leads
-      db.$queryRaw<Array<{ count: bigint }>>(
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
           FROM tracking_events e
@@ -516,20 +538,20 @@ export async function GET(request: Request) {
             AND (e."eventType" = 'lead' OR e."eventType" = 'form_submit')
             AND (LOWER(e."utmSource") LIKE '%meta%' OR LOWER(e."utmSource") LIKE '%facebook%' OR LOWER(e."utmSource") LIKE '%ig%' OR LOWER(e."utmSource") LIKE '%instagram%' OR LOWER(e."utmSource") LIKE '%fb%')
         `,
-      ),
+      )),
 
       // 20. CRM Meta leads
-      db.$queryRaw<Array<{ count: bigint }>>(
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(*)::bigint AS count
           FROM clients
           WHERE "notes" LIKE '%[Meta Ads]%'
             AND "createdAt" >= ${startDate}::timestamptz
         `,
-      ),
+      )),
 
       // 21. Meta matched
-      db.$queryRaw<Array<{ count: bigint }>>(
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
           FROM tracking_events e
@@ -539,10 +561,10 @@ export async function GET(request: Request) {
             AND (e."eventType" = 'lead' OR e."eventType" = 'form_submit')
             AND (LOWER(e."utmSource") LIKE '%meta%' OR LOWER(e."utmSource") LIKE '%facebook%' OR LOWER(e."utmSource") LIKE '%ig%' OR LOWER(e."utmSource") LIKE '%instagram%' OR LOWER(e."utmSource") LIKE '%fb%')
         `,
-      ),
+      )),
 
       // 22. Scroll depth distribution
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ eventName: string; count: bigint }>
       >(
         Prisma.sql`
@@ -554,10 +576,10 @@ export async function GET(request: Request) {
           GROUP BY e."eventName"
           ORDER BY count DESC
         `,
-      ),
+      )),
 
       // 23. Form interaction events
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ eventType: string; eventName: string | null; count: bigint }>
       >(
         Prisma.sql`
@@ -569,10 +591,10 @@ export async function GET(request: Request) {
           GROUP BY e."eventType", e."eventName"
           ORDER BY count DESC
         `,
-      ),
+      )),
 
       // 24. Exit intent count
-      db.$queryRaw<Array<{ count: bigint }>>(
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(*)::bigint AS count
           FROM tracking_events e
@@ -580,10 +602,10 @@ export async function GET(request: Request) {
             AND e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
         `,
-      ),
+      )),
 
       // 25. Top entry pages
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ url: string; count: bigint }>
       >(
         Prisma.sql`
@@ -604,10 +626,10 @@ export async function GET(request: Request) {
           ORDER BY count DESC
           LIMIT 10
         `,
-      ),
+      )),
 
       // 26. Average session duration (approx)
-      db.$queryRaw<Array<{ avg_seconds: number }>>(
+      safe(db.$queryRaw<Array<{ avg_seconds: number }>>(
         Prisma.sql`
           SELECT
             AVG(
@@ -624,10 +646,10 @@ export async function GET(request: Request) {
             GROUP BY e."sessionId"
           ) sessions
         `,
-      ),
+      )),
 
       // 27. Returning visitors (visitors with events on 2+ different days)
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ returning: bigint; new: bigint }>
       >(
         Prisma.sql`
@@ -644,10 +666,10 @@ export async function GET(request: Request) {
             GROUP BY e."visitorId"
           ) visitor_days
         `,
-      ),
+      )),
 
       // 28. Engagement by day of week
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ dow: number; dow_name: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -663,8 +685,21 @@ export async function GET(request: Request) {
           GROUP BY EXTRACT(DOW FROM e."createdAt"), TO_CHAR(e."createdAt", 'TMDay')
           ORDER BY dow
         `,
-      ),
+      )),
+
+      // 29. WhatsApp clicks (unique visitors)
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
+        Prisma.sql`
+          SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
+          FROM tracking_events e
+          WHERE e."eventType" = 'whatsapp_click'
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+        `,
+      )),
     ]);
+
+    console.log('[Tracking Report] Queries completed, building markdown...');
 
     // ── Compute derived metrics ──
     const totalVisitors = Number(kpis[0]?.totalVisitors ?? 0);
@@ -688,6 +723,10 @@ export async function GET(request: Request) {
     const returnVisitors = Number(returningVisitors[0]?.returning ?? 0);
     const newVisitors = Number(returningVisitors[0]?.new ?? 0);
     const exitIntents = Number(exitIntentCount[0]?.count ?? 0);
+    const whatsappClicksCount = Number(whatsappClicks[0]?.count ?? 0);
+    const totalConversions = uniqueLeads + whatsappClicksCount;
+    const realConversionRate =
+      totalVisitors > 0 ? (totalConversions / totalVisitors) * 100 : 0;
 
     const pixelLeads = Number(metaPixelLeads[0]?.count ?? 0);
     const crmMetaLeads = Number(metaCrmLeads[0]?.count ?? 0);
@@ -731,11 +770,11 @@ export async function GET(request: Request) {
     // ──────────────────────────────────────────
     h2('1. Resumo Executivo');
     p(
-      `No período analisado, a landing page registrou **${fmt(totalVisitors)} visitantes únicos** que geraram **${fmt(totalPageviews)} visualizações de página** e **${fmt(totalEvents)} eventos de tracking**. Foram capturados **${fmt(uniqueLeads)} leads** rastreados, resultando em uma taxa de conversão global de **${pct(round2(conversionRate))}**. A taxa de rejeição ficou em **${pct(round2(bounceRate))}** e os visitantes interagiram com uma média de **${round2(avgEventsPerVisitor)} eventos cada**.`,
+      `No período analisado, a landing page registrou **${fmt(totalVisitors)} visitantes únicos** que geraram **${fmt(totalPageviews)} visualizações de página** e **${fmt(totalEvents)} eventos de tracking**. Foram capturados **${fmt(uniqueLeads)} leads** rastreados e **${fmt(whatsappClicksCount)} cliques em WhatsApp**, totalizando **${fmt(totalConversions)} conversões** (taxa real: **${pct(round2(realConversionRate))}**). A taxa de conversão por formulário é de **${pct(round2(conversionRate))}**. A taxa de rejeição ficou em **${pct(round2(bounceRate))}** e os visitantes interagiram com uma média de **${round2(avgEventsPerVisitor)} eventos cada**.`,
     );
-    if (uniqueLeads > 0) {
+    if (totalConversions > 0) {
       p(
-        `O funil de conversão mostra que de ${fmt(pageviewCount)} visitantes que visualizaram a página, ${fmt(engagementCount)} engajaram (>1 evento) e ${fmt(leadCount)} se tornaram leads. A taxa de engajamento é de ${pct(round2(pageviewCount > 0 ? (engagementCount / pageviewCount) * 100 : 0))}.`,
+        `O funil de conversão mostra que de ${fmt(pageviewCount)} visitantes que visualizaram a página, ${fmt(engagementCount)} engajaram (>1 evento), ${fmt(whatsappClicksCount)} clicaram em WhatsApp e ${fmt(leadCount)} preencheram o formulário. A taxa de engajamento é de ${pct(round2(pageviewCount > 0 ? (engagementCount / pageviewCount) * 100 : 0))}.`,
       );
     }
 
@@ -749,8 +788,11 @@ export async function GET(request: Request) {
     line(`| Pageviews Totais | ${fmt(totalPageviews)} |`);
     line(`| Eventos Totais | ${fmt(totalEvents)} |`);
     line(`| Leads Rastreados | ${fmt(uniqueLeads)} |`);
+    line(`| Cliques em WhatsApp | ${fmt(whatsappClicksCount)} |`);
+    line(`| Total de Conversões (leads + WhatsApp) | ${fmt(totalConversions)} |`);
     line(`| Sessões Únicas | ${fmt(uniqueSessions)} |`);
-    line(`| Taxa de Conversão (visitante → lead) | ${pct(round2(conversionRate))} |`);
+    line(`| Taxa de Conversão Real (visitante → qualquer conversão) | ${pct(round2(realConversionRate))} |`);
+    line(`| Taxa de Conversão por Formulário (visitante → lead) | ${pct(round2(conversionRate))} |`);
     line(`| Taxa de Rejeição | ${pct(round2(bounceRate))} |`);
     line(`| Eventos por Visitante | ${round2(avgEventsPerVisitor)} |`);
     line(`| Pageviews por Sessão | ${round2(pageviewsPerSession)} |`);
@@ -781,13 +823,24 @@ export async function GET(request: Request) {
     line(
       `| Engajamento | ${fmt(engagementCount)} | ${pct(engRate)} | -${pct(engDrop)} |`,
     );
+    const waRate =
+      pageviewCount > 0
+        ? round2((whatsappClicksCount / pageviewCount) * 100)
+        : 0;
+    const waDrop =
+      engagementCount > 0
+        ? round2(((engagementCount - whatsappClicksCount) / engagementCount) * 100)
+        : 0;
+    line(
+      `| Clique em WhatsApp | ${fmt(whatsappClicksCount)} | ${pct(waRate)} | -${pct(waDrop)} |`,
+    );
     const leadRate =
       pageviewCount > 0
         ? round2((leadCount / pageviewCount) * 100)
         : 0;
     const leadDrop =
-      engagementCount > 0
-        ? round2(((engagementCount - leadCount) / engagementCount) * 100)
+      whatsappClicksCount > 0
+        ? round2(((whatsappClicksCount - leadCount) / whatsappClicksCount) * 100)
         : 0;
     line(
       `| Lead Capturado | ${fmt(leadCount)} | ${pct(leadRate)} | -${pct(leadDrop)} |`,
@@ -1051,7 +1104,7 @@ export async function GET(request: Request) {
       );
       recentLeads.forEach((lead, idx) => {
         line(
-          `| ${idx + 1} | ${lead.clientName ?? '—'} | ${lead.utmSource ?? '—'} | ${lead.utmCampaign ?? '—'} | ${lead.utmMedium ?? '—'} | ${lead.utmContent ?? '—'} | ${lead.city ?? '—'} | ${lead.country ?? '—'} | ${lead.pageUrl ?? '—'} | ${lead.firstSeenAt ? lead.firstSeenAt.replace('T', ' ').replace('Z', '').slice(0, 19) : '—'} | ${lead.convertedAt.replace('T', ' ').replace('Z', '').slice(0, 19)} |`,
+          `| ${idx + 1} | ${lead.clientName ?? '—'} | ${lead.utmSource ?? '—'} | ${lead.utmCampaign ?? '—'} | ${lead.utmMedium ?? '—'} | ${lead.utmContent ?? '—'} | ${lead.city ?? '—'} | ${lead.country ?? '—'} | ${lead.pageUrl ?? '—'} | ${fmtTs(lead.firstSeenAt)} | ${fmtTs(lead.convertedAt)} |`,
         );
       });
       line();
@@ -1097,10 +1150,7 @@ export async function GET(request: Request) {
         line('| # | Timestamp | Tipo | Nome | Página |');
         line('|---|-----------|------|------|--------|');
         events.forEach((ev, i) => {
-          const ts = ev.createdAt
-            .replace('T', ' ')
-            .replace('Z', '')
-            .slice(0, 19);
+          const ts = fmtTs(ev.createdAt);
           line(
             `| ${i + 1} | ${ts} | ${ev.eventType} | ${ev.eventName ?? '—'} | ${ev.pageUrl ?? '—'} |`,
           );
@@ -1350,9 +1400,11 @@ export async function GET(request: Request) {
       },
     });
   } catch (err) {
-    console.error('[Tracking Report] Error:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error('[Tracking Report] Error:', message, stack);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: message },
       { status: 500 },
     );
   }

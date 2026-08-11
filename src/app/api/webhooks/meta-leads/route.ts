@@ -353,8 +353,14 @@ export async function POST(request: NextRequest) {
               source: `meta_ads:${(campaignName || adName || '').slice(0, 200)}`,
             });
             if (assignResult.assigned && assignResult.userId) {
-              const assignedUserId = assignResult.userId;
-              db.user.findUnique({ where: { id: assignedUserId }, select: { telegramChatId: true, name: true } }).then((user) => {
+              assignedUserName = assignResult.userName;
+              // Update client's createdBy to the assigned user
+              await db.client.update({
+                where: { id: existing.id },
+                data: { createdBy: assignResult.userId },
+              }).catch(() => {});
+              // Send Telegram notification
+              db.user.findUnique({ where: { id: assignResult.userId }, select: { telegramChatId: true, name: true } }).then((user) => {
                 if (user?.telegramChatId) {
                   notifyNewLead(user.telegramChatId, {
                     leadName: existing.name,
@@ -368,7 +374,7 @@ export async function POST(request: NextRequest) {
                     customAnswers: undefined,
                   }).catch((err) => console.warn('[Meta Webhook] Falha na notificação (lead existente):', err));
                 } else {
-                  console.warn(`[Meta Webhook] Usuário ${user?.name || assignedUserId} sem Telegram. Lead existente ${existing.id} sem notificação.`);
+                  console.warn(`[Meta Webhook] Usuário ${user?.name || assignResult.userId} sem Telegram. Lead existente ${existing.id} sem notificação.`);
                 }
               }).catch(() => {});
             }

@@ -3,11 +3,20 @@ import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
 import { Prisma } from '@prisma/client';
 
+// Wrapper: individual query failure won't kill the entire dashboard
+const safe = <T,>(p: Promise<T>): Promise<T | []> =>
+  p.catch((err: unknown) => {
+    console.warn('[Tracking Dashboard] Query failed:', (err as Error)?.message || err);
+    return [] as unknown as T;
+  });
+
+// Negative = hours from now; Positive = calendar days from midnight
 const PERIOD_DAYS: Record<string, number> = {
-  'today': 0,
+  '24h': -24,
+  '48h': -48,
   '7d': 7,
+  '15d': 15,
   '30d': 30,
-  '90d': 90,
 };
 
 export async function GET(request: Request) {
@@ -20,9 +29,11 @@ export async function GET(request: Request) {
     const siteId = searchParams.get('siteId') ?? null;
 
     const startDate = new Date();
-    if (period === 0) {
-      startDate.setUTCHours(0, 0, 0, 0);
+    if (period < 0) {
+      // Hour-based filter: subtract hours from now
+      startDate.setHours(startDate.getHours() + period);
     } else {
+      // Day-based filter: subtract calendar days, start at midnight
       startDate.setDate(startDate.getDate() - period);
       startDate.setHours(0, 0, 0, 0);
     }
@@ -47,9 +58,10 @@ export async function GET(request: Request) {
       metaPixelLeads,
       metaCrmLeads,
       metaMatched,
+      whatsappClicks,
     ] = await Promise.all([
       // ── 1. Core KPIs ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{
           totalVisitors: bigint;
           totalPageviews: bigint;
@@ -70,10 +82,10 @@ export async function GET(request: Request) {
           WHERE e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
         `,
-      ),
+      )),
 
       // ── 2. Bounced visitors ──
-      db.$queryRaw<Array<{ count: bigint }>>(
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(*)::bigint AS count
           FROM (
@@ -86,10 +98,10 @@ export async function GET(request: Request) {
                AND COUNT(*) = 1
           ) bounced
         `,
-      ),
+      )),
 
       // ── 3. Daily chart data ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{
           date: string;
           visitors: bigint;
@@ -112,10 +124,10 @@ export async function GET(request: Request) {
           GROUP BY TO_CHAR(e."createdAt", 'YYYY-MM-DD')
           ORDER BY date
         `,
-      ),
+      )),
 
       // ── 4. Funnel ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ stage: string; count: bigint }>
       >(
         Prisma.sql`
@@ -143,10 +155,10 @@ export async function GET(request: Request) {
           UNION ALL
           SELECT 'lead' AS stage, (SELECT cnt FROM leads) AS count
         `,
-      ),
+      )),
 
       // ── 5. By campaign ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ campaign: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -161,10 +173,10 @@ export async function GET(request: Request) {
           GROUP BY COALESCE(e."utmCampaign", '(sem campanha)')
           ORDER BY visitors DESC
         `,
-      ),
+      )),
 
       // ── 6. By source ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ source: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -179,10 +191,10 @@ export async function GET(request: Request) {
           GROUP BY COALESCE(e."utmSource", '(orgânico/direto)')
           ORDER BY visitors DESC
         `,
-      ),
+      )),
 
       // ── 7. By UTM content (ad creative) ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ content: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -197,10 +209,10 @@ export async function GET(request: Request) {
           GROUP BY COALESCE(e."utmContent", '(sem conteúdo)')
           ORDER BY visitors DESC
         `,
-      ),
+      )),
 
       // ── 8. By event type ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ eventType: string; count: bigint }>
       >(
         Prisma.sql`
@@ -213,10 +225,10 @@ export async function GET(request: Request) {
           GROUP BY e."eventType"
           ORDER BY count DESC
         `,
-      ),
+      )),
 
       // ── 9. Top pages ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ url: string; views: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -233,10 +245,10 @@ export async function GET(request: Request) {
           ORDER BY views DESC
           LIMIT 20
         `,
-      ),
+      )),
 
       // ── 10. Top countries ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ country: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -251,10 +263,10 @@ export async function GET(request: Request) {
           ORDER BY visitors DESC
           LIMIT 10
         `,
-      ),
+      )),
 
       // ── 11. Top cities ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ city: string; country: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -270,10 +282,10 @@ export async function GET(request: Request) {
           ORDER BY visitors DESC
           LIMIT 10
         `,
-      ),
+      )),
 
       // ── 12. Device breakdown ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ device: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -297,10 +309,10 @@ export async function GET(request: Request) {
           END
           ORDER BY visitors DESC
         `,
-      ),
+      )),
 
       // ── 13. Hourly distribution ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ hour: number; visitors: bigint; events: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -316,10 +328,10 @@ export async function GET(request: Request) {
           GROUP BY EXTRACT(HOUR FROM e."createdAt")
           ORDER BY hour
         `,
-      ),
+      )),
 
       // ── 14. Recent converted leads (last 20) ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{
           visitorId: string;
           leadId: string;
@@ -354,10 +366,10 @@ export async function GET(request: Request) {
           ORDER BY v."visitorId", e."createdAt" DESC
           LIMIT 20
         `,
-      ),
+      )),
 
       // ── 15. Referrer breakdown ──
-      db.$queryRaw<
+      safe(db.$queryRaw<
         Array<{ referrer: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -394,10 +406,10 @@ export async function GET(request: Request) {
           ORDER BY visitors DESC
           LIMIT 10
         `,
-      ),
+      )),
 
       // ── 16a. Meta discrepancy: pixel-tracked leads ──
-      db.$queryRaw<Array<{ count: bigint }>>(
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
           FROM tracking_events e
@@ -405,20 +417,20 @@ export async function GET(request: Request) {
             AND (e."eventType" = 'lead' OR e."eventType" = 'form_submit')
             AND (LOWER(e."utmSource") LIKE '%meta%' OR LOWER(e."utmSource") LIKE '%facebook%' OR LOWER(e."utmSource") LIKE '%ig%' OR LOWER(e."utmSource") LIKE '%instagram%' OR LOWER(e."utmSource") LIKE '%fb%')
         `,
-      ),
+      )),
 
       // ── 16b. Meta discrepancy: CRM leads tagged [Meta Ads] ──
-      db.$queryRaw<Array<{ count: bigint }>>(
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(*)::bigint AS count
           FROM clients
           WHERE "notes" LIKE '%[Meta Ads]%'
             AND "createdAt" >= ${startDate}::timestamptz
         `,
-      ),
+      )),
 
       // ── 16c. Meta discrepancy: matched ──
-      db.$queryRaw<Array<{ count: bigint }>>(
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
           FROM tracking_events e
@@ -428,7 +440,18 @@ export async function GET(request: Request) {
             AND (e."eventType" = 'lead' OR e."eventType" = 'form_submit')
             AND (LOWER(e."utmSource") LIKE '%meta%' OR LOWER(e."utmSource") LIKE '%facebook%' OR LOWER(e."utmSource") LIKE '%ig%' OR LOWER(e."utmSource") LIKE '%instagram%' OR LOWER(e."utmSource") LIKE '%fb%')
         `,
-      ),
+      )),
+
+      // ── 17. WhatsApp clicks (unique visitors who clicked WhatsApp) ──
+      safe(db.$queryRaw<Array<{ count: bigint }>>(
+        Prisma.sql`
+          SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
+          FROM tracking_events e
+          WHERE e."eventType" = 'whatsapp_click'
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+        `,
+      )),
     ]);
 
     // ── Compute derived metrics ──
@@ -443,6 +466,9 @@ export async function GET(request: Request) {
     const avgEventsPerVisitor = totalVisitors > 0 ? totalEvents / totalVisitors : 0;
     const bounceRate = totalVisitors > 0 ? (bounced / totalVisitors) * 100 : 0;
     const pageviewsPerSession = uniqueSessions > 0 ? totalPageviews / uniqueSessions : 0;
+    const whatsappClicksCount = Number(whatsappClicks[0]?.count ?? 0);
+    const totalConversions = uniqueLeads + whatsappClicksCount;
+    const realConversionRate = totalVisitors > 0 ? (totalConversions / totalVisitors) * 100 : 0;
 
     // ── Funnel ──
     const pageviewCount = Number(funnelData.find((f) => f.stage === 'pageview')?.count ?? 0);
@@ -455,6 +481,11 @@ export async function GET(request: Request) {
         stage: 'Engagement',
         count: engagementCount,
         rate: pageviewCount > 0 ? (engagementCount / pageviewCount) * 100 : 0,
+      },
+      {
+        stage: 'WhatsApp',
+        count: whatsappClicksCount,
+        rate: pageviewCount > 0 ? (whatsappClicksCount / pageviewCount) * 100 : 0,
       },
       {
         stage: 'Lead',
@@ -564,8 +595,11 @@ export async function GET(request: Request) {
         totalPageviews,
         totalEvents,
         uniqueLeads,
+        whatsappClicks: whatsappClicksCount,
+        totalConversions,
         uniqueSessions,
         conversionRate: round2(conversionRate),
+        realConversionRate: round2(realConversionRate),
         avgEventsPerVisitor: round2(avgEventsPerVisitor),
         bounceRate: round2(bounceRate),
         pageviewsPerSession: round2(pageviewsPerSession),
@@ -596,9 +630,11 @@ export async function GET(request: Request) {
       },
     });
   } catch (err) {
-    console.error('[Tracking Dashboard] Error:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error('[Tracking Dashboard] Error:', message, stack);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: message },
       { status: 500 },
     );
   }

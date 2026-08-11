@@ -357,3 +357,57 @@ model LandingFormField {
   @@index([enterpriseId])
   @@map("landing_form_fields")
 }
+
+// ============================================================
+// LOST LEADS — Safety net for leads that failed to register
+// Captured via sendBeacon (page close) or retry queue
+// ============================================================
+model LostLead {
+  id          String    @id @default(cuid()) @map("id")
+  name        String?   @map("name")
+  phone       String?   @map("phone")
+  email       String?   @map("email")
+  slug        String?   @map("slug")
+  source      String    @map("source")      // 'beacon' | 'retry_queue'
+  formData    Json?     @map("formData")
+  userAgent   String?   @map("userAgent")
+  utmSource   String?   @map("utmSource")
+  utmMedium   String?   @map("utmMedium")
+  utmCampaign String?   @map("utmCampaign")
+  utmContent  String?   @map("utmContent")
+  utmTerm     String?   @map("utmTerm")
+  isRecovered Boolean   @default(false) @map("isRecovered")
+  recoveredToClientId String?  @map("recoveredToClientId")
+  createdAt   DateTime  @default(now()) @map("createdAt")
+
+  @@index([isRecovered])
+  @@index([createdAt])
+  @@index([email])
+  @@map("lost_leads")
+}
+
+// ============================================================
+// CLIENT ERROR LOG — JS error capture for landing page debug
+// Catches window.onerror, unhandledrejection, React errors
+// ============================================================
+model ClientErrorLog {
+  id          String   @id @default(cuid()) @map("id")
+  type        String   @map("type")          // 'js_error' | 'promise_rejection' | 'react_error'
+  message     String   @map("message")
+  source      String?  @map("source")        // file/URL where error occurred
+  lineNumber  Int?     @map("lineNumber")
+  colNumber   Int?     @map("colNumber")
+  stackTrace  String?  @map("stackTrace")    // full stack trace
+  pageUrl     String?  @map("pageUrl")
+  userAgent   String?  @map("userAgent")
+  slug        String?  @map("slug")          // enterprise slug if on landing page
+  resolved    Boolean  @default(false) @map("resolved")
+  createdAt   DateTime @default(now()) @map("createdAt")
+
+  @@index([type])
+  @@index([resolved])
+  @@index([createdAt])
+  @@index([slug])
+  @@index([message])
+  @@map("client_error_logs")
+}

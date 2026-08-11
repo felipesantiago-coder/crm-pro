@@ -32,8 +32,11 @@ interface TrackingMetrics {
   totalPageviews: number;
   totalEvents: number;
   uniqueLeads: number;
+  whatsappClicks: number;
+  totalConversions: number;
   uniqueSessions: number;
   conversionRate: number;
+  realConversionRate: number;
   avgEventsPerVisitor: number;
   bounceRate: number;
   pageviewsPerSession: number;
@@ -170,27 +173,34 @@ const ROSE = '#F43F5E';
 const AMBER = '#F59E0B';
 
 const PERIOD_OPTIONS = [
-  { value: 'today', label: 'Hoje' },
+  { value: '24h', label: '24 horas' },
+  { value: '48h', label: '48 horas' },
   { value: '7d', label: '7 dias' },
+  { value: '15d', label: '15 dias' },
   { value: '30d', label: '30 dias' },
-  { value: '90d', label: '90 dias' },
 ];
+
+const WHATSAPP = '#25D366';
+const WHATSAPP_LIGHT = 'rgba(37, 211, 102, 0.12)';
 
 const FUNNEL_LABELS: Record<string, string> = {
   Pageview: 'Visualização de Página',
   Engagement: 'Engajamento',
+  WhatsApp: 'Clique em WhatsApp',
   Lead: 'Lead Capturado',
 };
 
 const FUNNEL_COLORS: Record<string, string> = {
   Pageview: GOLD,
   Engagement: BLUE,
+  WhatsApp: WHATSAPP,
   Lead: EMERALD,
 };
 
 const FUNNEL_BG: Record<string, string> = {
   Pageview: GOLD_LIGHT,
   Engagement: BLUE_LIGHT,
+  WhatsApp: WHATSAPP_LIGHT,
   Lead: EMERALD_LIGHT,
 };
 
@@ -393,7 +403,8 @@ export function TrackingTab() {
           toast.error('Erro: formato inesperado dos dados');
         }
       } else {
-        toast.error(`Erro ao carregar tracking (${res.status})`);
+        const errBody = await res.json().catch(() => ({}));
+        toast.error(`Erro ao carregar tracking (${res.status}): ${errBody.details ?? 'desconhecido'}`);
       }
     } catch {
       toast.error('Erro de conexão ao carregar tracking');
@@ -429,7 +440,8 @@ export function TrackingTab() {
         headers: { Accept: 'text/markdown' },
       });
       if (!res.ok) {
-        toast.error(`Erro ao gerar relatório (${res.status})`);
+        const errBody = await res.json().catch(() => ({}));
+        toast.error(`Erro ao gerar relatório (${res.status}): ${errBody.details ?? 'desconhecido'}`);
         return;
       }
       const blob = await res.blob();
@@ -594,7 +606,8 @@ export function TrackingTab() {
     { label: 'Pageviews', value: fmt.format(m.totalPageviews), icon: <Eye className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-blue-500 to-blue-700', subtitle: `${fmtDec(m.pageviewsPerSession)} por sessão` },
     { label: 'Eventos Totais', value: fmt.format(m.totalEvents), icon: <Zap className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-amber-500 to-orange-600', subtitle: `${data.byEventType.length} tipos registrados` },
     { label: 'Leads Rastreados', value: fmt.format(m.uniqueLeads), icon: <Target className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-emerald-500 to-teal-600', subtitle: 'visitantes vinculados ao CRM' },
-    { label: 'Taxa de Conversão', value: fmtPct(m.conversionRate), icon: <TrendingUp className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-violet-500 to-purple-700', subtitle: 'visitante → lead' },
+    ...(m.whatsappClicks > 0 ? [{ label: 'Cliques WhatsApp', value: fmt.format(m.whatsappClicks), icon: <Wifi className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-[#25D366] to-[#128C7E]', subtitle: `${m.totalConversions} conversões no total` }] : []),
+    { label: 'Taxa de Conversão Real', value: fmtPct(m.realConversionRate ?? m.conversionRate), icon: <TrendingUp className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-violet-500 to-purple-700', subtitle: 'leads + WhatsApp' },
     { label: 'Taxa de Rejeição', value: fmtPct(m.bounceRate), icon: <ArrowDownRight className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-rose-500 to-pink-700', subtitle: '1 pageview, sem interação' },
     { label: 'Sessões', value: fmt.format(m.uniqueSessions), icon: <CircleDot className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-cyan-500 to-cyan-700', subtitle: `${fmtDec(m.pageviewsPerSession)} pageviews/sessão` },
     { label: 'Páginas / Sessão', value: fmtDec(m.pageviewsPerSession), icon: <Gauge className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-indigo-500 to-indigo-700', subtitle: `de ${fmt.format(m.totalPageviews)} pageviews` },
@@ -667,7 +680,7 @@ export function TrackingTab() {
       {/* ═══ Funnel + Daily Chart side by side ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Funnel */}
-        <Section title="Funil de Conversão" icon={<BarChart3 className="h-4 w-4 text-[#C9A96E]" />} description="Pageview → Engajamento → Lead">
+        <Section title="Funil de Conversão" icon={<BarChart3 className="h-4 w-4 text-[#C9A96E]" />} description="Pageview → Engajamento → WhatsApp → Lead">
           <div className="space-y-3">
             {data.funnel.map((stage, idx) => {
               const color = FUNNEL_COLORS[stage.stage] ?? GOLD;
@@ -701,12 +714,10 @@ export function TrackingTab() {
                 </div>
               );
             })}
-            {data.funnel.length >= 3 && (
-              <div className="pt-2 border-t border-border/50 flex items-center justify-between">
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Conversão Total</span>
-                <span className="text-sm font-bold text-emerald-600 tabular-nums">{fmtPct(m.conversionRate)}</span>
-              </div>
-            )}
+            <div className="pt-2 border-t border-border/50 flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Conversão Real (leads + WhatsApp)</span>
+              <span className="text-sm font-bold text-emerald-600 tabular-nums">{fmtPct(m.realConversionRate ?? m.conversionRate)}</span>
+            </div>
           </div>
         </Section>
 
@@ -938,7 +949,7 @@ export function TrackingTab() {
                   const found = data.hourlyData.find(x => x.hour === h);
                   const visitors = found?.visitors ?? 0;
                   const pct = (visitors / maxHourly) * 100;
-                  const isNow = new Date().getHours() === h && period === 'today';
+                  const isNow = new Date().getHours() === h && period === '24h';
                   return (
                     <TooltipProvider key={h} delayDuration={50}>
                       <Tooltip>

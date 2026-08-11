@@ -13,25 +13,33 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const response = NextResponse.next();
 
-  // ── 1. Páginas HTML: nunca cachear ────────────────────────
-  // Garante que o navegador sempre busca a versão mais recente
-  // do HTML. Os chunks JS (_next/static/*) continuam cacheáveis
-  // pois usam hash no nome de arquivo.
-  const isHtmlPage =
+  // ── 1. Landing pages HTML: stale-while-revalidate ──────
+  // Serve cached HTML immediately (fast TTFB) and revalidate in background.
+  // JS/CSS chunks use content hashes and are unaffected by this.
+  const isLandingPage = /^\/empreendimentos\/[^/]+(\/?$|\/cadastro-sucesso)/.test(pathname);
+
+  if (isLandingPage) {
+    response.headers.set('Cache-Control', 'public, max-age=0, stale-while-revalidate=30');
+    return response;
+  }
+
+  // ── 2. Other HTML pages: never cache (admin, login, etc) ──
+  const isOtherHtmlPage =
     pathname === '/' ||
     pathname === '/login' ||
     pathname === '/change-password' ||
-    pathname.startsWith('/empreendimentos') ||
+    pathname === '/reset-password' ||
+    pathname === '/forgot-password' ||
     pathname.startsWith('/portal');
 
-  if (isHtmlPage) {
+  if (isOtherHtmlPage) {
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('Expires', '0');
     response.headers.set('Surrogate-Control', 'no-store');
   }
 
-  // ── 2. API routes: não cachear respostas ───────────────────
+  // ── 3. API routes: não cachear respostas ───────────────────
   const isApi = pathname.startsWith('/api/');
   if (isApi && !pathname.includes('/track/pixel.gif')) {
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
+import { setNextUser } from '@/lib/lead-queue';
 
 // GET — single queue with details
 export async function GET(
@@ -55,7 +56,18 @@ export async function PUT(
 
     const { id } = await params;
     const body = await request.json();
-    const { name, description, isActive, isDefault } = body;
+    const { name, description, isActive, isDefault, nextUserId } = body;
+
+    // Admin: manually set next user in queue
+    if (nextUserId) {
+      try {
+        const result = await setNextUser(id, nextUserId);
+        return NextResponse.json({ success: true, message: `Próximo atendente: ${result.userName}` });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Erro ao definir próximo atendente';
+        return NextResponse.json({ error: msg }, { status: 400 });
+      }
+    }
 
     // FIX: wrap isDefault swap + update in transaction
     const queue = await db.$transaction(async (tx) => {

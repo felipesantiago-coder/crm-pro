@@ -26,12 +26,14 @@ const PERIOD_MS: Record<string, number> = {
   '48h': 172_800_000,
   '7d':  604_800_000,
   '30d': 2_592_000_000,
+  '15d': 1_296_000_000,
 };
 
 const PERIOD_LABELS: Record<string, string> = {
   '24h': 'últimas 24 horas',
   '48h': 'últimas 48 horas',
   '7d':  'última semana',
+  '15d': 'últimos 15 dias',
   '30d': 'último mês',
 };
 
@@ -342,6 +344,12 @@ export async function GET(request: NextRequest) {
 
     let pixelAvailable = false;
 
+    // Wrapper: individual query failure won't kill all pixel data
+    const safe = <T,>(p: Promise<T>): Promise<T | []> => p.catch((err: unknown) => {
+      console.warn('[Meta Analyze] Pixel query failed:', (err as Error)?.message || err);
+      return [] as unknown as T;
+    });
+
     try {
       // ── Run ALL pixel queries in parallel for speed ──
       // periodStartDate is a JS Date — Prisma serializes it to PostgreSQL timestamp
@@ -381,7 +389,7 @@ export async function GET(request: NextRequest) {
         // ═══════════════════════════════════════════
 
         // Query 1: Core funnel data
-        db.$queryRaw<{
+        safe(db.$queryRaw<{
           visitors: string | number;
           pageviews: string | number;
           pixel_leads: string | number;
@@ -398,10 +406,10 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT "utmContent") as creatives_count
           FROM "tracking_events"
           WHERE "createdAt" >= ${periodStartDate}
-        `,
+        `),
 
         // Query 2: Top campaigns from pixel data
-        db.$queryRaw<{
+        safe(db.$queryRaw<{
           campaign: string;
           visitors: string | number;
           leads: string | number;
@@ -415,10 +423,10 @@ export async function GET(request: NextRequest) {
           GROUP BY COALESCE("utmCampaign", '(direto)')
           ORDER BY leads DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 3: Bounce rate
-        db.$queryRaw<{ bounce_rate: string | number }[]>`
+        safe(db.$queryRaw<{ bounce_rate: string | number }[]>`
           SELECT
             ROUND(COUNT(*) FILTER (WHERE total_events = 1)::numeric / NULLIF(COUNT(*), 0) * 100, 1) as bounce_rate
           FROM (
@@ -427,10 +435,10 @@ export async function GET(request: NextRequest) {
             WHERE "createdAt" >= ${periodStartDate}
             GROUP BY "visitorId"
           ) sub
-        `,
+        `),
 
         // Query 4: Scroll depth distribution
-        db.$queryRaw<{ depth: number; visitors: string | number }[]>`
+        safe(db.$queryRaw<{ depth: number; visitors: string | number }[]>`
           SELECT
             (metadata->>'depth')::int as depth,
             COUNT(DISTINCT "visitorId") as visitors
@@ -440,10 +448,10 @@ export async function GET(request: NextRequest) {
             AND metadata->>'depth' IS NOT NULL
           GROUP BY (metadata->>'depth')::int
           ORDER BY depth
-        `,
+        `),
 
         // Query 5: Average time on page
-        db.$queryRaw<{ avg_seconds: string | number; median_seconds: string | number }[]>`
+        safe(db.$queryRaw<{ avg_seconds: string | number; median_seconds: string | number }[]>`
           SELECT
             ROUND(AVG((metadata->>'time_on_page')::numeric))::text as avg_seconds,
             ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (metadata->>'time_on_page')::numeric))::text as median_seconds
@@ -451,10 +459,10 @@ export async function GET(request: NextRequest) {
           WHERE "eventType" = 'pageview_duration'
             AND "createdAt" >= ${periodStartDate}
             AND metadata->>'time_on_page' IS NOT NULL
-        `,
+        `),
 
         // Query 6: WhatsApp click breakdown
-        db.$queryRaw<{ source: string; clicks: string | number; unique_visitors: string | number }[]>`
+        safe(db.$queryRaw<{ source: string; clicks: string | number; unique_visitors: string | number }[]>`
           SELECT
             COALESCE(metadata->>'source', '(principal)') as source,
             COUNT(*) as clicks,
@@ -464,10 +472,10 @@ export async function GET(request: NextRequest) {
             AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE(metadata->>'source', '(principal)')
           ORDER BY clicks DESC
-        `,
+        `),
 
         // Query 7: Device breakdown
-        db.$queryRaw<{ device: string; visitors: string | number; leads: string | number }[]>`
+        safe(db.$queryRaw<{ device: string; visitors: string | number; leads: string | number }[]>`
           SELECT
             CASE
               WHEN LOWER("userAgent") LIKE '%mobile%' OR LOWER("userAgent") LIKE '%android%' OR LOWER("userAgent") LIKE '%iphone%'
@@ -489,10 +497,10 @@ export async function GET(request: NextRequest) {
               ELSE 'Desktop'
             END
           ORDER BY visitors DESC
-        `,
+        `),
 
         // Query 8: Referrer breakdown
-        db.$queryRaw<{ referrer: string; visitors: string | number; leads: string | number }[]>`
+        safe(db.$queryRaw<{ referrer: string; visitors: string | number; leads: string | number }[]>`
           SELECT
             CASE
               WHEN "referrer" IS NULL OR "referrer" = '' THEN '(direto)'
@@ -521,10 +529,10 @@ export async function GET(request: NextRequest) {
             END
           ORDER BY visitors DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 9: Top landing pages with conversion
-        db.$queryRaw<{ url: string; views: string | number; leads: string | number }[]>`
+        safe(db.$queryRaw<{ url: string; views: string | number; leads: string | number }[]>`
           SELECT
             COALESCE("pageUrl", '(desconhecida)') as url,
             COUNT(*)::text as views,
@@ -536,10 +544,10 @@ export async function GET(request: NextRequest) {
           GROUP BY COALESCE("pageUrl", '(desconhecida)')
           ORDER BY COUNT(*) DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 10: Full funnel stages
-        db.$queryRaw<{ stage: string; count: string | number }[]>`
+        safe(db.$queryRaw<{ stage: string; count: string | number }[]>`
           WITH base AS (
             SELECT e."visitorId", v."leadId", COUNT(*) OVER (PARTITION BY e."visitorId") AS event_count
             FROM tracking_events e
@@ -562,10 +570,10 @@ export async function GET(request: NextRequest) {
           SELECT 'engagement' AS stage, (SELECT cnt FROM engaged) AS count
           UNION ALL
           SELECT 'lead' AS stage, (SELECT cnt FROM leads) AS count
-        `,
+        `),
 
         // Query 11: Web Vitals
-        db.$queryRaw<{ metric: string; avg_value: string | number; count: string | number }[]>`
+        safe(db.$queryRaw<{ metric: string; avg_value: string | number; count: string | number }[]>`
           SELECT
             metadata->>'metric' as metric,
             ROUND(AVG((metadata->>'value')::numeric))::text as avg_value,
@@ -577,10 +585,10 @@ export async function GET(request: NextRequest) {
             AND metadata->>'value' IS NOT NULL
           GROUP BY metadata->>'metric'
           ORDER BY avg_value::numeric DESC
-        `,
+        `),
 
         // Query 12: Gallery engagement
-        db.$queryRaw<{ total_clicks: string | number; visitors_clicked: string | number; avg_images: string | number }[]>`
+        safe(db.$queryRaw<{ total_clicks: string | number; visitors_clicked: string | number; avg_images: string | number }[]>`
           SELECT
             COUNT(*)::text as total_clicks,
             COUNT(DISTINCT "visitorId")::text as visitors_clicked,
@@ -588,10 +596,10 @@ export async function GET(request: NextRequest) {
           FROM "tracking_events"
           WHERE "eventType" = 'gallery_click'
             AND "createdAt" >= ${periodStartDate}
-        `,
+        `),
 
         // Query 13: FAQ engagement
-        db.$queryRaw<{ question_index: number; question: string; opens: string | number }[]>`
+        safe(db.$queryRaw<{ question_index: number; question: string; opens: string | number }[]>`
           SELECT
             COALESCE((metadata->>'question_index')::int, 0) as question_index,
             COALESCE(metadata->>'question', '(sem texto)') as question,
@@ -601,10 +609,10 @@ export async function GET(request: NextRequest) {
             AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE((metadata->>'question_index')::int, 0), COALESCE(metadata->>'question', '(sem texto)')
           ORDER BY opens DESC
-        `,
+        `),
 
         // Query 14: Form field drop-off
-        db.$queryRaw<{ field: string; avg_time_ms: string | number; focus_count: string | number; blur_count: string | number }[]>`
+        safe(db.$queryRaw<{ field: string; avg_time_ms: string | number; focus_count: string | number; blur_count: string | number }[]>`
           SELECT
             COALESCE(metadata->>'field', '(desconhecido)') as field,
             ROUND(AVG((metadata->>'time_spent_ms')::numeric))::text as avg_time_ms,
@@ -615,10 +623,10 @@ export async function GET(request: NextRequest) {
             AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE(metadata->>'field', '(desconhecido)')
           ORDER BY avg_time_ms::numeric DESC
-        `,
+        `),
 
         // Query 15: Section views
-        db.$queryRaw<{ section: string; visitors: string | number }[]>`
+        safe(db.$queryRaw<{ section: string; visitors: string | number }[]>`
           SELECT
             COALESCE(metadata->>'section', '(desconhecida)') as section,
             COUNT(DISTINCT "visitorId")::text as visitors
@@ -627,10 +635,10 @@ export async function GET(request: NextRequest) {
             AND "createdAt" >= ${periodStartDate}
           GROUP BY COALESCE(metadata->>'section', '(desconhecida)')
           ORDER BY visitors DESC
-        `,
+        `),
 
         // Query 16: Exit intent, JS errors, print, form abandon counts
-        db.$queryRaw<{
+        safe(db.$queryRaw<{
           exit_intent: string | number;
           js_errors: string | number;
           prints: string | number;
@@ -643,10 +651,10 @@ export async function GET(request: NextRequest) {
             COUNT(*) FILTER (WHERE "eventType" = 'form_abandon')::text as form_abandons
           FROM "tracking_events"
           WHERE "createdAt" >= ${periodStartDate}
-        `,
+        `),
 
         // Query 17: Timezone breakdown
-        db.$queryRaw<{ timezone: string; visitors: string | number }[]>`
+        safe(db.$queryRaw<{ timezone: string; visitors: string | number }[]>`
           SELECT
             COALESCE(metadata->>'timezone', '(desconhecido)') as timezone,
             COUNT(DISTINCT "visitorId")::text as visitors
@@ -657,10 +665,10 @@ export async function GET(request: NextRequest) {
           GROUP BY COALESCE(metadata->>'timezone', '(desconhecido)')
           ORDER BY visitors DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 18: Language breakdown
-        db.$queryRaw<{ language: string; visitors: string | number }[]>`
+        safe(db.$queryRaw<{ language: string; visitors: string | number }[]>`
           SELECT
             COALESCE(metadata->>'language', '(desconhecido)') as language,
             COUNT(DISTINCT "visitorId")::text as visitors
@@ -671,10 +679,10 @@ export async function GET(request: NextRequest) {
           GROUP BY COALESCE(metadata->>'language', '(desconhecido)')
           ORDER BY visitors DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 19: Geographic breakdown
-        db.$queryRaw<{ country: string; city: string; visitors: string | number; leads: string | number }[]>`
+        safe(db.$queryRaw<{ country: string; city: string; visitors: string | number; leads: string | number }[]>`
           SELECT
             COALESCE(tv."country", '(desconhecido)') as country,
             COALESCE(tv."city", '(desconhecido)') as city,
@@ -686,7 +694,7 @@ export async function GET(request: NextRequest) {
           GROUP BY tv."country", tv."city"
           ORDER BY visitors DESC
           LIMIT 20
-        `,
+        `),
 
         // ═══════════════════════════════════════════
         // NEW QUERIES (20-25) — 6 improvements
@@ -694,7 +702,7 @@ export async function GET(request: NextRequest) {
 
         // Query 20 — Improvement 1: Deep heartbeat analysis
         // Compares attention (heartbeats + max time_on_page) between converters and non-converters
-        db.$queryRaw<{
+        safe(db.$queryRaw<{
           is_converter: boolean;
           avg_heartbeats: string | number;
           avg_attention_sec: string | number;
@@ -722,10 +730,10 @@ export async function GET(request: NextRequest) {
             COUNT(*)::text as visitors
           FROM visitor_stats
           GROUP BY ("leadId" IS NOT NULL)
-        `,
+        `),
 
         // Query 21 — Improvement 1b: Attention distribution buckets for converters vs non-converters
-        db.$queryRaw<{
+        safe(db.$queryRaw<{
           bucket: string;
           visitors: string | number;
           converters: string | number;
@@ -758,11 +766,11 @@ export async function GET(request: NextRequest) {
           FROM visitor_max_time
           GROUP BY bucket
           ORDER BY MIN(max_sec)
-        `,
+        `),
 
         // Query 22 — Improvement 2: Event-conversion correlation
         // For each engagement event, compare conversion rate of visitors who did vs didn't do it
-        db.$queryRaw<{
+        safe(db.$queryRaw<{
           event_type: string;
           visitors_with: string | number;
           converters_with: string | number;
@@ -807,10 +815,10 @@ export async function GET(request: NextRequest) {
             (t.total_converters - ev.converters_with)::text as converters_without
           FROM event_visitors ev
           CROSS JOIN totals t
-        `,
+        `),
 
         // Query 23 — Improvement 3: Per-landing-page detailed metrics
-        db.$queryRaw<{
+        safe(db.$queryRaw<{
           url: string;
           visitors: string | number;
           leads: string | number;
@@ -877,10 +885,10 @@ export async function GET(request: NextRequest) {
           LEFT JOIN page_scroll ps ON ps."pageUrl" = pl.url
           ORDER BY pl.visitors::int DESC
           LIMIT 10
-        `,
+        `),
 
         // Query 24 — Improvement 4: Hourly conversion analysis
-        db.$queryRaw<{
+        safe(db.$queryRaw<{
           hour: number;
           visitors: string | number;
           leads: string | number;
@@ -895,10 +903,10 @@ export async function GET(request: NextRequest) {
             AND e."createdAt" >= ${periodStartDate}
           GROUP BY EXTRACT(HOUR FROM e."createdAt")
           ORDER BY hour
-        `,
+        `),
 
         // Query 25 — Improvement 5: JS Error details (top 5 messages with context)
-        db.$queryRaw<{
+        safe(db.$queryRaw<{
           message: string;
           filename: string | null;
           count: string | number;
@@ -915,10 +923,10 @@ export async function GET(request: NextRequest) {
           GROUP BY COALESCE(metadata->>'message', '(sem mensagem)'), metadata->>'filename'
           ORDER BY COUNT(*) DESC
           LIMIT 5
-        `,
+        `),
 
         // Query 26 — Improvement 6: Engagement score segmentation (cold/warm/hot)
-        db.$queryRaw<{
+        safe(db.$queryRaw<{
           segment: string;
           visitors: string | number;
           converters: string | number;
@@ -960,7 +968,7 @@ export async function GET(request: NextRequest) {
             ELSE 'frio'
           END
           ORDER BY MIN(score) DESC
-        `,
+        `),
       ]);
 
       // ── Process existing query results ──
@@ -1473,7 +1481,11 @@ ${Object.entries(byMonth).sort((a, b) => a[0].localeCompare(b[0])).map(([m, c]) 
 ${JSON.stringify(sampleLeads, null, 2)}
 `;
 
-    const dataSummary = `${crmSection}${pixelSection}`.trim();
+    const dataSummary = `${crmSection}${pixelSection}
+
+---
+FIM DOS DADOS. Os dados acima são os ÚNICOS dados disponíveis. Não existem mais dados além dos listados acima. Não invente, estime ou assuma nenhum dado adicional.
+---`.trim();
 
     const systemPrompt = `Você é um consultor especialista em marketing digital e Meta Ads (Facebook/Instagram) para o mercado imobiliário brasileiro.
 Seu papel é analisar os dados de leads (do webhook Meta, de landing pages com UTM Meta e do pixel próprio) e fornecer insights acionáveis em português brasileiro.
@@ -1504,11 +1516,20 @@ Analise os dados fornecidos e gere um relatório estruturado com as seguintes se
 15. **Alertas e Problemas** — Leads sem interação, estagnados, alta taxa de rejeição, discrepância pixel vs CRM, erros de JS (com detalhes técnicos).
 16. **Recomendações** — 10-15 recomendações práticas e específicas para melhorar os resultados. PRIORIZE recomendações baseadas nos dados de correlação e score de engajamento. Inclua sugestões sobre otimização de cada landing page individualmente, CTAs, campanhas, formulário, horários de atendimento e acompanhamento de leads.
 
-IMPORTANTE:
+## REGRAS ABSOLUTAS — NUNCA VIOLE
+
+1. **USE APENAS OS DADOS FORNECIDOS.** Todos os números, percentuais e métricas que você citar DEVEM existir nos dados fornecidos. É **ESTRITAMENTE PROIBIDO** inventar, estimar, assumir ou fabricar qualquer dado numérico.
+2. **Se um dado não estiver disponível**, escreva explicitamente "Dados não disponíveis". NUNCA invente um valor substituto.
+3. **Cada afirmação numérica deve ser rastreável** aos dados fornecidos. Se você não encontrar um número nos dados, não o cite.
+4. **Não generalize além dos dados.** Se há dados de apenas 1 landing page, não faça comparações entre "múltiplas landing pages". Se há apenas 1 campanha, não diga "as campanhas mostram...".
+5. **Não invente nomes** de campanhas, criativos ou landing pages que não estejam listados nos dados.
+6. **Não assuma comportamentos** que não foram registrados pelo pixel.
+7. **Quando não houver dados para uma seção**, diga claramente que não há dados e pule para a próxima. Não preencha com suposições.
+
+CONTEXTO:
 - Período da análise: ${periodLabel}.
 - Leads do webhook Meta Ads chegam diretamente do Facebook e NÃO geram eventos de pixel. A discrepancia entre pixel e CRM e esperada nesse caso.
 - Leads cadastrados via formulario das landing pages GERAM eventos de pixel (form_submit) e campos UTM.
-- Use dados numericos em TODOS os argumentos. Nunca faca afirmações vagas.
 - Foque no que importa para um corretor/consultor imobiliário.
 - Se houver dados de dispositivo, analise se mobile ou desktop tem melhor conversão.
 - Se houver dados de Web Vitals, identifique problemas de performance (LCP > 2500ms, CLS > 0.1, FID > 100ms).
@@ -1535,7 +1556,7 @@ IMPORTANTE:
             system_instruction: { parts: [{ text: systemPrompt }] },
             contents: [{ role: 'user', parts: [{ text: dataSummary }] }],
             generationConfig: {
-              temperature: 0.4,
+              temperature: 0.1,
               maxOutputTokens: 8192,
             },
           }),
@@ -1564,7 +1585,7 @@ IMPORTANTE:
               { role: 'system', content: systemPrompt },
               { role: 'user', content: dataSummary },
             ],
-            temperature: 0.4,
+            temperature: 0.1,
             max_tokens: 8192,
           }),
         });
@@ -1595,6 +1616,8 @@ IMPORTANTE:
         recentLeads,
         conversionRate: parseFloat(convRate),
         withoutInteraction,
+        pixelDataIncluded: pixelAvailable && pixelData.visitors > 0,
+        pixelQueriesSuccessful: pixelAvailable ? 26 : 0,
         ...(pixelAvailable ? {
           pixelVisitors: pixelData.visitors,
           pixelLeads: pixelData.pixelLeads,

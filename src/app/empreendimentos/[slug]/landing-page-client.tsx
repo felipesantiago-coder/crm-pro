@@ -8,6 +8,7 @@ import {
   CheckCircle2, Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Copy, Check, User, Send, AlertCircle,
   Shield, ChevronDown, CalendarDays, TrendingUp, Users, Layers, Car, LayoutGrid,
+  UserCheck,
 } from 'lucide-react';
 
 /* ================================================================
@@ -150,10 +151,17 @@ const faqItems = [
 /* ================================================================
    Page
    ================================================================ */
-export default function LandingPageClient({ params }: { params: Promise<{ slug: string }> }) {
+interface LandingPageClientProps {
+  params: Promise<{ slug: string }>;
+  initialData?: Enterprise | null;
+  initialQueueUser?: { userId: string; userName: string; userPhone: string | null } | null;
+}
+
+export default function LandingPageClient({ params, initialData, initialQueueUser }: LandingPageClientProps) {
   const { slug } = React.use(params);
-  const [enterprise, setEnterprise] = useState<Enterprise | null>(null);
-  const [loading, setLoading] = useState(true);
+
+  const [enterprise, setEnterprise] = useState<Enterprise | null>(initialData ?? null);
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
   const [activeImgIdx, setActiveImgIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -161,7 +169,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const [floorLightboxOpen, setFloorLightboxOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [queueUser, setQueueUser] = useState<{ userId: string; userName: string; userPhone: string | null } | null>(null);
+  const [queueUser, setQueueUser] = useState<{ userId: string; userName: string; userPhone: string | null } | null>(initialQueueUser ?? null);
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -191,13 +199,102 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
   const formSectionRef = useRef<HTMLDivElement>(null);
   const isSubmittingRef = useRef(false); // prevent double-submit
   const handleFormSubmitRef = useRef<(ev: React.FormEvent) => Promise<void> | null>(null); // for sticky button
+  const utmParamsRef = useRef<Record<string, string>>({});
+
+  // ── SAFETY NET: Auto-save form data to localStorage (debounced) ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hasData = formName.trim() || formEmail.trim() || formPhone.trim();
+    if (!hasData) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(`lp_draft_${slug || 'default'}`, JSON.stringify({
+          name: formName,
+          phone: formPhone,
+          email: formEmail,
+          customAnswers,
+          utmSource: utmParamsRef.current.utm_source || null,
+          utmMedium: utmParamsRef.current.utm_medium || null,
+          utmCampaign: utmParamsRef.current.utm_campaign || null,
+          utmContent: utmParamsRef.current.utm_content || null,
+          utmTerm: utmParamsRef.current.utm_term || null,
+          savedAt: Date.now(),
+        }));
+      } catch { /* localStorage full or unavailable */ }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [formName, formPhone, formEmail, customAnswers, slug]);
+
+  // ── SAFETY NET: Restore draft from localStorage on mount ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const draft = localStorage.getItem(`lp_draft_${slug || 'default'}`);
+      if (draft) {
+        const data = JSON.parse(draft);
+        if (data.name) setFormName(data.name);
+        if (data.phone) setFormPhone(data.phone);
+        if (data.email) setFormEmail(data.email);
+        if (data.customAnswers) setCustomAnswers(data.customAnswers);
+        localStorage.removeItem(`lp_draft_${slug || 'default'}`);
+      }
+    } catch { /* ignore */ }
+  }, [slug]);
+
+  // ── SAFETY NET: Retry failed submissions on mount ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let cancelled = false;
+    async function retryFailed() {
+      try {
+        const raw = localStorage.getItem('lp_failed_queue');
+        if (!raw) return;
+        const queue: Array<{ payload: Record<string, unknown>; timestamp: number }> = JSON.parse(raw);
+        if (!Array.isArray(queue) || queue.length === 0) return;
+        const fresh = queue.filter((item) => Date.now() - item.timestamp < 24 * 60 * 60 * 1000);
+        if (fresh.length === 0) { localStorage.removeItem('lp_failed_queue'); return; }
+        for (const item of fresh) {
+          if (cancelled) return;
+          try { await fetch('/api/enterprises/public-lead', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item.payload) }); } catch { /* will retry next visit */ }
+        }
+        localStorage.removeItem('lp_failed_queue');
+      } catch { /* ignore */ }
+    }
+    const timer = setTimeout(retryFailed, 2000);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, []);
+
+  // ── SAFETY NET: sendBeacon on page close if form has data ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    function handleUnload() {
+      const hasSignificantData = formName.trim().length >= 2 && formEmail.trim().length >= 5;
+      if (!hasSignificantData) return;
+      try {
+        const payload = new URLSearchParams();
+        payload.set('name', formName.trim());
+        if (formPhone.trim()) payload.set('phone', formPhone.replace(/\D/g, ''));
+        payload.set('email', formEmail.trim());
+        payload.set('slug', slug || '');
+        payload.set('source', 'beacon');
+        const utm = utmParamsRef.current;
+        if (utm.utm_source) payload.set('utmSource', utm.utm_source);
+        if (utm.utm_campaign) payload.set('utmCampaign', utm.utm_campaign);
+        if (utm.utm_medium) payload.set('utmMedium', utm.utm_medium);
+        if (utm.utm_content) payload.set('utmContent', utm.utm_content);
+        if (utm.utm_term) payload.set('utmTerm', utm.utm_term);
+        navigator.sendBeacon('/api/leads/safety-net', payload);
+      } catch { /* sendBeacon can fail silently */ }
+    }
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [formName, formPhone, formEmail, slug]);
 
   // NEW: Exit-intent popup (medium priority #8)
   const [exitPopupOpen, setExitPopupOpen] = useState(false);
   const exitPopupShownRef = useRef(false); // show only once per session
-
-  // NEW: Social proof notification cycling (medium priority #7)
-  const [socialProofIdx, setSocialProofIdx] = useState(0);
+  const [exitPopupCountdown, setExitPopupCountdown] = useState(0);
+  const exitPopupTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // NEW: Sticky desktop CTA — show only after scrolling past hero
   const [showDesktopSticky, setShowDesktopSticky] = useState(false);
@@ -230,27 +327,6 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
   // NEW: FAQ accordion state
   const [faqOpenIndex, setFaqOpenIndex] = useState<number | null>(null);
-
-  // Social proof names pool for simulated live notifications
-  const socialProofPool = React.useMemo(() => [
-    { name: 'Maria', action: 'se cadastrou', time: '2 min' },
-    { name: 'Carlos', action: 'solicitou informações', time: '5 min' },
-    { name: 'Ana', action: 'agendou visita', time: '8 min' },
-    { name: 'Pedro', action: 'se cadastrou', time: '12 min' },
-    { name: 'Juliana', action: 'pediu condições', time: '15 min' },
-    { name: 'Rafael', action: 'se cadastrou', time: '18 min' },
-    { name: 'Fernanda', action: 'solicitou visita', time: '22 min' },
-    { name: 'Lucas', action: 'se cadastrou', time: '25 min' },
-  ], []);
-
-  // Cycle social proof every 6s
-  useEffect(() => {
-    if (socialProofPool.length === 0) return;
-    const timer = setInterval(() => {
-      setSocialProofIdx((prev) => (prev + 1) % socialProofPool.length);
-    }, 6000);
-    return () => clearInterval(timer);
-  }, [socialProofPool.length]);
 
   // Calculate form progress (for progress bar — medium priority #9)
   const formProgress = React.useMemo(() => {
@@ -288,10 +364,12 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     });
     return map;
   }, []);
+  utmParamsRef.current = utmParams;
 
   // Tracking: section visibility (IntersectionObserver)
+  // Retry up to 5 times (2s apart) in case pixel.js loads after mount
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.CRMPIXEL) return;
+    if (typeof window === 'undefined') return;
     if (typeof IntersectionObserver === 'undefined') return;
     const sectionNames: Record<string, string> = {
       'galeria': 'galeria',
@@ -301,25 +379,43 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       'cadastre-se': 'cadastro',
       'perguntas frequentes': 'faq',
     };
-    const headings = document.querySelectorAll('h2');
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          const text = (entry.target.textContent || '').toLowerCase();
-          for (const [key, name] of Object.entries(sectionNames)) {
-            if (text.includes(key)) {
-              window.CRMPIXEL?.trackSectionView(name);
-              break;
+    let observer: IntersectionObserver | null = null;
+    let retries = 0;
+    const maxRetries = 5;
+    function initObserver() {
+      if (!window.CRMPIXEL || retries >= maxRetries) return;
+      const headings = document.querySelectorAll('h2');
+      if (headings.length === 0) return;
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const text = (entry.target.textContent || '').toLowerCase();
+            for (const [key, name] of Object.entries(sectionNames)) {
+              if (text.includes(key)) {
+                try { window.CRMPIXEL?.trackSectionView(name); } catch { /* non-critical */ }
+                break;
+              }
             }
           }
-        }
-      });
-    }, { threshold: 0.2 });
-    headings.forEach((h) => observer.observe(h));
-    return () => observer.disconnect();
+        });
+      }, { threshold: 0.2 });
+      headings.forEach((h) => observer?.observe(h));
+    }
+    initObserver();
+    if (!observer && retries < maxRetries) {
+      const timer = setInterval(() => {
+        retries++;
+        initObserver();
+        if (observer || retries >= maxRetries) clearInterval(timer);
+      }, 2000);
+      return () => clearInterval(timer);
+    }
+    return () => observer?.disconnect();
   }, []);
 
-  // Tracking: exit intent — desktop (mouseleave) + mobile (visibilitychange)
+  // Tracking: exit intent — desktop (mouseleave from top only) + mobile (visibilitychange)
+  // IMPROVEMENT: Added scroll-depth gate — only show after user has scrolled past 20%
+  // This prevents false positives from users who haven't engaged yet.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -327,39 +423,65 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL?.trackExitIntent();
       if (!exitPopupShownRef.current && !formSubmitting) {
         exitPopupShownRef.current = true;
+        setExitPopupCountdown(15);
         setExitPopupOpen(true);
         if (typeof window !== 'undefined' && window.CRMPIXEL) {
-          window.CRMPIXEL.track('exit_popup_shown', { enterprise: enterprise?.name });
+          const docH = document.documentElement.scrollHeight - window.innerHeight;
+          window.CRMPIXEL.track('exit_popup_shown', { enterprise: enterprise?.name, scroll_depth: docH > 0 ? Math.round((window.scrollY / docH) * 100) : 0 });
         }
       }
     };
 
-    // Desktop: mouse leaves viewport
+    const getScrollPct = () => {
+      const docH = document.documentElement.scrollHeight - window.innerHeight;
+      return docH > 0 ? window.scrollY / docH : 0;
+    };
+
+    // Desktop: mouse leaves viewport from TOP only (not left/right/bottom)
     const mouseHandler = (e: MouseEvent) => {
-      if ((e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth) && e.relatedTarget === null) {
+      // Only trigger when mouse leaves from the TOP edge
+      if (e.clientY <= 0 && e.relatedTarget === null && getScrollPct() > 0.2) {
         showExitPopup();
       }
     };
     document.addEventListener('mouseleave', mouseHandler);
 
-    // Mobile: tab/page visibility change (user switches app or closes tab)
+    // Mobile: page visibility hidden (user switches app/tab)
+    // Increased to 5s debounce — avoids false positives when user briefly switches to WhatsApp
+    let mobileTimer: ReturnType<typeof setTimeout> | null = null;
     const visibilityHandler = () => {
-      if (document.visibilityState === 'hidden') {
-        showExitPopup();
+      if (document.visibilityState === 'hidden' && getScrollPct() > 0.2) {
+        mobileTimer = setTimeout(showExitPopup, 5000);
+      } else {
+        if (mobileTimer) { clearTimeout(mobileTimer); mobileTimer = null; }
       }
     };
     document.addEventListener('visibilitychange', visibilityHandler);
 
-    // Mobile: pagehide (tab close / navigation away)
-    const pageHideHandler = () => { showExitPopup(); };
-    window.addEventListener('pagehide', pageHideHandler);
-
     return () => {
       document.removeEventListener('mouseleave', mouseHandler);
       document.removeEventListener('visibilitychange', visibilityHandler);
-      window.removeEventListener('pagehide', pageHideHandler);
+      if (mobileTimer) clearTimeout(mobileTimer);
     };
   }, [formSubmitting, enterprise?.name]);
+
+  // Exit popup countdown timer
+  useEffect(() => {
+    if (exitPopupOpen && exitPopupCountdown > 0) {
+      exitPopupTimerRef.current = setInterval(() => {
+        setExitPopupCountdown((c) => {
+          if (c <= 1) {
+            if (exitPopupTimerRef.current) clearInterval(exitPopupTimerRef.current);
+            return 0;
+          }
+          return c - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (exitPopupTimerRef.current) clearInterval(exitPopupTimerRef.current);
+    };
+  }, [exitPopupOpen, exitPopupCountdown]);
 
   const fetchEnterprise = useCallback(async () => {
     if (!slug) return;
@@ -387,9 +509,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Fetch queue user for dynamic WhatsApp
+  // Fetch queue user for dynamic WhatsApp (skip if already provided via SSR)
   useEffect(() => {
-    if (!slug) return;
+    if (!slug || queueUser) return;
     fetch(`/api/lead-queues/next-user?slug=${encodeURIComponent(slug)}`)
       .then((r) => r.json())
       .then((data) => {
@@ -398,7 +520,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
         }
       })
       .catch(() => { /* silent — fallback to generic WhatsApp */ });
-  }, [slug]);
+  }, [slug, queueUser]);
 
   // Lightbox keyboard navigation & scroll lock (hook must be before conditional returns)
   useEffect(() => {
@@ -464,6 +586,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll, { passive: true });
+    // Run once on mount so floating WhatsApp bar shows immediately on mobile
+    onScroll();
     return () => {
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
@@ -501,6 +625,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     }
   }, [queueUser?.userId, slug]);
 
+
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -524,9 +649,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       return;
     }
     const cleanPhone = formPhone.replace(/\D/g, '');
-    // Phone is now optional — if provided, validate format
-    if (cleanPhone.length > 0 && cleanPhone.length < 10) {
-      setFormError('Informe um telefone válido com DDD (mínimo 10 dígitos) ou deixe em branco.');
+    if (cleanPhone.length < 10) {
+      setFormError('Informe um telefone válido com DDD (mínimo 10 dígitos).');
       return;
     }
 
@@ -547,24 +671,23 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
     isSubmittingRef.current = true;
     // Generate a shared event_id for Meta CAPI deduplication (browser + server use same ID)
     const metaEventId = generateMetaEventId();
-    try {
-      // Build clean custom answers (label -> value)
-      const answersData: Record<string, string> = {};
-      if (enterprise?.formFields) {
-        for (const field of enterprise.formFields) {
-          const val = customAnswers[field.id];
-          if (val !== undefined && val !== null && String(val).trim() !== '') {
-            answersData[field.label] = String(val).trim();
-          }
+    // Build clean custom answers (label -> value) — outside try so catch can access it
+    const answersData: Record<string, string> = {};
+    if (enterprise?.formFields) {
+      for (const field of enterprise.formFields) {
+        const val = customAnswers[field.id];
+        if (val !== undefined && val !== null && String(val).trim() !== '') {
+          answersData[field.label] = String(val).trim();
         }
       }
-
+    }
+    try {
       const res = await fetch('/api/enterprises/public-lead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formName.trim(),
-          phone: cleanPhone.length >= 10 ? cleanPhone : undefined,
+          phone: cleanPhone,
           email: cleanEmail,
           slug: slug || undefined,
           customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined,
@@ -580,6 +703,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       const data = await res.json();
 
       if (res.ok && data.success) {
+        // SAFETY NET: Clear draft data on success
+        try { localStorage.removeItem(`lp_draft_${slug || 'default'}`); } catch { /* ignore */ }
+
         // Track CRM pixel event + identify visitor with new lead
         if (typeof window !== 'undefined' && window.CRMPIXEL) {
           window.CRMPIXEL.track('form_submit', { enterprise: enterprise?.name });
@@ -607,7 +733,28 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
       } else {
         setFormError(data.error || 'Erro ao enviar. Tente novamente.');
       }
-    } catch {
+    } catch (submitErr) {
+      // SAFETY NET: Save failed submission to localStorage retry queue
+      try {
+        const failQueueRaw = localStorage.getItem('lp_failed_queue');
+        const failQueue: Array<{ payload: Record<string, unknown>; timestamp: number }> = failQueueRaw ? JSON.parse(failQueueRaw) : [];
+        failQueue.push({
+          payload: {
+            name: formName.trim(),
+            phone: cleanPhone,
+            email: cleanEmail,
+            slug: slug || undefined,
+            customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined,
+            utmSource: utmParams.utm_source || undefined,
+            utmMedium: utmParams.utm_medium || undefined,
+            utmCampaign: utmParams.utm_campaign || undefined,
+            utmContent: utmParams.utm_content || undefined,
+            utmTerm: utmParams.utm_term || undefined,
+          },
+          timestamp: Date.now(),
+        });
+        localStorage.setItem('lp_failed_queue', JSON.stringify(failQueue));
+      } catch { /* localStorage unavailable */ }
       setFormError('Erro de conexão. Verifique sua internet e tente novamente.');
     } finally {
       setFormSubmitting(false);
@@ -659,6 +806,48 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
 
   /* ─── Derived ─────────────────────────────────────────── */
   const e = enterprise;
+
+  // ── Social Proof System ──────────────────────────────
+  // Threshold: only show real count when >= MIN_COUNT; below that, use
+  // activity-based messaging + floating toast to convey credibility.
+  const MIN_SOCIAL_COUNT = 5;
+  const clientCount = e._count?.clients ?? 0;
+  const showRealCount = clientCount >= MIN_SOCIAL_COUNT;
+
+  const [socialProofIdx, setSocialProofIdx] = useState(0);
+  const [toastVisible, setToastVisible] = useState(false);
+
+  const socialProofPool = React.useMemo(() => [
+    { message: 'Mais uma pessoa acabou de se cadastrar', time: 'agora' },
+    { message: 'Alguém acabou de solicitar informações', time: '1 min' },
+    { message: 'Mais uma pessoa se cadastrou agora', time: '2 min' },
+    { message: 'Alguém solicitou condições de pagamento', time: '3 min' },
+    { message: 'Outra pessoa acabou de se cadastrar', time: '5 min' },
+  ], []);
+
+  // Cycle social proof every 8s; show toast after 10s initial delay
+  useEffect(() => {
+    if (socialProofPool.length === 0) return;
+    const showDelay = setTimeout(() => setToastVisible(true), 10000);
+    const timer = setInterval(() => {
+      setSocialProofIdx((prev) => (prev + 1) % socialProofPool.length);
+    }, 8000);
+    return () => { clearTimeout(showDelay); clearInterval(timer); };
+  }, [socialProofPool.length]);
+
+  // Adblocker-resistant WhatsApp navigation — AdGuard blocks <a href="https://wa.me/...">
+  // Using button + window.open avoids having wa.me in the DOM as an href attribute
+  const openWhatsApp = useCallback((source: string) => {
+    try {
+      registerWhatsAppClick(source);
+      if (typeof window !== 'undefined' && window.CRMPIXEL) {
+        window.CRMPIXEL.track('whatsapp_click', { enterprise: e?.name, source, userId: queueUser?.userId });
+      }
+      trackMetaPixel('Contact', { content_name: e?.name, content_category: 'empreendimento' });
+    } catch { /* tracking errors must never block navigation */ }
+    try { window.open(whatsappUrl, '_blank', 'noopener'); } catch { /* IAB may block window.open */ }
+  }, [whatsappUrl, e?.name, queueUser?.userId, registerWhatsAppClick, trackMetaPixel]);
+
   const images = e.images.length > 0 ? e.images : [];
   const heroImage = e.imageUrl || images[0]?.url || null;
   const info = e.cachedInfo;
@@ -1014,6 +1203,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     inputMode="numeric"
                     placeholder="(11) 99999-9999"
                     autoComplete="tel"
+                    required
                     onChange={(ev) => {
                       const digits = ev.target.value.replace(/\D/g, '').slice(0, 11);
                       let masked = '';
@@ -1076,7 +1266,15 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#33492F] opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-[#33492F]" />
                 </span>
-                {e._count.clients} pessoa{e._count.clients !== 1 ? 's' : ''} interessada{e._count.clients !== 1 ? 's' : ''}
+                {showRealCount ? (
+                  <>
+                    <span className="font-medium">{clientCount} pessoa{clientCount !== 1 ? 's' : ''}</span> já cadastrada{clientCount !== 1 ? 's' : ''} — não fique de fora
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium">Pessoas estão demonstrando interesse</span> — garanta sua vaga
+                  </>
+                )}
               </div>
             ) : (
               <div className="animate-fade-in-up flex items-center gap-2 text-xs text-white/40" style={{ animationDelay: '0.2s' }}>
@@ -1900,7 +2098,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 <Clock className="h-5 w-5 text-white/40" />
                 <span className="text-xs sm:text-sm text-white/60 font-medium">Resposta em até 24h</span>
               </div>
-              {e._count && e._count.clients > 0 ? (
+              {showRealCount ? (
                 <div className="flex flex-col items-center gap-2 text-center">
                   <Users className="h-5 w-5 text-white/40" />
                   <span className="text-xs sm:text-sm text-white/60 font-medium">{e._count.clients} pessoas interessadas</span>
@@ -1987,10 +2185,10 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 >
                   <Phone className="h-4 w-4" />
                   Prefere o WhatsApp? Fale conosco
-                </a>
+                </button>
               </div>
 
-              {/* Right side — Form */}
+              {/* Right side — Form (mobile: shown first via order-1) */}
               <div ref={formSectionRef} className="relative order-1 lg:order-2">
                 <div className="absolute -inset-1 sm:-inset-4 bg-[#33492F]/[0.03] rounded-3xl blur-xl" />
                 <form
@@ -2098,6 +2296,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                         id="form-phone"
                         type="tel"
                         value={formPhone}
+                        required
                         onChange={(ev) => { handlePhoneChange(ev.target.value); updatePixelFormFields(formName, ev.target.value, formEmail, customAnswers); }}
                         onFocus={() => { fieldFocusTime.current.phone = Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormFocus('phone'); }}
                         onBlur={() => { const t = fieldFocusTime.current.phone || Date.now(); if (typeof window !== 'undefined' && window.CRMPIXEL) window.CRMPIXEL.trackFormBlur('phone', Date.now() - t); }}
@@ -2333,7 +2532,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               >
                 <Phone className="h-4 w-4" />
                 Fale com um consultor pelo WhatsApp
-              </a>
+              </button>
             </div>
           </div>
         </section>
@@ -2404,7 +2603,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                     <Phone className="h-3.5 w-3.5 text-[#25D366]" />
                   </div>
                   WhatsApp
-                </a>
+                </button>
               </div>
             </div>
           </div>
@@ -2445,8 +2644,8 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
               </svg>
-              Fale com um consultor
-            </a>
+              Fale pelo WhatsApp
+            </button>
           </div>
           <div className="h-[env(safe-area-inset-bottom)]" />
         </div>
@@ -2514,9 +2713,9 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 <a href="#cadastro" className="px-5 py-2.5 rounded-xl bg-[#33492F] text-white text-sm font-bold hover:bg-[#33492F]/90 transition-all hover:shadow-[#33492F]/20">
                   Quero saber mais
                 </a>
-                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={() => { try { registerWhatsAppClick('desktop_sticky'); trackMetaPixel('Contact', { content_name: e.name, content_category: 'empreendimento' }); } catch { /* tracking errors must never block navigation */ } }} className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-semibold hover:bg-[#20bd5a] transition-colors">
+                <button type="button" onClick={() => openWhatsApp('desktop_sticky')} className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-semibold hover:bg-[#20bd5a] transition-colors cursor-pointer">
                   WhatsApp
-                </a>
+                </button>
               </div>
             </div>
           </div>
@@ -2554,6 +2753,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             </p>
 
             <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => { setExitPopupOpen(false); openWhatsApp('exit_popup'); }}
+                className="w-full min-h-[44px] flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors cursor-pointer"
+              >
+                <Phone className="h-4 w-4" />
+                Falar pelo WhatsApp
+              </button>
               <a
                 href="#cadastro"
                 onClick={() => {
@@ -2567,32 +2774,14 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                 <Send className="h-4 w-4" />
                 Quero saber mais
               </a>
-              <a
-                href={whatsappUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => {
-                  setExitPopupOpen(false);
-                  try {
-                    registerWhatsAppClick('exit_popup');
-                    if (typeof window !== 'undefined' && window.CRMPIXEL) {
-                      window.CRMPIXEL.track('exit_popup_cta', { enterprise: e.name, action: 'whatsapp' });
-                    }
-                    trackMetaPixel('Contact', { content_name: e.name, content_category: 'empreendimento' });
-                  } catch {
-                    /* tracking errors must never block navigation */
-                  }
-                }}
-                className="w-full min-h-[44px] flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors"
-              >
-                <Phone className="h-4 w-4" />
-                Falar pelo WhatsApp
-              </a>
             </div>
 
             <p className="text-[11px] text-[#1a1a1a]/25 text-center mt-4">
               <Shield className="h-3 w-3 inline-block mr-1 text-[#33492F]/40" />
               Seus dados estão seguros e não enviamos spam.
+              {showRealCount && (
+                <span className="ml-2 text-emerald-400/60">{clientCount} pessoa{clientCount !== 1 ? 's' : ''} já se cadastraram.</span>
+              )}
             </p>
           </div>
         </div>
@@ -2617,9 +2806,11 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
             onClick={(ev) => ev.stopPropagation()}
           />
           {enterprise.floorPlans[activeFloorIdx]?.altText && (
-            <p className="mt-3 sm:mt-4 text-sm sm:text-base text-white/70 text-center max-w-lg px-4 leading-relaxed">
-              {enterprise.floorPlans[activeFloorIdx].altText}
-            </p>
+            <div className="mt-3 sm:mt-4 max-w-lg px-4">
+              <p className="text-sm sm:text-base text-white/90 font-medium text-center leading-relaxed">
+                {enterprise.floorPlans[activeFloorIdx].altText}
+              </p>
+            </div>
           )}
           {enterprise.floorPlans.length > 1 && (
             <>
@@ -2637,6 +2828,29 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── Floating Social Proof Toast ─────────────────── */}
+      {toastVisible && socialProofPool.length > 0 && (
+        <div
+          className="fixed bottom-4 left-4 z-50 animate-fade-in-up"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-3 bg-[#1A1A1A]/95 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-3 shadow-2xl shadow-black/40 max-w-[280px]">
+            <div className="flex-shrink-0 h-9 w-9 rounded-full bg-[#C9A96E]/20 flex items-center justify-center">
+              <UserCheck className="h-4 w-4 text-[#C9A96E]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-white/90 font-medium leading-tight">
+                {socialProofPool[socialProofIdx].message}
+              </p>
+              <p className="text-[10px] text-white/35 mt-0.5">
+                há {socialProofPool[socialProofIdx].time}
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
