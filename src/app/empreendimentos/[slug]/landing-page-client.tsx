@@ -921,44 +921,40 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       {/* ══════════════════════════════════════════════════
           4. SUMMARY SECTION
           ══════════════════════════════════════════════════ */}
-      {info?.summary && (
+      {(info.totalUnits || areaRange || info.floors || info.parkingSpots) && (
         <ScrollReveal>
           <section id="summary" className="bg-white">
-            <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
-              <p className="text-sm sm:text-base text-[#1a1a1a]/60 leading-relaxed text-center">{info.summary}</p>
-              {/* Key specs merged here */}
-              {(info.totalUnits || areaRange || info.floors || info.parkingSpots) && (
-                <div className="mt-6 sm:mt-8 grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  {info.totalUnits != null && info.totalUnits > 0 && (
-                    <div className="text-center p-3.5 rounded-2xl bg-[#F7F6F3]">
-                      <Building2 className="h-4 w-4 text-[#33492F] mx-auto mb-1.5" />
-                      <p className="text-lg sm:text-xl font-bold text-[#33492F]">{info.totalUnits}</p>
-                      <p className="text-[11px] text-[#1a1a1a]/40 mt-0.5">Unidades</p>
-                    </div>
-                  )}
-                  {areaRange && (
-                    <div className="text-center p-3.5 rounded-2xl bg-[#F7F6F3]">
-                      <Ruler className="h-4 w-4 text-[#33492F] mx-auto mb-1.5" />
-                      <p className="text-lg sm:text-xl font-bold text-[#33492F]">{areaRange}</p>
-                      <p className="text-[11px] text-[#1a1a1a]/40 mt-0.5">Área</p>
-                    </div>
-                  )}
-                  {info.floors != null && info.floors > 0 && (
-                    <div className="text-center p-3.5 rounded-2xl bg-[#F7F6F3]">
-                      <Layers className="h-4 w-4 text-[#33492F] mx-auto mb-1.5" />
-                      <p className="text-lg sm:text-xl font-bold text-[#33492F]">{info.floors}</p>
-                      <p className="text-[11px] text-[#1a1a1a]/40 mt-0.5">Andares</p>
-                    </div>
-                  )}
-                  {info.parkingSpots != null && info.parkingSpots > 0 && (
-                    <div className="text-center p-3.5 rounded-2xl bg-[#F7F6F3]">
-                      <Car className="h-4 w-4 text-[#33492F] mx-auto mb-1.5" />
-                      <p className="text-lg sm:text-xl font-bold text-[#33492F]">{info.parkingSpots}</p>
-                      <p className="text-[11px] text-[#1a1a1a]/40 mt-0.5">Vagas</p>
-                    </div>
-                  )}
-                </div>
-              )}
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-5">
+                {info.totalUnits != null && info.totalUnits > 0 && (
+                  <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
+                    <Building2 className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
+                    <p className="text-xl sm:text-2xl font-bold text-[#33492F]">{info.totalUnits}</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Unidades</p>
+                  </div>
+                )}
+                {areaRange && (
+                  <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
+                    <Ruler className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
+                    <p className="text-xl sm:text-2xl font-bold text-[#33492F]">{areaRange}</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Área</p>
+                  </div>
+                )}
+                {info.floors != null && info.floors > 0 && (
+                  <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
+                    <Layers className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
+                    <p className="text-xl sm:text-2xl font-bold text-[#33492F]">{info.floors}</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Andares</p>
+                  </div>
+                )}
+                {info.parkingSpots != null && info.parkingSpots > 0 && (
+                  <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
+                    <Car className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
+                    <p className="text-xl sm:text-2xl font-bold text-[#33492F]">{info.parkingSpots}</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Vagas</p>
+                  </div>
+                )}
+              </div>
             </div>
           </section>
         </ScrollReveal>
