@@ -1,62 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
-import { supabaseServer } from '@/lib/supabase-server';
-import sharp from 'sharp';
 
 const MAX_PLANS = 10;
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const COMPRESS_TARGET_BYTES = 400 * 1024; // 400KB for floor plans (need more detail)
-const MAX_DIMENSION = 2048;
-const ALLOWED_TYPES = new Set([
-  'image/webp',
-  'image/jpeg',
-  'image/png',
-  'image/avif',
-]);
-
-async function compressImage(buffer: Buffer): Promise<Buffer> {
-  const image = sharp(buffer);
-  const metadata = await image.metadata();
-
-  let width = metadata.width || MAX_DIMENSION;
-  let height = metadata.height || MAX_DIMENSION;
-
-  if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-    const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
-    width = Math.round(width * ratio);
-    height = Math.round(height * ratio);
-  }
-
-  if (buffer.length <= COMPRESS_TARGET_BYTES) {
-    return image
-      .resize(width, height, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 85, effort: 4 })
-      .toBuffer();
-  }
-
-  const qualityLevels = [85, 78, 70, 60, 50];
-  for (const quality of qualityLevels) {
-    const compressed = await image
-      .resize(width, height, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality, effort: 4 })
-      .toBuffer();
-
-    if (compressed.length <= COMPRESS_TARGET_BYTES) return compressed;
-
-    if (quality === qualityLevels[qualityLevels.length - 1]) {
-      return image
-        .resize(Math.round(width * 0.8), Math.round(height * 0.8), { fit: 'inside', withoutEnlargement: true })
-        .webp({ quality: 50, effort: 4 })
-        .toBuffer();
-    }
-  }
-
-  return image
-    .resize(width, height, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 50, effort: 4 })
-    .toBuffer();
-}
 
 /**
  * GET — list floor plans
@@ -82,7 +28,7 @@ export async function GET(
 }
 
 /**
- * POST — upload a new floor plan
+ * POST — create a new floor plan (metadata-based)
  */
 export async function POST(
   request: NextRequest,
@@ -107,21 +53,14 @@ export async function POST(
       return NextResponse.json({ error: 'Empreendimento não encontrado.' }, { status: 404 });
     }
 
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-    const altText = formData.get('altText') as string | null;
+    const body = await request.json();
+    const { name, area, bedrooms, suites, hasBalcony, isGarden, isPenthouse, description } = body;
 
-    if (!file) {
-      return NextResponse.json({ error: 'Nenhum arquivo enviado.' }, { status: 400 });
-    }
-    if (!ALLOWED_TYPES.has(file.type)) {
+    if (!name?.trim() && !area?.trim()) {
       return NextResponse.json(
-        { error: 'Tipo de arquivo inválido. Use WebP, JPEG, PNG ou AVIF.' },
+        { error: 'Preencha ao menos o nome ou a metragem.' },
         { status: 400 },
       );
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: 'Arquivo muito grande. Máximo 10MB.' }, { status: 400 });
     }
 
     const maxOrder = await db.enterpriseFloorPlan.aggregate({
@@ -130,34 +69,17 @@ export async function POST(
     });
     const nextOrder = (maxOrder._max.sortOrder ?? -1) + 1;
 
-    const rawBuffer = Buffer.from(await file.arrayBuffer());
-    const compressedBuffer = await compressImage(rawBuffer);
-
-    const timestamp = Date.now();
-    const randomSuffix = Math.random().toString(36).slice(2, 8);
-    const storagePath = `floor-plans/${enterprise.id}/${timestamp}-${randomSuffix}.webp`;
-
-    const { error: uploadError } = await supabaseServer.storage
-      .from('enterprise-images')
-      .upload(storagePath, compressedBuffer, {
-        contentType: 'image/webp',
-        upsert: false,
-      });
-
-    if (uploadError) {
-      console.error('[FloorPlans POST] Upload error:', uploadError);
-      return NextResponse.json({ error: 'Erro ao fazer upload da planta.' }, { status: 500 });
-    }
-
-    const { data: urlData } = supabaseServer.storage
-      .from('enterprise-images')
-      .getPublicUrl(storagePath);
-
     const plan = await db.enterpriseFloorPlan.create({
       data: {
         enterpriseId: id,
-        url: urlData.publicUrl,
-        altText: altText?.trim() || null,
+        name: typeof name === 'string' ? name.trim() || null : null,
+        area: typeof area === 'string' ? area.trim() || null : null,
+        bedrooms: typeof bedrooms === 'number' ? bedrooms : null,
+        suites: typeof suites === 'number' ? suites : 0,
+        hasBalcony: typeof hasBalcony === 'boolean' ? hasBalcony : false,
+        isGarden: typeof isGarden === 'boolean' ? isGarden : false,
+        isPenthouse: typeof isPenthouse === 'boolean' ? isPenthouse : false,
+        description: typeof description === 'string' ? description.trim() || null : null,
         sortOrder: nextOrder,
       },
     });
@@ -165,7 +87,7 @@ export async function POST(
     return NextResponse.json(plan, { status: 201 });
   } catch (error) {
     console.error('[FloorPlans POST] Erro:', error);
-    return NextResponse.json({ error: 'Erro ao enviar planta.' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao criar planta.' }, { status: 500 });
   }
 }
 
@@ -203,7 +125,7 @@ export async function PUT(
 }
 
 /**
- * PATCH — update a single floor plan (e.g. altText / caption)
+ * PATCH — update a single floor plan
  */
 export async function PATCH(
   request: NextRequest,
@@ -215,7 +137,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { planId, altText } = body;
+    const { planId } = body;
 
     if (!planId) {
       return NextResponse.json({ error: 'planId é obrigatório.' }, { status: 400 });
@@ -228,9 +150,20 @@ export async function PATCH(
       return NextResponse.json({ error: 'Planta não encontrada.' }, { status: 404 });
     }
 
+    const updateData: Record<string, unknown> = {};
+    if (body.name !== undefined) updateData.name = typeof body.name === 'string' ? body.name.trim() || null : null;
+    if (body.area !== undefined) updateData.area = typeof body.area === 'string' ? body.area.trim() || null : null;
+    if (body.bedrooms !== undefined) updateData.bedrooms = typeof body.bedrooms === 'number' ? body.bedrooms : null;
+    if (body.suites !== undefined) updateData.suites = typeof body.suites === 'number' ? body.suites : 0;
+    if (body.hasBalcony !== undefined) updateData.hasBalcony = typeof body.hasBalcony === 'boolean' ? body.hasBalcony : false;
+    if (body.isGarden !== undefined) updateData.isGarden = typeof body.isGarden === 'boolean' ? body.isGarden : false;
+    if (body.isPenthouse !== undefined) updateData.isPenthouse = typeof body.isPenthouse === 'boolean' ? body.isPenthouse : false;
+    if (body.description !== undefined) updateData.description = typeof body.description === 'string' ? body.description.trim() || null : null;
+    if (body.altText !== undefined) updateData.altText = typeof body.altText === 'string' ? body.altText.trim() || null : null;
+
     const updated = await db.enterpriseFloorPlan.update({
       where: { id: planId },
-      data: { altText: typeof altText === 'string' ? altText.trim() || null : undefined },
+      data: updateData,
     });
     return NextResponse.json(updated);
   } catch (error) {
@@ -263,17 +196,6 @@ export async function DELETE(
 
     if (!plan) {
       return NextResponse.json({ error: 'Planta não encontrada.' }, { status: 404 });
-    }
-
-    // Delete from Supabase Storage
-    try {
-      const url = new URL(plan.url);
-      const storagePath = url.pathname.split('/enterprise-images/')[1];
-      if (storagePath) {
-        await supabaseServer.storage.from('enterprise-images').remove([storagePath]);
-      }
-    } catch {
-      // URL parse failed — skip storage deletion
     }
 
     await db.enterpriseFloorPlan.delete({ where: { id: planId } });

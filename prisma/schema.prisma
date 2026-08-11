@@ -145,11 +145,20 @@ model EnterpriseImage {
 
 model EnterpriseFloorPlan {
   id           String  @id @default(cuid()) @map("id")
-  url          String  @map("url")
+  url          String? @map("url")
   altText      String? @map("altText")
   sortOrder    Int     @default(0) @map("sortOrder")
   enterpriseId String  @map("enterpriseId")
   createdAt    DateTime @default(now()) @map("createdAt")
+  // Plant metadata fields
+  name         String? @map("name")
+  area         String? @map("area")         // e.g. "80,57 m²"
+  bedrooms     Int?    @map("bedrooms")     // number of bedrooms (1, 2, 3, 4)
+  suites       Int?    @default(0) @map("suites")  // number of suites
+  hasBalcony   Boolean @default(false) @map("hasBalcony")
+  isGarden     Boolean @default(false) @map("isGarden")
+  isPenthouse  Boolean @default(false) @map("isPenthouse")
+  description  String? @map("description")  // e.g. "Torre A · unidade térrea com área privativa ampliada"
 
   enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
 

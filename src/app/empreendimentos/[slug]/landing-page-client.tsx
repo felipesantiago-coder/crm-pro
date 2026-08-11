@@ -22,9 +22,17 @@ interface EnterpriseImage {
 
 interface FloorPlan {
   id: string;
-  url: string;
+  url: string | null;
   altText: string | null;
   sortOrder: number;
+  name: string | null;
+  area: string | null;
+  bedrooms: number | null;
+  suites: number | null;
+  hasBalcony: boolean | null;
+  isGarden: boolean | null;
+  isPenthouse: boolean | null;
+  description: string | null;
 }
 
 interface FormField {
@@ -80,6 +88,31 @@ interface Enterprise {
   images: EnterpriseImage[];
   floorPlans: FloorPlan[];
   formFields: FormField[];
+}
+
+/* ================================================================
+   Helper: build plant label from metadata
+   ================================================================ */
+function buildPlantLabel(plan: FloorPlan): string {
+  const parts: string[] = [];
+  if (plan.bedrooms) {
+    parts.push(`${plan.bedrooms} quarto${plan.bedrooms > 1 ? 's' : ''}`);
+  }
+  if (plan.suites && plan.suites > 0) {
+    if (parts.length > 0) parts[parts.length - 1] += ` (${plan.suites} suíte${plan.suites > 1 ? 's' : ''})`;
+    else parts.push(`${plan.suites} suíte${plan.suites > 1 ? 's' : ''}`);
+  }
+  if (plan.hasBalcony) {
+    if (parts.length > 0) parts[0] += ' com Varanda';
+    else parts.push('Com Varanda');
+  }
+  if (plan.isGarden) {
+    parts.unshift('Garden');
+  }
+  if (plan.isPenthouse) {
+    parts.unshift('Cobertura');
+  }
+  return parts.length > 0 ? parts.join(' ') : 'Planta';
 }
 
 /* ================================================================
@@ -150,8 +183,6 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   const [error, setError] = useState<string | null>(null);
   const [activeImgIdx, setActiveImgIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [activeFloorIdx, setActiveFloorIdx] = useState(0);
-  const [floorLightboxOpen, setFloorLightboxOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [queueUser, setQueueUser] = useState<{ userId: string; userName: string; userPhone: string | null } | null>(initialQueueUser ?? null);
 
@@ -458,13 +489,6 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     return () => { window.removeEventListener('keydown', h); document.body.style.overflow = ''; };
   }, [lightboxOpen, enterprise]);
 
-  useEffect(() => {
-    if (!floorLightboxOpen || !enterprise) return;
-    const plans = enterprise.floorPlans || []; const len = Math.max(plans.length, 1);
-    const h = (ev: KeyboardEvent) => { if (ev.key === 'Escape') setFloorLightboxOpen(false); if (ev.key === 'ArrowRight') setActiveFloorIdx((p) => (p + 1) % len); if (ev.key === 'ArrowLeft') setActiveFloorIdx((p) => (p - 1 + len) % len); };
-    window.addEventListener('keydown', h); document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', h); document.body.style.overflow = ''; };
-  }, [floorLightboxOpen, enterprise]);
 
   // Animated counter for social proof
   useEffect(() => {
@@ -1050,23 +1074,35 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 ))}
               </div>
 
-              {/* Floor plans — horizontal scroll cards */}
+              {/* Floor plans — info cards matching Vitta style */}
               {e.floorPlans && e.floorPlans.length > 0 && (
                 <div className="mt-10 sm:mt-14">
-                  <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">Plantas</p>
-                  <h3 className="text-xl sm:text-2xl font-bold text-[#1a1a1a] mb-5">Conheça as plantas</h3>
-                  <div className="flex gap-4 overflow-x-auto mobile-scroll-x snap-x snap-mandatory pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 sm:gap-5 sm:overflow-visible">
-                    {e.floorPlans.map((plan, i) => (
-                      <button key={plan.id} type="button" onClick={() => { setActiveFloorIdx(i); setFloorLightboxOpen(true); try { (window as any).CRMPIXEL?.trackGalleryClick(i, e.floorPlans.length); } catch {} }}
-                        className="flex-shrink-0 w-64 sm:w-full snap-start aspect-[3/4] rounded-3xl overflow-hidden bg-[#F7F6F3] hover:shadow-lg transition-all duration-300 group relative">
-                        <img src={plan.url} alt={plan.altText || `Planta ${i + 1}`} width={256} height={341} className="w-full h-full object-contain p-4 group-hover:scale-[1.03] transition-transform duration-500" loading="lazy" decoding="async" />
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                          <div className="h-10 w-10 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-lg">
-                            <ZoomIn className="h-4 w-4 text-[#1a1a1a]" />
+                  <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">Plantas Inteligentes</p>
+                  <h3 className="text-xl sm:text-2xl font-bold text-[#1a1a1a] mb-2">Cada metro quadrado pensado para o seu jeito de viver</h3>
+                  <p className="text-sm text-[#1a1a1a]/50 mb-6 sm:mb-8 max-w-xl">Do compacto de 1 quarto ao mais espaçoso — plantas otimizadas com circulação eficiente e ambientes integrados.</p>
+                  <div className="flex flex-col gap-3">
+                    {e.floorPlans.map((plan, i) => {
+                      const label = buildPlantLabel(plan);
+                      return (
+                        <button
+                          key={plan.id}
+                          type="button"
+                          onClick={() => { try { (window as any).CRMPIXEL?.trackGalleryClick(i, e.floorPlans.length); } catch {} }}
+                          className={`w-full text-left rounded-2xl p-4 sm:p-5 transition-all duration-300 border ${i === 0 ? 'bg-[#33492F] border-[#33492F] shadow-lg' : 'bg-[#F7F6F3]/60 border-[#1a1a1a]/[0.06] hover:bg-[#F7F6F3] hover:border-[#1a1a1a]/[0.12] hover:shadow-md'}`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className={`text-[11px] sm:text-xs font-semibold uppercase tracking-[0.1em] mb-1 ${i === 0 ? 'text-[#C9A96E]' : 'text-[#C9A96E]'}`}>{label}</p>
+                              <h4 className={`text-sm sm:text-base font-semibold leading-snug ${i === 0 ? 'text-white' : 'text-[#1a1a1a]'}`}>{plan.name || `Planta ${i + 1}`}</h4>
+                              {plan.description && <p className={`text-xs sm:text-sm mt-1 ${i === 0 ? 'text-white/70' : 'text-[#1a1a1a]/50'}`}>{plan.description}</p>}
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className={`text-sm sm:text-lg font-semibold whitespace-nowrap ${i === 0 ? 'text-white' : 'text-[#1a1a1a]'}`}>{plan.area || '—'}</p>
+                            </div>
                           </div>
-                        </div>
-                      </button>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1508,21 +1544,6 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════
-          LIGHTBOX — Floor Plans
-          ══════════════════════════════════════════════════ */}
-      {floorLightboxOpen && enterprise?.floorPlans && enterprise.floorPlans.length > 0 && (
-        <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-2 sm:p-0" onClick={() => setFloorLightboxOpen(false)}>
-          <button onClick={() => setFloorLightboxOpen(false)} className="absolute top-3 right-3 sm:top-5 sm:right-5 text-white/60 hover:text-white z-10 bg-white/10 backdrop-blur-sm rounded-full p-2 sm:p-2.5 transition-colors"><X className="h-6 w-6" /></button>
-          <div className="absolute top-3 left-3 sm:top-5 sm:left-5 text-white/60 text-xs sm:text-sm bg-white/10 backdrop-blur-sm px-3 py-1.5 sm:px-4 sm:py-2 rounded-full">Planta {activeFloorIdx + 1} / {enterprise.floorPlans.length}</div>
-          <img src={enterprise.floorPlans[activeFloorIdx]?.url} alt={enterprise.floorPlans[activeFloorIdx]?.altText || `Planta ${activeFloorIdx + 1}`} width={800} height={600} className="max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] object-contain rounded-xl" onClick={(ev) => ev.stopPropagation()} decoding="async" />
-          {enterprise.floorPlans[activeFloorIdx]?.altText && <div className="mt-3 sm:mt-4 max-w-lg px-4"><p className="text-sm sm:text-base text-white/90 font-medium text-center leading-relaxed">{enterprise.floorPlans[activeFloorIdx].altText}</p></div>}
-          {enterprise.floorPlans.length > 1 && (<>
-            <button onClick={(ev) => { ev.stopPropagation(); setActiveFloorIdx((p) => (p - 1 + enterprise.floorPlans.length) % enterprise.floorPlans.length); }} className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"><ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" /></button>
-            <button onClick={(ev) => { ev.stopPropagation(); setActiveFloorIdx((p) => (p + 1) % enterprise.floorPlans.length); }} className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"><ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" /></button>
-          </>)}
-        </div>
-      )}
 
     </div>
   );
