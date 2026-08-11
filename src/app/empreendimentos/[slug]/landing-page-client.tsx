@@ -215,6 +215,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   const [toastVisible, setToastVisible] = useState(false);
   const [toastFading, setToastFading] = useState(false);
   const [animatedCount, setAnimatedCount] = useState(0);
+  const [selectedPlanIdx, setSelectedPlanIdx] = useState(0);
   const countAnimatedRef = useRef(false);
 
   // ── Pixel form fields updater ──
@@ -1074,38 +1075,104 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 ))}
               </div>
 
-              {/* Floor plans — info cards matching Vitta style */}
-              {e.floorPlans && e.floorPlans.length > 0 && (
-                <div className="mt-10 sm:mt-14">
-                  <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">Plantas Inteligentes</p>
-                  <h3 className="text-xl sm:text-2xl font-bold text-[#1a1a1a] mb-2">Cada metro quadrado pensado para o seu jeito de viver</h3>
-                  <p className="text-sm text-[#1a1a1a]/50 mb-6 sm:mb-8 max-w-xl">Do compacto de 1 quarto ao mais espaçoso — plantas otimizadas com circulação eficiente e ambientes integrados.</p>
-                  <div className="flex flex-col gap-3">
-                    {e.floorPlans.map((plan, i) => {
-                      const label = buildPlantLabel(plan);
-                      return (
-                        <button
-                          key={plan.id}
-                          type="button"
-                          onClick={() => { try { (window as any).CRMPIXEL?.trackGalleryClick(i, e.floorPlans.length); } catch {} }}
-                          className={`w-full text-left rounded-2xl p-4 sm:p-5 transition-all duration-300 border ${i === 0 ? 'bg-[#33492F] border-[#33492F] shadow-lg' : 'bg-[#F7F6F3]/60 border-[#1a1a1a]/[0.06] hover:bg-[#F7F6F3] hover:border-[#1a1a1a]/[0.12] hover:shadow-md'}`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className={`text-[11px] sm:text-xs font-semibold uppercase tracking-[0.1em] mb-1 ${i === 0 ? 'text-[#C9A96E]' : 'text-[#C9A96E]'}`}>{label}</p>
-                              <h4 className={`text-sm sm:text-base font-semibold leading-snug ${i === 0 ? 'text-white' : 'text-[#1a1a1a]'}`}>{plan.name || `Planta ${i + 1}`}</h4>
-                              {plan.description && <p className={`text-xs sm:text-sm mt-1 ${i === 0 ? 'text-white/70' : 'text-[#1a1a1a]/50'}`}>{plan.description}</p>}
-                            </div>
-                            <div className="text-right flex-shrink-0">
-                              <p className={`text-sm sm:text-lg font-semibold whitespace-nowrap ${i === 0 ? 'text-white' : 'text-[#1a1a1a]'}`}>{plan.area || '—'}</p>
-                            </div>
+
+            </div>
+          </section>
+        </ScrollReveal>
+      )}
+
+      {/* ══════════════════════════════════════════════════
+          7.5 FLOOR PLANS (Vitta-style: card list + image)
+          ══════════════════════════════════════════════════ */}
+      {e.floorPlans && e.floorPlans.length > 0 && (
+        <ScrollReveal>
+          <section id="plantas" className="bg-[#33492F]">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+              <div className="max-w-2xl mb-8 sm:mb-10">
+                <p className="text-[11px] sm:text-xs font-medium text-[#C9A96E] uppercase tracking-[0.15em] mb-2">Espaço · plantas inteligentes</p>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Cada metro quadrado pensado para o seu jeito de viver</h2>
+                <p className="text-sm text-white/50 mt-2 max-w-xl">Do compacto de 1 quarto ao mais espaçoso — plantas otimizadas com circulação eficiente e ambientes integrados.</p>
+              </div>
+              <div className="grid lg:grid-cols-[1fr_1.2fr] gap-8 lg:gap-12 items-start">
+                {/* Left column: card list */}
+                <div className="flex flex-col gap-2">
+                  {e.floorPlans.map((plan, i) => {
+                    const label = buildPlantLabel(plan);
+                    const isSelected = i === selectedPlanIdx;
+                    return (
+                      <button
+                        key={plan.id}
+                        type="button"
+                        onClick={() => { setSelectedPlanIdx(i); try { (window as any).CRMPIXEL?.trackGalleryClick(i, e.floorPlans.length); } catch {} }}
+                        className={`w-full text-left rounded-2xl p-4 sm:p-5 transition-all duration-300 border min-h-[44px] ${isSelected ? 'bg-white/25 border-[#C9A96E] shadow-lg' : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20'}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.1em] mb-1 text-[#C9A96E]">{label}</p>
+                            <h3 className={`text-sm sm:text-base font-semibold leading-snug ${isSelected ? 'text-white' : 'text-white/80'}`}>{plan.name || `Planta ${i + 1}`}</h3>
+                            {plan.description && <p className={`text-xs sm:text-sm mt-1 ${isSelected ? 'text-white/70' : 'text-white/40'}`}>{plan.description}</p>}
                           </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className={`text-sm sm:text-lg font-semibold whitespace-nowrap ${isSelected ? 'text-white' : 'text-white/80'}`}>{plan.area || '—'}</p>
+                            {isSelected && <span className="mt-1 inline-block text-xs text-[#C9A96E] font-medium">selecionada</span>}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {/* CTA card */}
+                  <button
+                    type="button"
+                    onClick={() => { const el = document.getElementById('lead-form'); if (el) el.scrollIntoView({ behavior: 'smooth' }); try { (window as any).CRMPIXEL?.trackCTAClick('floor_plan_book'); } catch {} }}
+                    className="w-full text-left rounded-2xl p-4 sm:p-5 bg-[#C9A96E] hover:bg-[#C9A96E]/85 transition-colors min-h-[44px]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.1em] mb-1 text-[#1a1a1a]/50">Book Completo</p>
+                        <h3 className="text-sm sm:text-base font-semibold text-[#1a1a1a] leading-snug">Quero o book completo com todas as informações</h3>
+                      </div>
+                      <span className="shrink-0 mt-1 text-[#1a1a1a]">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+                      </span>
+                    </div>
+                  </button>
                 </div>
-              )}
+                {/* Right column: floor plan image */}
+                {e.floorPlans[selectedPlanIdx] && (
+                  <div className="lg:sticky lg:top-28">
+                    <div className="relative bg-white/0 border border-white/15 rounded-3xl overflow-hidden">
+                      {/* Overlay badges */}
+                      <div className="absolute top-2 left-2 z-10 bg-[#33492F]/80 backdrop-blur-sm border border-white/20 rounded-xl px-3 sm:px-4 py-2">
+                        <p className="text-[11px] sm:text-xs font-semibold text-[#C9A96E] mb-0.5 uppercase tracking-[0.08em]">{buildPlantLabel(e.floorPlans[selectedPlanIdx])}</p>
+                        <p className="text-xs sm:text-sm text-white font-semibold leading-none">{e.floorPlans[selectedPlanIdx].name || `Planta ${selectedPlanIdx + 1}`}</p>
+                      </div>
+                      <div className="absolute top-2 right-2 z-10 bg-[#C9A96E] text-[#1a1a1a] rounded-xl px-3 py-2 text-center">
+                        <p className="text-sm sm:text-base font-semibold leading-none">{e.floorPlans[selectedPlanIdx].area || '—'}</p>
+                      </div>
+                      {/* Image */}
+                      {e.floorPlans[selectedPlanIdx].url ? (
+                        <div className="relative w-full aspect-square mt-[3.5rem] sm:mt-16">
+                          <img
+                            src={e.floorPlans[selectedPlanIdx].url}
+                            alt={e.floorPlans[selectedPlanIdx].altText || `${e.floorPlans[selectedPlanIdx].name || 'Planta'}`}
+                            className="w-full h-full object-contain object-left transition-opacity duration-300"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-full aspect-square mt-[3.5rem] sm:mt-16 flex items-center justify-center bg-white/5">
+                          <div className="text-center text-white/30">
+                            <LayoutGrid className="h-12 w-12 mx-auto mb-3" />
+                            <p className="text-sm">Imagem da planta não disponível</p>
+                          </div>
+                        </div>
+                      )}
+                      <p className="px-4 sm:px-6 pb-4 text-white/25 text-[10px] sm:text-xs leading-relaxed text-center">Imagens meramente ilustrativas. Sujeito a alterações conforme memorial de incorporação.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </section>
         </ScrollReveal>
