@@ -68,6 +68,8 @@ export async function GET(
         landingSubtitle: true,
         landingDescription: true,
         cachedInfo: true,
+        mapLatitude: true,
+        mapLongitude: true,
         createdAt: true,
         _count: {
           select: { clients: true },

@@ -118,6 +118,8 @@ model Enterprise {
   landingSubtitle   String?  @map("landingSubtitle")
   landingDescription String? @map("landingDescription")
   cachedInfo        Json?    @map("cachedInfo")
+  mapLatitude       Float?   @map("mapLatitude")
+  mapLongitude      Float?   @map("mapLongitude")
   createdAt         DateTime @default(now()) @map("createdAt")
   updatedAt         DateTime @updatedAt @map("updatedAt")
 

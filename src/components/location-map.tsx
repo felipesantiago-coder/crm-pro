@@ -25,7 +25,7 @@ function createPinIcon(): L.DivIcon {
 interface LocationMapProps {
   /** Full address string for display in popup */
   address: string;
-  /** Location fields for server-side geocoding API */
+  /** Location fields for server-side geocoding API (fallback) */
   location: {
     address?: string | null;
     neighborhood?: string | null;
@@ -33,11 +33,14 @@ interface LocationMapProps {
     state?: string | null;
     additionalInfo?: string | null;
   };
+  /** Pre-cached coordinates from DB (source of truth) */
+  dbLatitude?: number | null;
+  dbLongitude?: number | null;
   /** Tailwind classes for the wrapper */
   className?: string;
 }
 
-export default function LocationMap({ address, location, className = '' }: LocationMapProps) {
+export default function LocationMap({ address, location, dbLatitude, dbLongitude, className = '' }: LocationMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -49,28 +52,30 @@ export default function LocationMap({ address, location, className = '' }: Locat
     let map: L.Map | null = null;
 
     async function init() {
-      // Build query params for our server-side geocoding API
-      const params = new URLSearchParams();
-      if (location.address) params.set('address', location.address);
-      if (location.neighborhood) params.set('neighborhood', location.neighborhood);
-      if (location.city) params.set('city', location.city);
-      if (location.state) params.set('state', location.state);
-      if (location.additionalInfo) params.set('additionalInfo', location.additionalInfo);
+      let lat: number | null = dbLatitude ?? null;
+      let lng: number | null = dbLongitude ?? null;
 
-      let lat: number | null = null;
-      let lng: number | null = null;
+      // If no DB coordinates, fall back to server-side geocoding API
+      if (lat === null || lng === null) {
+        const params = new URLSearchParams();
+        if (location.address) params.set('address', location.address);
+        if (location.neighborhood) params.set('neighborhood', location.neighborhood);
+        if (location.city) params.set('city', location.city);
+        if (location.state) params.set('state', location.state);
+        if (location.additionalInfo) params.set('additionalInfo', location.additionalInfo);
 
-      try {
-        const res = await fetch(`/api/enterprises/geocode?${params.toString()}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.lat != null && data.lng != null) {
-            lat = data.lat;
-            lng = data.lng;
+        try {
+          const res = await fetch(`/api/enterprises/geocode?${params.toString()}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.lat != null && data.lng != null) {
+              lat = data.lat;
+              lng = data.lng;
+            }
           }
+        } catch {
+          // network error — will show error state
         }
-      } catch {
-        // network error — will show error state
       }
 
       if (cancelled || lat === null || lng === null) {
@@ -122,7 +127,7 @@ export default function LocationMap({ address, location, className = '' }: Locat
         mapRef.current = null;
       }
     };
-  }, [address, location]);
+  }, [address, location, dbLatitude, dbLongitude]);
 
   return (
     <div className={`relative ${className}`}>
