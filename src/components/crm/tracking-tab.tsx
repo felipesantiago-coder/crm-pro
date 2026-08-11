@@ -7,7 +7,8 @@ import {
   MousePointerClick, Globe, FileCode, AlertTriangle, BarChart3,
   Activity, Trophy, Trash2, Loader2, Monitor, Smartphone, Tablet,
   MapPin, Clock, ExternalLink, UserCheck, Layers, Hash, ArrowRight,
-  CircleDot, Wifi, Image, Gauge, FileText,
+  CircleDot, Wifi, Image, Gauge, FileText, Timer, LogOut, DoorOpen,
+  Repeat, CalendarDays, ScrollText, MousePointer, FormInput,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,12 @@ interface TrackingMetrics {
   avgEventsPerVisitor: number;
   bounceRate: number;
   pageviewsPerSession: number;
+  avgSessionDuration: number;
+  returningVisitors: number;
+  newVisitors: number;
+  returningRate: number;
+  exitIntents: number;
+  exitIntentRate: number;
 }
 
 interface ChartPoint {
@@ -131,6 +138,13 @@ interface ReferrerRow {
   leads: number;
 }
 
+interface MediumRow { medium: string; visitors: number; leads: number; conversionRate: number; }
+interface TermRow { term: string; visitors: number; leads: number; conversionRate: number; }
+interface ScrollDepthRow { depth: string; count: number; }
+interface FormInteractionRow { eventType: string; eventName: string | null; count: number; }
+interface EntryPageRow { url: string; count: number; }
+interface DayOfWeekRow { dow: number; dowName: string; visitors: number; leads: number; conversionRate: number; }
+
 interface MetaDiscrepancy {
   pixelLeads: number;
   crmMetaLeads: number;
@@ -144,8 +158,11 @@ interface TrackingDashboard {
   byCampaign: CampaignRow[];
   bySource: SourceRow[];
   byContent: ContentRow[];
+  byMedium: MediumRow[];
+  byTerm: TermRow[];
   byEventType: EventTypeRow[];
   topPages: TopPage[];
+  topEntryPages: EntryPageRow[];
   topCountries: GeoRow[];
   topCities: CityRow[];
   deviceBreakdown: DeviceRow[];
@@ -153,6 +170,9 @@ interface TrackingDashboard {
   recentLeads: RecentLead[];
   referrerBreakdown: ReferrerRow[];
   metaDiscrepancy: MetaDiscrepancy;
+  scrollDepth: ScrollDepthRow[];
+  formInteractions: FormInteractionRow[];
+  engagementByDayOfWeek: DayOfWeekRow[];
 }
 
 // ============================================================
@@ -218,6 +238,17 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   lead: '#22D3EE',
   click: VIOLET,
   scroll: AMBER,
+  whatsapp_click: WHATSAPP,
+  exit_intent: ROSE,
+  scroll_depth: '#6366F1',
+  form_focus: '#3B82F6',
+  form_blur: '#60A5FA',
+  form_abandon: '#F43F5E',
+};
+
+const DAY_LABELS: Record<string, string> = {
+  'Sunday': 'Dom', 'Monday': 'Seg', 'Tuesday': 'Ter', 'Wednesday': 'Qua',
+  'Thursday': 'Qui', 'Friday': 'Sex', 'Saturday': 'Sáb',
 };
 
 function getEventTypeColor(type: string): string {
@@ -602,15 +633,18 @@ export function TrackingTab() {
 
   // ── KPI definitions ──
   const kpis = [
-    { label: 'Visitantes Únicos', value: fmt.format(m.totalVisitors), icon: <Users className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-[#C9A96E] to-[#A8894F]', subtitle: `${fmtDec(m.avgEventsPerVisitor)} eventos por visitante` },
+    { label: 'Visitantes Únicos', value: fmt.format(m.totalVisitors), icon: <Users className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-[#C9A96E] to-[#A8894F]', subtitle: `${fmtDec(m.avgEventsPerVisitor)} eventos/visitante` },
     { label: 'Pageviews', value: fmt.format(m.totalPageviews), icon: <Eye className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-blue-500 to-blue-700', subtitle: `${fmtDec(m.pageviewsPerSession)} por sessão` },
     { label: 'Eventos Totais', value: fmt.format(m.totalEvents), icon: <Zap className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-amber-500 to-orange-600', subtitle: `${data.byEventType.length} tipos registrados` },
     { label: 'Leads Rastreados', value: fmt.format(m.uniqueLeads), icon: <Target className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-emerald-500 to-teal-600', subtitle: 'visitantes vinculados ao CRM' },
     ...(m.whatsappClicks > 0 ? [{ label: 'Cliques WhatsApp', value: fmt.format(m.whatsappClicks), icon: <Wifi className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-[#25D366] to-[#128C7E]', subtitle: `${m.totalConversions} conversões no total` }] : []),
-    { label: 'Taxa de Conversão Real', value: fmtPct(m.realConversionRate ?? m.conversionRate), icon: <TrendingUp className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-violet-500 to-purple-700', subtitle: 'leads + WhatsApp' },
-    { label: 'Taxa de Rejeição', value: fmtPct(m.bounceRate), icon: <ArrowDownRight className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-rose-500 to-pink-700', subtitle: '1 pageview, sem interação' },
-    { label: 'Sessões', value: fmt.format(m.uniqueSessions), icon: <CircleDot className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-cyan-500 to-cyan-700', subtitle: `${fmtDec(m.pageviewsPerSession)} pageviews/sessão` },
-    { label: 'Páginas / Sessão', value: fmtDec(m.pageviewsPerSession), icon: <Gauge className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-indigo-500 to-indigo-700', subtitle: `de ${fmt.format(m.totalPageviews)} pageviews` },
+    { label: 'Conversão Real', value: fmtPct(m.realConversionRate ?? m.conversionRate), icon: <TrendingUp className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-violet-500 to-purple-700', subtitle: 'leads + WhatsApp' },
+    { label: 'Rejeição', value: fmtPct(m.bounceRate), icon: <ArrowDownRight className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-rose-500 to-pink-700', subtitle: '1 pageview, sem interação' },
+    { label: 'Sessões', value: fmt.format(m.uniqueSessions), icon: <CircleDot className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-cyan-500 to-cyan-700', subtitle: `${fmtDec(m.pageviewsPerSession)} pvs/sessão` },
+    { label: 'Duração Média', value: m.avgSessionDuration >= 60 ? `${Math.round(m.avgSessionDuration / 60)}m ${Math.round(m.avgSessionDuration % 60)}s` : `${Math.round(m.avgSessionDuration)}s`, icon: <Timer className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-teal-500 to-emerald-700', subtitle: 'tempo médio por sessão' },
+    { label: 'Visitantes Recorrentes', value: fmtPct(m.returningRate), icon: <Repeat className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-purple-500 to-fuchsia-700', subtitle: `${fmt.format(m.returningVisitors)} de ${fmt.format(m.totalVisitors)}` },
+    { label: 'Intenções de Saída', value: fmt.format(m.exitIntents), icon: <LogOut className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-red-400 to-red-600', subtitle: `${fmtPct(m.exitIntentRate)} dos visitantes` },
+    { label: 'Novos Visitantes', value: fmt.format(m.newVisitors), icon: <UserCheck className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-sky-500 to-blue-700', subtitle: `${fmtPct(100 - m.returningRate)} do total` },
   ];
 
   // ── Main Render ──
@@ -763,7 +797,7 @@ export function TrackingTab() {
         </Section>
       </div>
 
-      {/* ═══ UTM: Campaigns + Sources + Content ═══ */}
+      {/* ═══ UTM: Campaigns + Sources + Content + Medium + Term ═══ */}
       {hasUtmData && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {sortedCampaigns.filter(c => c.campaign !== '(sem campanha)').length > 0 && (
@@ -825,6 +859,52 @@ export function TrackingTab() {
                     </div>
                     <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
                       <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / (sortedContent[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: VIOLET }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+        </div>
+      )}
+
+      {/* UTM Medium + Term (second row) */}
+      {hasUtmData && (data.byMedium?.length > 0 || data.byTerm?.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {data.byMedium && data.byMedium.length > 0 && (
+            <Section title="UTM Medium" icon={<Layers className="h-4 w-4 text-indigo-500" />} description="Canal de aquisição (cpc, cpm, organic...)">
+              <div className="space-y-2.5">
+                {[...data.byMedium].sort((a, b) => b.visitors - a.visitors).slice(0, 8).map(row => (
+                  <div key={row.medium}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-medium text-foreground truncate" title={row.medium}>{row.medium}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] text-muted-foreground tabular-nums">{fmt.format(row.visitors)}</span>
+                        <ConvBadge rate={row.conversionRate} />
+                      </div>
+                    </div>
+                    <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / ([...data.byMedium].sort((a, b) => b.visitors - a.visitors)[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: '#6366F1' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+          {data.byTerm && data.byTerm.filter(t => t.term !== '(não definido)').length > 0 && (
+            <Section title="UTM Term" icon={<Hash className="h-4 w-4 text-teal-500" />} description="Termos de busca / palavras-chave">
+              <div className="space-y-2.5">
+                {[...data.byTerm].filter(t => t.term !== '(não definido)').sort((a, b) => b.visitors - a.visitors).slice(0, 8).map(row => (
+                  <div key={row.term}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-medium text-foreground truncate" title={row.term}>{row.term}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] text-muted-foreground tabular-nums">{fmt.format(row.visitors)}</span>
+                        <ConvBadge rate={row.conversionRate} />
+                      </div>
+                    </div>
+                    <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / ([...data.byTerm].filter(t => t.term !== '(não definido)').sort((a, b) => b.visitors - a.visitors)[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: '#14B8A6' }} />
                     </div>
                   </div>
                 ))}
@@ -1024,6 +1104,134 @@ export function TrackingTab() {
           </Section>
         )}
       </div>
+
+      {/* ═══ Entry Pages + Day of Week + Scroll Depth ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {data.topEntryPages && data.topEntryPages.length > 0 && (
+          <Section title="Páginas de Entrada" icon={<DoorOpen className="h-4 w-4 text-sky-500" />} description="Primeira página visitada por cada visitante">
+            <div className="space-y-2.5">
+              {data.topEntryPages.slice(0, 8).map((row, idx) => {
+                const maxEntry = data.topEntryPages[0]?.count || 1;
+                return (
+                  <div key={row.url} className="group">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[10px] text-muted-foreground tabular-nums w-4 text-right shrink-0">{idx + 1}</span>
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-[11px] font-medium text-foreground truncate cursor-default hover:text-sky-500 transition-colors">{truncateUrl(row.url)}</span>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="text-[10px] max-w-sm break-all">{row.url}</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                      <span className="text-[11px] font-medium text-foreground tabular-nums shrink-0">{fmt.format(row.count)}</span>
+                    </div>
+                    <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.count / maxEntry) * 100, 1)}%`, backgroundColor: '#0EA5E9' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        )}
+
+        {data.engagementByDayOfWeek && data.engagementByDayOfWeek.length > 0 && (
+          <Section title="Engajamento por Dia da Semana" icon={<CalendarDays className="h-4 w-4 text-violet-500" />} description="Qual dia gera mais visitantes e leads">
+            <div className="space-y-2.5">
+              {[...data.engagementByDayOfWeek].sort((a, b) => b.visitors - a.visitors).map(row => {
+                const maxDay = Math.max(...data.engagementByDayOfWeek.map(d => d.visitors), 1);
+                const dayLabel = DAY_LABELS[row.dowName] ?? row.dowName?.slice(0, 3);
+                return (
+                  <div key={row.dow}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-medium text-foreground w-8">{dayLabel}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] text-muted-foreground tabular-nums">{fmt.format(row.visitors)} vis</span>
+                        {row.leads > 0 && <span className="text-[10px] text-emerald-600 tabular-nums">{row.leads} leads</span>}
+                        <ConvBadge rate={row.conversionRate} />
+                      </div>
+                    </div>
+                    <div className="h-1.5 bg-muted/30 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / maxDay) * 100, 2)}%`, backgroundColor: '#8B5CF6' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        )}
+
+        {data.scrollDepth && data.scrollDepth.length > 0 && (
+          <Section title="Profundidade de Scroll" icon={<ScrollText className="h-4 w-4 text-indigo-500" />} description="Até onde os visitantes rolam a página">
+            <div className="space-y-2.5">
+              {data.scrollDepth.map(row => {
+                const totalScroll = data.scrollDepth.reduce((s, r) => s + r.count, 0);
+                const pct = totalScroll > 0 ? (row.count / totalScroll) * 100 : 0;
+                const depthPct = parseInt(row.depth.replace(/[^0-9]/g, ''), 10);
+                const barColor = depthPct >= 75 ? EMERALD : depthPct >= 50 ? BLUE : depthPct >= 25 ? AMBER : ROSE;
+                return (
+                  <div key={row.depth}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: barColor }} />
+                        <span className="text-[11px] font-medium text-foreground">{row.depth}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground tabular-nums">{fmtPct(pct)}</span>
+                        <span className="text-[11px] font-bold text-foreground tabular-nums">{fmt.format(row.count)}</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 bg-muted/30 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: barColor }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        )}
+      </div>
+
+      {/* ═══ Form Interactions ═══ */}
+      {data.formInteractions && data.formInteractions.length > 0 && (
+        <Section title="Interações com o Formulário" icon={<FormInput className="h-4 w-4 text-blue-500" />} description="Foco, saída e abandono de campos do formulário">
+          <div className="overflow-x-auto -mx-5 sm:mx-0">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border/50">
+                  <th className="text-left py-2 px-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Tipo</th>
+                  <th className="text-left py-2 px-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Campo</th>
+                  <th className="text-right py-2 px-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Eventos</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.formInteractions.map((row, idx) => {
+                  const typeLabel = row.eventType === 'form_focus' ? 'Foco no Campo' : row.eventType === 'form_blur' ? 'Saída do Campo' : 'Abandono';
+                  const typeColor = row.eventType === 'form_focus' ? 'text-blue-600 bg-blue-500/10' : row.eventType === 'form_blur' ? 'text-sky-600 bg-sky-500/10' : 'text-rose-600 bg-rose-500/10';
+                  return (
+                    <tr key={`${row.eventType}-${row.eventName}-${idx}`} className="border-b border-border/20 hover:bg-muted/20 transition-colors">
+                      <td className="py-2 px-2"><Badge variant="secondary" className={cn('h-4 px-1 text-[9px]', typeColor)}>{typeLabel}</Badge></td>
+                      <td className="py-2 px-2 text-foreground font-medium truncate max-w-[200px]" title={row.eventName ?? ''}>{row.eventName ?? '—'}</td>
+                      <td className="py-2 px-2 text-right tabular-nums font-medium text-foreground">{fmt.format(row.count)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 rounded-lg bg-muted/20 border border-border/50 p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                <b>form_focus</b> = visitante clicou no campo · <b>form_blur</b> = saiu sem preencher · <b>form_abandon</b> = saiu da página com campos pendentes. Campos com alto abandono indicam pontos de fricção na conversão.
+              </p>
+            </div>
+          </div>
+        </Section>
+      )}
 
       {/* ═══ Recent Leads ═══ */}
       {data.recentLeads.length > 0 && (
