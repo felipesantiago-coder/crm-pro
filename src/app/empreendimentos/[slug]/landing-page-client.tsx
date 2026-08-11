@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import {
   Building2, MapPin, ArrowLeft, ChevronLeft, ChevronRight,
   X, Clock, DollarSign, Phone, Mail, MessageSquare,
@@ -89,6 +90,24 @@ interface Enterprise {
   floorPlans: FloorPlan[];
   formFields: FormField[];
 }
+
+/* ================================================================
+   Dynamic imports (heavy deps)
+   ================================================================ */
+const LocationMap = dynamic(() => import('@/components/location-map'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[260px] sm:h-[320px] rounded-2xl bg-[#1a1a1a]/[0.04] flex items-center justify-center">
+      <div className="flex flex-col items-center gap-2 text-[#1a1a1a]/20">
+        <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+        <span className="text-xs">Carregando mapa...</span>
+      </div>
+    </div>
+  ),
+});
 
 /* ================================================================
    Helper: build plant label from metadata
@@ -629,6 +648,13 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   const info = e.cachedInfo as ExtractedInfo | null;
   const images = e.images || [];
   const heroImage = e.imageUrl || images[0]?.url || '';
+
+  // Geocoding address for map
+  const mapAddress = useMemo(() => {
+    const loc = info?.location;
+    if (!loc) return '';
+    return [loc.address, loc.neighborhood, loc.city, loc.state].filter(Boolean).join(', ');
+  }, [info?.location]);
 
   /* ── Lightbox: sync index from manual scroll ── */
   const lightboxScrollHandler = useCallback(() => {
@@ -1243,33 +1269,31 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               <div className="text-center mb-8 sm:mb-10">
                 <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Onde está localizado</h2>
               </div>
-              <div className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-8 shadow-sm">
-                <div className="flex flex-col sm:flex-row gap-5 sm:gap-8 items-start">
-                  <div className="flex-1 space-y-3">
-                    {info?.location?.address && (
-                      <div className="flex items-start gap-3">
-                        <MapPin className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-[#1a1a1a]/60">{info.location.address}</p>
-                      </div>
-                    )}
-                    {(info?.location?.neighborhood || info?.location?.city) && (
-                      <div className="flex items-start gap-3">
-                        <Navigation className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-[#1a1a1a]/60">{[info?.location?.neighborhood, info?.location?.city, info?.location?.state].filter(Boolean).join(', ')}</p>
-                      </div>
-                    )}
-                    {info?.location?.additionalInfo && (
-                      <div className="flex items-start gap-3">
-                        <Map className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-[#1a1a1a]/60">{info.location.additionalInfo}</p>
-                      </div>
-                    )}
-                  </div>
-                  <a href={`https://www.google.com/maps/search/${encodeURIComponent([info?.location?.address, info?.location?.neighborhood, info?.location?.city, info?.location?.state].filter(Boolean).join(', '))}`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="flex-shrink-0 min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#33492F] text-white text-sm font-semibold hover:bg-[#33492F]/90 transition-colors">
-                    <Navigation className="h-4 w-4" /> Ver no mapa
-                  </a>
+              <div className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] shadow-sm overflow-hidden">
+                {/* Map */}
+                {mapAddress && (
+                  <LocationMap address={mapAddress} className="h-[260px] sm:h-[380px] lg:h-[420px]" />
+                )}
+                {/* Address details */}
+                <div className="p-5 sm:p-8 space-y-3">
+                  {info?.location?.address && (
+                    <div className="flex items-start gap-3">
+                      <MapPin className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-[#1a1a1a]/60">{info.location.address}</p>
+                    </div>
+                  )}
+                  {(info?.location?.neighborhood || info?.location?.city) && (
+                    <div className="flex items-start gap-3">
+                      <Navigation className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-[#1a1a1a]/60">{[info?.location?.neighborhood, info?.location?.city, info?.location?.state].filter(Boolean).join(', ')}</p>
+                    </div>
+                  )}
+                  {info?.location?.additionalInfo && (
+                    <div className="flex items-start gap-3">
+                      <Map className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-[#1a1a1a]/60">{info.location.additionalInfo}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
