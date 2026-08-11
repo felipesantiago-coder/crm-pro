@@ -52,6 +52,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Image from 'next/image';
+import { MapCoordsFields } from './map-coords-fields';
 
 interface EnterpriseItem {
   id: string;
@@ -85,6 +86,8 @@ export function EnterpriseManagement() {
   const [editingEnterprise, setEditingEnterprise] = useState<EnterpriseItem | null>(null);
   const [editName, setEditName] = useState('');
   const [editRegion, setEditRegion] = useState('');
+  const [editMapLatitude, setEditMapLatitude] = useState('');
+  const [editMapLongitude, setEditMapLongitude] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Delete dialog
@@ -172,10 +175,12 @@ export function EnterpriseManagement() {
     }
   }
 
-  function openEditDialog(enterprise: EnterpriseItem) {
+  function openEditDialog(enterprise: any) {
     setEditingEnterprise(enterprise);
     setEditName(enterprise.name);
     setEditRegion(enterprise.region || '');
+    setEditMapLatitude(enterprise.mapLatitude != null ? String(enterprise.mapLatitude) : '');
+    setEditMapLongitude(enterprise.mapLongitude != null ? String(enterprise.mapLongitude) : '');
   }
 
   async function handleEditSave() {
@@ -189,6 +194,8 @@ export function EnterpriseManagement() {
         body: JSON.stringify({
           name: editName.trim(),
           region: editRegion.trim() || null,
+          mapLatitude: editMapLatitude.trim() !== '' ? parseFloat(editMapLatitude) : null,
+          mapLongitude: editMapLongitude.trim() !== '' ? parseFloat(editMapLongitude) : null,
         }),
       });
 
@@ -993,6 +1000,14 @@ export function EnterpriseManagement() {
                 disabled={saving}
               />
             </div>
+
+            <MapCoordsFields
+              latitude={editMapLatitude}
+              longitude={editMapLongitude}
+              onLatitudeChange={setEditMapLatitude}
+              onLongitudeChange={setEditMapLongitude}
+              disabled={saving}
+            />
 
             {/* PDF section in edit dialog */}
             <div className="space-y-2">

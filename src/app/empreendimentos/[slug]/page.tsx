@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 const ENTERPRISE_SELECT = {
   id: true, name: true, slug: true, region: true, imageUrl: true,
   landingTitle: true, landingSubtitle: true, landingDescription: true,
-  cachedInfo: true, createdAt: true,
+  cachedInfo: true, mapLatitude: true, mapLongitude: true, createdAt: true,
   _count: { select: { clients: true } },
   images: { select: { id: true, url: true, altText: true, sortOrder: true }, orderBy: { sortOrder: 'asc' } },
   floorPlans: { select: { id: true, url: true, altText: true, sortOrder: true, name: true, area: true, bedrooms: true, suites: true, hasBalcony: true, isGarden: true, isPenthouse: true, description: true }, orderBy: { sortOrder: 'asc' } },

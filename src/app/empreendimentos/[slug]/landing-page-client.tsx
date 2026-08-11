@@ -85,6 +85,8 @@ interface Enterprise {
   landingSubtitle: string | null;
   landingDescription: string | null;
   cachedInfo: ExtractedInfo | null;
+  mapLatitude: number | null;
+  mapLongitude: number | null;
   _count?: { clients: number };
   images: EnterpriseImage[];
   floorPlans: FloorPlan[];
@@ -1269,8 +1271,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               </div>
               <div className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] shadow-sm overflow-hidden">
                 {/* Map */}
-                {mapAddress && (
-                  <LocationMap address={mapAddress} location={info?.location || {}} className="h-[260px] sm:h-[380px] lg:h-[420px]" />
+                {(mapAddress || (e.mapLatitude != null && e.mapLongitude != null)) && (
+                  <LocationMap address={mapAddress} location={info?.location || {}} dbLatitude={e.mapLatitude} dbLongitude={e.mapLongitude} className="h-[260px] sm:h-[380px] lg:h-[420px]" />
                 )}
                 {/* Address details */}
                 <div className="p-5 sm:p-8 space-y-3">

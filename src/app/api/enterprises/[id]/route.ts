@@ -46,7 +46,7 @@ export async function PUT(
 
     const { id } = await params;
     const body = await request.json();
-    const { name, region } = body;
+    const { name, region, mapLatitude, mapLongitude } = body;
 
     const enterprise = await db.enterprise.findUnique({ where: { id } });
     if (!enterprise) {
@@ -63,6 +63,12 @@ export async function PUT(
     }
     if (region !== undefined) {
       updateData.region = region?.trim() || null;
+    }
+    if (mapLatitude !== undefined) {
+      updateData.mapLatitude = mapLatitude;
+    }
+    if (mapLongitude !== undefined) {
+      updateData.mapLongitude = mapLongitude;
     }
 
     const updated = await db.enterprise.update({
