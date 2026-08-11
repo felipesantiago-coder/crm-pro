@@ -1272,7 +1272,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               <div className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] shadow-sm overflow-hidden">
                 {/* Map */}
                 {mapAddress && (
-                  <LocationMap address={mapAddress} className="h-[260px] sm:h-[380px] lg:h-[420px]" />
+                  <LocationMap address={mapAddress} location={info?.location || {}} className="h-[260px] sm:h-[380px] lg:h-[420px]" />
                 )}
                 {/* Address details */}
                 <div className="p-5 sm:p-8 space-y-3">

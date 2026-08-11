@@ -4,30 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-/* ── Geocoding cache (session-wide) ── */
-const geoCache = new Map<string, [number, number]>();
-
-async function geocode(query: string): Promise<[number, number] | null> {
-  if (!query || query.trim().length < 3) return null;
-  const key = query.trim().toLowerCase();
-  if (geoCache.has(key)) return geoCache.get(key)!;
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&accept-language=pt-BR`,
-      { headers: { 'User-Agent': 'CRM-Pro LandingPage/1.0' } },
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0) return null;
-    const coords: [number, number] = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-    if (isNaN(coords[0]) || isNaN(coords[1])) return null;
-    geoCache.set(key, coords);
-    return coords;
-  } catch {
-    return null;
-  }
-}
-
 /* ── Custom pin SVG (inline, no external assets) ── */
 function createPinIcon(): L.DivIcon {
   const svg = `
@@ -47,14 +23,21 @@ function createPinIcon(): L.DivIcon {
 
 /* ── Component props ── */
 interface LocationMapProps {
+  /** Full address string for display in popup */
   address: string;
-  /** Optional pre-cached coordinates [lat, lng] to skip geocoding */
-  coordinates?: [number, number] | null;
+  /** Location fields for server-side geocoding API */
+  location: {
+    address?: string | null;
+    neighborhood?: string | null;
+    city?: string | null;
+    state?: string | null;
+    additionalInfo?: string | null;
+  };
   /** Tailwind classes for the wrapper */
   className?: string;
 }
 
-export default function LocationMap({ address, coordinates: initialCoords, className = '' }: LocationMapProps) {
+export default function LocationMap({ address, location, className = '' }: LocationMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -66,18 +49,34 @@ export default function LocationMap({ address, coordinates: initialCoords, class
     let map: L.Map | null = null;
 
     async function init() {
-      // Try cached/initial coords first, otherwise geocode
-      let coords = initialCoords;
-      if (!coords) {
-        coords = await geocode(address);
+      // Build query params for our server-side geocoding API
+      const params = new URLSearchParams();
+      if (location.address) params.set('address', location.address);
+      if (location.neighborhood) params.set('neighborhood', location.neighborhood);
+      if (location.city) params.set('city', location.city);
+      if (location.state) params.set('state', location.state);
+      if (location.additionalInfo) params.set('additionalInfo', location.additionalInfo);
+
+      let lat: number | null = null;
+      let lng: number | null = null;
+
+      try {
+        const res = await fetch(`/api/enterprises/geocode?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.lat != null && data.lng != null) {
+            lat = data.lat;
+            lng = data.lng;
+          }
+        }
+      } catch {
+        // network error — will show error state
       }
 
-      if (cancelled || !coords) {
+      if (cancelled || lat === null || lng === null) {
         if (!cancelled) setStatus('error');
         return;
       }
-
-      const [lat, lng] = coords;
 
       // Initialize map
       map = L.map(containerRef.current!, {
@@ -93,7 +92,7 @@ export default function LocationMap({ address, coordinates: initialCoords, class
         keyboard: false,
       });
 
-      // Tile layer — clean, minimal style
+      // Tile layer
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
         maxZoom: 19,
@@ -105,7 +104,7 @@ export default function LocationMap({ address, coordinates: initialCoords, class
       // Popup with address only — no links
       if (address) {
         marker.bindPopup(
-          `<div style="font-family:system-ui,sans-serif;font-size:13px;color:#1a1a1a;line-height:1.4;max-width:220px">${address}</div>`,
+          `<div style="font-family:system-ui,sans-serif;font-size:13px;color:#1a1a1a;line-height:1.4;max-width:220px">${address.replace(/</g, '&lt;')}</div>`,
           { closeButton: true, className: 'location-popup' },
         );
       }
@@ -123,7 +122,7 @@ export default function LocationMap({ address, coordinates: initialCoords, class
         mapRef.current = null;
       }
     };
-  }, [address, initialCoords]);
+  }, [address, location]);
 
   return (
     <div className={`relative ${className}`}>
@@ -171,12 +170,6 @@ export default function LocationMap({ address, coordinates: initialCoords, class
         }
         .location-popup .leaflet-popup-tip {
           box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-        }
-        /* Hide any potential routing suggestions */
-        .location-popup a[href*="directions"],
-        .location-popup a[href*="route"],
-        .location-popup a[href*="navigate"] {
-          display: none !important;
         }
       `}</style>
     </div>
