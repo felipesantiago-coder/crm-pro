@@ -1364,9 +1364,6 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                   className="min-h-[44px] inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15">
                   <Phone className="h-4 w-4" /> Prefere o WhatsApp? Fale conosco
                 </button>
-                {queueUser?.userName && (
-                  <p className="text-xs text-[#1a1a1a]/30 mt-3">Seu consultor: <span className="font-medium text-[#1a1a1a]/50">{queueUser.userName}</span></p>
-                )}
               </div>
 
               {/* Right — Form */}
@@ -1557,13 +1554,6 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
             <span className="absolute inset-0 rounded-full bg-[#25D366] animate-pulse-ring" />
             <svg className="h-6 w-6 relative z-10" viewBox="0 0 24 24" fill="currentColor" dangerouslySetInnerHTML={{ __html: WHATSAPP_ICON }} />
           </button>
-          {/* Agent tooltip */}
-          {queueUser?.userName && (
-            <div className="absolute bottom-full right-0 mb-2 bg-[#1a1a1a]/90 backdrop-blur-sm text-white text-xs px-3 py-2 rounded-xl whitespace-nowrap shadow-lg">
-              <UserCheck className="h-3 w-3 inline-block mr-1 text-emerald-400" />
-              {queueUser.userName} está online
-            </div>
-          )}
         </div>
       )}
 
