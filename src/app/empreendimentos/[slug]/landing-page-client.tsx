@@ -217,6 +217,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   const [animatedCount, setAnimatedCount] = useState(0);
   const [selectedPlanIdx, setSelectedPlanIdx] = useState(0);
   const countAnimatedRef = useRef(false);
+  const lightboxScrollRef = useRef<HTMLDivElement>(null);
 
   // ── Pixel form fields updater ──
   const updatePixelFormFields = useCallback((name: string, phone: string, email: string, custom: Record<string, string>) => {
@@ -485,11 +486,21 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   useEffect(() => {
     if (!lightboxOpen || !enterprise) return;
     const imgs = enterprise.images || []; const len = Math.max(imgs.length, 1);
-    const h = (ev: KeyboardEvent) => { if (ev.key === 'Escape') setLightboxOpen(false); if (ev.key === 'ArrowRight') setActiveImgIdx((p) => (p + 1) % len); if (ev.key === 'ArrowLeft') setActiveImgIdx((p) => (p - 1 + len) % len); };
+    const h = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setLightboxOpen(false);
+      if (ev.key === 'ArrowRight') { const next = (activeImgIdx + 1) % len; setActiveImgIdx(next); lightboxScrollRef.current?.scrollTo({ left: next * lightboxScrollRef.current.clientWidth, behavior: 'smooth' }); }
+      if (ev.key === 'ArrowLeft') { const prev = (activeImgIdx - 1 + len) % len; setActiveImgIdx(prev); lightboxScrollRef.current?.scrollTo({ left: prev * lightboxScrollRef.current.clientWidth, behavior: 'smooth' }); }
+    };
     window.addEventListener('keydown', h); document.body.style.overflow = 'hidden';
     return () => { window.removeEventListener('keydown', h); document.body.style.overflow = ''; };
-  }, [lightboxOpen, enterprise]);
+  }, [lightboxOpen, enterprise, activeImgIdx]);
 
+  /* ── Lightbox: scroll to active image on open ── */
+  useEffect(() => {
+    if (!lightboxOpen || !lightboxScrollRef.current) return;
+    const container = lightboxScrollRef.current;
+    requestAnimationFrame(() => { container.scrollTo({ left: activeImgIdx * container.clientWidth, behavior: 'instant' as ScrollBehavior }); });
+  }, [lightboxOpen]);
 
   // Animated counter for social proof
   useEffect(() => {
@@ -618,6 +629,14 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   const images = e.images || [];
   const heroImage = e.imageUrl || images[0]?.url || '';
 
+  /* ── Lightbox: sync index from manual scroll ── */
+  const lightboxScrollHandler = useCallback(() => {
+    const container = lightboxScrollRef.current;
+    if (!container || images.length === 0) return;
+    const idx = Math.round(container.scrollLeft / container.clientWidth);
+    if (idx >= 0 && idx < images.length && idx !== activeImgIdx) setActiveImgIdx(idx);
+  }, [images.length, activeImgIdx]);
+
   // Status detection
   const allText = [info?.summary, ...(info?.differentials || [])].filter(Boolean).join(' ');
   let status: string | null = info?.status || null;
@@ -698,8 +717,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     Users: <Users className="h-4 w-4" />, LayoutGrid: <LayoutGrid className="h-4 w-4" />, Shield: <Shield className="h-4 w-4" />, TrendingUp: <TrendingUp className="h-4 w-4" />, Sparkles: <Sparkles className="h-4 w-4" />,
   };
 
-  const goNext = () => setActiveImgIdx((p) => (p + 1) % Math.max(images.length, 1));
-  const goPrev = () => setActiveImgIdx((p) => (p - 1 + images.length) % Math.max(images.length, 1));
+  const goNext = () => { const next = (activeImgIdx + 1) % Math.max(images.length, 1); setActiveImgIdx(next); lightboxScrollRef.current?.scrollTo({ left: next * lightboxScrollRef.current.clientWidth, behavior: 'smooth' }); };
+  const goPrev = () => { const prev = (activeImgIdx - 1 + images.length) % Math.max(images.length, 1); setActiveImgIdx(prev); lightboxScrollRef.current?.scrollTo({ left: prev * lightboxScrollRef.current.clientWidth, behavior: 'smooth' }); };
 
   const scrollToForm = () => {
     const form = document.getElementById('cadastro');
@@ -720,13 +739,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         .animate-fade-in-up { animation: fade-in-up 0.6s ease-out forwards; }
         @keyframes pulse-ring { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(1.8); opacity: 0; } }
         .animate-pulse-ring { animation: pulse-ring 2s ease-out infinite; }
-        .mobile-scroll-x { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
         @media screen and (max-width: 640px) { .lp-input-mobile { font-size: 16px !important; } }
         .lp-scrollbar::-webkit-scrollbar { height: 4px; }
         .lp-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .lp-scrollbar::-webkit-scrollbar-thumb { background: #1a1a1a/15; border-radius: 999px; }
-        .snap-x { scroll-snap-type: x mandatory; }
-        .snap-start { scroll-snap-align: start; }
         .lp-gallery-card { transition: transform 0.3s ease, box-shadow 0.3s ease; }
         .lp-gallery-card:active { transform: scale(0.98); }
       `}</style>
@@ -1004,7 +1020,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               </div>
 
               {/* Tabs */}
-              <div className="mobile-scroll-x flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap sm:justify-center mb-6 sm:mb-8">
+              <div className="flex flex-wrap justify-center gap-2 mb-6 sm:mb-8">
                 {diffCategories.map((cat, i) => (
                   <button key={cat.name} onClick={() => setActiveDiffTab(i)}
                     className={`flex-shrink-0 min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-xs sm:text-sm font-medium transition-all ${
@@ -1045,10 +1061,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                   <p className="text-sm text-[#1a1a1a]/40 mt-2">Encontre a planta ideal para você</p>
                 </div>
               </div>
-              {/* Horizontal scroll on mobile, grid on desktop */}
-              <div className="flex gap-4 overflow-x-auto mobile-scroll-x snap-x snap-mandatory pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-5 sm:overflow-visible">
+              {/* Grid layout — no horizontal scroll */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                 {info.apartmentTypes.map((apt, i) => (
-                  <div key={i} className="flex-shrink-0 w-[78vw] sm:w-full snap-start rounded-3xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-6 hover:border-[#33492F]/15 hover:shadow-md transition-all">
+                  <div key={i} className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-6 hover:border-[#33492F]/15 hover:shadow-md transition-all">
                     <h3 className="text-base font-semibold text-[#1a1a1a] mb-3">{apt.name || `Tipo ${i + 1}`}</h3>
                     <div className="space-y-2.5">
                       {apt.bedrooms && (
@@ -1186,25 +1202,19 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
           <section id="galeria" className="bg-white">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
               <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">Galeria</p>
-              <div className="flex items-end justify-between mb-8 sm:mb-10">
+              <div className="mb-8 sm:mb-10">
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Conheça o {e.name}</h2>
                   <p className="text-sm text-[#1a1a1a]/40 mt-2">{images.length} foto{images.length !== 1 ? 's' : ''} do empreendimento</p>
                 </div>
-                {images.length > 1 && (
-                  <div className="hidden sm:flex items-center gap-2">
-                    <button onClick={goPrev} className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full border border-[#1a1a1a]/[0.08] hover:border-[#33492F]/20 hover:bg-[#33492F]/5 transition-all"><ChevronLeft className="h-5 w-5" /></button>
-                    <button onClick={goNext} className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full border border-[#1a1a1a]/[0.08] hover:border-[#33492F]/20 hover:bg-[#33492F]/5 transition-all"><ChevronRight className="h-5 w-5" /></button>
-                  </div>
-                )}
               </div>
 
-              {/* Horizontal scroll cards — mobile: full-width snap, desktop: grid */}
-              <div className="flex gap-4 overflow-x-auto mobile-scroll-x snap-x snap-mandatory pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-5 sm:overflow-visible">
+              {/* Mosaic grid — 2 cols mobile, 3 cols desktop */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
                 {images.map((img, idx) => (
                   <button key={img.id} type="button" onClick={() => { setActiveImgIdx(idx); setLightboxOpen(true); try { (window as any).CRMPIXEL?.trackGalleryClick(idx, images.length); } catch {} }}
-                    className="lp-gallery-card flex-shrink-0 w-[85vw] sm:w-full snap-start group relative rounded-3xl overflow-hidden bg-gray-100 aspect-[4/3] sm:aspect-[16/10] hover:shadow-xl transition-all duration-300">
-                    <img src={img.url} alt={img.altText || `${e.name} - Foto ${idx + 1}`} width={680} height={510} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" loading={idx < 2 ? 'eager' : 'lazy'} decoding="async" />
+                    className="lp-gallery-card group relative w-full overflow-hidden rounded-2xl bg-[#1a1a1a]/[0.06] aspect-[4/3] hover:shadow-lg transition-all duration-300">
+                    <img src={img.url} alt={img.altText || `${e.name} - Foto ${idx + 1}`} width={680} height={510} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" loading={idx < 4 ? 'eager' : 'lazy'} decoding="async" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                       <div className="h-12 w-12 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-lg">
@@ -1600,13 +1610,29 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
           LIGHTBOX — Gallery
           ══════════════════════════════════════════════════ */}
       {lightboxOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-2 sm:p-0" onClick={() => setLightboxOpen(false)}>
-          <button onClick={() => setLightboxOpen(false)} className="absolute top-3 right-3 sm:top-5 sm:right-5 text-white/60 hover:text-white z-10 bg-white/10 backdrop-blur-sm rounded-full p-2 sm:p-2.5 transition-colors"><X className="h-6 w-6" /></button>
-          <div className="absolute top-3 left-3 sm:top-5 sm:left-5 text-white/60 text-xs sm:text-sm bg-white/10 backdrop-blur-sm px-3 py-1.5 sm:px-4 sm:py-2 rounded-full">{activeImgIdx + 1} / {images.length}</div>
-          <img src={images[activeImgIdx]?.url} alt={images[activeImgIdx]?.altText || ''} width={1200} height={800} className="max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] sm:max-h-[85vh] object-contain rounded-xl" onClick={(ev) => ev.stopPropagation()} />
+        <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col" onClick={() => setLightboxOpen(false)}>
+          {/* Header bar */}
+          <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4" onClick={(ev) => ev.stopPropagation()}>
+            <div className="text-white/60 text-xs sm:text-sm bg-white/10 backdrop-blur-sm px-3 py-1.5 sm:px-4 sm:py-2 rounded-full min-h-[44px] flex items-center">{activeImgIdx + 1} / {images.length}</div>
+            <button onClick={() => setLightboxOpen(false)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2 sm:p-2.5 transition-colors"><X className="h-6 w-6" /></button>
+          </div>
+          {/* Horizontally scrollable image container */}
+          <div
+            ref={lightboxScrollRef}
+            onScroll={lightboxScrollHandler}
+            onClick={(ev) => ev.stopPropagation()}
+            className="flex-1 flex overflow-x-auto snap-x snap-mandatory scroll-smooth [-webkit-overflow-scrolling:touch] [overscroll-behavior-x:contain]"
+          >
+            {images.map((img, idx) => (
+              <div key={img.id} className="flex-shrink-0 w-full h-full snap-start flex items-center justify-center p-2 sm:p-4">
+                <img src={img.url} alt={img.altText || ''} width={1200} height={800} className="max-w-full max-h-full object-contain rounded-xl select-none pointer-events-none" loading="eager" decoding="async" draggable={false} />
+              </div>
+            ))}
+          </div>
+          {/* Arrow nav buttons (desktop + mobile) */}
           {images.length > 1 && (<>
-            <button onClick={(ev) => { ev.stopPropagation(); goPrev(); }} className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"><ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" /></button>
-            <button onClick={(ev) => { ev.stopPropagation(); goNext(); }} className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors"><ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" /></button>
+            <button onClick={(ev) => { ev.stopPropagation(); goPrev(); }} className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors z-10"><ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" /></button>
+            <button onClick={(ev) => { ev.stopPropagation(); goNext(); }} className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors z-10"><ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" /></button>
           </>)}
         </div>
       )}
