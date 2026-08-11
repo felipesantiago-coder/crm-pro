@@ -92,13 +92,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function LandingPage({ params }: PageProps) {
   const { slug } = await params;
-  const [initialData, queueUser] = await Promise.all([
+  const [initialData, queueUserData] = await Promise.all([
     fetchEnterpriseData(slug).catch(() => null),
     peekNextUser({ slug }).catch(() => null),
   ]);
+  const initialQueueUser = queueUserData ? { userId: queueUserData.userId, userPhone: queueUserData.userPhone } : null;
   return (
     <LandingErrorBoundary>
-      <LandingPageClient params={params} initialData={initialData} initialQueueUser={queueUser} />
+      <LandingPageClient params={params} initialData={initialData} initialQueueUser={initialQueueUser} />
     </LandingErrorBoundary>
   );
 }

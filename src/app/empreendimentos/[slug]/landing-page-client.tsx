@@ -171,7 +171,7 @@ const faqItems = [
 interface LandingPageClientProps {
   params: Promise<{ slug: string }>;
   initialData?: Enterprise | null;
-  initialQueueUser?: { userId: string; userName: string; userPhone: string | null } | null;
+  initialQueueUser?: { userId: string; userPhone: string | null } | null;
 }
 
 export default function LandingPageClient({ params, initialData, initialQueueUser }: LandingPageClientProps) {
@@ -184,7 +184,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   const [activeImgIdx, setActiveImgIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [queueUser, setQueueUser] = useState<{ userId: string; userName: string; userPhone: string | null } | null>(initialQueueUser ?? null);
+  const [queueUser, setQueueUser] = useState<{ userId: string; userPhone: string | null } | null>(initialQueueUser ?? null);
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -478,7 +478,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     if (!slug || queueUser) return;
     fetch(`/api/lead-queues/next-user?slug=${encodeURIComponent(slug)}`)
       .then((r) => r.json())
-      .then((data) => { if (data.hasQueue && data.userPhone && data.userId && data.userName) setQueueUser({ userId: data.userId, userName: data.userName, userPhone: data.userPhone }); })
+      .then((data) => { if (data.hasQueue && data.userPhone && data.userId) setQueueUser({ userId: data.userId, userPhone: data.userPhone }); })
       .catch(() => {});
   }, [slug, queueUser]);
 
