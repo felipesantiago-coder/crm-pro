@@ -1030,9 +1030,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 </div>
                 <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">Excelente Investimento</h3>
                 <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">
-                  {priceText
-                    ? `${priceText} em uma região com alta valorização imobiliária.`
-                    : 'Valores acessíveis e condições especiais em uma região com forte valorização.'}
+                  Valores acessíveis e condições especiais em uma região com forte valorização.
                 </p>
               </div>
             </div>
