@@ -594,12 +594,46 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     };
   }, []);
 
+  // ── Section view tracking via IntersectionObserver (pixel.js v3) ──
+  useEffect(() => {
+    if (!enterprise) return;
+    const sectionIds = ['hero', 'stats', 'differentials', 'gallery', 'floor-plans', 'location', 'cadastro', 'faq'];
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          try {
+            const px = (window as any).CRMPIXEL;
+            if (px) px.trackSectionView(entry.target.id);
+          } catch { /* tracking errors must never block */ }
+        }
+      });
+    }, { threshold: 0.3, rootMargin: '0px 0px -10% 0px' });
+    
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+    
+    // Track form view
+    const formObs = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          try { (window as any).CRMPIXEL?.trackFormView('landing_form'); } catch {}
+        }
+      });
+    }, { threshold: 0.1 });
+    const formEl = document.getElementById('landing-form');
+    if (formEl) formObs.observe(formEl);
+    
+    return () => { observer.disconnect(); formObs.disconnect(); };
+  }, [enterprise]);
+
   const whatsappNumber = queueUser?.userPhone
     ? queueUser.userPhone.replace(/\D/g, '')
     : null;
   const whatsappUrl = whatsappNumber
-    ? `https://wa.me/${whatsappNumber.startsWith('55') ? whatsappNumber : '55' + whatsappNumber}?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`
-    : `https://wa.me/?text=${encodeURIComponent(`Olá! Tenho interesse no empreendimento ${enterprise?.name || ''}.`)}`;
+    ? `https://wa.me/${whatsappNumber.startsWith('55') ? whatsappNumber : '55' + whatsappNumber}?text=${encodeURIComponent(`Olá! Vim pelo anúncio do ${enterprise?.name || ''} e gostaria de receber informações sobre as unidades disponíveis.`)}`
+    : `https://wa.me/?text=${encodeURIComponent(`Olá! Vim pelo anúncio do ${enterprise?.name || ''} e gostaria de receber informações sobre as unidades disponíveis.`)}`;
 
   // Register WhatsApp click as a queue assignment (fire-and-forget)
   // Uses sendBeacon so the navigation to wa.me isn't blocked
@@ -669,6 +703,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
     setFormSubmitting(true);
     isSubmittingRef.current = true;
+    try { (window as any).CRMPIXEL?.trackFormSubmitAttempt('landing_form'); } catch {}
     // Generate a shared event_id for Meta CAPI deduplication (browser + server use same ID)
     const metaEventId = generateMetaEventId();
     // Build clean custom answers (label -> value) — outside try so catch can access it
@@ -842,6 +877,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       registerWhatsAppClick(source);
       if (typeof window !== 'undefined' && window.CRMPIXEL) {
         window.CRMPIXEL.track('whatsapp_click', { enterprise: e?.name, source, userId: queueUser?.userId });
+        window.CRMPIXEL.trackCTA('whatsapp_' + source, 'WhatsApp ' + source, null, 'floating');
       }
       trackMetaPixel('Contact', { content_name: e?.name, content_category: 'empreendimento' });
     } catch { /* tracking errors must never block navigation */ }
@@ -1055,7 +1091,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       </nav>
 
       {/* ── Hero Section ───────────────────────────────── */}
-      <section className="relative min-h-[100dvh] min-h-[640px] flex items-end">
+      <section id="hero" className="relative min-h-[100dvh] min-h-[640px] flex items-end">
         {/* Background image */}
         {heroImage && (
           <div className="absolute inset-0">
@@ -1354,7 +1390,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       {/* ── Numbers / Stats Section ───────────────────── */}
       <ScrollReveal>
         {(info?.totalUnits || areaRange || deliveryText) ? (
-          <section className="bg-[#F7F6F3]">
+          <section id="stats" className="bg-[#F7F6F3]">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-12">
                 {info?.totalUnits != null && info.totalUnits > 0 && (
@@ -1384,7 +1420,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       {/* ── Gallery Section ────────────────────────────── */}
       <ScrollReveal>
         {images.length > 0 && (
-          <section id="galeria" className="bg-white">
+          <section id="gallery" className="bg-white">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
               {/* Section header */}
               <div className="flex items-center gap-4 mb-8 sm:mb-12">
@@ -1633,7 +1669,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
       {/* ── Details Section ────────────────────────────── */}
       <ScrollReveal>
-          <section className="bg-white">
+          <section id="differentials" className="bg-white">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
               {/* Section header */}
               <div className="text-center mb-10 sm:mb-14">
@@ -1792,7 +1828,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
               {/* Floor Plans */}
               {e.floorPlans && e.floorPlans.length > 0 && (
-              <div className="mt-10 sm:mt-14">
+              <div id="floor-plans" className="mt-10 sm:mt-14">
                   <div className="flex items-center gap-3 mb-6 sm:mb-8">
                       <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center">
                         <LayoutGrid className="h-4 w-4 text-blue-600" />
@@ -2005,7 +2041,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       {/* ── Location Section (NEW) ─────────────────────── */}
       {info?.location && (info.location.neighborhood || info.location.city) && (
         <ScrollReveal>
-          <section className="bg-white">
+          <section id="location" className="bg-white">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24 lg:py-32">
               <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
                 <div>
@@ -2441,9 +2477,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
       {/* ── FAQ Section ────────────────────────────────── */}
       <ScrollReveal>
-        <section className="bg-[#F7F6F3]">
+        <section id="faq" className="bg-[#F7F6F3]">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
-            {/* Section header */}
             <div className="text-center mb-10 sm:mb-12">
               <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#1a1a1a]">Perguntas Frequentes</h2>
             </div>
