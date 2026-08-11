@@ -655,13 +655,24 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     return m ? m[0] : null;
   })();
 
-  // Area range
-  const areas = (info?.apartmentTypes || []).flatMap(a => {
-    if (!a.area) return []; let cleaned = a.area.trim().replace(/,/g, '.').replace(/m[²2]/gi, '').trim().replace(/^(de|desde|entre|a\s+partir\s+de)\s+/i, '').trim();
-    const nums: number[] = []; const numRe = /(\d+(?:\.\d+)?)/g; let m;
-    while ((m = numRe.exec(cleaned)) !== null) { const val = parseFloat(m[1]); if (!isNaN(val) && val > 0) nums.push(val); }
-    return nums;
-  }).filter(a => a > 0 && a < 5000);
+  // Area range — prioridade: admin floorPlans > cachedInfo apartmentTypes (fallback)
+  const hasAdminFloorPlans = (e.floorPlans || []).length > 0;
+  const areas = hasAdminFloorPlans
+    ? (e.floorPlans || []).flatMap(p => {
+        if (!p.area) return [];
+        const cleaned = p.area.trim().replace(/,/g, '.').replace(/m[²2]/gi, '').trim();
+        const nums: number[] = [];
+        const numRe = /(\d+(?:\.\d+)?)/g;
+        let m;
+        while ((m = numRe.exec(cleaned)) !== null) { const val = parseFloat(m[1]); if (!isNaN(val) && val > 0) nums.push(val); }
+        return nums;
+      }).filter(a => a > 0 && a < 5000)
+    : (info?.apartmentTypes || []).flatMap(a => {
+        if (!a.area) return []; let cleaned = a.area.trim().replace(/,/g, '.').replace(/m[²2]/gi, '').trim().replace(/^(de|desde|entre|a\s+partir\s+de)\s+/i, '').trim();
+        const nums: number[] = []; const numRe = /(\d+(?:\.\d+)?)/g; let m;
+        while ((m = numRe.exec(cleaned)) !== null) { const val = parseFloat(m[1]); if (!isNaN(val) && val > 0) nums.push(val); }
+        return nums;
+      }).filter(a => a > 0 && a < 5000);
   const maxArea = areas.length > 0 ? Math.max(...areas) : 0;
   const minArea = areas.length > 0 ? Math.min(...areas) : 0;
   const areaRange = maxArea > 0 ? (minArea === maxArea ? `${maxArea}m²` : `${minArea} a ${maxArea}m²`) : null;
@@ -1050,7 +1061,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       {/* ══════════════════════════════════════════════════
           7. APARTMENT TYPES (Horizontal scroll mobile)
           ══════════════════════════════════════════════════ */}
-      {info?.apartmentTypes && info.apartmentTypes.length > 0 && (
+      {info?.apartmentTypes && info.apartmentTypes.length > 0 && !hasAdminFloorPlans && (
         <ScrollReveal>
           <section id="apartments" className="bg-[#F7F6F3]">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
