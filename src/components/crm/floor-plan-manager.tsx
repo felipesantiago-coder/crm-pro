@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Trash2, Loader2, GripVertical,
   LayoutGrid, ChevronUp, ChevronDown, AlertCircle,
-  Plus, Check, Save,
+  Plus, Check, Save, ImagePlus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -99,6 +99,10 @@ export function FloorPlanManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FloorPlanForm>(EMPTY_FORM);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPlans = useCallback(async () => {
     try {
@@ -131,13 +135,43 @@ export function FloorPlanManager({
         body: JSON.stringify(isNew ? data : { planId: editingId, ...data }),
       });
       if (res.ok) {
-        toast.success(isNew ? 'Planta adicionada' : 'Planta atualizada');
+        const savedPlan = await res.json();
+        const planId = savedPlan.id || editingId;
+
+        // Upload image if a file was selected
+        if (pendingFile && planId) {
+          setUploading(true);
+          try {
+            const fd = new FormData();
+            fd.append('file', pendingFile);
+            fd.append('planId', planId);
+            const uploadRes = await fetch(`/api/enterprises/${enterpriseId}/floor-plans/upload-image`, {
+              method: 'POST',
+              body: fd,
+            });
+            if (uploadRes.ok) {
+              toast.success(pendingFile ? 'Planta e imagem salvas' : (isNew ? 'Planta adicionada' : 'Planta atualizada'));
+            } else {
+              const err = await uploadRes.json();
+              toast.error(err.error || 'Erro ao enviar imagem');
+            }
+          } catch {
+            toast.error('Erro ao enviar imagem');
+          } finally {
+            setUploading(false);
+          }
+        } else {
+          toast.success(isNew ? 'Planta adicionada' : 'Planta atualizada');
+        }
+
         if (isNew) {
           setShowAddForm(false);
           setForm(EMPTY_FORM);
         } else {
           setEditingId(null);
         }
+        setPendingFile(null);
+        setPreviewUrl(null);
         fetchPlans();
       } else {
         const err = await res.json();
@@ -204,14 +238,32 @@ export function FloorPlanManager({
     } catch { /* silent */ }
   }
 
-  function startEditing(plan: FloorPlan) {
-    setEditingId(plan.id);
-    setForm(planToForm(plan));
-  }
+
 
   function cancelEditing() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setPendingFile(null);
+    setPreviewUrl(null);
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
+    setPendingFile(file);
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => setPreviewUrl(reader.result as string);
+      reader.readAsDataURL(file);
+    } else {
+      setPreviewUrl(null);
+    }
+  }
+
+  function startEditing(plan: FloorPlan) {
+    setEditingId(plan.id);
+    setForm(planToForm(plan));
+    setPendingFile(null);
+    setPreviewUrl(plan.url || null);
   }
 
   function updateForm(field: keyof FloorPlanForm, value: string | boolean) {
@@ -377,6 +429,43 @@ export function FloorPlanManager({
                     />
                   </div>
 
+                  {/* Row 5: Image Upload */}
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">Imagem da Planta</label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/webp,image/jpeg,image/png,image/avif"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                    {previewUrl ? (
+                      <div className="relative rounded-xl border overflow-hidden bg-muted/30">
+                        <img src={previewUrl} alt="Preview" className="w-full h-40 object-contain bg-white" />
+                        <button
+                          type="button"
+                          onClick={() => { setPendingFile(null); setPreviewUrl(isEditing && plans.find(p => p.id === editingId)?.url ? plans.find(p => p.id === editingId)!.url || null : null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                          className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                        <div className="absolute bottom-2 left-2 text-[10px] text-white bg-black/50 backdrop-blur-sm px-2 py-0.5 rounded-full">
+                          {pendingFile ? pendingFile.name : 'Imagem atual'}
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full h-24 rounded-xl border-2 border-dashed border-dashed-border hover:border-blue-300 dark:hover:border-blue-700 bg-muted/30 hover:bg-muted/50 flex flex-col items-center justify-center gap-1.5 transition-all"
+                      >
+                        <ImagePlus className="h-5 w-5 text-muted-foreground/60" />
+                        <span className="text-xs text-muted-foreground">Clique para enviar imagem</span>
+                        <span className="text-[10px] text-muted-foreground/50">WebP, JPEG, PNG ou AVIF · máx. 10MB</span>
+                      </button>
+                    )}
+                  </div>
+
                   {/* Preview */}
                   <div className="rounded-lg bg-background border p-3">
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Pré-visualização do card</p>
@@ -402,11 +491,11 @@ export function FloorPlanManager({
                     </button>
                     <button
                       onClick={() => handleSave(!isEditing)}
-                      disabled={saving}
+                      disabled={saving || uploading}
                       className="h-8 px-4 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 disabled:opacity-50 transition-colors"
                     >
-                      {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                      {isEditing ? 'Salvar' : 'Adicionar'}
+                      {(saving || uploading) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                      {uploading ? 'Enviando imagem...' : (isEditing ? 'Salvar' : 'Adicionar')}
                     </button>
                   </div>
                 </div>
@@ -451,7 +540,16 @@ export function FloorPlanManager({
                               : 'border-border hover:border-border/80 bg-background',
                           )}
                         >
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3">
+                            {plan.url ? (
+                              <div className="flex-shrink-0 w-16 h-12 rounded-lg overflow-hidden bg-muted border">
+                                <img src={plan.url} alt={plan.name || ''} className="w-full h-full object-contain" />
+                              </div>
+                            ) : (
+                              <div className="flex-shrink-0 w-16 h-12 rounded-lg bg-muted border flex items-center justify-center">
+                                <LayoutGrid className="h-4 w-4 text-muted-foreground/30" />
+                              </div>
+                            )}
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 mb-0.5">
                                 <span className="text-[10px] font-mono text-muted-foreground/50">#{idx + 1}</span>

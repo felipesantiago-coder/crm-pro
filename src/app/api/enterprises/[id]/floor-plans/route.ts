@@ -160,6 +160,7 @@ export async function PATCH(
     if (body.isPenthouse !== undefined) updateData.isPenthouse = typeof body.isPenthouse === 'boolean' ? body.isPenthouse : false;
     if (body.description !== undefined) updateData.description = typeof body.description === 'string' ? body.description.trim() || null : null;
     if (body.altText !== undefined) updateData.altText = typeof body.altText === 'string' ? body.altText.trim() || null : null;
+    if (body.url !== undefined) updateData.url = typeof body.url === 'string' ? body.url.trim() || null : null;
 
     const updated = await db.enterpriseFloorPlan.update({
       where: { id: planId },
