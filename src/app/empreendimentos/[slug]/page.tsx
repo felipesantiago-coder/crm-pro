@@ -95,7 +95,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function LandingPage({ params }: PageProps) {
   const { slug } = await params;
   const [initialData, queueUserData] = await Promise.all([
-    fetchEnterpriseData(slug).catch(() => null),
+    fetchEnterpriseData(slug).catch((err) => { console.error('[LandingPage] fetchEnterpriseData failed for slug', slug, err); return null; }),
     peekNextUser({ slug }).catch(() => null),
   ]);
   const initialQueueUser = queueUserData ? { userId: queueUserData.userId, userPhone: queueUserData.userPhone } : null;
