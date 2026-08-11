@@ -700,6 +700,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         .lp-scrollbar::-webkit-scrollbar { height: 4px; }
         .lp-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .lp-scrollbar::-webkit-scrollbar-thumb { background: #1a1a1a/15; border-radius: 999px; }
+        .snap-x { scroll-snap-type: x mandatory; }
+        .snap-start { scroll-snap-align: start; }
+        .lp-gallery-card { transition: transform 0.3s ease, box-shadow 0.3s ease; }
+        .lp-gallery-card:active { transform: scale(0.98); }
       `}</style>
 
       {/* ══════════════════════════════════════════════════
@@ -715,7 +719,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
           </a>
           <a
             href="#cadastro"
-            className="min-h-[44px] inline-flex items-center justify-center px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl bg-[#33492F] text-white text-xs sm:text-sm font-semibold hover:bg-[#33492F]/90 transition-colors shadow-lg shadow-[#33492F]/20"
+            className="min-h-[44px] inline-flex items-center justify-center px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-[#33492F] text-white text-xs sm:text-sm font-semibold hover:bg-[#33492F]/90 transition-colors shadow-lg shadow-[#33492F]/20"
           >
             Quero saber mais
           </a>
@@ -874,28 +878,28 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               {(info.totalUnits || areaRange || info.floors || info.parkingSpots) && (
                 <div className="mt-6 sm:mt-8 grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {info.totalUnits != null && info.totalUnits > 0 && (
-                    <div className="text-center p-3 rounded-2xl bg-[#F7F6F3]">
+                    <div className="text-center p-3.5 rounded-2xl bg-[#F7F6F3]">
                       <Building2 className="h-4 w-4 text-[#33492F] mx-auto mb-1.5" />
                       <p className="text-lg sm:text-xl font-bold text-[#33492F]">{info.totalUnits}</p>
                       <p className="text-[11px] text-[#1a1a1a]/40 mt-0.5">Unidades</p>
                     </div>
                   )}
                   {areaRange && (
-                    <div className="text-center p-3 rounded-2xl bg-[#F7F6F3]">
+                    <div className="text-center p-3.5 rounded-2xl bg-[#F7F6F3]">
                       <Ruler className="h-4 w-4 text-[#33492F] mx-auto mb-1.5" />
                       <p className="text-lg sm:text-xl font-bold text-[#33492F]">{areaRange}</p>
                       <p className="text-[11px] text-[#1a1a1a]/40 mt-0.5">Área</p>
                     </div>
                   )}
                   {info.floors != null && info.floors > 0 && (
-                    <div className="text-center p-3 rounded-2xl bg-[#F7F6F3]">
+                    <div className="text-center p-3.5 rounded-2xl bg-[#F7F6F3]">
                       <Layers className="h-4 w-4 text-[#33492F] mx-auto mb-1.5" />
                       <p className="text-lg sm:text-xl font-bold text-[#33492F]">{info.floors}</p>
                       <p className="text-[11px] text-[#1a1a1a]/40 mt-0.5">Andares</p>
                     </div>
                   )}
                   {info.parkingSpots != null && info.parkingSpots > 0 && (
-                    <div className="text-center p-3 rounded-2xl bg-[#F7F6F3]">
+                    <div className="text-center p-3.5 rounded-2xl bg-[#F7F6F3]">
                       <Car className="h-4 w-4 text-[#33492F] mx-auto mb-1.5" />
                       <p className="text-lg sm:text-xl font-bold text-[#33492F]">{info.parkingSpots}</p>
                       <p className="text-[11px] text-[#1a1a1a]/40 mt-0.5">Vagas</p>
@@ -914,13 +918,14 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       <ScrollReveal>
         <section id="why-vitta" className="bg-[#F7F6F3]">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+            <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2 text-center">Sobre o empreendimento</p>
             <div className="text-center mb-8 sm:mb-12">
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Por que o {e.name}?</h2>
               <p className="text-sm text-[#1a1a1a]/40 mt-2">Tudo o que você precisa saber antes de decidir</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
               {/* Location Card */}
-              <div className="rounded-2xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-6 hover:border-[#33492F]/15 hover:shadow-sm transition-all">
+              <div className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-6 hover:border-[#33492F]/15 hover:shadow-md transition-all">
                 <div className="h-10 w-10 rounded-xl bg-[#33492F]/10 flex items-center justify-center mb-4">
                   <MapPin className="h-5 w-5 text-[#33492F]" />
                 </div>
@@ -932,7 +937,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 </p>
               </div>
               {/* Differentials Card */}
-              <div className="rounded-2xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-6 hover:border-[#33492F]/15 hover:shadow-sm transition-all">
+              <div className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-6 hover:border-[#33492F]/15 hover:shadow-md transition-all">
                 <div className="h-10 w-10 rounded-xl bg-[#C9A96E]/10 flex items-center justify-center mb-4">
                   <Sparkles className="h-5 w-5 text-[#C9A96E]" />
                 </div>
@@ -944,7 +949,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 </p>
               </div>
               {/* Investment Card */}
-              <div className="rounded-2xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-6 hover:border-[#33492F]/15 hover:shadow-sm transition-all">
+              <div className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-6 hover:border-[#33492F]/15 hover:shadow-md transition-all">
                 <div className="h-10 w-10 rounded-xl bg-emerald-50 flex items-center justify-center mb-4">
                   <TrendingUp className="h-5 w-5 text-emerald-600" />
                 </div>
@@ -961,12 +966,13 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       </ScrollReveal>
 
       {/* ══════════════════════════════════════════════════
-          6. LEISURE & DIFFERENTIALS (Tabbed)
+          6. LEISURE & DIFFERENTIALS (Tabbed Cards)
           ══════════════════════════════════════════════════ */}
       {diffCategories.length > 0 && (
         <ScrollReveal>
           <section id="differentials" className="bg-white">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">Diferenciais</p>
               <div className="text-center mb-8 sm:mb-10">
                 <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Lazer & Diferenciais</h2>
                 <p className="text-sm text-[#1a1a1a]/40 mt-2">Tudo pensado para o seu conforto e bem-estar</p>
@@ -976,7 +982,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               <div className="mobile-scroll-x flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap sm:justify-center mb-6 sm:mb-8">
                 {diffCategories.map((cat, i) => (
                   <button key={cat.name} onClick={() => setActiveDiffTab(i)}
-                    className={`flex-shrink-0 min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all ${
+                    className={`flex-shrink-0 min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-xs sm:text-sm font-medium transition-all ${
                       activeDiffTab === i ? 'bg-[#33492F] text-white shadow-lg shadow-[#33492F]/20' : 'bg-[#F7F6F3] text-[#1a1a1a]/50 hover:text-[#1a1a1a]/70 hover:bg-[#1a1a1a]/[0.06]'
                     }`}>
                     {diffIconMap[cat.icon]} {cat.name}
@@ -984,12 +990,14 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 ))}
               </div>
 
-              {/* Tab content */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {/* Tab content — visual cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 {(diffCategories[activeDiffTab]?.items || []).map((d, i) => (
-                  <div key={i} className="flex items-start gap-3 px-4 sm:px-5 py-3.5 rounded-xl bg-[#F7F6F3] border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/15 transition-colors">
-                    <CheckCircle2 className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
-                    <span className="text-sm text-[#1a1a1a]/70 leading-relaxed">{d}</span>
+                  <div key={i} className="flex items-start gap-3.5 px-5 py-4 rounded-2xl bg-[#F7F6F3] border border-[#1a1a1a]/[0.04] hover:border-[#33492F]/15 hover:shadow-sm transition-all">
+                    <div className="flex-shrink-0 h-8 w-8 rounded-xl bg-[#33492F]/10 flex items-center justify-center mt-0.5">
+                      <CheckCircle2 className="h-4 w-4 text-[#33492F]" />
+                    </div>
+                    <span className="text-sm text-[#1a1a1a]/70 leading-relaxed pt-1">{d}</span>
                   </div>
                 ))}
               </div>
@@ -999,52 +1007,63 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       )}
 
       {/* ══════════════════════════════════════════════════
-          7. APARTMENT TYPES
+          7. APARTMENT TYPES (Horizontal scroll mobile)
           ══════════════════════════════════════════════════ */}
       {info?.apartmentTypes && info.apartmentTypes.length > 0 && (
         <ScrollReveal>
           <section id="apartments" className="bg-[#F7F6F3]">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
-              <div className="text-center mb-8 sm:mb-10">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Tipos de Unidades</h2>
-                <p className="text-sm text-[#1a1a1a]/40 mt-2">Encontre a planta ideal para você</p>
+              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">Unidades</p>
+              <div className="flex items-end justify-between mb-8 sm:mb-10">
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Tipos de Unidades</h2>
+                  <p className="text-sm text-[#1a1a1a]/40 mt-2">Encontre a planta ideal para você</p>
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+              {/* Horizontal scroll on mobile, grid on desktop */}
+              <div className="flex gap-4 overflow-x-auto mobile-scroll-x snap-x snap-mandatory pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-5 sm:overflow-visible">
                 {info.apartmentTypes.map((apt, i) => (
-                  <div key={i} className="rounded-2xl bg-white border border-[#1a1a1a]/[0.04] p-5 hover:border-[#33492F]/15 hover:shadow-sm transition-all">
+                  <div key={i} className="flex-shrink-0 w-[78vw] sm:w-full snap-start rounded-3xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-6 hover:border-[#33492F]/15 hover:shadow-md transition-all">
                     <h3 className="text-base font-semibold text-[#1a1a1a] mb-3">{apt.name || `Tipo ${i + 1}`}</h3>
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       {apt.bedrooms && (
-                        <div className="flex items-center gap-2 text-sm text-[#1a1a1a]/50">
-                          <BedDouble className="h-3.5 w-3.5 text-[#33492F]/50" /> {apt.bedrooms}
+                        <div className="flex items-center gap-2.5 text-sm text-[#1a1a1a]/60">
+                          <div className="h-7 w-7 rounded-lg bg-[#33492F]/8 flex items-center justify-center flex-shrink-0"><BedDouble className="h-3.5 w-3.5 text-[#33492F]/60" /></div>
+                          {apt.bedrooms}
                         </div>
                       )}
                       {apt.area && (
-                        <div className="flex items-center gap-2 text-sm text-[#1a1a1a]/50">
-                          <Ruler className="h-3.5 w-3.5 text-[#33492F]/50" /> {apt.area}
+                        <div className="flex items-center gap-2.5 text-sm text-[#1a1a1a]/60">
+                          <div className="h-7 w-7 rounded-lg bg-[#33492F]/8 flex items-center justify-center flex-shrink-0"><Ruler className="h-3.5 w-3.5 text-[#33492F]/60" /></div>
+                          {apt.area}
                         </div>
                       )}
                       {apt.price && (
-                        <div className="flex items-center gap-2 text-sm font-semibold text-[#C9A96E]">
-                          <DollarSign className="h-3.5 w-3.5" /> {apt.price}
+                        <div className="flex items-center gap-2.5 text-sm font-semibold text-[#C9A96E]">
+                          <div className="h-7 w-7 rounded-lg bg-[#C9A96E]/10 flex items-center justify-center flex-shrink-0"><DollarSign className="h-3.5 w-3.5 text-[#C9A96E]" /></div>
+                          {apt.price}
                         </div>
                       )}
                     </div>
-                    {apt.description && <p className="text-xs text-[#1a1a1a]/40 mt-3 leading-relaxed">{apt.description}</p>}
+                    {apt.description && <p className="text-xs text-[#1a1a1a]/40 mt-4 leading-relaxed">{apt.description}</p>}
                   </div>
                 ))}
               </div>
-              {/* Floor plans */}
+
+              {/* Floor plans — horizontal scroll cards */}
               {e.floorPlans && e.floorPlans.length > 0 && (
-                <div className="mt-8 sm:mt-10">
-                  <h3 className="text-lg font-semibold text-[#1a1a1a] mb-4">Plantas</h3>
-                  <div className="mobile-scroll-x flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3">
+                <div className="mt-10 sm:mt-14">
+                  <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">Plantas</p>
+                  <h3 className="text-xl sm:text-2xl font-bold text-[#1a1a1a] mb-5">Conheça as plantas</h3>
+                  <div className="flex gap-4 overflow-x-auto mobile-scroll-x snap-x snap-mandatory pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 sm:gap-5 sm:overflow-visible">
                     {e.floorPlans.map((plan, i) => (
                       <button key={plan.id} type="button" onClick={() => { setActiveFloorIdx(i); setFloorLightboxOpen(true); try { (window as any).CRMPIXEL?.trackGalleryClick(i, e.floorPlans.length); } catch {} }}
-                        className="flex-shrink-0 w-56 sm:w-full aspect-[3/4] rounded-2xl overflow-hidden bg-gray-50 border border-[#1a1a1a]/[0.06] hover:border-[#33492F]/20 hover:shadow-md transition-all group">
-                        <img src={plan.url} alt={plan.altText || `Planta ${i + 1}`} width={224} height={300} className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-500" loading="lazy" decoding="async" />
-                        <div className="absolute bottom-0 inset-x-0 h-12 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-2">
-                          <ZoomIn className="h-4 w-4 text-white" />
+                        className="flex-shrink-0 w-64 sm:w-full snap-start aspect-[3/4] rounded-3xl overflow-hidden bg-[#F7F6F3] hover:shadow-lg transition-all duration-300 group relative">
+                        <img src={plan.url} alt={plan.altText || `Planta ${i + 1}`} width={256} height={341} className="w-full h-full object-contain p-4 group-hover:scale-[1.03] transition-transform duration-500" loading="lazy" decoding="async" />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                          <div className="h-10 w-10 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-lg">
+                            <ZoomIn className="h-4 w-4 text-[#1a1a1a]" />
+                          </div>
                         </div>
                       </button>
                     ))}
@@ -1057,48 +1076,47 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       )}
 
       {/* ══════════════════════════════════════════════════
-          8. GALLERY (Decorated with Lightbox)
+          8. GALLERY (Horizontal scroll cards with lightbox)
           ══════════════════════════════════════════════════ */}
       {images.length > 0 && (
         <ScrollReveal>
           <section id="galeria" className="bg-white">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
-              <div className="flex items-center justify-between mb-6 sm:mb-10">
+              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">Galeria</p>
+              <div className="flex items-end justify-between mb-8 sm:mb-10">
                 <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Galeria</h2>
-                  <p className="text-sm text-[#1a1a1a]/40 mt-1">{images.length} foto{images.length !== 1 ? 's' : ''}</p>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Conheça o {e.name}</h2>
+                  <p className="text-sm text-[#1a1a1a]/40 mt-2">{images.length} foto{images.length !== 1 ? 's' : ''} do empreendimento</p>
                 </div>
                 {images.length > 1 && (
-                  <div className="flex items-center gap-2">
-                    <button onClick={goPrev} className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-[#1a1a1a]/[0.08] hover:border-[#33492F]/20 hover:bg-[#33492F]/5 transition-all"><ChevronLeft className="h-5 w-5" /></button>
-                    <button onClick={goNext} className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-[#1a1a1a]/[0.08] hover:border-[#33492F]/20 hover:bg-[#33492F]/5 transition-all"><ChevronRight className="h-5 w-5" /></button>
+                  <div className="hidden sm:flex items-center gap-2">
+                    <button onClick={goPrev} className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full border border-[#1a1a1a]/[0.08] hover:border-[#33492F]/20 hover:bg-[#33492F]/5 transition-all"><ChevronLeft className="h-5 w-5" /></button>
+                    <button onClick={goNext} className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full border border-[#1a1a1a]/[0.08] hover:border-[#33492F]/20 hover:bg-[#33492F]/5 transition-all"><ChevronRight className="h-5 w-5" /></button>
                   </div>
                 )}
               </div>
 
-              {/* Main image */}
-              <div className="relative rounded-2xl overflow-hidden bg-gray-100 aspect-[16/10] sm:aspect-[16/9] cursor-pointer group" onClick={() => { setLightboxOpen(true); try { (window as any).CRMPIXEL?.trackGalleryClick(activeImgIdx, images.length); } catch {} }}>
-                <Image src={images[activeImgIdx]?.url} alt={images[activeImgIdx]?.altText || `${e.name} - Foto ${activeImgIdx + 1}`} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.02]" priority={activeImgIdx === 0} sizes="(max-width: 768px) 100vw, 90vw" />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                <div className="absolute bottom-3 right-3 bg-black/50 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-full">
-                  {activeImgIdx + 1} / {images.length}
-                </div>
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="h-12 w-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg"><ZoomIn className="h-5 w-5 text-[#1a1a1a]" /></div>
-                </div>
+              {/* Horizontal scroll cards — mobile: full-width snap, desktop: grid */}
+              <div className="flex gap-4 overflow-x-auto mobile-scroll-x snap-x snap-mandatory pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-5 sm:overflow-visible">
+                {images.map((img, idx) => (
+                  <button key={img.id} type="button" onClick={() => { setActiveImgIdx(idx); setLightboxOpen(true); try { (window as any).CRMPIXEL?.trackGalleryClick(idx, images.length); } catch {} }}
+                    className="lp-gallery-card flex-shrink-0 w-[85vw] sm:w-full snap-start group relative rounded-3xl overflow-hidden bg-gray-100 aspect-[4/3] sm:aspect-[16/10] hover:shadow-xl transition-all duration-300">
+                    <img src={img.url} alt={img.altText || `${e.name} - Foto ${idx + 1}`} width={680} height={510} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" loading={idx < 2 ? 'eager' : 'lazy'} decoding="async" />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="h-12 w-12 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-lg">
+                        <ZoomIn className="h-5 w-5 text-[#1a1a1a]" />
+                      </div>
+                    </div>
+                    {/* Image counter on first card */}
+                    {idx === 0 && images.length > 1 && (
+                      <div className="absolute bottom-3 right-3 bg-black/50 backdrop-blur-sm text-white text-[11px] px-3 py-1.5 rounded-full">
+                        {images.length} fotos
+                      </div>
+                    )}
+                  </button>
+                ))}
               </div>
-
-              {/* Thumbnails */}
-              {images.length > 1 && (
-                <div className="mt-3 mobile-scroll-x lp-scrollbar flex gap-2 overflow-x-auto pb-2">
-                  {images.map((img, idx) => (
-                    <button key={img.id} type="button" onClick={() => setActiveImgIdx(idx)}
-                      className={`flex-shrink-0 w-16 h-16 sm:w-20 sm:h-14 rounded-xl overflow-hidden border-2 transition-all ${activeImgIdx === idx ? 'border-[#33492F] shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}>
-                      <img src={img.url} alt={img.altText || ''} width={80} height={56} className="w-full h-full object-cover" loading="lazy" decoding="async" />
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           </section>
         </ScrollReveal>
@@ -1111,10 +1129,11 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         <ScrollReveal>
           <section id="location" className="bg-[#F7F6F3]">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2 text-center">Localização</p>
               <div className="text-center mb-8 sm:mb-10">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Localização</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Onde está localizado</h2>
               </div>
-              <div className="rounded-2xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-8">
+              <div className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-8 shadow-sm">
                 <div className="flex flex-col sm:flex-row gap-5 sm:gap-8 items-start">
                   <div className="flex-1 space-y-3">
                     {info?.location?.address && (
@@ -1154,6 +1173,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       <ScrollReveal>
         <section id="faq" className="bg-white">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+            <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2 text-center">Dúvidas</p>
             <div className="text-center mb-8 sm:mb-10">
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Perguntas Frequentes</h2>
               <p className="text-sm text-[#1a1a1a]/40 mt-2">Tire suas dúvidas antes de decidir</p>
@@ -1232,7 +1252,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               {/* Right — Form */}
               <div ref={formSectionRef} className="relative order-1 lg:order-2">
                 <div className="absolute -inset-1 sm:-inset-3 bg-[#33492F]/[0.03] rounded-3xl blur-xl" />
-                <form id="landing-form" onSubmit={handleFormSubmit} className="relative z-10 rounded-2xl bg-white border border-[#1a1a1a]/[0.08] shadow-lg p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5">
+                <form id="landing-form" onSubmit={handleFormSubmit} className="relative z-10 rounded-3xl bg-white border border-[#1a1a1a]/[0.08] shadow-lg p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5">
                   <div className="mb-1">
                     <div className="flex items-center justify-between mb-1">
                       <h3 className="text-xl font-bold text-[#1a1a1a]">Cadastro</h3>
@@ -1343,7 +1363,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
                   {/* Submit */}
                   <button type="submit" disabled={formSubmitting}
-                    className={`w-full min-h-[44px] flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl font-bold text-base sm:text-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed mt-2 hover:scale-[1.01] active:scale-[0.99] ${
+                    className={`w-full min-h-[44px] flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl font-bold text-base sm:text-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed mt-2 hover:scale-[1.01] active:scale-[0.99] ${
                       formProgress === 100 ? 'bg-emerald-500 text-white shadow-emerald-500/20 hover:bg-emerald-600' : 'bg-[#33492F] text-white shadow-[#33492F]/20 hover:bg-[#33492F]/90'
                     }`}>
                     {formSubmitting ? <><Loader2 className="h-5 w-5 animate-spin" /> Enviando...</> :
@@ -1447,7 +1467,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
           ══════════════════════════════════════════════════ */}
       {exitPopupOpen && (
         <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setExitPopupOpen(false)}>
-          <div className="relative max-w-md w-full rounded-2xl bg-white border border-[#1a1a1a]/[0.08] p-6 sm:p-8 shadow-2xl" onClick={(ev) => ev.stopPropagation()}>
+          <div className="relative max-w-md w-full rounded-3xl bg-white border border-[#1a1a1a]/[0.08] p-6 sm:p-8 shadow-2xl" onClick={(ev) => ev.stopPropagation()}>
             <button onClick={() => setExitPopupOpen(false)} className="absolute top-4 right-4 text-[#1a1a1a]/30 hover:text-[#1a1a1a] transition-colors"><X className="h-5 w-5" /></button>
             <div className="flex items-center justify-center mb-5">
               <div className="h-14 w-14 rounded-2xl bg-[#33492F]/10 flex items-center justify-center"><MessageSquare className="h-7 w-7 text-[#33492F]" /></div>
