@@ -87,10 +87,15 @@ export async function assignLeadToUser(opts: {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const result = await db.$transaction(async (tx) => {
-        const freshQueue = await tx.leadQueue.findUniqueOrThrow({
+        const freshQueue = await tx.leadQueue.findUnique({
           where: { id: queue.id },
-          select: { currentIdx: true },
+          select: { currentIdx: true, isActive: true },
         });
+
+        // Queue was deleted or deactivated between our initial fetch and the transaction
+        if (!freshQueue || !freshQueue.isActive) {
+          return null;
+        }
 
         const activeMembers = await tx.leadQueueMember.findMany({
           where: { queueId: queue.id, isActive: true },
@@ -102,46 +107,51 @@ export async function assignLeadToUser(opts: {
           return null;
         }
 
-        // Find a valid member by scanning from currentIdx.
-        // This skips members whose user was deleted (data integrity issue).
-        // In practice this shouldn't happen due to FK constraints + Cascade,
-        // but defensive coding prevents silent assignment failure.
-        let assignedMember: typeof activeMembers[0] | null = null;
-        let scanOffset = 0;
-        while (scanOffset < activeMembers.length) {
-          const idx = (freshQueue.currentIdx + scanOffset) % activeMembers.length;
+        // Try each member starting from currentIdx, skip members with null user
+        // This handles data integrity issues gracefully instead of losing leads
+        let assigned = false;
+        let tries = 0;
+        const maxTries = activeMembers.length;
+        let pickedMember: typeof activeMembers[0] | null = null;
+        let idx = freshQueue.currentIdx % activeMembers.length;
+
+        while (!assigned && tries < maxTries) {
           const candidate = activeMembers[idx];
           if (candidate.user) {
-            assignedMember = candidate;
-            break;
+            pickedMember = candidate;
+            assigned = true;
+          } else {
+            console.error(`[Lead Queue] Member ${candidate.id} has no user — data integrity issue, skipping`);
           }
-          console.error(`[Lead Queue] Member ${candidate.id} has no user — skipping`);
-          scanOffset++;
+          idx = (idx + 1) % activeMembers.length;
+          tries++;
         }
 
-        if (!assignedMember) {
-          console.error(`[Lead Queue] All ${activeMembers.length} active members have no user`);
+        if (!pickedMember) {
+          // All members have null user — no one to assign to
+          console.error('[Lead Queue] All members have null user — cannot assign lead');
           return null;
         }
 
+        // Increment by the number of positions we advanced (including skipped)
         await tx.leadQueue.update({
           where: { id: queue.id },
-          data: { currentIdx: { increment: 1 + scanOffset } },
+          data: { currentIdx: { increment: tries } },
         });
 
         await tx.leadQueueAssignment.create({
           data: {
             queueId: queue.id,
-            userId: assignedMember.userId,
+            userId: pickedMember.userId,
             leadId: leadId || null,
             source: (source || 'api').slice(0, 200),
           },
         });
 
         return {
-          userId: assignedMember.userId,
-          userName: assignedMember.user.name,
-          userPhone: assignedMember.user.phone,
+          userId: pickedMember.userId,
+          userName: pickedMember.user.name,
+          userPhone: pickedMember.user.phone,
           queueId: queue.id,
         };
       }, {
@@ -166,13 +176,18 @@ export async function assignLeadToUser(opts: {
     } catch (error) {
       lastError = error;
       // Retry on serialization failures (Postgres error code 40001)
-      const isSerializationError =
+      // or record-not-found (queue deleted between fetch and transaction)
+      const isRetryableError =
         error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2028';
-      if (isSerializationError && attempt < MAX_RETRIES - 1) {
+        (error.code === 'P2028' || error.code === 'P2025');
+      if (isRetryableError && attempt < MAX_RETRIES - 1) {
         // Small delay before retry (exponential backoff)
         await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
         continue;
+      }
+      // If the queue was deleted entirely, return gracefully instead of 500
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        return { assigned: false, message: 'Fila não encontrada ou desativada' };
       }
       throw error;
     }
@@ -180,37 +195,6 @@ export async function assignLeadToUser(opts: {
 
   console.error('[Lead Queue] Falha após retries:', lastError);
   return { assigned: false, message: 'Erro interno na atribuição' };
-}
-
-/**
- * Admin: manually set the next user in the queue.
- * Calculates the correct currentIdx so that the next assignLeadToUser()
- * call will pick the specified user.
- *
- * @param queueId - The queue to modify
- * @param userId  - The user who should receive the next lead
- * @returns The updated currentIdx, or throws if user not in queue
- */
-export async function setNextUser(queueId: string, userId: string): Promise<{ currentIdx: number; userName: string }> {
-  const activeMembers = await db.leadQueueMember.findMany({
-    where: { queueId, isActive: true },
-    orderBy: { order: 'asc' },
-    select: { userId: true, user: { select: { name: true } } },
-  });
-
-  const targetIdx = activeMembers.findIndex((m) => m.userId === userId);
-  if (targetIdx === -1) {
-    throw new Error('Usuário não está na fila ou está inativo');
-  }
-
-  // Set currentIdx directly to targetIdx so that
-  // currentIdx % activeMembers.length === targetIdx
-  await db.leadQueue.update({
-    where: { id: queueId },
-    data: { currentIdx: targetIdx },
-  });
-
-  return { currentIdx: targetIdx, userName: activeMembers[targetIdx].user.name };
 }
 
 /**
@@ -256,20 +240,27 @@ export async function peekNextUser(opts: { queueId?: string; slug?: string } = {
   const idx = queue.currentIdx % queue.members.length;
   const member = queue.members[idx];
 
-  // Defensive: scan members starting from idx to find one with a valid user
-  // This handles the edge case where a user was deleted but the member row
-  // wasn't cleaned up (shouldn't happen with Cascade, but defensive)
-  for (let offset = 0; offset < queue.members.length; offset++) {
-    const candidate = queue.members[(idx + offset) % queue.members.length];
-    if (candidate?.user) {
-      return {
-        userId: candidate.userId,
-        userName: candidate.user.name,
-        userPhone: candidate.user.phone || null,
-        queueId: queue.id,
-      };
+  // Defensive: member should always have a user due to FK, but check anyway
+  if (!member?.user) {
+    // Try next member if current one is invalid
+    if (queue.members.length > 1) {
+      const fallback = queue.members[(idx + 1) % queue.members.length];
+      if (fallback?.user) {
+        return {
+          userId: fallback.userId,
+          userName: fallback.user.name,
+          userPhone: fallback.user.phone || null,
+          queueId: queue.id,
+        };
+      }
     }
+    return null;
   }
 
-  return null;
+  return {
+    userId: member.userId,
+    userName: member.user.name,
+    userPhone: member.user.phone || null,
+    queueId: queue.id,
+  };
 }
