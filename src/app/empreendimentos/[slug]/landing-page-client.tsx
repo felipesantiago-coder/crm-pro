@@ -988,7 +988,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
      Render
      ================================================================ */
   return (
-    <div className="min-h-screen bg-[#F7F6F3] text-[#1a1a1a] overflow-x-hidden [word-break:break-word] overscroll-y-contain">
+    <div className="min-h-screen bg-[#F7F6F3] text-[#1a1a1a] [word-break:break-word]" style={{ overflowX: 'clip' }}>
 
       {/* ── Custom Keyframes ────────────────────────────── */}
       <style>{`
