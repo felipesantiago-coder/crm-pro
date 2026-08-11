@@ -1146,7 +1146,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                   {/* CTA card */}
                   <button
                     type="button"
-                    onClick={() => { const el = document.getElementById('lead-form'); if (el) el.scrollIntoView({ behavior: 'smooth' }); try { (window as any).CRMPIXEL?.trackCTAClick('floor_plan_book'); } catch {} }}
+                    onClick={() => { scrollToForm(); try { (window as any).CRMPIXEL?.trackCTAClick('floor_plan_book'); } catch {} }}
                     className="w-full text-left rounded-2xl p-4 sm:p-5 bg-[#C9A96E] hover:bg-[#C9A96E]/85 transition-colors min-h-[44px]"
                   >
                     <div className="flex items-start justify-between gap-3">
