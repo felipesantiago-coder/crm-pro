@@ -297,12 +297,12 @@ export async function GET(request: Request) {
       >(
         Prisma.sql`
           SELECT
-            e."eventType",
+            COALESCE(e."eventType", 'desconhecido') AS "eventType",
             COUNT(*)::bigint AS count
           FROM tracking_events e
           WHERE e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY e."eventType"
+          GROUP BY COALESCE(e."eventType", 'desconhecido')
           ORDER BY count DESC
         `,
       )),
@@ -856,6 +856,17 @@ export async function GET(request: Request) {
     ]);
 
     console.log('[Tracking Report] Queries completed, building markdown...');
+    console.log('[Tracking Report] Data sizes:', {
+      kpis: kpis.length, bouncedVisitors: bouncedVisitors.length, chartData: chartData.length,
+      funnelData: funnelData.length, byCampaign: byCampaign.length, bySource: bySource.length,
+      byContent: byContent.length, byMedium: byMedium.length, byTerm: byTerm.length,
+      byEventType: byEventType.length, topPages: topPages.length, recentLeads: recentLeads.length,
+      allLeadsWithJourney: allLeadsWithJourney.length, scrollDepthData: scrollDepthData.length,
+      formInteractionData: formInteractionData.length, deviceBreakdown: deviceBreakdown.length,
+      engagementByDayOfWeek: engagementByDayOfWeek.length, webVitalsData: webVitalsData.length,
+      jsErrorsData: jsErrorsData.length, sectionViewsData: sectionViewsData.length,
+      visitorContextData: visitorContextData.length, contentEngagementData: contentEngagementData.length,
+    });
 
     // ── Compute derived metrics ──
     const totalVisitors = Number(kpis[0]?.totalVisitors ?? 0);
@@ -1047,7 +1058,7 @@ export async function GET(request: Request) {
       const v = Number(d.visitors);
       const cv = round2(v > 0 ? (Number(d.leads) / v) * 100 : 0);
       line(
-        `| ${d.dow_name.trim()} | ${fmt(v)} | ${fmt(Number(d.leads))} | ${pct(cv)} |`,
+        `| ${(d.dow_name ?? '—').trim()} | ${fmt(v)} | ${fmt(Number(d.leads))} | ${pct(cv)} |`,
       );
     }
     line();
@@ -1210,7 +1221,7 @@ export async function GET(request: Request) {
       const c = Number(r.count);
       const share = totalEvts > 0 ? (c / totalEvts) * 100 : 0;
       line(
-        `| ${r.eventType.replace(/_/g, ' ')} | ${fmt(c)} | ${pct(round2(share))} |`,
+        `| ${(r.eventType ?? 'desconhecido').replace(/_/g, ' ')} | ${fmt(c)} | ${pct(round2(share))} |`,
       );
     }
     line();
@@ -1225,7 +1236,7 @@ export async function GET(request: Request) {
       line('| Limite | Eventos Registrados |');
       line('|--------|-------------------|');
       for (const r of scrollDepthData) {
-        line(`| ${r.eventName} | ${fmt(Number(r.count))} |`);
+        line(`| ${r.eventName ?? '—'} | ${fmt(Number(r.count))} |`);
       }
       line();
     }
@@ -1443,7 +1454,7 @@ export async function GET(request: Request) {
     if (engagementByDayOfWeek.length > 0) {
       const bestDays = [...engagementByDayOfWeek]
         .map((d) => ({
-          day: d.dow_name.trim(),
+          day: (d.dow_name ?? '—').trim(),
           visitors: Number(d.visitors),
           leads: Number(d.leads),
           cr:
@@ -2051,8 +2062,8 @@ export async function GET(request: Request) {
 
       // Check weekends vs weekdays
       const weekdayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-      const weekendDays = dayAnalysis.filter(d => !weekdayNames.includes(d.dow_name.trim()));
-      const weekdayData = dayAnalysis.filter(d => weekdayNames.includes(d.dow_name.trim()));
+      const weekendDays = dayAnalysis.filter(d => !weekdayNames.includes((d.dow_name ?? '').trim()));
+      const weekdayData = dayAnalysis.filter(d => weekdayNames.includes((d.dow_name ?? '').trim()));
       if (weekendDays.length > 0 && weekdayData.length > 0) {
         const wkLeads = weekendDays.reduce((s, d) => s + d.leads, 0);
         const wkVisitors = weekendDays.reduce((s, d) => s + d.visitors, 0);
@@ -2089,7 +2100,7 @@ export async function GET(request: Request) {
         const v = Number(r.visitors);
         const l = Number(r.leads);
         const cr = v > 0 ? round2((l / v) * 100) : 0;
-        const med = r.medium.toLowerCase();
+        const med = (r.medium ?? '(não definido)').toLowerCase();
         let classification = 'Outro';
         if (paidMediums.includes(med) || med.includes('cpc') || med.includes('cpm')) {
           classification = '💰 Pago';
@@ -2707,9 +2718,9 @@ export async function GET(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
-    console.error('[Tracking Report] Error:', message, stack);
+    console.error('[Tracking Report] FULL Error:', message, '\nStack:', stack);
     return NextResponse.json(
-      { error: 'Internal server error', details: message },
+      { error: 'Erro interno do servidor', details: message, stack: stack },
       { status: 500 },
     );
   }

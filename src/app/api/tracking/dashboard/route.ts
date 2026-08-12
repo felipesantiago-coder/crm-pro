@@ -270,12 +270,12 @@ export async function GET(request: Request) {
       >(
         Prisma.sql`
           SELECT
-            e."eventType",
+            COALESCE(e."eventType", 'desconhecido') AS "eventType",
             COUNT(*)::bigint AS count
           FROM tracking_events e
           WHERE e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY e."eventType"
+          GROUP BY COALESCE(e."eventType", 'desconhecido')
           ORDER BY count DESC
         `,
       )),
@@ -1098,9 +1098,9 @@ export async function GET(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
-    console.error('[Tracking Dashboard] Error:', message, stack);
+    console.error('[Tracking Dashboard] FULL Error:', message, '\nStack:', stack);
     return NextResponse.json(
-      { error: 'Internal server error', details: message },
+      { error: 'Erro interno do servidor', details: message, stack: stack },
       { status: 500 },
     );
   }
