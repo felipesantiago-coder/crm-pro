@@ -366,7 +366,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   /* ── Section view tracking via IntersectionObserver ── */
   useEffect(() => {
     if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') return;
-    const sectionIds = ['hero', 'social-proof', 'summary', 'why-vitta', 'differentials', 'apartments', 'galeria', 'location', 'faq', 'cadastro'];
+    const sectionIds = ['hero', 'social-proof', 'summary', 'why-vitta', 'differentials', 'apartments', 'plantas', 'galeria', 'location', 'faq', 'cadastro'];
     let observer: IntersectionObserver | null = null;
     let retries = 0;
     function initObserver() {
