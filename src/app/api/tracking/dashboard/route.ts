@@ -496,17 +496,26 @@ export async function GET(request: Request) {
       )),
 
       // ── 19. Scroll depth distribution ──
+      // Uses metadata->>'depth' for new events, falls back to eventName
       safe(db.$queryRaw<
-        Array<{ eventName: string | null; count: bigint }>
+        Array<{ depth_label: string; count: bigint }>
       >(
         Prisma.sql`
-          SELECT e."eventName", COUNT(*)::bigint AS count
+          SELECT COALESCE(
+            'scroll_' || (e."metadata"->>'depth'),
+            e."eventName",
+            'scroll_unknown'
+          ) AS depth_label,
+          COUNT(*)::bigint AS count
           FROM tracking_events e
           WHERE e."eventType" = 'scroll_depth'
-            AND e."eventName" IS NOT NULL
             AND e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY e."eventName"
+          GROUP BY COALESCE(
+            'scroll_' || (e."metadata"->>'depth'),
+            e."eventName",
+            'scroll_unknown'
+          )
           ORDER BY count DESC
         `,
       )),
@@ -637,16 +646,15 @@ export async function GET(request: Request) {
       >(
         Prisma.sql`
           SELECT
-            e."eventName" AS metric,
+            COALESCE(e."metadata"->>'metric', e."eventName", 'unknown') AS metric,
             ROUND(AVG((e."metadata"->>'value')::numeric))::float AS avg_value,
             ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY (e."metadata"->>'value')::numeric))::float AS p75,
             COUNT(*)::bigint AS count
           FROM tracking_events e
           WHERE e."eventType" = 'web_vital'
-            AND e."eventName" IS NOT NULL
             AND e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY e."eventName"
+          GROUP BY COALESCE(e."metadata"->>'metric', e."eventName", 'unknown')
           ORDER BY count DESC
         `,
       )),
@@ -951,9 +959,8 @@ export async function GET(request: Request) {
 
     // ── Scroll depth ──
     const scrollDepthRows = scrollDepthData
-      .filter((r) => r.eventName != null)
-      .map((r) => ({
-        depth: r.eventName!,
+      .map((r: any) => ({
+        depth: r.depth_label ?? r.eventName ?? 'scroll_unknown',
         count: Number(r.count),
       }));
 

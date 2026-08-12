@@ -582,16 +582,27 @@ export async function GET(request: Request) {
       )),
 
       // 22. Scroll depth distribution
+      // Uses metadata->>'depth' for new events (pixel sends depth as data field)
+      // Falls back to eventName for backward compatibility
       safe(db.$queryRaw<
-        Array<{ eventName: string; count: bigint }>
+        Array<{ depth_label: string; count: bigint }>
       >(
         Prisma.sql`
-          SELECT e."eventName", COUNT(*)::bigint AS count
+          SELECT COALESCE(
+            'scroll_' || (e."metadata"->>'depth'),
+            e."eventName",
+            'scroll_unknown'
+          ) AS depth_label,
+          COUNT(*)::bigint AS count
           FROM tracking_events e
           WHERE e."eventType" = 'scroll_depth'
             AND e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY e."eventName"
+          GROUP BY COALESCE(
+            'scroll_' || (e."metadata"->>'depth'),
+            e."eventName",
+            'scroll_unknown'
+          )
           ORDER BY count DESC
         `,
       )),
@@ -721,16 +732,15 @@ export async function GET(request: Request) {
       >(
         Prisma.sql`
           SELECT
-            e."eventName" AS metric,
+            COALESCE(e."metadata"->>'metric', e."eventName", 'unknown') AS metric,
             ROUND(AVG((e."metadata"->>'value')::numeric))::float AS avg_value,
             ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY (e."metadata"->>'value')::numeric))::float AS p75,
             COUNT(*)::bigint AS count
           FROM tracking_events e
           WHERE e."eventType" = 'web_vital'
-            AND e."eventName" IS NOT NULL
             AND e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY e."eventName"
+          GROUP BY COALESCE(e."metadata"->>'metric', e."eventName", 'unknown')
           ORDER BY count DESC
         `,
       )),
@@ -1239,7 +1249,7 @@ export async function GET(request: Request) {
       line('| Limite | Eventos Registrados |');
       line('|--------|-------------------|');
       for (const r of scrollDepthData) {
-        line(`| ${r.eventName ?? '—'} | ${fmt(Number(r.count))} |`);
+        line(`| ${(r as any).depth_label ?? '—'} | ${fmt(Number(r.count))} |`);
       }
       line();
     }
@@ -1735,12 +1745,13 @@ export async function GET(request: Request) {
       p('Sem dados de profundidade de scroll no período.');
     } else {
       // Standard scroll thresholds
-      const thresholds = ['scroll_25', 'scroll_50', 'scroll_75', 'scroll_100'];
+      const thresholds = ['scroll_25', 'scroll_50', 'scroll_75', 'scroll_90'];
       const scrollMap = new Map<string, number>();
       let totalScrollEvents = 0;
       for (const r of scrollDepthData) {
         const c = Number(r.count);
-        scrollMap.set(r.eventName, c);
+        const label = (r as any).depth_label ?? null;
+        if (label) scrollMap.set(label, c);
         totalScrollEvents += c;
       }
 
@@ -1756,11 +1767,11 @@ export async function GET(request: Request) {
       line();
 
       // Also show any non-standard scroll events
-      const nonStandard = scrollDepthData.filter(r => !thresholds.includes(r.eventName));
+      const nonStandard = scrollDepthData.filter(r => !thresholds.includes((r as any).depth_label));
       if (nonStandard.length > 0) {
         p('*Outros marcos de scroll registrados:*');
         for (const r of nonStandard) {
-          bullet(`**${r.eventName}**: ${fmt(Number(r.count))} eventos`);
+          bullet(`**${(r as any).depth_label}**: ${fmt(Number(r.count))} eventos`);
         }
         line();
       }
@@ -1769,17 +1780,17 @@ export async function GET(request: Request) {
       const scroll25 = scrollMap.get('scroll_25') ?? 0;
       const scroll50 = scrollMap.get('scroll_50') ?? 0;
       const scroll75 = scrollMap.get('scroll_75') ?? 0;
-      const scroll100 = scrollMap.get('scroll_100') ?? 0;
+      const scroll90 = scrollMap.get('scroll_90') ?? 0;
       const reach75Pct = totalVisitors > 0 ? round2((scroll75 / totalVisitors) * 100) : 0;
-      const reach100Pct = totalVisitors > 0 ? round2((scroll100 / totalVisitors) * 100) : 0;
+      const reach90Pct = totalVisitors > 0 ? round2((scroll90 / totalVisitors) * 100) : 0;
       const drop25to50 = scroll25 > 0 ? round2(((scroll25 - scroll50) / scroll25) * 100) : 0;
       const drop50to75 = scroll50 > 0 ? round2(((scroll50 - scroll75) / scroll50) * 100) : 0;
-      const drop75to100 = scroll75 > 0 ? round2(((scroll75 - scroll100) / scroll75) * 100) : 0;
+      const drop75to90 = scroll75 > 0 ? round2(((scroll75 - scroll90) / scroll75) * 100) : 0;
 
       p('**Análise de Engajamento com Conteúdo:**');
       bullet(`${pct(reach75Pct)} dos visitantes alcançaram 75% da página (engajamento profundo).`);
-      bullet(`${pct(reach100Pct)} dos visitantes chegaram ao final da página (leitura completa).`);
-      bullet(`Queda 25%→50%: ${pct(drop25to50)} | 50%→75%: ${pct(drop50to75)} | 75%→100%: ${pct(drop75to100)}`);
+      bullet(`${pct(reach90Pct)} dos visitantes chegaram a 90% da página (leitura quase completa).`);
+      bullet(`Queda 25%→50%: ${pct(drop25to50)} | 50%→75%: ${pct(drop50to75)} | 75%→90%: ${pct(drop75to90)}`);
       line();
 
       if (reach75Pct >= 40) {
@@ -1793,12 +1804,12 @@ export async function GET(request: Request) {
       }
 
       // Identify biggest drop-off section
-      if (drop25to50 > drop50to75 && drop25to50 > drop75to100) {
+      if (drop25to50 > drop50to75 && drop25to50 > drop75to90) {
         p('**Maior queda:** Entre 25% e 50% da página. A primeira seção do conteúdo precisa ser mais atrativa.');
-      } else if (drop50to75 > drop25to50 && drop50to75 > drop75to100) {
+      } else if (drop50to75 > drop25to50 && drop50to75 > drop75to90) {
         p('**Maior queda:** Entre 50% e 75% da página. O conteúdo intermediário pode estar monótono — adicione elementos visuais, depoimentos ou CTAs intermediários.');
       } else if (scroll75 > 0) {
-        p('**Maior queda:** Entre 75% e 100% da página. Os visitantes perdem interesse no final — considere mover informações importantes e o CTA principal para mais acima.');
+        p('**Maior queda:** Entre 75% e 90% da página. Os visitantes perdem interesse no final — considere mover informações importantes e o CTA principal para mais acima.');
       }
       line();
     }
@@ -2433,8 +2444,8 @@ export async function GET(request: Request) {
     // ── 29.8 Scroll Depth Assessment ──
     h3('29.8. Avaliação de Engajamento de Conteúdo (Scroll)');
     if (scrollDepthData.length > 0) {
-      const scroll75 = Number(scrollDepthData.find(s => s.eventName === 'scroll_75')?.count ?? 0);
-      const scroll25 = Number(scrollDepthData.find(s => s.eventName === 'scroll_25')?.count ?? 0);
+      const scroll75 = Number(scrollDepthData.find(s => (s as any).depth_label === 'scroll_75')?.count ?? 0);
+      const scroll25 = Number(scrollDepthData.find(s => (s as any).depth_label === 'scroll_25')?.count ?? 0);
       const engagementPct = totalVisitors > 0 ? round2((scroll75 / totalVisitors) * 100) : 0;
 
       if (engagementPct >= 40) {
@@ -2477,7 +2488,7 @@ export async function GET(request: Request) {
       }
 
       // Scroll engagement
-      const scroll75v = Number(scrollDepthData.find(s => s.eventName === 'scroll_75')?.count ?? 0);
+      const scroll75v = Number(scrollDepthData.find(s => (s as any).depth_label === 'scroll_75')?.count ?? 0);
       const scrollEngagementPct = totalVisitors > 0 ? (scroll75v / totalVisitors) * 100 : 0;
       if (scrollEngagementPct >= 30) { score += 5; reasons.push('Engajamento de conteúdo excelente'); }
       else if (scrollEngagementPct > 0 && scrollEngagementPct < 15) { score -= 3; deductions.push('Engajamento de conteúdo fraco'); }

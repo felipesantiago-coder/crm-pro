@@ -143,19 +143,25 @@ export async function POST(request: NextRequest) {
         utmContent: (r.utmContent as string) || (r.utm_content as string) || null,
         utmTerm: (r.utmTerm as string) || (r.utm_term as string) || null,
         metadata: (() => {
-          // Merge extra pixel fields into metadata
+          // Fields already mapped to top-level columns
+          const mapped = new Set([
+            'visitorId','vid','sessionId','sid','siteId','site_id',
+            'eventType','event','eventName','event_name','pageUrl','url',
+            'referrer','utmSource','utm_source','utmMedium','utm_medium',
+            'utmCampaign','utm_campaign','utmContent','utm_content','utmTerm','utm_term',
+            'metadata','cookie_consent',
+          ]);
           const m: Record<string, unknown> = {};
+          // 1) Preserve explicit metadata sub-object if present
           if (r.metadata && typeof r.metadata === 'object' && !Array.isArray(r.metadata)) {
             Object.assign(m, r.metadata as Record<string, unknown>);
           }
-          if (r.lead_id) m.lead_id = r.lead_id;
-          // Capture extra device/context fields
-          if (r.screen) m.screen = r.screen;
-          if (r.timezone) m.timezone = r.timezone;
-          if (r.language) m.language = r.language;
-          if (r.connection) m.connection = r.connection;
-          if (r.geo_hint) m.geo_hint = r.geo_hint;
-          if (r.ts) m.client_ts = r.ts;
+          // 2) Capture ALL remaining fields from the raw pixel payload
+          for (const key of Object.keys(r)) {
+            if (!mapped.has(key) && r[key] !== undefined && r[key] !== null) {
+              m[key] = r[key];
+            }
+          }
           return Object.keys(m).length > 0 ? m : undefined;
         })(),
       };
