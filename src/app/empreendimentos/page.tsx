@@ -5,6 +5,8 @@ import {
   Building2, MapPin, ArrowRight, Loader2, Search, X,
   Eye, MessageCircle, Clock,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import LanguageSwitcher from '@/i18n/LanguageSwitcher';
 
 /* ─── Types ─────────────────────────────────────────────── */
 interface EnterpriseImage {
@@ -44,6 +46,7 @@ function ConfettiParticles() {
 
 /* ─── Main ──────────────────────────────────────────────── */
 export default function EmpreendimentosPage() {
+  const t = useTranslations();
   const [enterprises, setEnterprises] = useState<Enterprise[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -115,9 +118,12 @@ export default function EmpreendimentosPage() {
             <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/20">
               <Building2 className="h-5 w-5 text-white" />
             </div>
-            <span className="text-lg font-bold tracking-tight">Empreendimentos</span>
+            <span className="text-lg font-bold tracking-tight">{t('listing.navBrand')}</span>
           </div>
-          <div className="text-sm text-white/50 hidden sm:block">Empreendimentos</div>
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-white/50 hidden sm:block">{t('listing.navBrand')}</div>
+            <LanguageSwitcher />
+          </div>
         </nav>
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pt-8 pb-6 sm:pb-16 text-center">
@@ -125,18 +131,18 @@ export default function EmpreendimentosPage() {
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[#C9A96E]/20 bg-[#C9A96E]/5 mb-6">
             <Building2 className="h-3.5 w-3.5 text-[#C9A96E]" />
             <span className="text-xs font-medium text-[#C9A96E] tracking-wide uppercase">
-              Portfólio Exclusivo
+              {t('listing.badge')}
             </span>
           </div>
 
           <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-tight">
-            Empreendimentos de{' '}
+            {t('listing.titlePrefix')}{' '}
             <span className="bg-gradient-to-r from-[#C9A96E] via-[#E8D5A3] to-[#C9A96E] bg-clip-text text-transparent">
-              Alto Padrão
+              {t('listing.titleHighlight')}
             </span>
           </h1>
           <p className="mt-4 sm:mt-5 text-base sm:text-lg text-white/50 max-w-2xl mx-auto leading-relaxed">
-            Descubra imóveis exclusivos cuidadosamente selecionados para quem busca o melhor em qualidade de vida e investimento.
+            {t('listing.subtitle')}
           </p>
 
           {/* Gold gradient line */}
@@ -146,11 +152,10 @@ export default function EmpreendimentosPage() {
           <div className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.03] border border-white/[0.06]">
             <Building2 className="h-4 w-4 text-[#C9A96E]/70" />
             <span className="text-sm text-white/60">
-              <span className="text-white/90 font-semibold">{filtered.length}</span>{' '}
-              empreendimento{filtered.length !== 1 ? 's' : ''} disponíve{filtered.length !== 1 ? 'is' : 'l'}
+              {t('listing.stats', { count: filtered.length })}
               {search && (
                 <span className="text-white/30">
-                  {' '}· buscando por &quot;{search}&quot;
+                  {' '}· {t('listing.searching', { query: search })}
                 </span>
               )}
             </span>
@@ -162,7 +167,7 @@ export default function EmpreendimentosPage() {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
               <input
                 type="text"
-                placeholder="Buscar empreendimento..."
+                placeholder={t('listing.searchPlaceholder')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-11 pr-10 py-3.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#C9A96E]/50 focus:ring-1 focus:ring-[#C9A96E]/20 transition-all"
@@ -194,10 +199,10 @@ export default function EmpreendimentosPage() {
             </div>
 
             <h2 className="text-xl sm:text-2xl font-bold text-white/70 mb-3">
-              Nenhum empreendimento encontrado
+              {t('listing.emptyTitle')}
             </h2>
             <p className="text-white/35 text-sm sm:text-base max-w-sm mx-auto mb-8 leading-relaxed">
-              Tente buscar por outro termo ou limpe o filtro para visualizar todos os empreendimentos disponíveis.
+              {t('listing.emptyDesc')}
             </p>
 
             <button
@@ -205,7 +210,7 @@ export default function EmpreendimentosPage() {
               className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-sm font-medium text-white/70 hover:bg-white/[0.08] hover:border-[#C9A96E]/30 hover:text-[#C9A96E] transition-all duration-300"
             >
               <X className="h-4 w-4" />
-              Limpar filtro
+              {t('listing.clearFilter')}
             </button>
           </div>
         ) : (
@@ -269,7 +274,7 @@ export default function EmpreendimentosPage() {
                       <div className="absolute top-4 right-4 z-10">
                         <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-full bg-[#C9A96E]/15 text-[#C9A96E] border border-[#C9A96E]/25 backdrop-blur-sm">
                           <Clock className="h-3 w-3" />
-                          Em breve
+                          {t('listing.comingSoon')}
                         </span>
                       </div>
                     )}
@@ -301,13 +306,13 @@ export default function EmpreendimentosPage() {
                             }`}
                           >
                             <Eye className="h-4 w-4" />
-                            <span>Ver detalhes</span>
+                            <span>{t('listing.viewDetails')}</span>
                             <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
                           </a>
                         ) : (
                           <span className="inline-flex items-center gap-2 text-sm font-medium text-white/30 cursor-default">
                             <Clock className="h-4 w-4" />
-                            <span>Indisponível</span>
+                            <span>{t('listing.unavailable')}</span>
                           </span>
                         )}
                       </div>
@@ -333,31 +338,31 @@ export default function EmpreendimentosPage() {
                 <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/15">
                   <Building2 className="h-5 w-5 text-white" />
                 </div>
-                <span className="text-base font-bold tracking-tight">Empreendimentos</span>
+                <span className="text-base font-bold tracking-tight">{t('listing.footerBrand')}</span>
               </div>
               <p className="text-sm text-white/30 leading-relaxed max-w-xs">
-                Encontre o imóvel ideal para você e sua família. Qualidade, confiança e atendimento personalizado.
+                {t('listing.footerDesc')}
               </p>
             </div>
 
             {/* Quick links */}
             <div>
-              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Navegação</h4>
+              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">{t('listing.footerNav')}</h4>
               <ul className="space-y-3">
                 <li>
                   <a href="/empreendimentos" className="text-sm text-white/30 hover:text-[#C9A96E] transition-colors duration-200">
-                    Todos os Empreendimentos
+                    {t('listing.footerAll')}
                   </a>
                 </li>
                 <li>
-                  <span className="text-sm text-white/20 cursor-default">Condições Especiais</span>
+                  <span className="text-sm text-white/20 cursor-default">{t('listing.footerConditions')}</span>
                 </li>
               </ul>
             </div>
 
             {/* WhatsApp */}
             <div>
-              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Atendimento</h4>
+              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">{t('listing.footerService')}</h4>
               <a
                 href="https://wa.me/5511999999999"
                 target="_blank"
@@ -365,18 +370,18 @@ export default function EmpreendimentosPage() {
                 className="inline-flex items-center gap-2.5 text-sm text-[#25D366]/70 hover:text-[#25D366] transition-colors duration-200"
               >
                 <MessageCircle className="h-4 w-4" />
-                Fale pelo WhatsApp
+                {t('listing.footerWhatsapp')}
               </a>
               <p className="text-xs text-white/20 mt-2 leading-relaxed">
-                Conheça nossos empreendimentos imobiliários com projetos que combinam conforto, sofisticação e qualidade de vida.
+                {t('listing.footerBottomText')}
               </p>
             </div>
           </div>
 
           {/* Bottom bar */}
           <div className="border-t border-white/[0.04] py-5 sm:py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-xs text-white/20">&copy; {new Date().getFullYear()} Todos os direitos reservados.</p>
-            <p className="text-xs text-white/15">Todos os valores e informações são sujeitos a alteração sem aviso prévio.</p>
+            <p className="text-xs text-white/20">&copy; {new Date().getFullYear()} {t('listing.copyright')}</p>
+            <p className="text-xs text-white/15">{t('listing.disclaimer')}</p>
           </div>
         </div>
       </footer>

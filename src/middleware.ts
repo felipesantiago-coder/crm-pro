@@ -1,21 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { locales, defaultLocale, isValidLocale, type Locale } from './i18n/config';
+
+const LOCALE_COOKIE = 'locale';
 
 /**
  * Edge Middleware — executa em TODAS as requisições antes de chegar
  * às páginas ou API routes.
  *
  * Responsabilidades:
- *  1. Impedir cache de HTML pelo navegador (evita código antigo após deploy)
- *  2. Impedir cache de dados da API (sempre dados frescos)
- *  3. Adicionar headers de segurança em páginas públicas
+ *  1. Roteamento de locale (/en/..., /es/...) para landing pages
+ *  2. Impedir cache de HTML pelo navegador (evita código antigo após deploy)
+ *  3. Impedir cache de dados da API (sempre dados frescos)
+ *  4. Adicionar headers de segurança em páginas públicas
  */
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const response = NextResponse.next();
 
+  // ── 0. Locale routing for empreendimentos ───────
+  // Detect locale from URL: /en/empreendimentos/... or /es/empreendimentos/...
+  let detectedLocale: Locale | null = null;
+  let cleanPath = pathname;
+
+  for (const l of locales) {
+    if (l === defaultLocale) continue; // pt-BR has no prefix
+    const prefix = `/${l}/`;
+    if (pathname === `/${l}` || pathname.startsWith(prefix)) {
+      detectedLocale = l;
+      cleanPath = pathname.slice(l.length + 1) || '/';
+      break;
+    }
+  }
+
+  const isEmpreendimentosPath =
+    cleanPath === '/empreendimentos' ||
+    cleanPath.startsWith('/empreendimentos/');
+
+  if (isEmpreendimentosPath) {
+    // Determine effective locale:
+    // 1. URL prefix (if present)
+    // 2. Cookie
+    // 3. Default (pt-BR)
+    let effectiveLocale: Locale = defaultLocale;
+
+    if (detectedLocale) {
+      effectiveLocale = detectedLocale;
+    } else {
+      const cookieLocale = request.cookies.get(LOCALE_COOKIE)?.value;
+      if (cookieLocale && isValidLocale(cookieLocale)) {
+        effectiveLocale = cookieLocale;
+      }
+    }
+
+    // Set locale header for server components
+    response.headers.set('x-locale', effectiveLocale);
+
+    // If locale was detected from URL, rewrite to strip the prefix
+    if (detectedLocale) {
+      const url = request.nextUrl.clone();
+      url.pathname = cleanPath + (url.search || '');
+      return NextResponse.rewrite(url, {
+        headers: {
+          ...Object.fromEntries(response.headers.entries()),
+          'x-locale': effectiveLocale,
+        },
+      });
+    }
+  }
+
   // ── 1. Landing pages HTML: stale-while-revalidate ──────
-  // Serve cached HTML immediately (fast TTFB) and revalidate in background.
-  // JS/CSS chunks use content hashes and are unaffected by this.
   const isLandingPage = /^\/empreendimentos\/[^/]+(\/?$|\/cadastro-sucesso)/.test(pathname);
 
   if (isLandingPage) {
@@ -50,20 +103,18 @@ export function middleware(request: NextRequest) {
 }
 
 // Matcher: intercepta tudo EXCETO arquivos estáticos com hash
-// (_next/static/chunks/xxx.js, _next/static/css/xxx.css, imagens, fontes)
 export const config = {
   matcher: [
-    // Páginas
     '/',
     '/login',
     '/change-password',
     '/reset-password',
     '/forgot-password',
     '/empreendimentos/:path*',
+    '/en/:path*',
+    '/es/:path*',
     '/portal/:path*',
-    // API routes
     '/api/:path*',
-    // _next/data (RSC payload — deve ser fresco)
     '/_next/data/:path*',
   ],
 };
