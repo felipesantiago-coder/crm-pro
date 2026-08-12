@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, startTransition, Suspense } from 'react';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import {
@@ -96,6 +96,8 @@ interface Enterprise {
 /* ================================================================
    Dynamic imports (heavy deps)
    ================================================================ */
+const LandingLightbox = dynamic(() => import('./landing-lightbox'), { ssr: false });
+const LandingExitPopup = dynamic(() => import('./landing-exit-popup'), { ssr: false });
 const LocationMap = dynamic(() => import('@/components/location-map'), {
   ssr: false,
   loading: () => (
@@ -238,7 +240,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   const [animatedCount, setAnimatedCount] = useState(0);
   const [selectedPlanIdx, setSelectedPlanIdx] = useState<number>(-1);
   const countAnimatedRef = useRef(false);
-  const lightboxScrollRef = useRef<HTMLDivElement>(null);
+  /* lightboxScrollRef removed — now in LandingLightbox component */
 
   // ── Pixel form fields updater ──
   const updatePixelFormFields = useCallback((name: string, phone: string, email: string, custom: Record<string, string>) => {
@@ -504,24 +506,11 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       .catch(() => {});
   }, [slug, queueUser]);
 
-  /* ── Lightbox keyboard nav ── */
+  /* ── Lightbox: lock body scroll ── */
   useEffect(() => {
-    if (!lightboxOpen || !enterprise) return;
-    const imgs = enterprise.images || []; const len = Math.max(imgs.length, 1);
-    const h = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') setLightboxOpen(false);
-      if (ev.key === 'ArrowRight') { const next = (activeImgIdx + 1) % len; setActiveImgIdx(next); lightboxScrollRef.current?.scrollTo({ left: next * lightboxScrollRef.current.clientWidth, behavior: 'smooth' }); }
-      if (ev.key === 'ArrowLeft') { const prev = (activeImgIdx - 1 + len) % len; setActiveImgIdx(prev); lightboxScrollRef.current?.scrollTo({ left: prev * lightboxScrollRef.current.clientWidth, behavior: 'smooth' }); }
-    };
-    window.addEventListener('keydown', h); document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', h); document.body.style.overflow = ''; };
-  }, [lightboxOpen, enterprise, activeImgIdx]);
-
-  /* ── Lightbox: scroll to active image on open ── */
-  useEffect(() => {
-    if (!lightboxOpen || !lightboxScrollRef.current) return;
-    const container = lightboxScrollRef.current;
-    requestAnimationFrame(() => { container.scrollTo({ left: activeImgIdx * container.clientWidth, behavior: 'instant' as ScrollBehavior }); });
+    if (!lightboxOpen) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
   }, [lightboxOpen]);
 
   // Animated counter for social proof
@@ -658,13 +647,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     return [loc.address, loc.neighborhood, loc.city, loc.state].filter(Boolean).join(', ');
   }, [info?.location]);
 
-  /* ── Lightbox: sync index from manual scroll ── */
-  const lightboxScrollHandler = useCallback(() => {
-    const container = lightboxScrollRef.current;
-    if (!container || images.length === 0) return;
-    const idx = Math.round(container.scrollLeft / container.clientWidth);
-    if (idx >= 0 && idx < images.length && idx !== activeImgIdx) setActiveImgIdx(idx);
-  }, [images.length, activeImgIdx]);
+  /* ── Lightbox scroll handler removed — now in LandingLightbox component ── */
 
   // Status detection
   const allText = [info?.summary, ...(info?.differentials || [])].filter(Boolean).join(' ');
@@ -757,8 +740,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     Users: <Users className="h-4 w-4" />, LayoutGrid: <LayoutGrid className="h-4 w-4" />, Shield: <Shield className="h-4 w-4" />, TrendingUp: <TrendingUp className="h-4 w-4" />, Sparkles: <Sparkles className="h-4 w-4" />,
   };
 
-  const goNext = () => { const next = (activeImgIdx + 1) % Math.max(images.length, 1); setActiveImgIdx(next); lightboxScrollRef.current?.scrollTo({ left: next * lightboxScrollRef.current.clientWidth, behavior: 'smooth' }); };
-  const goPrev = () => { const prev = (activeImgIdx - 1 + images.length) % Math.max(images.length, 1); setActiveImgIdx(prev); lightboxScrollRef.current?.scrollTo({ left: prev * lightboxScrollRef.current.clientWidth, behavior: 'smooth' }); };
+  /* goPrev/goNext removed — now in LandingLightbox component */
 
   const scrollToForm = () => {
     const form = document.getElementById('cadastro');
@@ -1227,7 +1209,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               {/* Mosaic grid — 2 cols mobile, 3 cols desktop */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
                 {images.map((img, idx) => (
-                  <button key={img.id} type="button" onClick={() => { setActiveImgIdx(idx); setLightboxOpen(true); try { (window as any).CRMPIXEL?.trackGalleryClick(idx, images.length); } catch {} }}
+                  <button key={img.id} type="button" onClick={() => { startTransition(() => { setActiveImgIdx(idx); setLightboxOpen(true); }); try { (window as any).CRMPIXEL?.trackGalleryClick(idx, images.length); } catch {} }}
                     className="lp-gallery-card group relative w-full overflow-hidden rounded-2xl bg-[#1a1a1a]/[0.06] aspect-[4/3] hover:shadow-lg transition-all duration-300">
                     <img src={img.url} alt={img.altText || `${e.name} - Foto ${idx + 1}`} width={680} height={510} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" loading={idx < 4 ? 'eager' : 'lazy'} decoding="async" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
@@ -1578,66 +1560,29 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════
-          EXIT INTENT POPUP
-          ══════════════════════════════════════════════════ */}
+      {/* EXIT INTENT POPUP — loaded lazily */}
       {exitPopupOpen && (
-        <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setExitPopupOpen(false)}>
-          <div className="relative max-w-md w-full rounded-3xl bg-white border border-[#1a1a1a]/[0.08] p-6 sm:p-8 shadow-2xl" onClick={(ev) => ev.stopPropagation()}>
-            <button onClick={() => setExitPopupOpen(false)} className="absolute top-4 right-4 text-[#1a1a1a]/30 hover:text-[#1a1a1a] transition-colors"><X className="h-5 w-5" /></button>
-            <div className="flex items-center justify-center mb-5">
-              <div className="h-14 w-14 rounded-2xl bg-[#33492F]/10 flex items-center justify-center"><MessageSquare className="h-7 w-7 text-[#33492F]" /></div>
-            </div>
-            <h3 className="text-xl font-bold text-center mb-2 text-[#1a1a1a]">Tem interesse no {e.name}?</h3>
-            <p className="text-sm text-[#1a1a1a]/50 text-center mb-6 leading-relaxed">Receba valores e condições comerciais diretamente no seu WhatsApp. Sem compromisso.</p>
-            <div className="space-y-3">
-              <button type="button" onClick={() => { setExitPopupOpen(false); openWhatsApp('exit_popup', null, 'popup'); }}
-                className="w-full min-h-[44px] flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors">
-                <Phone className="h-4 w-4" /> Falar pelo WhatsApp
-              </button>
-              <a href="#cadastro" onClick={() => { setExitPopupOpen(false); try { (window as any).CRMPIXEL?.track('exit_popup_cta', { enterprise: e.name, action: 'form' }); } catch {} }}
-                className="w-full min-h-[44px] flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#33492F] text-white font-bold text-sm hover:bg-[#33492F]/90 transition-all shadow-lg shadow-[#33492F]/20">
-                <Send className="h-4 w-4" /> Quero saber mais
-              </a>
-            </div>
-            <p className="text-[11px] text-[#1a1a1a]/25 text-center mt-4">
-              <Shield className="h-3 w-3 inline-block mr-1 text-[#33492F]/40" />
-              Seus dados estão seguros e não enviamos spam.
-              {showRealCount && <span className="ml-2 text-emerald-400/60">{clientCount} pessoa{clientCount !== 1 ? 's' : ''} já se cadastraram.</span>}
-            </p>
-          </div>
-        </div>
+        <Suspense fallback={null}>
+          <LandingExitPopup
+            enterpriseName={e?.name || ''}
+            onClose={() => setExitPopupOpen(false)}
+            onWhatsApp={() => { setExitPopupOpen(false); openWhatsApp('exit_popup', null, 'popup'); }}
+            showRealCount={showRealCount}
+            clientCount={clientCount}
+          />
+        </Suspense>
       )}
 
-      {/* ══════════════════════════════════════════════════
-          LIGHTBOX — Gallery
-          ══════════════════════════════════════════════════ */}
+      {/* LIGHTBOX — loaded lazily on first open */}
       {lightboxOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col" onClick={() => setLightboxOpen(false)}>
-          {/* Header bar */}
-          <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4" onClick={(ev) => ev.stopPropagation()}>
-            <div className="text-white/60 text-xs sm:text-sm bg-white/10 backdrop-blur-sm px-3 py-1.5 sm:px-4 sm:py-2 rounded-full min-h-[44px] flex items-center">{activeImgIdx + 1} / {images.length}</div>
-            <button onClick={() => setLightboxOpen(false)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2 sm:p-2.5 transition-colors"><X className="h-6 w-6" /></button>
-          </div>
-          {/* Horizontally scrollable image container */}
-          <div
-            ref={lightboxScrollRef}
-            onScroll={lightboxScrollHandler}
-            onClick={(ev) => ev.stopPropagation()}
-            className="flex-1 flex overflow-x-auto snap-x snap-mandatory scroll-smooth [-webkit-overflow-scrolling:touch] [overscroll-behavior-x:contain]"
-          >
-            {images.map((img, idx) => (
-              <div key={img.id} className="flex-shrink-0 w-full h-full snap-start flex items-center justify-center p-2 sm:p-4">
-                <img src={img.url} alt={img.altText || ''} width={1200} height={800} className="max-w-full max-h-full object-contain rounded-xl select-none pointer-events-none" loading="eager" decoding="async" draggable={false} />
-              </div>
-            ))}
-          </div>
-          {/* Arrow nav buttons (desktop + mobile) */}
-          {images.length > 1 && (<>
-            <button onClick={(ev) => { ev.stopPropagation(); goPrev(); }} className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors z-10"><ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" /></button>
-            <button onClick={(ev) => { ev.stopPropagation(); goNext(); }} className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center text-white/60 hover:text-white bg-white/10 backdrop-blur-sm rounded-full p-2.5 sm:p-3 transition-colors z-10"><ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" /></button>
-          </>)}
-        </div>
+        <Suspense fallback={null}>
+          <LandingLightbox
+            images={images}
+            activeIdx={activeImgIdx}
+            onClose={() => setLightboxOpen(false)}
+            onIndexChange={(idx: number) => startTransition(() => setActiveImgIdx(idx))}
+          />
+        </Suspense>
       )}
 
 

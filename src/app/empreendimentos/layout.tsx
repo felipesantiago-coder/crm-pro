@@ -40,7 +40,7 @@ export default function EmpreendimentosLayout({
 
   return (
     <>
-      {/* Preconnect: resolve DNS/TLS early for Meta Pixel */}
+      {/* Preconnect: resolve DNS/TLS early for Meta Pixel */
       <link rel="preconnect" href="https://connect.facebook.net" />
 
       {/* Meta Pixel (Facebook) — fires PageView on load */}
