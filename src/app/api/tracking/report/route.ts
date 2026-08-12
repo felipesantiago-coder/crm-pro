@@ -95,6 +95,14 @@ export async function GET(request: Request) {
       returningVisitors,
       engagementByDayOfWeek,
       whatsappClicks,
+      webVitalsData,
+      engagedTimeData,
+      jsErrorsData,
+      sectionViewsData,
+      ctaClicksData,
+      formFunnelData,
+      visitorContextData,
+      contentEngagementData,
     ] = await Promise.all([
       // 1. Core KPIs
       safe(db.$queryRaw<
@@ -697,6 +705,154 @@ export async function GET(request: Request) {
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
         `,
       )),
+      // Web Vitals summary
+      safe(db.$queryRaw<
+        Array<{ metric: string; avg_value: number; p75: number; count: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            e."eventName" AS metric,
+            ROUND(AVG((e."metadata"->>'value')::numeric))::float AS avg_value,
+            ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY (e."metadata"->>'value')::numeric))::float AS p75,
+            COUNT(*)::bigint AS count
+          FROM tracking_events e
+          WHERE e."eventType" = 'web_vital'
+            AND e."eventName" IS NOT NULL
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY e."eventName"
+          ORDER BY count DESC
+        `,
+      )),
+      // Engaged time distribution
+      safe(db.$queryRaw<
+        Array<{ seconds: number; count: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            (e."metadata"->>'seconds')::int AS seconds,
+            COUNT(*)::bigint AS count
+          FROM tracking_events e
+          WHERE e."eventType" = 'engaged_time'
+            AND e."metadata"->>'seconds' IS NOT NULL
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY (e."metadata"->>'seconds')::int
+          ORDER BY seconds ASC
+        `,
+      )),
+      // JS Errors
+      safe(db.$queryRaw<
+        Array<{ error_message: string; count: bigint; latest: string }>
+      >(
+        Prisma.sql`
+          SELECT
+            COALESCE(e."metadata"->>'message', e."eventName", 'Erro desconhecido') AS error_message,
+            COUNT(*)::bigint AS count,
+            MAX(e."createdAt")::text AS latest
+          FROM tracking_events e
+          WHERE e."eventType" = 'js_error'
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY COALESCE(e."metadata"->>'message', e."eventName", 'Erro desconhecido')
+          ORDER BY count DESC
+          LIMIT 10
+        `,
+      )),
+      // Section views
+      safe(db.$queryRaw<
+        Array<{ section: string; views: bigint; unique_visitors: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            COALESCE(e."eventName", e."metadata"->>'section', '(sem nome)') AS section,
+            COUNT(*)::bigint AS views,
+            COUNT(DISTINCT e."visitorId")::bigint AS unique_visitors
+          FROM tracking_events e
+          WHERE e."eventType" = 'section_view'
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY COALESCE(e."eventName", e."metadata"->>'section', '(sem nome)')
+          ORDER BY views DESC
+          LIMIT 15
+        `,
+      )),
+      // CTA clicks
+      safe(db.$queryRaw<
+        Array<{ cta_text: string; section: string; clicks: bigint; unique_visitors: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            COALESCE(e."metadata"->>'cta_text', e."eventName", '(sem texto)') AS cta_text,
+            COALESCE(e."metadata"->>'section', '(nao definida)') AS section,
+            COUNT(*)::bigint AS clicks,
+            COUNT(DISTINCT e."visitorId")::bigint AS unique_visitors
+          FROM tracking_events e
+          WHERE e."eventType" = 'cta_click'
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY COALESCE(e."metadata"->>'cta_text', e."eventName", '(sem texto)'), COALESCE(e."metadata"->>'section', '(nao definida)')
+          ORDER BY clicks DESC
+          LIMIT 10
+        `,
+      )),
+      // Form funnel
+      safe(db.$queryRaw<
+        Array<{ stage: string; count: bigint }>
+      >(
+        Prisma.sql`
+          SELECT stage, COUNT(*)::bigint AS count FROM (
+            SELECT 'form_view' AS stage FROM tracking_events WHERE "eventType" = 'form_view' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
+            UNION ALL
+            SELECT 'form_focus' AS stage FROM tracking_events WHERE "eventType" = 'form_focus' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
+            UNION ALL
+            SELECT 'form_submit_attempt' AS stage FROM tracking_events WHERE "eventType" = 'form_submit_attempt' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
+            UNION ALL
+            SELECT 'form_submit' AS stage FROM tracking_events WHERE "eventType" = 'form_submit' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
+            UNION ALL
+            SELECT 'form_submit_error' AS stage FROM tracking_events WHERE "eventType" = 'form_submit_error' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
+          ) all_stages
+          GROUP BY stage
+          ORDER BY count DESC
+        `,
+      )),
+      // Visitor context (language + connection)
+      safe(db.$queryRaw<
+        Array<{ context_type: string; context_value: string; visitors: bigint }>
+      >(
+        Prisma.sql`
+          SELECT context_type, context_value, COUNT(DISTINCT "visitorId")::bigint AS visitors FROM (
+            SELECT 'language' AS context_type, COALESCE(e."metadata"->>'language', '(desconhecido)') AS context_value, e."visitorId"
+            FROM tracking_events e
+            WHERE e."metadata"->>'language' IS NOT NULL AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+            UNION ALL
+            SELECT 'connection' AS context_type, COALESCE(e."metadata"->>'connection', '(desconhecido)') AS context_value, e."visitorId"
+            FROM tracking_events e
+            WHERE e."metadata"->>'connection' IS NOT NULL AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          ) ctx
+          GROUP BY context_type, context_value
+          ORDER BY context_type, visitors DESC
+        `,
+      )),
+      // Content engagement (gallery + FAQ)
+      safe(db.$queryRaw<
+        Array<{ event_type: string; label: string; count: bigint }>
+      >(
+        Prisma.sql`
+          SELECT event_type, label, COUNT(*)::bigint AS count FROM (
+            SELECT 'gallery_click' AS event_type, COALESCE(e."eventName", 'Galeria') AS label
+            FROM tracking_events e
+            WHERE e."eventType" = 'gallery_click' AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+            UNION ALL
+            SELECT 'faq_open' AS event_type, COALESCE(e."metadata"->>'question', e."eventName", 'FAQ') AS label
+            FROM tracking_events e
+            WHERE e."eventType" = 'faq_open' AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          ) content_events
+          GROUP BY event_type, label
+          ORDER BY event_type, count DESC
+          LIMIT 20
+        `,
+      )),
     ]);
 
     console.log('[Tracking Report] Queries completed, building markdown...');
@@ -754,6 +910,12 @@ export async function GET(request: Request) {
     const p = (s: string) => { line(s); line(); };
     const bullet = (s: string) => line(`- ${s}`);
     const bulletNum = (n: number, s: string) => line(`${n}. ${s}`);
+    const table = (headers: string[], rows: string[][]) => {
+      line('| ' + headers.join(' | ') + ' |');
+      line('|' + headers.map(() => '---').join('|') + '|');
+      for (const row of rows) { line('| ' + row.join(' | ') + ' |'); }
+      line();
+    };
 
     // ──────────────────────────────────────────
     // HEADER
@@ -2375,8 +2537,159 @@ export async function GET(request: Request) {
       line();
     }
 
-    // ── 29.10 Methodology Note ──
-    h3('29.10. Nota Metodológica');
+    // ── 29.8.1 Web Vitals ──
+    if (webVitalsData && (webVitalsData as any[]).length > 0) {
+      h3('29.8.1 Core Web Vitals');
+      p('Métricas de performance real medidas nos navegadores dos visitantes. Valores baseados nos thresholds do Google.');
+      line();
+      table(
+        ['Métrica', 'Média', 'P75', 'Amostras', 'Avaliação'],
+        (webVitalsData as any[]).map((v: any) => {
+          const thresholds: Record<string, [number, number]> = { LCP: [2500, 4000], FCP: [1800, 3000], TTFB: [800, 1800], CLS: [0.1, 0.25], FID: [100, 300], INP: [200, 500] };
+          const units: Record<string, string> = { CLS: '' };
+          const [good, poor] = thresholds[v.metric] ?? [Infinity, Infinity];
+          const unit = units[v.metric] ?? 'ms';
+          const avg = Number(v.avg_value);
+          const rating = avg <= good ? 'Bom' : avg <= poor ? 'Precisa melhorar' : 'Ruim';
+          return [v.metric, `${round2(avg)}${unit}`, `${round2(Number(v.p75))}${unit}`, fmt(Number(v.count)), rating];
+        })
+      );
+      line();
+    }
+
+    // ── 29.8.2 Engaged Time ──
+    if (engagedTimeData && (engagedTimeData as any[]).length > 0) {
+      h3('29.8.2 Tempo de Engajamento');
+      p('Distribuição de visitantes por tempo de engajamento contínuo na página. Indica qualidade do conteúdo e interesse do público.');
+      line();
+      const totalEngaged = (engagedTimeData as any[]).reduce((s: number, r: any) => s + Number(r.count), 0);
+      table(
+        ['Tempo', 'Visitantes', '% do Total', 'Interpretação'],
+        (engagedTimeData as any[]).map((r: any) => {
+          const c = Number(r.count);
+          const pctVal = totalEngaged > 0 ? (c / totalEngaged) * 100 : 0;
+          const label = r.seconds >= 180 ? 'Alto engajamento' : r.seconds >= 60 ? 'Engajamento moderado' : r.seconds >= 30 ? 'Engajamento inicial' : 'Muito breve';
+          return [r.seconds >= 60 ? `${r.seconds / 60}min` : `${r.seconds}s`, fmt(c), pct(pctVal), label];
+        })
+      );
+      line();
+    }
+
+    // ── 29.8.3 JS Errors ──
+    if (jsErrorsData && (jsErrorsData as any[]).length > 0) {
+      h3('29.8.3 Erros de JavaScript');
+      const totalErrors = (jsErrorsData as any[]).reduce((s: number, r: any) => s + Number(r.count), 0);
+      p(`${fmt(totalErrors)} erros de JavaScript detectados nos visitantes. Erros filtrados de terceiros (Meta/Facebook) são excluídos automaticamente pelo pixel. Erros recorrentes podem indicar problemas de compatibilidade ou bugs.`);
+      line();
+      table(
+        ['Erro', 'Ocorrências', 'Última Ocorrência'],
+        (jsErrorsData as any[]).slice(0, 10).map((r: any) => [r.error_message?.substring(0, 80) || 'N/A', fmt(Number(r.count)), r.latest?.substring(0, 19)?.replace('T', ' ') || 'N/A'])
+      );
+      line();
+    }
+
+    // ── 29.8.4 Section Views ──
+    if (sectionViewsData && (sectionViewsData as any[]).length > 0) {
+      h3('29.8.4 Visualização de Seções');
+      p('Quais seções da landing page os visitantes visualizam. Seções com poucas visualizações podem estar abaixo do fold ou serem irrelevantes.');
+      line();
+      table(
+        ['Seção', 'Visualizações', 'Visitantes Únicos', '% Único'],
+        (sectionViewsData as any[]).map((r: any) => {
+          const uniquePct = Number(r.views) > 0 ? (Number(r.unique_visitors) / Number(r.views)) * 100 : 0;
+          return [r.section, fmt(Number(r.views)), fmt(Number(r.unique_visitors)), pct(uniquePct)];
+        })
+      );
+      line();
+    }
+
+    // ── 29.8.5 CTA Clicks ──
+    if (ctaClicksData && (ctaClicksData as any[]).length > 0) {
+      h3('29.8.5 Cliques em CTAs');
+      p('Botões de call-to-action clicados pelos visitantes. CTAs com mais cliques indicam maior interesse em conversão.');
+      line();
+      table(
+        ['CTA', 'Seção', 'Cliques', 'Visitantes Únicos', 'CTR Estimado'],
+        (ctaClicksData as any[]).map((r: any) => {
+          const ctr = totalVisitors > 0 ? (Number(r.unique_visitors) / totalVisitors) * 100 : 0;
+          return [r.cta_text, r.section, fmt(Number(r.clicks)), fmt(Number(r.unique_visitors)), pct(ctr)];
+        })
+      );
+      line();
+    }
+
+    // ── 29.8.6 Form Funnel ──
+    if (formFunnelData && (formFunnelData as any[]).length > 0) {
+      h3('29.8.6 Funil do Formulário');
+      p('Etapas de interação com o formulário de captação. Quedas bruscas entre etapas indicam pontos de fricção.');
+      line();
+      const stages = ['form_view', 'form_focus', 'form_submit_attempt', 'form_submit', 'form_submit_error'];
+      const stageLabels: Record<string, string> = { form_view: 'Visualização', form_focus: 'Foco no Campo', form_submit_attempt: 'Tentativa de Envio', form_submit: 'Envio Concluído', form_submit_error: 'Erro no Envio' };
+      table(
+        ['Etapa', 'Eventos', '% da Etapa Anterior', 'Acumulado'],
+        stages.map((stage, idx) => {
+          const stageData = (formFunnelData as any[]).find((f: any) => f.stage === stage);
+          const count = stageData ? Number(stageData.count) : 0;
+          const prevStage = idx > 0 ? stages[idx - 1] : null;
+          const prevCount = prevStage ? ((formFunnelData as any[]).find((f: any) => f.stage === prevStage)?.count ?? 0) : 0;
+          const prevPct = prevCount > 0 ? (count / prevCount) * 100 : 100;
+          const viewCount = (formFunnelData as any[]).find((f: any) => f.stage === 'form_view')?.count ?? 1;
+          const accPct = (count / Number(viewCount)) * 100;
+          return [stageLabels[stage] || stage, fmt(count), idx === 0 ? '100%' : pct(prevPct), pct(accPct)];
+        })
+      );
+      const errorCount = (formFunnelData as any[]).find((f: any) => f.stage === 'form_submit_error')?.count ?? 0;
+      if (errorCount > 0) {
+        line();
+        p(`**Atenção:** ${fmt(Number(errorCount))} erros de envio de formulário detectados. Verifique se há problemas de validação, connector ou backend.`);
+      }
+      line();
+    }
+
+    // ── 29.8.7 Visitor Context ──
+    if (visitorContextData && (visitorContextData as any[]).length > 0) {
+      const languages = (visitorContextData as any[]).filter((c: any) => c.context_type === 'language');
+      const connections = (visitorContextData as any[]).filter((c: any) => c.context_type === 'connection');
+      if (languages.length > 0) {
+        h3('29.8.7 Idioma e Conexão dos Visitantes');
+        p('Contexto técnico dos visitantes: idioma do navegador e tipo de conexão. Esses dados ajudam a otimizar a experiência para o público predominante.');
+        line();
+        p('**Distribuição por Idioma:**');
+        line();
+        table(
+          ['Idioma', 'Visitantes Únicos'],
+          languages.slice(0, 8).map((r: any) => [r.context_value, fmt(Number(r.visitors))])
+        );
+      }
+      if (connections.length > 0) {
+        line();
+        p('**Tipo de Conexão:**');
+        line();
+        table(
+          ['Conexão', 'Visitantes Únicos', 'Qualidade'],
+          connections.slice(0, 8).map((r: any) => {
+            const quality = r.context_value === '4g' ? 'Excelente' : r.context_value === '3g' ? 'Razoável' : 'Lenta';
+            return [r.context_value, fmt(Number(r.visitors)), quality];
+          })
+        );
+      }
+      line();
+    }
+
+    // ── 29.8.8 Content Engagement ──
+    if (contentEngagementData && (contentEngagementData as any[]).length > 0) {
+      h3('29.8.8 Engajamento de Conteúdo (Galeria + FAQ)');
+      p('Interações com galeria de imagens e perguntas frequentes. Indicam interesse ativo no conteúdo do empreendimento.');
+      line();
+      table(
+        ['Tipo', 'Item', 'Interações'],
+        (contentEngagementData as any[]).slice(0, 15).map((r: any) => [r.event_type === 'gallery_click' ? 'Galeria' : 'FAQ', r.label, fmt(Number(r.count))])
+      );
+      line();
+    }
+
+    // ── 29.11 Methodology Note ──
+    h3('29.11. Nota Metodológica');
     p('Este relatório é gerado automaticamente com base em dados de tracking de primeira parte (server-side). As análises e recomendações são calculadas por algoritmos heurísticos e não substituem a análise de um profissional de marketing. Para decisões de investimento, considere também dados de custo (CPA, ROAS) disponíveis no gerenciador de anúncios (Meta Ads Manager, Google Ads).');
     p('Dados de conversão do Meta Pixel podem divergir do CRM devido a: (1) deduplicação de eventos, (2) cookies bloqueados, (3) tempo de processamento do pixel, (4) leads inseridos manualmente no CRM. A seção 16 (Discrepância Meta Pixel vs CRM) detalha esta análise.');
     line();

@@ -68,6 +68,14 @@ export async function GET(request: Request) {
       returningVisitors,
       engagementByDayOfWeek,
       whatsappClicks,
+      webVitalsData,
+      engagedTimeData,
+      jsErrorsData,
+      sectionViewsData,
+      ctaClicksData,
+      formFunnelData,
+      visitorContextData,
+      contentEngagementData,
     ] = await Promise.all([
       // ── 1. Core KPIs ──
       safe(db.$queryRaw<
@@ -489,12 +497,13 @@ export async function GET(request: Request) {
 
       // ── 19. Scroll depth distribution ──
       safe(db.$queryRaw<
-        Array<{ eventName: string; count: bigint }>
+        Array<{ eventName: string | null; count: bigint }>
       >(
         Prisma.sql`
           SELECT e."eventName", COUNT(*)::bigint AS count
           FROM tracking_events e
           WHERE e."eventType" = 'scroll_depth'
+            AND e."eventName" IS NOT NULL
             AND e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
           GROUP BY e."eventName"
@@ -621,6 +630,162 @@ export async function GET(request: Request) {
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
         `,
       )),
+
+      // ── 27. Web Vitals summary (avg per metric) ──
+      safe(db.$queryRaw<
+        Array<{ metric: string; avg_value: number; p75: number; count: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            e."eventName" AS metric,
+            ROUND(AVG((e."metadata"->>'value')::numeric))::float AS avg_value,
+            ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY (e."metadata"->>'value')::numeric))::float AS p75,
+            COUNT(*)::bigint AS count
+          FROM tracking_events e
+          WHERE e."eventType" = 'web_vital'
+            AND e."eventName" IS NOT NULL
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY e."eventName"
+          ORDER BY count DESC
+        `,
+      )),
+
+      // ── 28. Engaged time distribution ──
+      safe(db.$queryRaw<
+        Array<{ seconds: number; count: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            (e."metadata"->>'seconds')::int AS seconds,
+            COUNT(*)::bigint AS count
+          FROM tracking_events e
+          WHERE e."eventType" = 'engaged_time'
+            AND e."metadata"->>'seconds' IS NOT NULL
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY (e."metadata"->>'seconds')::int
+          ORDER BY seconds ASC
+        `,
+      )),
+
+      // ── 29. JS Errors (count + top messages) ──
+      safe(db.$queryRaw<
+        Array<{ error_message: string; count: bigint; latest: string }>
+      >(
+        Prisma.sql`
+          SELECT
+            COALESCE(e."metadata"->>'message', e."eventName", 'Erro desconhecido') AS error_message,
+            COUNT(*)::bigint AS count,
+            MAX(e."createdAt")::text AS latest
+          FROM tracking_events e
+          WHERE e."eventType" = 'js_error'
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY COALESCE(e."metadata"->>'message', e."eventName", 'Erro desconhecido')
+          ORDER BY count DESC
+          LIMIT 10
+        `,
+      )),
+
+      // ── 30. Section views ──
+      safe(db.$queryRaw<
+        Array<{ section: string; views: bigint; unique_visitors: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            COALESCE(e."eventName", e."metadata"->>'section', '(sem nome)') AS section,
+            COUNT(*)::bigint AS views,
+            COUNT(DISTINCT e."visitorId")::bigint AS unique_visitors
+          FROM tracking_events e
+          WHERE e."eventType" = 'section_view'
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY COALESCE(e."eventName", e."metadata"->>'section', '(sem nome)')
+          ORDER BY views DESC
+          LIMIT 15
+        `,
+      )),
+
+      // ── 31. CTA clicks ──
+      safe(db.$queryRaw<
+        Array<{ cta_text: string; section: string; clicks: bigint; unique_visitors: bigint }>
+      >(
+        Prisma.sql`
+          SELECT
+            COALESCE(e."metadata"->>'cta_text', e."eventName", '(sem texto)') AS cta_text,
+            COALESCE(e."metadata"->>'section', '(não definida)') AS section,
+            COUNT(*)::bigint AS clicks,
+            COUNT(DISTINCT e."visitorId")::bigint AS unique_visitors
+          FROM tracking_events e
+          WHERE e."eventType" = 'cta_click'
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY COALESCE(e."metadata"->>'cta_text', e."eventName", '(sem texto)'), COALESCE(e."metadata"->>'section', '(não definida)')
+          ORDER BY clicks DESC
+          LIMIT 10
+        `,
+      )),
+
+      // ── 32. Form funnel (view → focus → attempt → submit → error) ──
+      safe(db.$queryRaw<
+        Array<{ stage: string; count: bigint }>
+      >(
+        Prisma.sql`
+          SELECT stage, COUNT(*)::bigint AS count FROM (
+            SELECT 'form_view' AS stage FROM tracking_events WHERE "eventType" = 'form_view' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
+            UNION ALL
+            SELECT 'form_focus' AS stage FROM tracking_events WHERE "eventType" = 'form_focus' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
+            UNION ALL
+            SELECT 'form_submit_attempt' AS stage FROM tracking_events WHERE "eventType" = 'form_submit_attempt' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
+            UNION ALL
+            SELECT 'form_submit' AS stage FROM tracking_events WHERE "eventType" = 'form_submit' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
+            UNION ALL
+            SELECT 'form_submit_error' AS stage FROM tracking_events WHERE "eventType" = 'form_submit_error' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
+          ) all_stages
+          GROUP BY stage
+          ORDER BY count DESC
+        `,
+      )),
+
+      // ── 33. Visitor context (language + connection) ──
+      safe(db.$queryRaw<
+        Array<{ context_type: string; context_value: string; visitors: bigint }>
+      >(
+        Prisma.sql`
+          SELECT context_type, context_value, COUNT(DISTINCT "visitorId")::bigint AS visitors FROM (
+            SELECT 'language' AS context_type, COALESCE(e."metadata"->>'language', '(desconhecido)') AS context_value, e."visitorId"
+            FROM tracking_events e
+            WHERE e."metadata"->>'language' IS NOT NULL AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+            UNION ALL
+            SELECT 'connection' AS context_type, COALESCE(e."metadata"->>'connection', '(desconhecido)') AS context_value, e."visitorId"
+            FROM tracking_events e
+            WHERE e."metadata"->>'connection' IS NOT NULL AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          ) ctx
+          GROUP BY context_type, context_value
+          ORDER BY context_type, visitors DESC
+        `,
+      )),
+
+      // ── 34. Gallery clicks + FAQ opens ──
+      safe(db.$queryRaw<
+        Array<{ event_type: string; label: string; count: bigint }>
+      >(
+        Prisma.sql`
+          SELECT event_type, label, COUNT(*)::bigint AS count FROM (
+            SELECT 'gallery_click' AS event_type, COALESCE(e."eventName", 'Galeria') AS label
+            FROM tracking_events e
+            WHERE e."eventType" = 'gallery_click' AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+            UNION ALL
+            SELECT 'faq_open' AS event_type, COALESCE(e."metadata"->>'question', e."eventName", 'FAQ') AS label
+            FROM tracking_events e
+            WHERE e."eventType" = 'faq_open' AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          ) content_events
+          GROUP BY event_type, label
+          ORDER BY event_type, count DESC
+          LIMIT 20
+        `,
+      )),
     ]);
 
     // ── Compute derived metrics ──
@@ -712,10 +877,12 @@ export async function GET(request: Request) {
     }));
 
     // ── By event type ──
-    const eventTypeRows = byEventType.map((r) => ({
-      eventType: r.eventType,
-      count: Number(r.count),
-    }));
+    const eventTypeRows = byEventType
+      .filter((r) => r.eventType != null)
+      .map((r) => ({
+        eventType: r.eventType!,
+        count: Number(r.count),
+      }));
 
     // ── Top pages ──
     const pageRows = topPages.map((r) => ({
@@ -783,10 +950,12 @@ export async function GET(request: Request) {
     const matchRate = pixelLeads > 0 ? (matched / pixelLeads) * 100 : 0;
 
     // ── Scroll depth ──
-    const scrollDepthRows = scrollDepthData.map((r) => ({
-      depth: r.eventName,
-      count: Number(r.count),
-    }));
+    const scrollDepthRows = scrollDepthData
+      .filter((r) => r.eventName != null)
+      .map((r) => ({
+        depth: r.eventName!,
+        count: Number(r.count),
+      }));
 
     // ── Form interactions ──
     const formInteractionRows = formInteractionData.map((r) => ({
@@ -808,6 +977,62 @@ export async function GET(request: Request) {
       visitors: Number(r.visitors),
       leads: Number(r.leads),
       conversionRate: Number(r.visitors) > 0 ? (Number(r.leads) / Number(r.visitors)) * 100 : 0,
+    }));
+
+    // ── Web Vitals ──
+    const webVitalsRows = (webVitalsData as Array<{ metric: string; avg_value: number; p75: number; count: bigint }>).map((r) => ({
+      metric: r.metric,
+      avgValue: Math.round(r.avg_value * 10) / 10,
+      p75: Math.round(r.p75 * 10) / 10,
+      count: Number(r.count),
+    }));
+
+    // ── Engaged Time ──
+    const engagedTimeRows = (engagedTimeData as Array<{ seconds: number; count: bigint }>).map((r) => ({
+      seconds: r.seconds,
+      count: Number(r.count),
+    }));
+
+    // ── JS Errors ──
+    const jsErrorRows = (jsErrorsData as Array<{ error_message: string; count: bigint; latest: string }>).map((r) => ({
+      message: r.error_message,
+      count: Number(r.count),
+      latest: r.latest,
+    }));
+
+    // ── Section Views ──
+    const sectionViewRows = (sectionViewsData as Array<{ section: string; views: bigint; unique_visitors: bigint }>).map((r) => ({
+      section: r.section,
+      views: Number(r.views),
+      uniqueVisitors: Number(r.unique_visitors),
+    }));
+
+    // ── CTA Clicks ──
+    const ctaClickRows = (ctaClicksData as Array<{ cta_text: string; section: string; clicks: bigint; unique_visitors: bigint }>).map((r) => ({
+      ctaText: r.cta_text,
+      section: r.section,
+      clicks: Number(r.clicks),
+      uniqueVisitors: Number(r.unique_visitors),
+    }));
+
+    // ── Form Funnel ──
+    const formFunnelRows = (formFunnelData as Array<{ stage: string; count: bigint }>).map((r) => ({
+      stage: r.stage,
+      count: Number(r.count),
+    }));
+
+    // ── Visitor Context ──
+    const visitorContextRows = (visitorContextData as Array<{ context_type: string; context_value: string; visitors: bigint }>).map((r) => ({
+      contextType: r.context_type,
+      contextValue: r.context_value,
+      visitors: Number(r.visitors),
+    }));
+
+    // ── Content Engagement (gallery + FAQ) ──
+    const contentEngagementRows = (contentEngagementData as Array<{ event_type: string; label: string; count: bigint }>).map((r) => ({
+      eventType: r.event_type,
+      label: r.label,
+      count: Number(r.count),
     }));
 
     return NextResponse.json({
@@ -861,6 +1086,14 @@ export async function GET(request: Request) {
       formInteractions: formInteractionRows,
       topEntryPages: entryPageRows,
       engagementByDayOfWeek: engagementDowRows,
+      webVitals: webVitalsRows,
+      engagedTime: engagedTimeRows,
+      jsErrors: jsErrorRows,
+      sectionViews: sectionViewRows,
+      ctaClicks: ctaClickRows,
+      formFunnel: formFunnelRows,
+      visitorContext: visitorContextRows,
+      contentEngagement: contentEngagementRows,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

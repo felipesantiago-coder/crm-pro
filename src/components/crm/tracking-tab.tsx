@@ -9,6 +9,7 @@ import {
   MapPin, Clock, ExternalLink, UserCheck, Layers, Hash, ArrowRight,
   CircleDot, Wifi, Image, Gauge, FileText, Timer, LogOut, DoorOpen,
   Repeat, CalendarDays, ScrollText, MousePointer, FormInput,
+  Heart, Bug, LayoutGrid, MessageCircleQuestion, Camera, AlertCircle,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -85,7 +86,7 @@ interface ContentRow {
 }
 
 interface EventTypeRow {
-  eventType: string;
+  eventType: string | null;
   count: number;
 }
 
@@ -140,8 +141,16 @@ interface ReferrerRow {
 
 interface MediumRow { medium: string; visitors: number; leads: number; conversionRate: number; }
 interface TermRow { term: string; visitors: number; leads: number; conversionRate: number; }
-interface ScrollDepthRow { depth: string; count: number; }
+interface ScrollDepthRow { depth: string | null; count: number; }
 interface FormInteractionRow { eventType: string; eventName: string | null; count: number; }
+interface WebVitalRow { metric: string; avgValue: number; p75: number; count: number; }
+interface EngagedTimeRow { seconds: number; count: number; }
+interface JsErrorRow { message: string; count: number; latest: string; }
+interface SectionViewRow { section: string; views: number; uniqueVisitors: number; }
+interface CtaClickRow { ctaText: string; section: string; clicks: number; uniqueVisitors: number; }
+interface FormFunnelRow { stage: string; count: number; }
+interface VisitorContextRow { contextType: string; contextValue: string; visitors: number; }
+interface ContentEngagementRow { eventType: string; label: string; count: number; }
 interface EntryPageRow { url: string; count: number; }
 interface DayOfWeekRow { dow: number; dowName: string; visitors: number; leads: number; conversionRate: number; }
 
@@ -173,6 +182,14 @@ interface TrackingDashboard {
   scrollDepth: ScrollDepthRow[];
   formInteractions: FormInteractionRow[];
   engagementByDayOfWeek: DayOfWeekRow[];
+  webVitals: WebVitalRow[];
+  engagedTime: EngagedTimeRow[];
+  jsErrors: JsErrorRow[];
+  sectionViews: SectionViewRow[];
+  ctaClicks: CtaClickRow[];
+  formFunnel: FormFunnelRow[];
+  visitorContext: VisitorContextRow[];
+  contentEngagement: ContentEngagementRow[];
 }
 
 // ============================================================
@@ -244,6 +261,16 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   form_focus: '#3B82F6',
   form_blur: '#60A5FA',
   form_abandon: '#F43F5E',
+  section_view: '#0EA5E9',
+  cta_click: '#F97316',
+  gallery_click: '#EC4899',
+  faq_open: '#8B5CF6',
+  engaged_time: '#10B981',
+  web_vital: '#06B6D4',
+  js_error: '#EF4444',
+  form_view: '#3B82F6',
+  form_submit_attempt: '#F59E0B',
+  form_submit_error: '#EF4444',
 };
 
 const DAY_LABELS: Record<string, string> = {
@@ -254,6 +281,43 @@ const DAY_LABELS: Record<string, string> = {
 function getEventTypeColor(type: string): string {
   return EVENT_TYPE_COLORS[type] ?? '#94A3B8';
 }
+
+// Web Vitals helpers
+const VITAL_LABELS: Record<string, string> = {
+  LCP: 'Largest Contentful Paint',
+  FCP: 'First Contentful Paint',
+  TTFB: 'Time to First Byte',
+  CLS: 'Cumulative Layout Shift',
+  FID: 'First Input Delay',
+  INP: 'Interaction to Next Paint',
+};
+
+const VITAL_UNITS: Record<string, string> = {
+  CLS: '',
+};
+
+function getVitalHealth(metric: string, value: number): { label: string; color: string; bg: string } {
+  const thresholds: Record<string, [number, number]> = {
+    LCP: [2500, 4000],
+    FCP: [1800, 3000],
+    TTFB: [800, 1800],
+    CLS: [0.1, 0.25],
+    FID: [100, 300],
+    INP: [200, 500],
+  };
+  const [good, poor] = thresholds[metric] ?? [Infinity, Infinity];
+  if (value <= good) return { label: 'Bom', color: 'bg-emerald-500', bg: 'bg-emerald-500/10 text-emerald-600' };
+  if (value <= poor) return { label: 'Precisa melhorar', color: 'bg-amber-500', bg: 'bg-amber-500/10 text-amber-600' };
+  return { label: 'Ruim', color: 'bg-red-500', bg: 'bg-red-500/10 text-red-600' };
+}
+
+const FORM_FUNNEL_STAGES = [
+  { key: 'form_view', label: 'Visualização do Form', color: BLUE },
+  { key: 'form_focus', label: 'Foco no Campo', color: '#60A5FA' },
+  { key: 'form_submit_attempt', label: 'Tentativa de Envio', color: AMBER },
+  { key: 'form_submit', label: 'Envio Concluído', color: EMERALD },
+  { key: 'form_submit_error', label: 'Erro no Envio', color: ROSE },
+];
 
 function truncateUrl(url: string, maxLen = 50): string {
   try {
@@ -947,15 +1011,15 @@ export function TrackingTab() {
 
         <Section title="Distribuição de Eventos" icon={<Hash className="h-4 w-4 text-amber-500" />} description="Tipos de eventos rastreados">
           <div className="space-y-3">
-            {data.byEventType.map(row => {
-              const color = getEventTypeColor(row.eventType);
+            {data.byEventType.filter(r => r.eventType != null).map(row => {
+              const color = getEventTypeColor(row.eventType!);
               const totalEvts = data.byEventType.reduce((s, e) => s + e.count, 0);
               return (
                 <div key={row.eventType}>
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-                      <span className="text-[11px] font-medium text-foreground capitalize">{row.eventType.replace(/_/g, ' ')}</span>
+                      <span className="text-[11px] font-medium text-foreground capitalize">{(row.eventType ?? 'desconhecido').replace(/_/g, ' ')}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-muted-foreground tabular-nums">{fmtPct((row.count / totalEvts) * 100)}</span>
@@ -1167,10 +1231,10 @@ export function TrackingTab() {
         {data.scrollDepth && data.scrollDepth.length > 0 && (
           <Section title="Profundidade de Scroll" icon={<ScrollText className="h-4 w-4 text-indigo-500" />} description="Até onde os visitantes rolam a página">
             <div className="space-y-2.5">
-              {data.scrollDepth.map(row => {
+              {data.scrollDepth.filter(r => r.depth != null).map(row => {
                 const totalScroll = data.scrollDepth.reduce((s, r) => s + r.count, 0);
                 const pct = totalScroll > 0 ? (row.count / totalScroll) * 100 : 0;
-                const depthPct = parseInt(row.depth.replace(/[^0-9]/g, ''), 10);
+                const depthPct = parseInt((row.depth ?? '0%').replace(/[^0-9]/g, ''), 10);
                 const barColor = depthPct >= 75 ? EMERALD : depthPct >= 50 ? BLUE : depthPct >= 25 ? AMBER : ROSE;
                 return (
                   <div key={row.depth}>
@@ -1265,6 +1329,281 @@ export function TrackingTab() {
             </table>
           </div>
         </Section>
+      )}
+
+      {/* ═══ Web Vitals + Engaged Time ═══ */}
+      {data.webVitals && data.webVitals.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <Section title="Core Web Vitals" icon={<Gauge className="h-4 w-4 text-cyan-500" />} description="Performance real dos visitantes (média + P75)">
+            <div className="space-y-3">
+              {data.webVitals.map(v => {
+                const health = getVitalHealth(v.metric, v.avgValue);
+                return (
+                  <div key={v.metric} className="rounded-lg border border-border/50 p-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className={cn('h-2 w-2 rounded-full', health.color)} />
+                        <span className="text-[11px] font-semibold text-foreground">{VITAL_LABELS[v.metric] ?? v.metric}</span>
+                        <span className="text-[9px] text-muted-foreground">n={fmt.format(v.count)}</span>
+                      </div>
+                      <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded', health.bg)}>{health.label}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded bg-muted/30 px-2.5 py-1.5 text-center">
+                        <p className="text-[9px] text-muted-foreground uppercase">Média</p>
+                        <p className="text-sm font-bold text-foreground tabular-nums">{v.avgValue}{VITAL_UNITS[v.metric] ?? 'ms'}</p>
+                      </div>
+                      <div className="rounded bg-muted/30 px-2.5 py-1.5 text-center">
+                        <p className="text-[9px] text-muted-foreground uppercase">P75</p>
+                        <p className="text-sm font-bold text-foreground tabular-nums">{v.p75}{VITAL_UNITS[v.metric] ?? 'ms'}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="pt-1 rounded-lg bg-muted/20 border border-border/50 p-2.5">
+                <div className="flex items-start gap-2">
+                  <InfoTip text="LCP: velocidade de carregamento do conteúdo principal. FCP: primeira renderização. TTFB: tempo de resposta do servidor. CLS: estabilidade visual. INP: responsividade a interações. FID: atraso na primeira interação." />
+                  <p className="text-[9px] text-muted-foreground leading-relaxed"><b>Verde</b> = bom · <b>Amarelo</b> = precisa melhorar · <b>Vermelho</b> = ruim. Valores baseados nos thresholds do Google.</p>
+                </div>
+              </div>
+            </div>
+          </Section>
+          {data.engagedTime && data.engagedTime.length > 0 && (
+            <Section title="Tempo de Engajamento" icon={<Heart className="h-4 w-4 text-rose-500" />} description="Visitantes que permaneceram engajados por cada tempo">
+              <div className="space-y-3">
+                {data.engagedTime.map(row => {
+                  const totalEngaged = data.engagedTime.reduce((s, r) => s + r.count, 0);
+                  const pct = totalEngaged > 0 ? (row.count / totalEngaged) * 100 : 0;
+                  const barColor = row.seconds >= 180 ? EMERALD : row.seconds >= 60 ? BLUE : row.seconds >= 30 ? AMBER : ROSE;
+                  return (
+                    <div key={row.seconds}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: barColor }} />
+                          <span className="text-[11px] font-medium text-foreground">{row.seconds >= 60 ? `${row.seconds / 60}min` : `${row.seconds}s`}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-muted-foreground tabular-nums">{fmtPct(pct)}</span>
+                          <span className="text-[11px] font-bold text-foreground tabular-nums">{fmt.format(row.count)}</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 bg-muted/30 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: barColor }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
+        </div>
+      )}
+
+      {/* ═══ JS Errors ═══ */}
+      {data.jsErrors && data.jsErrors.length > 0 && (
+        <Section title="Erros de JavaScript" icon={<Bug className="h-4 w-4 text-red-500" />} description={`${data.jsErrors.reduce((s, e) => s + e.count, 0)} erros JS detectados nos visitantes`}>
+          <div className="overflow-x-auto -mx-5 sm:mx-0">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border/50">
+                  <th className="text-left py-2 px-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Erro</th>
+                  <th className="text-right py-2 px-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Ocorrências</th>
+                  <th className="text-right py-2 px-2 text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Último</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.jsErrors.slice(0, 10).map((err, idx) => (
+                  <tr key={`${err.message}-${idx}`} className="border-b border-border/20 hover:bg-muted/20 transition-colors">
+                    <td className="py-2 px-2 text-rose-400 font-mono text-[10px] truncate max-w-[300px]" title={err.message}>{err.message}</td>
+                    <td className="py-2 px-2 text-right tabular-nums font-medium text-foreground">{fmt.format(err.count)}</td>
+                    <td className="py-2 px-2 text-right text-muted-foreground whitespace-nowrap text-[10px]">{relativeTime(err.latest)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
+
+      {/* ═══ Section Views + CTA Clicks ═══ */}
+      {(data.sectionViews && data.sectionViews.length > 0 || data.ctaClicks && data.ctaClicks.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {data.sectionViews && data.sectionViews.length > 0 && (
+            <Section title="Visualização de Seções" icon={<LayoutGrid className="h-4 w-4 text-sky-500" />} description="Quais seções da página os visitantes veem">
+              <div className="space-y-2.5">
+                {[...data.sectionViews].sort((a, b) => b.views - a.views).slice(0, 10).map((row, idx) => {
+                  const maxViews = data.sectionViews[0]?.views || 1;
+                  return (
+                    <div key={row.section}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[10px] text-muted-foreground tabular-nums w-4 text-right shrink-0">{idx + 1}</span>
+                          <span className="text-[11px] font-medium text-foreground truncate" title={row.section}>{row.section}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-muted-foreground tabular-nums">{fmt.format(row.uniqueVisitors)} únicos</span>
+                          <span className="text-[11px] font-bold text-foreground tabular-nums">{fmt.format(row.views)}</span>
+                        </div>
+                      </div>
+                      <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.views / maxViews) * 100, 1)}%`, backgroundColor: '#0EA5E9' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
+          {data.ctaClicks && data.ctaClicks.length > 0 && (
+            <Section title="Cliques em CTAs" icon={<MousePointer className="h-4 w-4 text-orange-500" />} description="Botões de ação clicados pelos visitantes">
+              <div className="space-y-2.5">
+                {data.ctaClicks.slice(0, 10).map((row, idx) => {
+                  const maxClicks = data.ctaClicks[0]?.clicks || 1;
+                  return (
+                    <div key={`${row.ctaText}-${row.section}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[10px] text-muted-foreground tabular-nums w-4 text-right shrink-0">{idx + 1}</span>
+                          <div className="min-w-0">
+                            <span className="text-[11px] font-medium text-foreground truncate block" title={row.ctaText}>{row.ctaText}</span>
+                            <span className="text-[9px] text-muted-foreground truncate block">{row.section}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-muted-foreground tabular-nums">{fmt.format(row.uniqueVisitors)} únicos</span>
+                          <span className="text-[11px] font-bold text-foreground tabular-nums">{fmt.format(row.clicks)}</span>
+                        </div>
+                      </div>
+                      <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.clicks / maxClicks) * 100, 1)}%`, backgroundColor: '#F97316' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
+        </div>
+      )}
+
+      {/* ═══ Form Funnel ═══ */}
+      {data.formFunnel && data.formFunnel.length > 0 && (
+        <Section title="Funil do Formulário" icon={<FormInput className="h-4 w-4 text-blue-500" />} description="Etapas de interação com o formulário de captação">
+          <div className="space-y-3">
+            {FORM_FUNNEL_STAGES.map((stage, idx) => {
+              const stageData = data.formFunnel.find(f => f.stage === stage.key);
+              const count = stageData?.count ?? 0;
+              const prevStage = idx > 0 ? FORM_FUNNEL_STAGES[idx - 1] : null;
+              const prevCount = prevStage ? (data.formFunnel.find(f => f.stage === prevStage.key)?.count ?? 0) : 0;
+              const dropOff = prevCount > 0 ? ((prevCount - count) / prevCount) * 100 : 0;
+              const rate = prevCount > 0 ? (count / prevCount) * 100 : 100;
+              return (
+                <div key={stage.key}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
+                      <span className="text-[11px] font-medium text-foreground">{stage.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {idx > 0 && dropOff > 0 && <span className="text-[10px] text-rose-500 tabular-nums">-{fmtPct(dropOff)}</span>}
+                      {idx > 0 && <Badge variant="secondary" className="h-4 px-1 text-[9px] font-bold" style={{ backgroundColor: stage.color + '20', color: stage.color }}>{fmtPct(rate)}</Badge>}
+                      <span className="text-xs font-bold text-foreground tabular-nums">{fmt.format(count)}</span>
+                    </div>
+                  </div>
+                  <div className="h-6 rounded-lg overflow-hidden bg-muted/30">
+                    <div className="h-full rounded-lg transition-all duration-700 ease-out flex items-center px-2" style={{ width: `${Math.max(rate, 3)}%`, backgroundColor: stage.color, opacity: 0.8 }}>
+                      {rate >= 15 && <span className="text-[10px] font-bold text-white">{fmtPct(rate)}</span>}
+                    </div>
+                  </div>
+                  {idx < FORM_FUNNEL_STAGES.length - 1 && <div className="flex justify-center py-1"><ArrowRight className="h-3 w-3 text-muted-foreground/30" /></div>}
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* ═══ Content Engagement ═══ */}
+      {data.contentEngagement && data.contentEngagement.length > 0 && (
+        <Section title="Engajamento de Conteúdo" icon={<MessageCircleQuestion className="h-4 w-4 text-violet-500" />} description="Galeria de imagens e perguntas frequentes">
+          <div className="space-y-2.5">
+            {data.contentEngagement.slice(0, 10).map((row, idx) => (
+              <div key={`${row.eventType}-${row.label}-${idx}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Badge variant="secondary" className={cn('h-4 px-1 text-[9px] shrink-0', row.eventType === 'gallery_click' ? 'bg-pink-500/10 text-pink-600' : 'bg-violet-500/10 text-violet-600')}>
+                      {row.eventType === 'gallery_click' ? 'Galeria' : 'FAQ'}
+                    </Badge>
+                    <span className="text-[11px] font-medium text-foreground truncate" title={row.label}>{row.label}</span>
+                  </div>
+                  <span className="text-[11px] font-bold text-foreground tabular-nums shrink-0">{fmt.format(row.count)}</span>
+                </div>
+                <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.count / (data.contentEngagement[0]?.count || 1)) * 100, 1)}%`, backgroundColor: row.eventType === 'gallery_click' ? '#EC4899' : '#8B5CF6' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* ═══ Visitor Context ═══ */}
+      {data.visitorContext && data.visitorContext.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {(() => {
+            const languages = data.visitorContext.filter(c => c.contextType === 'language');
+            const connections = data.visitorContext.filter(c => c.contextType === 'connection');
+            return (
+              <>
+                {languages.length > 0 && (
+                  <Section title="Idioma do Navegador" icon={<Globe className="h-4 w-4 text-teal-500" />} description="Distribuição por idioma">
+                    <div className="space-y-2.5">
+                      {languages.slice(0, 8).map(row => {
+                        const maxLang = languages[0]?.visitors || 1;
+                        return (
+                          <div key={row.contextValue}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[11px] font-medium text-foreground truncate">{row.contextValue}</span>
+                              <span className="text-[11px] font-medium text-foreground tabular-nums shrink-0">{fmt.format(row.visitors)}</span>
+                            </div>
+                            <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / maxLang) * 100, 1)}%`, backgroundColor: '#14B8A6' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Section>
+                )}
+                {connections.length > 0 && (
+                  <Section title="Tipo de Conexão" icon={<Wifi className="h-4 w-4 text-indigo-500" />} description="Velocidade de conexão dos visitantes">
+                    <div className="space-y-2.5">
+                      {connections.slice(0, 8).map(row => {
+                        const maxConn = connections[0]?.visitors || 1;
+                        const connColor = row.contextValue === '4g' ? EMERALD : row.contextValue === '3g' ? AMBER : ROSE;
+                        return (
+                          <div key={row.contextValue}>
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-2">
+                                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: connColor }} />
+                                <span className="text-[11px] font-medium text-foreground uppercase">{row.contextValue}</span>
+                              </div>
+                              <span className="text-[11px] font-medium text-foreground tabular-nums shrink-0">{fmt.format(row.visitors)}</span>
+                            </div>
+                            <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / maxConn) * 100, 1)}%`, backgroundColor: connColor }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Section>
+                )}
+              </>
+            );
+          })()}
+        </div>
       )}
 
       {/* ═══ Meta Discrepancy ═══ */}
