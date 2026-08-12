@@ -10,6 +10,16 @@ const safe = <T,>(p: Promise<T>): Promise<T | []> =>
     return [] as unknown as T;
   });
 
+// Deep-convert all BigInt values to Number (PostgreSQL ::bigint returns BigInt in JS)
+const unbig = <T>(arr: T[]): T[] =>
+  (arr as unknown as Record<string, unknown>[]).map(obj => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      out[k] = typeof v === 'bigint' ? Number(v) : v;
+    }
+    return out as T;
+  });
+
 // Format a date value (string or Date) to 'YYYY-MM-DD HH:mm:ss'
 const fmtTs = (v: string | Date | null | undefined): string => {
   if (!v) return '—';
@@ -65,7 +75,7 @@ export async function GET(request: Request) {
 
     console.log(`[Tracking Report] Fetching data since ${startDate.toISOString()}...`);
     // ── Fetch ALL data in parallel ──
-    const [
+    let [
       kpis,
       bouncedVisitors,
       chartData,
@@ -855,18 +865,11 @@ export async function GET(request: Request) {
       )),
     ]);
 
-    console.log('[Tracking Report] Queries completed, building markdown...');
-    console.log('[Tracking Report] Data sizes:', {
-      kpis: kpis.length, bouncedVisitors: bouncedVisitors.length, chartData: chartData.length,
-      funnelData: funnelData.length, byCampaign: byCampaign.length, bySource: bySource.length,
-      byContent: byContent.length, byMedium: byMedium.length, byTerm: byTerm.length,
-      byEventType: byEventType.length, topPages: topPages.length, recentLeads: recentLeads.length,
-      allLeadsWithJourney: allLeadsWithJourney.length, scrollDepthData: scrollDepthData.length,
-      formInteractionData: formInteractionData.length, deviceBreakdown: deviceBreakdown.length,
-      engagementByDayOfWeek: engagementByDayOfWeek.length, webVitalsData: webVitalsData.length,
-      jsErrorsData: jsErrorsData.length, sectionViewsData: sectionViewsData.length,
-      visitorContextData: visitorContextData.length, contentEngagementData: contentEngagementData.length,
-    });
+    // ── Convert all BigInt → Number to prevent mixing errors ──
+    [kpis, bouncedVisitors, chartData, funnelData, byCampaign, bySource, byContent, byMedium, byTerm, byEventType, topPages, topCountries, topCities, deviceBreakdown, hourlyData, recentLeads, allLeadsWithJourney, referrerBreakdown, metaPixelLeads, metaCrmLeads, metaMatched, scrollDepthData, formInteractionData, exitIntentCount, topEntryPages, avgSessionDuration, returningVisitors, engagementByDayOfWeek, whatsappClicks, webVitalsData, engagedTimeData, jsErrorsData, sectionViewsData, ctaClicksData, formFunnelData, visitorContextData, contentEngagementData] =
+      [kpis, bouncedVisitors, chartData, funnelData, byCampaign, bySource, byContent, byMedium, byTerm, byEventType, topPages, topCountries, topCities, deviceBreakdown, hourlyData, recentLeads, allLeadsWithJourney, referrerBreakdown, metaPixelLeads, metaCrmLeads, metaMatched, scrollDepthData, formInteractionData, exitIntentCount, topEntryPages, avgSessionDuration, returningVisitors, engagementByDayOfWeek, whatsappClicks, webVitalsData, engagedTimeData, jsErrorsData, sectionViewsData, ctaClicksData, formFunnelData, visitorContextData, contentEngagementData].map(unbig) as any;
+
+    console.log('[Tracking Report] Queries completed, converting BigInt and building markdown...');
 
     // ── Compute derived metrics ──
     const totalVisitors = Number(kpis[0]?.totalVisitors ?? 0);
