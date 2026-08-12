@@ -1,0 +1,273 @@
+{
+  "nav": {
+    "brand": "Empreendimentos",
+    "cta": "Quero saber mais"
+  },
+  "errors": {
+    "notFound": "Não encontrado",
+    "notFoundDesc": "Este empreendimento não existe ou foi removido.",
+    "notFoundCta": "Ver todos os empreendimentos",
+    "fetchFailed": "Empreendimento não encontrado.",
+    "connectionError": "Erro de conexão.",
+    "submitError": "Erro ao enviar. Tente novamente.",
+    "connectionErrorFull": "Erro de conexão. Verifique sua internet e tente novamente.",
+    "boundaryTitle": "Empreendimento",
+    "boundaryDesc": "Ocorreu um erro inesperado. Por favor, tente recarregar a página ou entre em contato diretamente pelo WhatsApp.",
+    "boundaryWhatsApp": "Falar com consultor",
+    "boundaryReload": "Recarregar página",
+    "boundaryWhatsAppFallback": "Tenho interesse em um empreendimento"
+  },
+  "hero": {
+    "namePlaceholder": "Seu nome",
+    "phonePlaceholder": "(11) 99999-9999",
+    "cta": "Saber mais",
+    "noCommitment": "Sem compromisso · Resposta em até 24h",
+    "seeDetails": "Ver mais detalhes",
+    "talkToConsultant": "Falar com consultor",
+    "scroll": "Scroll"
+  },
+  "socialProof": {
+    "messages": [
+      "Mais uma pessoa acabou de se cadastrar",
+      "Alguém acabou de solicitar informações",
+      "Mais uma pessoa se cadastrou agora",
+      "Alguém solicitou condições de pagamento",
+      "Outra pessoa acabou de se cadastrar"
+    ],
+    "times": ["agora", "1 min", "2 min", "3 min", "5 min"],
+    "person": "{count, plural, one {pessoa} other {pessoas}}",
+    "interested": "{count, plural, one {interessada} other {interessadas}}",
+    "dataProtected": "Dados protegidos",
+    "response24h": "Resposta 24h",
+    "timeAgo": "há {time}"
+  },
+  "summary": {
+    "status": "Status",
+    "delivery": "Entrega",
+    "units": "Unidades",
+    "area": "Área",
+    "floors": "Andares",
+    "parking": "Vagas",
+    "delivered": "Já entregue",
+    "rangeTo": "a"
+  },
+  "why": {
+    "eyebrow": "Sobre o empreendimento",
+    "title": "Por que o {name}?",
+    "subtitle": "Tudo o que você precisa saber antes de decidir",
+    "locationTitle": "Localização Privilegiada",
+    "locationDesc": "No coração de {neighborhood}, com fácil acesso a comércio, escolas e transporte.",
+    "locationDescFallback": "Região estratégica com infraestrutura completa ao redor, facilitando seu dia a dia.",
+    "differentialsTitle": "Diferenciais Exclusivos",
+    "differentialsDesc": "{differentials} e muito mais para você aproveitar.",
+    "differentialsDescFallback": "Lazer completo, segurança 24h e acabamentos de alto padrão pensados para o seu bem-estar.",
+    "investmentTitle": "Excelente Investimento",
+    "investmentDesc": "Valores acessíveis e condições especiais em uma região com forte valorização."
+  },
+  "differentials": {
+    "eyebrow": "Diferenciais",
+    "title": "Lazer & Diferenciais",
+    "subtitle": "Tudo pensado para o seu conforto e bem-estar",
+    "tabs": {
+      "social": "Social & Lazer",
+      "comfort": "Conforto & Conveniência",
+      "tech": "Tecnologia & Segurança",
+      "sustainability": "Sustentabilidade",
+      "others": "Outros Diferenciais"
+    }
+  },
+  "apartments": {
+    "eyebrow": "Unidades",
+    "title": "Tipos de Unidades",
+    "subtitle": "Encontre a planta ideal para você",
+    "typeFallback": "Tipo {n}"
+  },
+  "floorPlans": {
+    "eyebrow": "Espaço · plantas inteligentes",
+    "title": "Cada metro quadrado pensado para o seu jeito de viver",
+    "subtitle": "Do compacto de 1 quarto ao mais espaçoso — plantas otimizadas com circulação eficiente e ambientes integrados.",
+    "close": "fechar",
+    "viewPlan": "ver planta",
+    "noImage": "Imagem da planta não disponível",
+    "disclaimer": "Imagem meramente ilustrativa. Sujeito a alterações conforme memorial de incorporação.",
+    "bookEyebrow": "Book Completo",
+    "bookCta": "Quero o book completo com todas as informações"
+  },
+  "plantLabels": {
+    "bedroom": "{count, plural, one {quarto} other {quartos}}",
+    "suite": "{count, plural, one {suíte} other {suítes}}",
+    "withBalcony": "com Varanda",
+    "withBalconyStart": "Com Varanda",
+    "garden": "Garden",
+    "penthouse": "Cobertura",
+    "default": "Planta"
+  },
+  "gallery": {
+    "eyebrow": "Galeria",
+    "title": "Conheça o {name}",
+    "photoCount": "{count, plural, one {{count} foto do empreendimento} other {{count} fotos do empreendimento}}",
+    "countBadge": "{count, plural, one {{count} foto} other {{count} fotos}}",
+    "photoAlt": "Foto {n}"
+  },
+  "location": {
+    "eyebrow": "Localização",
+    "title": "Onde está localizado",
+    "loading": "Carregando mapa...",
+    "unavailable": "Mapa indisponível"
+  },
+  "faq": {
+    "eyebrow": "Dúvidas",
+    "title": "Perguntas Frequentes",
+    "subtitle": "Tire suas dúvidas antes de decidir",
+    "hasQuestion": "Ficou com dúvida?",
+    "talkToConsultant": "Fale com um consultor",
+    "items": [
+      {
+        "q": "Como funciona o atendimento personalizado?",
+        "a": "Após preencher o formulário, um consultor exclusivo entrará em contato em até 24 horas. Você receberá atendimento individualizado com informações detalhadas sobre plantas, valores, condições de pagamento e agendamento de visita presencial ao empreendimento."
+      },
+      {
+        "q": "Posso financiar o imóvel?",
+        "a": "Sim! Oferecemos suporte completo para financiamento bancário. Trabalhamos com os principais bancos do mercado e nossa equipe auxilia em todo o processo, desde a simulação até a aprovação do crédito, garantindo as melhores condições para você."
+      },
+      {
+        "q": "Quais documentos preciso para visitar o empreendimento?",
+        "a": "Para agendar uma visita, basta preencher o formulário com seus dados. Para a visita presencial, recomendamos levar um documento de identificação com foto. Nosso consultor entrará em contato para confirmar o melhor horário e ponto de encontro."
+      },
+      {
+        "q": "O atendimento é exclusivo para este empreendimento?",
+        "a": "Sim, você terá um consultor dedicado que conhece todos os detalhes deste empreendimento. Nossa equipe é especializada e preparada para tirar todas as suas dúvidas sobre o projeto, localização, lazer, plantas e condições comerciais."
+      },
+      {
+        "q": "Posso agendar uma visita presencial?",
+        "a": "Com certeza! Após o cadastro, nosso consultor entrará em contato para agendar a visita no melhor horário para você. Oferecemos visitas presenciais guiadas ao canteiro de obras ou ao empreendimento já entregue, dependendo do status do projeto."
+      }
+    ]
+  },
+  "form": {
+    "heading": "Solicite informações sobre o {name}",
+    "headingHtml": "Solicite informações sobre o <span style=\"color:#33492F\">{name}</span>",
+    "subtextWithPrice": "A partir de {price} — condições especiais.",
+    "subtextWithInfo": "{status} — conheça as condições disponíveis.",
+    "subtextFallback": "Condições especiais disponíveis para você.",
+    "descriptionBase": "Receba materiais, valores e condições comerciais. Atendimento personalizado",
+    "descriptionIn": "no {neighborhood}",
+    "descriptionEnd": "Sem compromisso.",
+    "areaRange": "Unidades de {areaRange}",
+    "unitCount": "{count, plural, one {{count} unidade} other {{count} unidades}}",
+    "delivery": "Entrega: {deliveryText}",
+    "dataSafe": "Dados seguros",
+    "noSpam": "Sem spam",
+    "response24h": "Resposta 24h",
+    "upto24h": "Até 24h",
+    "noCommitment": "Sem compromisso",
+    "whatsappCta": "Prefere o WhatsApp? Fale conosco",
+    "title": "Cadastro",
+    "subtitle": "Preencha para receber informações e condições",
+    "nameLabel": "Nome Completo",
+    "namePlaceholder": "Seu nome completo",
+    "emailLabel": "E-mail",
+    "emailPlaceholder": "seuemail@exemplo.com",
+    "phoneLabel": "Telefone",
+    "phonePlaceholder": "(11) 99999-9999",
+    "selectDefault": "Selecione...",
+    "yes": "Sim",
+    "no": "Não",
+    "submitting": "Enviando...",
+    "submitWithPrice": "Receber informações",
+    "submitDefault": "Quero saber mais",
+    "disclaimer": "Ao solicitar informações, você concorda em receber detalhes sobre este empreendimento.",
+    "validation": {
+      "nameRequired": "Informe seu nome completo.",
+      "emailInvalid": "Informe um e-mail válido.",
+      "phoneInvalid": "Informe um telefone válido com DDD (mínimo 10 dígitos).",
+      "fieldRequired": "O campo \"{label}\" é obrigatório."
+    }
+  },
+  "footer": {
+    "brand": "Empreendimentos",
+    "whatsapp": "WhatsApp",
+    "copyright": "Todos os direitos reservados.",
+    "disclaimer": "Todos os valores e informações são sujeitos a alteração."
+  },
+  "floatingBar": {
+    "whatsapp": "WhatsApp",
+    "seeConditions": "Ver Condições"
+  },
+  "exitPopup": {
+    "title": "Tem interesse no {name}?",
+    "description": "Receba valores e condições comerciais diretamente no seu WhatsApp. Sem compromisso.",
+    "whatsappCta": "Falar pelo WhatsApp",
+    "formCta": "Quero saber mais",
+    "dataSafe": "Seus dados estão seguros e não enviamos spam.",
+    "registeredCount": "{count, plural, one {{count} pessoa já se cadastrou.} other {{count} pessoas já se cadastraram.}}"
+  },
+  "success": {
+    "navBrand": "Empreendimentos",
+    "heading": "Cadastro realizado com sucesso!",
+    "greeting": "Olá, {name}!",
+    "greetingFallback": "Obrigado pelo seu interesse!",
+    "description": "Seu cadastro para o empreendimento {name} foi recebido com sucesso.",
+    "descriptionFallback": "Seu cadastro foi recebido com sucesso.",
+    "followUp": "Em breve um de nossos consultores especializados entrará em contato para apresentar todas as condições exclusivas deste empreendimento.",
+    "trustPersonalized": "Atendimento personalizado",
+    "trustExclusive": "Condições exclusivas",
+    "trustNoCommitment": "Sem compromisso",
+    "nextSteps": "Próximos passos",
+    "step1": "Você receberá um contato em até 24h",
+    "step2": "Agendaremos uma visita exclusiva",
+    "step3": "Apresentaremos condições especiais",
+    "quickService": "Atendimento Rápido",
+    "talkNow": "Fale agora com {name}",
+    "whatsappCta": "Chamar no WhatsApp",
+    "preferWait": "Prefere aguardar? Sem problemas — entraremos em contato pelo telefone informado.",
+    "backToEnterprise": "Voltar para o empreendimento",
+    "seeAll": "Ver todos os empreendimentos",
+    "disclaimer": "Todos os valores e informações são sujeitos a alteração sem aviso prévio.",
+    "copyright": "Todos os direitos reservados.",
+    "whatsappMessage": "Olá! Acabei de me cadastrar no site{enterprise} e gostaria de atendimento."
+  },
+  "listing": {
+    "navBrand": "Empreendimentos",
+    "badge": "Portfólio Exclusivo",
+    "title": "Empreendimentos de Alto Padrão",
+    "titlePrefix": "Empreendimentos de",
+    "titleHighlight": "Alto Padrão",
+    "subtitle": "Descubra imóveis exclusivos cuidadosamente selecionados para quem busca o melhor em qualidade de vida e investimento.",
+    "stats": "{count, plural, one {{count} empreendimento disponível} other {{count} empreendimentos disponíveis}}",
+    "searching": "buscando por \"{query}\"",
+    "searchPlaceholder": "Buscar empreendimento...",
+    "emptyTitle": "Nenhum empreendimento encontrado",
+    "emptyDesc": "Tente buscar por outro termo ou limpe o filtro para visualizar todos os empreendimentos disponíveis.",
+    "clearFilter": "Limpar filtro",
+    "comingSoon": "Em breve",
+    "viewDetails": "Ver detalhes",
+    "unavailable": "Indisponível",
+    "footerBrand": "Empreendimentos",
+    "footerDesc": "Encontre o imóvel ideal para você e sua família. Qualidade, confiança e atendimento personalizado.",
+    "footerNav": "Navegação",
+    "footerAll": "Todos os Empreendimentos",
+    "footerConditions": "Condições Especiais",
+    "footerService": "Atendimento",
+    "footerWhatsapp": "Fale pelo WhatsApp",
+    "footerBottomText": "Conheça nossos empreendimentos imobiliários com projetos que combinam conforto, sofisticação e qualidade de vida.",
+    "copyright": "Todos os direitos reservados.",
+    "disclaimer": "Todos os valores e informações são sujeitos a alteração sem aviso prévio."
+  },
+  "whatsapp": {
+    "landingMessage": "Olá! Vim pelo anúncio do {name} e gostaria de receber informações sobre as unidades disponíveis."
+  },
+  "seo": {
+    "notFoundTitle": "Empreendimento não encontrado",
+    "titleTemplate": "{name} | Empreendimentos",
+    "descriptionTemplate": "Conheça o empreendimento {name}. Plantas exclusivas, lazer completo e condições especiais. Cadastre-se e fale com um consultor.",
+    "listingTitle": "Empreendimentos | Imóveis de Alto Padrão",
+    "listingDescription": "Conheça nossos empreendimentos imobiliários de alto padrão. Plantas exclusivas, lazer completo, localização privilegiada e condições especiais de investimento.",
+    "listingOgSiteName": "Empreendimentos"
+  },
+  "subtitle": {
+    "inLocation": "Em {location}",
+    "areas": "Áreas de {areaRange}",
+    "delivery": "Entrega {deliveryText}"
+  }
+}

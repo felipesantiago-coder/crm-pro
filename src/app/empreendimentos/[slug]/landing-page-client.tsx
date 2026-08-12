@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, startTransition, Suspense } from 'react';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
+import { useTranslations } from 'next-intl';
+import LanguageSwitcher from '@/i18n/LanguageSwitcher';
 import {
   Building2, MapPin, ArrowLeft, ChevronLeft, ChevronRight,
   X, Clock, DollarSign, Phone, Mail, MessageSquare,
@@ -114,31 +116,6 @@ const LocationMap = dynamic(() => import('@/components/location-map'), {
 });
 
 /* ================================================================
-   Helper: build plant label from metadata
-   ================================================================ */
-function buildPlantLabel(plan: FloorPlan): string {
-  const parts: string[] = [];
-  if (plan.bedrooms) {
-    parts.push(`${plan.bedrooms} quarto${plan.bedrooms > 1 ? 's' : ''}`);
-  }
-  if (plan.suites && plan.suites > 0) {
-    if (parts.length > 0) parts[parts.length - 1] += ` (${plan.suites} suíte${plan.suites > 1 ? 's' : ''})`;
-    else parts.push(`${plan.suites} suíte${plan.suites > 1 ? 's' : ''}`);
-  }
-  if (plan.hasBalcony) {
-    if (parts.length > 0) parts[0] += ' com Varanda';
-    else parts.push('Com Varanda');
-  }
-  if (plan.isGarden) {
-    parts.unshift('Garden');
-  }
-  if (plan.isPenthouse) {
-    parts.unshift('Cobertura');
-  }
-  return parts.length > 0 ? parts.join(' ') : 'Planta';
-}
-
-/* ================================================================
    ScrollReveal Component
    ================================================================ */
 function ScrollReveal({ children, className = '' }: React.PropsWithChildren<{ className?: string }>) {
@@ -165,28 +142,7 @@ function ScrollReveal({ children, className = '' }: React.PropsWithChildren<{ cl
 }
 
 const WHATSAPP_ICON = '<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>';
-const faqItems = [
-  {
-    question: 'Como funciona o atendimento personalizado?',
-    answer: 'Após preencher o formulário, um consultor exclusivo entrará em contato em até 24 horas. Você receberá atendimento individualizado com informações detalhadas sobre plantas, valores, condições de pagamento e agendamento de visita presencial ao empreendimento.',
-  },
-  {
-    question: 'Posso financiar o imóvel?',
-    answer: 'Sim! Oferecemos suporte completo para financiamento bancário. Trabalhamos com os principais bancos do mercado e nossa equipe auxilia em todo o processo, desde a simulação até a aprovação do crédito, garantindo as melhores condições para você.',
-  },
-  {
-    question: 'Quais documentos preciso para visitar o empreendimento?',
-    answer: 'Para agendar uma visita, basta preencher o formulário com seus dados. Para a visita presencial, recomendamos levar um documento de identificação com foto. Nosso consultor entrará em contato para confirmar o melhor horário e ponto de encontro.',
-  },
-  {
-    question: 'O atendimento é exclusivo para este empreendimento?',
-    answer: 'Sim, você terá um consultor dedicado que conhece todos os detalhes deste empreendimento. Nossa equipe é especializada e preparada para tirar todas as suas dúvidas sobre o projeto, localização, lazer, plantas e condições comerciais.',
-  },
-  {
-    question: 'Posso agendar uma visita presencial?',
-    answer: 'Com certeza! Após o cadastro, nosso consultor entrará em contato para agendar a visita no melhor horário para você. Oferecemos visitas presenciais guiadas ao canteiro de obras ou ao empreendimento já entregue, dependendo do status do projeto.',
-  },
-];
+
 
 /* ================================================================
    Page Component
@@ -199,6 +155,35 @@ interface LandingPageClientProps {
 
 export default function LandingPageClient({ params, initialData, initialQueueUser }: LandingPageClientProps) {
   const { slug } = React.use(params);
+  const t = useTranslations();
+
+  const faqItemsRaw = t.raw('faq.items') as Array<{ question?: string; answer?: string; q?: string; a?: string }>;
+  const faqItems = faqItemsRaw.map(item => ({
+    question: item.question || item.q || '',
+    answer: item.answer || item.a || '',
+  }));
+
+  const buildPlantLabel = useCallback((plan: FloorPlan): string => {
+    const parts: string[] = [];
+    if (plan.bedrooms) {
+      parts.push(`${plan.bedrooms} ${t('plantLabels.bedroom', { count: plan.bedrooms })}`);
+    }
+    if (plan.suites && plan.suites > 0) {
+      if (parts.length > 0) parts[parts.length - 1] += ` (${plan.suites} ${t('plantLabels.suite', { count: plan.suites })})`;
+      else parts.push(`${plan.suites} ${t('plantLabels.suite', { count: plan.suites })}`);
+    }
+    if (plan.hasBalcony) {
+      if (parts.length > 0) parts[0] += ` ${t('plantLabels.withBalcony')}`;
+      else parts.push(t('plantLabels.withBalconyStart'));
+    }
+    if (plan.isGarden) {
+      parts.unshift(t('plantLabels.garden'));
+    }
+    if (plan.isPenthouse) {
+      parts.unshift(t('plantLabels.penthouse'));
+    }
+    return parts.length > 0 ? parts.join(' ') : t('plantLabels.default');
+  }, [t]);
 
   /* ── State ─────────────────────────────────────────── */
   const [enterprise, setEnterprise] = useState<Enterprise | null>(initialData ?? null);
@@ -442,10 +427,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     try {
       const res = await fetch(`/api/enterprises/public/${slug}`);
       if (res.ok) { const data = await res.json(); setEnterprise(data); document.title = `${data.landingTitle || data.name} | Empreendimentos`; }
-      else setError('Empreendimento não encontrado.');
-    } catch { setError('Erro de conexão.'); }
+      else setError(t('errors.fetchFailed'));
+    } catch { setError(t('errors.connectionError')); }
     finally { setLoading(false); }
-  }, [slug, initialData]);
+  }, [slug, initialData, t]);
   useEffect(() => { fetchEnterprise(); }, [fetchEnterprise]);
 
   /* ── Scroll / resize listeners ── */
@@ -473,13 +458,13 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   }, []);
 
   // Social proof cycling
-  const socialProofPool = React.useMemo(() => [
-    { message: 'Mais uma pessoa acabou de se cadastrar', time: 'agora' },
-    { message: 'Alguém acabou de solicitar informações', time: '1 min' },
-    { message: 'Mais uma pessoa se cadastrou agora', time: '2 min' },
-    { message: 'Alguém solicitou condições de pagamento', time: '3 min' },
-    { message: 'Outra pessoa acabou de se cadastrar', time: '5 min' },
-  ], []);
+  const socialProofMessages = t.raw('socialProof.messages') as string[];
+  const socialProofTimes = t.raw('socialProof.times') as string[];
+  const socialProofPool = React.useMemo(() => {
+    const msgs = Array.isArray(socialProofMessages) ? socialProofMessages : [];
+    const times = Array.isArray(socialProofTimes) ? socialProofTimes : [];
+    return msgs.map((message, i) => ({ message, time: times[i] || '' }));
+  }, [socialProofMessages, socialProofTimes]);
   useEffect(() => {
     if (socialProofPool.length === 0) return;
     const showDelay = setTimeout(() => {
@@ -532,8 +517,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   /* ── WhatsApp helpers ── */
   const whatsappNumber = queueUser?.userPhone ? queueUser.userPhone.replace(/\D/g, '') : null;
   const whatsappUrl = whatsappNumber
-    ? `https://wa.me/${whatsappNumber.startsWith('55') ? whatsappNumber : '55' + whatsappNumber}?text=${encodeURIComponent(`Olá! Vim pelo anúncio do ${enterprise?.name || ''} e gostaria de receber informações sobre as unidades disponíveis.`)}`
-    : `https://wa.me/?text=${encodeURIComponent(`Olá! Vim pelo anúncio do ${enterprise?.name || ''} e gostaria de receber informações sobre as unidades disponíveis.`)}`;
+    ? `https://wa.me/${whatsappNumber.startsWith('55') ? whatsappNumber : '55' + whatsappNumber}?text=${encodeURIComponent(t('whatsapp.landingMessage', { name: enterprise?.name || '' }))}`
+    : `https://wa.me/?text=${encodeURIComponent(t('whatsapp.landingMessage', { name: enterprise?.name || '' }))}`;
 
   const registerWhatsAppClick = useCallback((source: string) => {
     if (whatsappAssignRef.current || !queueUser?.userId) return;
@@ -569,16 +554,16 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   /* ── Form handler ── */
   const handleFormSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault(); setFormError('');
-    if (!formName.trim() || formName.trim().length < 2) { setFormError('Informe seu nome completo.'); return; }
+    if (!formName.trim() || formName.trim().length < 2) { setFormError(t('form.validation.nameRequired')); return; }
     const cleanEmail = formEmail.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) { setFormError('Informe um e-mail válido.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) { setFormError(t('form.validation.emailInvalid')); return; }
     const cleanPhone = formPhone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) { setFormError('Informe um telefone válido com DDD (mínimo 10 dígitos).'); return; }
+    if (cleanPhone.length < 10) { setFormError(t('form.validation.phoneInvalid')); return; }
     if (enterprise?.formFields) {
       for (const field of enterprise.formFields) {
         if (field.required && field.fieldType !== 'checkbox') {
           const val = customAnswers[field.id];
-          if (!val || val.trim() === '') { setFormError(`O campo "${field.label}" é obrigatório.`); return; }
+          if (!val || val.trim() === '') { setFormError(t('form.validation.fieldRequired', { label: field.label })); return; }
         }
       }
     }
@@ -602,7 +587,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         if (data.assignedUser?.userName) params.set('atendente', data.assignedUser.userName);
         if (data.assignedUser?.userPhone) params.set('telefone', data.assignedUser.userPhone);
         window.location.href = `/empreendimentos/${slug}/cadastro-sucesso?${params.toString()}`;
-      } else { setFormError(data.error || 'Erro ao enviar. Tente novamente.'); }
+      } else { setFormError(data.error || t('errors.submitError')); }
     } catch {
       try {
         const failQueueRaw = localStorage.getItem('lp_failed_queue');
@@ -610,7 +595,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         failQueue.push({ payload: { name: formName.trim(), phone: cleanPhone, email: cleanEmail, slug: slug || undefined, customAnswers: Object.keys(answersData).length > 0 ? answersData : undefined, utmSource: utmParams.utm_source || undefined, utmMedium: utmParams.utm_medium || undefined, utmCampaign: utmParams.utm_campaign || undefined, utmContent: utmParams.utm_content || undefined, utmTerm: utmParams.utm_term || undefined }, timestamp: Date.now() });
         localStorage.setItem('lp_failed_queue', JSON.stringify(failQueue));
       } catch {}
-      setFormError('Erro de conexão. Verifique sua internet e tente novamente.');
+      setFormError(t('errors.connectionErrorFull'));
     } finally { setFormSubmitting(false); isSubmittingRef.current = false; }
   };
   handleFormSubmitRef.current = handleFormSubmit;
@@ -624,9 +609,9 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       <div className="min-h-screen bg-[#F7F6F3] flex items-center justify-center p-4">
         <div className="text-center max-w-md">
           <Building2 className="h-16 w-16 text-[#33492F]/20 mx-auto mb-6" />
-          <h1 className="text-2xl font-bold text-[#1a1a1a] mb-2">Não encontrado</h1>
-          <p className="text-gray-500 mb-8">{error || 'Este empreendimento não existe ou foi removido.'}</p>
-          <a href="/empreendimentos" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#33492F] text-white font-semibold text-sm hover:bg-[#33492F]/90 transition-colors"><ArrowLeft className="h-4 w-4" /> Ver todos os empreendimentos</a>
+          <h1 className="text-2xl font-bold text-[#1a1a1a] mb-2">{t('errors.notFound')}</h1>
+          <p className="text-gray-500 mb-8">{error || t('errors.notFoundDesc')}</p>
+          <a href="/empreendimentos" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#33492F] text-white font-semibold text-sm hover:bg-[#33492F]/90 transition-colors"><ArrowLeft className="h-4 w-4" /> {t('errors.notFoundCta')}</a>
         </div>
       </div>
     );
@@ -658,7 +643,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     else if (/lançamento|pré-lançamento/i.test(allText)) status = 'Lançamento';
   }
   const deliveryText = info?.deliveryDate || (() => {
-    if (status === 'Entregue') return 'Já entregue';
+    if (status === 'Entregue') return t('summary.delivered');
     const m = allText.match(/entrega[^A-Z]*(?:prevista\s*(?:para\s*)?)?([^.;\n]{3,40}?)(?:\.|;|\n|$)/i) || allText.match(/(\d{1,2}\/\d{2,4}|\d{4})\s*$/);
     return m ? m[1].trim() : null;
   })();
@@ -687,15 +672,15 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       }).filter(a => a > 0 && a < 5000);
   const maxArea = areas.length > 0 ? Math.max(...areas) : 0;
   const minArea = areas.length > 0 ? Math.min(...areas) : 0;
-  const areaRange = maxArea > 0 ? (minArea === maxArea ? `${maxArea}m²` : `${minArea} a ${maxArea}m²`) : null;
+  const areaRange = maxArea > 0 ? (minArea === maxArea ? `${maxArea}m²` : `${minArea} ${t('summary.rangeTo')} ${maxArea}m²`) : null;
 
   const displayTitle = e.landingTitle || e.name;
   const displaySubtitle = e.landingSubtitle || info?.summary?.slice(0, 120) || (() => {
     const parts: string[] = [];
-    if (info?.location?.city || info?.location?.neighborhood) parts.push(`Em ${info.location.neighborhood || info.location.city}${info.location.city && info.location.neighborhood ? ', ' + info.location.city : ''}`);
+    if (info?.location?.city || info?.location?.neighborhood) parts.push(t('subtitle.inLocation', { location: `${info.location.neighborhood || info.location.city}${info.location.city && info.location.neighborhood ? ', ' + info.location.city : ''}` }));
     if (priceText) parts.push(priceText);
-    else if (areaRange) parts.push(`Áreas de ${areaRange}`);
-    if (deliveryText && deliveryText !== 'Já entregue') parts.push(`Entrega ${deliveryText}`);
+    else if (areaRange) parts.push(t('subtitle.areas', { areaRange }));
+    if (deliveryText && deliveryText !== t('summary.delivered')) parts.push(t('subtitle.delivery', { deliveryText }));
     return parts.length > 0 ? parts.join(' · ') : null;
   })() || null;
 
@@ -720,10 +705,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   const diffCategories = React.useMemo(() => {
     if (!info?.differentials || info.differentials.length === 0) return [];
     const cats: { name: string; keywords: string[]; icon: string }[] = [
-      { name: 'Social & Lazer', keywords: ['churrasqueira', 'salão', 'festa', 'playground', 'brinquedoteca', 'piscina', 'spa', 'quadra', 'sauna', 'jogos', 'cinema', 'pet', 'dog', 'bike', 'bicicleta', 'gourmet', 'esport', 'lazer', 'ginásio', 'ginasio'], icon: 'Users' },
-      { name: 'Conforto & Conveniência', keywords: ['varanda', 'sacada', 'terraço', 'cozinha', 'armário', 'closet', 'depósito', 'elevador', 'portaria', 'lavanderia', 'delivery', 'estacionamento', 'garagem', 'água quente', 'ar condicionado', 'ventilação', 'iluminação natural', 'pé-direito', 'acabamento', 'porcelanato', 'hidráulica', 'mármore', 'amplo'], icon: 'LayoutGrid' },
-      { name: 'Tecnologia & Segurança', keywords: ['automat', 'smart', 'inteligente', 'fibra', 'internet', 'digital', 'biometria', 'segurança', 'camer', 'monitoramento', 'cerca', 'alarme', 'câmera', 'vigilância', 'porteiro', 'controle', '24h', '24 horas'], icon: 'Shield' },
-      { name: 'Sustentabilidade', keywords: ['sustent', 'solar', 'painel', 'energia', 'reaproveitamento', 'recicl', 'verde', 'natural', 'ecol', 'permeável', 'jardim', 'paisagism', 'biodiversidade', 'captação', 'reuso', 'água pluvial'], icon: 'TrendingUp' },
+      { name: t('differentials.tabs.social'), keywords: ['churrasqueira', 'salão', 'festa', 'playground', 'brinquedoteca', 'piscina', 'spa', 'quadra', 'sauna', 'jogos', 'cinema', 'pet', 'dog', 'bike', 'bicicleta', 'gourmet', 'esport', 'lazer', 'ginásio', 'ginasio'], icon: 'Users' },
+      { name: t('differentials.tabs.comfort'), keywords: ['varanda', 'sacada', 'terraço', 'cozinha', 'armário', 'closet', 'depósito', 'elevador', 'portaria', 'lavanderia', 'delivery', 'estacionamento', 'garagem', 'água quente', 'ar condicionado', 'ventilação', 'iluminação natural', 'pé-direito', 'acabamento', 'porcelanato', 'hidráulica', 'mármore', 'amplo'], icon: 'LayoutGrid' },
+      { name: t('differentials.tabs.tech'), keywords: ['automat', 'smart', 'inteligente', 'fibra', 'internet', 'digital', 'biometria', 'segurança', 'camer', 'monitoramento', 'cerca', 'alarme', 'câmera', 'vigilância', 'porteiro', 'controle', '24h', '24 horas'], icon: 'Shield' },
+      { name: t('differentials.tabs.sustainability'), keywords: ['sustent', 'solar', 'painel', 'energia', 'reaproveitamento', 'recicl', 'verde', 'natural', 'ecol', 'permeável', 'jardim', 'paisagism', 'biodiversidade', 'captação', 'reuso', 'água pluvial'], icon: 'TrendingUp' },
     ];
     const assigned: number[] = []; const result: { name: string; icon: string; items: string[] }[] = [];
     for (const cat of cats) {
@@ -732,9 +717,9 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       if (items.length > 0) result.push({ name: cat.name, icon: cat.icon, items });
     }
     const remaining = info!.differentials.filter((_, i) => !assigned.includes(i));
-    if (remaining.length > 0) result.push({ name: 'Outros Diferenciais', icon: 'Sparkles', items: remaining });
+    if (remaining.length > 0) result.push({ name: t('differentials.tabs.others'), icon: 'Sparkles', items: remaining });
     return result;
-  }, [info?.differentials]);
+  }, [info?.differentials, t]);
 
   const diffIconMap: Record<string, React.ReactNode> = {
     Users: <Users className="h-4 w-4" />, LayoutGrid: <LayoutGrid className="h-4 w-4" />, Shield: <Shield className="h-4 w-4" />, TrendingUp: <TrendingUp className="h-4 w-4" />, Sparkles: <Sparkles className="h-4 w-4" />,
@@ -778,14 +763,15 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
             <div className="h-8 w-8 rounded-lg bg-[#33492F] flex items-center justify-center shadow-lg shadow-[#33492F]/20 group-hover:shadow-[#33492F]/40 transition-shadow">
               <Building2 className="h-3.5 w-3.5 text-white" />
             </div>
-            <span className={`text-sm font-bold tracking-tight hidden sm:block ${scrolled ? 'text-[#1a1a1a]' : 'text-white'}`}>Empreendimentos</span>
+            <span className={`text-sm font-bold tracking-tight hidden sm:block ${scrolled ? 'text-[#1a1a1a]' : 'text-white'}`}>{t('nav.brand')}</span>
           </a>
           <a
             href="#cadastro"
             className="min-h-[44px] inline-flex items-center justify-center px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-[#33492F] text-white text-xs sm:text-sm font-semibold hover:bg-[#33492F]/90 transition-colors shadow-lg shadow-[#33492F]/20"
           >
-            Quero saber mais
+            {t('nav.cta')}
           </a>
+          <LanguageSwitcher />
         </div>
       </nav>
 
@@ -837,38 +823,38 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="flex-1 relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
-                  <input id="hero-name" type="text" placeholder="Seu nome" autoComplete="name" required
+                  <input id="hero-name" type="text" placeholder={t('hero.namePlaceholder')} autoComplete="name" required
                     className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#33492F]/50 focus:ring-1 focus:ring-[#33492F]/20 transition-all" />
                 </div>
                 <div className="flex-1 relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
-                  <input id="hero-phone" type="tel" inputMode="numeric" placeholder="(11) 99999-9999" autoComplete="tel" required
+                  <input id="hero-phone" type="tel" inputMode="numeric" placeholder={t('hero.phonePlaceholder')} autoComplete="tel" required
                     onChange={(ev) => { const d = ev.target.value.replace(/\D/g, '').slice(0, 11); let m = ''; if (d.length > 0) m += `(${d.slice(0, 2)}`; if (d.length > 2) m += `) ${d.slice(2, 7)}`; if (d.length > 7) m += `-${d.slice(7)}`; ev.target.value = m; }}
                     className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#33492F]/50 focus:ring-1 focus:ring-[#33492F]/20 transition-all" />
                 </div>
                 <button type="submit" onClick={() => { try { (window as any).CRMPIXEL?.trackCTA('hero_form', 'Saber mais', 'hero', 'primary'); } catch {} }}
                   className="flex-shrink-0 min-h-[44px] flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#33492F] text-white font-bold text-sm hover:bg-[#33492F]/90 transition-all shadow-lg shadow-[#33492F]/25 hover:shadow-[#33492F]/40 active:scale-[0.98]">
-                  <Send className="h-4 w-4" /><span>Saber mais</span>
+                  <Send className="h-4 w-4" /><span>{t('hero.cta')}</span>
                 </button>
               </div>
-              <p className="text-[11px] text-white/30 mt-1.5 text-center sm:text-left">Sem compromisso · Resposta em até 24h</p>
+              <p className="text-[11px] text-white/30 mt-1.5 text-center sm:text-left">{t('hero.noCommitment')}</p>
             </form>
           </div>
 
           {/* Secondary CTAs */}
           <div className="mt-3 flex flex-wrap items-center gap-2.5">
             <a href="#cadastro" className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.08] border border-white/[0.15] text-white font-medium text-xs hover:bg-white/[0.15] transition-all backdrop-blur-sm">
-              <MessageSquare className="h-3.5 w-3.5" /> Ver mais detalhes
+              <MessageSquare className="h-3.5 w-3.5" /> {t('hero.seeDetails')}
             </a>
             <button type="button" onClick={() => openWhatsApp('hero', 'hero', 'secondary')} className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.08] border border-white/[0.15] text-white font-medium text-xs hover:bg-white/[0.15] transition-all backdrop-blur-sm">
-              <Phone className="h-3.5 w-3.5" /> Falar com consultor
+              <Phone className="h-3.5 w-3.5" /> {t('hero.talkToConsultant')}
             </button>
           </div>
         </div>
 
         {/* Scroll indicator (desktop) */}
         <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce hidden sm:flex">
-          <span className="text-[10px] text-white/30 uppercase tracking-widest">Scroll</span>
+          <span className="text-[10px] text-white/30 uppercase tracking-widest">{t('hero.scroll')}</span>
           <div className="w-px h-8 bg-gradient-to-b from-white/30 to-transparent" />
         </div>
       </section>
@@ -885,7 +871,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400" />
                 </span>
-                <span className="text-sm sm:text-base font-semibold"><span className="text-white">{animatedCount || clientCount}</span> pessoa{clientCount !== 1 ? 's' : ''} interessada{clientCount !== 1 ? 's' : ''}</span>
+                <span className="text-sm sm:text-base font-semibold"><span className="text-white">{animatedCount || clientCount}</span> {t('socialProof.person', { count: clientCount })} {t('socialProof.interested', { count: clientCount })}</span>
               </div>
             ) : (
               <div className="flex items-center gap-2.5 text-white/70">
@@ -898,10 +884,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
             )}
             <div className="hidden sm:block h-4 w-px bg-white/20" />
             <div className="flex items-center gap-1.5 text-xs sm:text-sm text-white/50">
-              <Shield className="h-3.5 w-3.5" /> Dados protegidos
+              <Shield className="h-3.5 w-3.5" /> {t('socialProof.dataProtected')}
             </div>
             <div className="flex items-center gap-1.5 text-xs sm:text-sm text-white/50">
-              <Clock className="h-3.5 w-3.5" /> Resposta 24h
+              <Clock className="h-3.5 w-3.5" /> {t('socialProof.response24h')}
             </div>
           </div>
         </div>
@@ -919,42 +905,42 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                   <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
                     <CheckCircle2 className={`h-5 w-5 mx-auto mb-2 ${status === 'Entregue' ? 'text-emerald-600' : status === 'Em Construção' ? 'text-amber-600' : 'text-[#33492F]'}`} />
                     <p className={`text-sm sm:text-base font-bold ${status === 'Entregue' ? 'text-emerald-700' : status === 'Em Construção' ? 'text-amber-700' : 'text-[#33492F]'}`}>{status}</p>
-                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Status</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">{t('summary.status')}</p>
                   </div>
                 )}
                 {deliveryText && (
                   <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
                     <CalendarDays className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
                     <p className="text-sm sm:text-base font-bold text-[#33492F]">{deliveryText}</p>
-                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Entrega</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">{t('summary.delivery')}</p>
                   </div>
                 )}
                 {info.totalUnits != null && info.totalUnits > 0 && (
                   <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
                     <Building2 className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
                     <p className="text-xl sm:text-2xl font-bold text-[#33492F]">{info.totalUnits}</p>
-                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Unidades</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">{t('summary.units')}</p>
                   </div>
                 )}
                 {areaRange && (
                   <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
                     <Ruler className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
                     <p className="text-xl sm:text-2xl font-bold text-[#33492F]">{areaRange}</p>
-                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Área</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">{t('summary.area')}</p>
                   </div>
                 )}
                 {info.floors != null && info.floors > 0 && (
                   <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
                     <Layers className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
                     <p className="text-xl sm:text-2xl font-bold text-[#33492F]">{info.floors}</p>
-                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Andares</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">{t('summary.floors')}</p>
                   </div>
                 )}
                 {info.parkingSpots != null && info.parkingSpots > 0 && (
                   <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
                     <Car className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
                     <p className="text-xl sm:text-2xl font-bold text-[#33492F]">{info.parkingSpots}</p>
-                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">Vagas</p>
+                    <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">{t('summary.parking')}</p>
                   </div>
                 )}
               </div>
@@ -969,10 +955,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       <ScrollReveal>
         <section id="why-vitta" className="bg-[#F7F6F3]">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
-            <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2 text-center">Sobre o empreendimento</p>
+            <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2 text-center">{t('why.eyebrow')}</p>
             <div className="text-center mb-8 sm:mb-12">
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Por que o {e.name}?</h2>
-              <p className="text-sm text-[#1a1a1a]/40 mt-2">Tudo o que você precisa saber antes de decidir</p>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">{t('why.title', { name: e.name })}</h2>
+              <p className="text-sm text-[#1a1a1a]/40 mt-2">{t('why.subtitle')}</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
               {/* Location Card */}
@@ -980,11 +966,11 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 <div className="h-10 w-10 rounded-xl bg-[#33492F]/10 flex items-center justify-center mb-4">
                   <MapPin className="h-5 w-5 text-[#33492F]" />
                 </div>
-                <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">Localização Privilegiada</h3>
+                <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">{t('why.locationTitle')}</h3>
                 <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">
                   {info?.location?.neighborhood || info?.location?.city
-                    ? `No coração de ${info.location.neighborhood || info.location.city}${info.location.city && info.location.neighborhood ? ', ' + info.location.city : ''}, com fácil acesso a comércio, escolas e transporte.`
-                    : 'Região estratégica com infraestrutura completa ao redor, facilitando seu dia a dia.'}
+                    ? t('why.locationDesc', { neighborhood: `${info.location.neighborhood || info.location.city}${info.location.city && info.location.neighborhood ? ', ' + info.location.city : ''}` })
+                    : t('why.locationDescFallback')}
                 </p>
               </div>
               {/* Differentials Card */}
@@ -992,11 +978,11 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 <div className="h-10 w-10 rounded-xl bg-[#C9A96E]/10 flex items-center justify-center mb-4">
                   <Sparkles className="h-5 w-5 text-[#C9A96E]" />
                 </div>
-                <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">Diferenciais Exclusivos</h3>
+                <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">{t('why.differentialsTitle')}</h3>
                 <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">
                   {info?.differentials && info.differentials.length > 0
-                    ? `${info.differentials.slice(0, 3).join(', ')} e muito mais para você aproveitar.`
-                    : 'Lazer completo, segurança 24h e acabamentos de alto padrão pensados para o seu bem-estar.'}
+                    ? t('why.differentialsDesc', { differentials: info.differentials.slice(0, 3).join(', ') })
+                    : t('why.differentialsDescFallback')}
                 </p>
               </div>
               {/* Investment Card */}
@@ -1004,9 +990,9 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 <div className="h-10 w-10 rounded-xl bg-emerald-50 flex items-center justify-center mb-4">
                   <TrendingUp className="h-5 w-5 text-emerald-600" />
                 </div>
-                <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">Excelente Investimento</h3>
+                <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">{t('why.investmentTitle')}</h3>
                 <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">
-                  Valores acessíveis e condições especiais em uma região com forte valorização.
+                  {t('why.investmentDesc')}
                 </p>
               </div>
             </div>
@@ -1021,10 +1007,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         <ScrollReveal>
           <section id="differentials" className="bg-white">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
-              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">Diferenciais</p>
+              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">{t('differentials.eyebrow')}</p>
               <div className="text-center mb-8 sm:mb-10">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Lazer & Diferenciais</h2>
-                <p className="text-sm text-[#1a1a1a]/40 mt-2">Tudo pensado para o seu conforto e bem-estar</p>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">{t('differentials.title')}</h2>
+                <p className="text-sm text-[#1a1a1a]/40 mt-2">{t('differentials.subtitle')}</p>
               </div>
 
               {/* Tabs */}
@@ -1062,18 +1048,18 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         <ScrollReveal>
           <section id="apartments" className="bg-[#F7F6F3]">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
-              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">Unidades</p>
+              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">{t('apartments.eyebrow')}</p>
               <div className="flex items-end justify-between mb-8 sm:mb-10">
                 <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Tipos de Unidades</h2>
-                  <p className="text-sm text-[#1a1a1a]/40 mt-2">Encontre a planta ideal para você</p>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">{t('apartments.title')}</h2>
+                  <p className="text-sm text-[#1a1a1a]/40 mt-2">{t('apartments.subtitle')}</p>
                 </div>
               </div>
               {/* Grid layout — no horizontal scroll */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                 {info.apartmentTypes.map((apt, i) => (
                   <div key={i} className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-6 hover:border-[#33492F]/15 hover:shadow-md transition-all">
-                    <h3 className="text-base font-semibold text-[#1a1a1a] mb-3">{apt.name || `Tipo ${i + 1}`}</h3>
+                    <h3 className="text-base font-semibold text-[#1a1a1a] mb-3">{apt.name || t('apartments.typeFallback', { n: i + 1 })}</h3>
                     <div className="space-y-2.5">
                       {apt.bedrooms && (
                         <div className="flex items-center gap-2.5 text-sm text-[#1a1a1a]/60">
@@ -1113,9 +1099,9 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
           <section id="plantas" className="bg-[#33492F]">
             <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
               <div className="max-w-2xl mb-8 sm:mb-10">
-                <p className="text-[11px] sm:text-xs font-medium text-[#C9A96E] uppercase tracking-[0.15em] mb-2">Espaço · plantas inteligentes</p>
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Cada metro quadrado pensado para o seu jeito de viver</h2>
-                <p className="text-sm text-white/50 mt-2 max-w-xl">Do compacto de 1 quarto ao mais espaçoso — plantas otimizadas com circulação eficiente e ambientes integrados.</p>
+                <p className="text-[11px] sm:text-xs font-medium text-[#C9A96E] uppercase tracking-[0.15em] mb-2">{t('floorPlans.eyebrow')}</p>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">{t('floorPlans.title')}</h2>
+                <p className="text-sm text-white/50 mt-2 max-w-xl">{t('floorPlans.subtitle')}</p>
               </div>
               <div className="flex flex-col gap-2">
                 {e.floorPlans.map((plan, i) => {
@@ -1131,13 +1117,13 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.1em] mb-1 text-[#C9A96E]">{label}</p>
-                            <h3 className={`text-sm sm:text-base font-semibold leading-snug ${isSelected ? 'text-white' : 'text-white/80'}`}>{plan.name || `Planta ${i + 1}`}</h3>
+                            <h3 className={`text-sm sm:text-base font-semibold leading-snug ${isSelected ? 'text-white' : 'text-white/80'}`}>{plan.name || t('floorPlans.plan') + ' ' + (i + 1)}</h3>
                             {plan.description && <p className={`text-xs sm:text-sm mt-1 ${isSelected ? 'text-white/70' : 'text-white/40'}`}>{plan.description}</p>}
                           </div>
                           <div className="text-right flex-shrink-0">
                             <p className={`text-sm sm:text-lg font-semibold whitespace-nowrap ${isSelected ? 'text-white' : 'text-white/80'}`}>{plan.area || '—'}</p>
                             <span className={`mt-1 inline-block text-xs font-medium transition-colors duration-300 ${isSelected ? 'text-[#C9A96E]' : 'text-white/30'}`}>
-                              {isSelected ? 'fechar' : 'ver planta'}
+                              {isSelected ? t('floorPlans.close') : t('floorPlans.viewPlan')}
                             </span>
                           </div>
                         </div>
@@ -1149,7 +1135,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                             <div className="relative w-full max-w-2xl mx-auto aspect-square">
                               <img
                                 src={plan.url}
-                                alt={plan.altText || `${plan.name || 'Planta'}`}
+                                alt={plan.altText || `${plan.name || t('floorPlans.plan')}`}
                                 className="w-full h-full object-contain"
                                 loading="lazy"
                                 decoding="async"
@@ -1159,11 +1145,11 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                             <div className="w-full max-w-2xl mx-auto aspect-square flex items-center justify-center bg-white/5 rounded-2xl">
                               <div className="text-center text-white/30">
                                 <LayoutGrid className="h-12 w-12 mx-auto mb-3" />
-                                <p className="text-sm">Imagem da planta não disponível</p>
+                                <p className="text-sm">{t('floorPlans.noImage')}</p>
                               </div>
                             </div>
                           )}
-                          <p className="mt-3 text-white/25 text-[10px] sm:text-xs leading-relaxed text-center">Imagem meramente ilustrativa. Sujeito a alterações conforme memorial de incorporação.</p>
+                          <p className="mt-3 text-white/25 text-[10px] sm:text-xs leading-relaxed text-center">{t('floorPlans.disclaimer')}</p>
                         </div>
                       </div>
                     </div>
@@ -1177,8 +1163,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.1em] mb-1 text-[#1a1a1a]/50">Book Completo</p>
-                      <h3 className="text-sm sm:text-base font-semibold text-[#1a1a1a] leading-snug">Quero o book completo com todas as informações</h3>
+                      <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.1em] mb-1 text-[#1a1a1a]/50">{t('floorPlans.bookEyebrow')}</p>
+                      <h3 className="text-sm sm:text-base font-semibold text-[#1a1a1a] leading-snug">{t('floorPlans.bookCta')}</h3>
                     </div>
                     <span className="shrink-0 mt-1 text-[#1a1a1a]">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
@@ -1198,11 +1184,11 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         <ScrollReveal>
           <section id="galeria" className="bg-white">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
-              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">Galeria</p>
+              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2">{t('gallery.eyebrow')}</p>
               <div className="mb-8 sm:mb-10">
                 <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Conheça o {e.name}</h2>
-                  <p className="text-sm text-[#1a1a1a]/40 mt-2">{images.length} foto{images.length !== 1 ? 's' : ''} do empreendimento</p>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">{t('gallery.title', { name: e.name })}</h2>
+                  <p className="text-sm text-[#1a1a1a]/40 mt-2">{t('gallery.photoCount', { count: images.length })}</p>
                 </div>
               </div>
 
@@ -1211,7 +1197,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 {images.map((img, idx) => (
                   <button key={img.id} type="button" onClick={() => { startTransition(() => { setActiveImgIdx(idx); setLightboxOpen(true); }); try { (window as any).CRMPIXEL?.trackGalleryClick(idx, images.length); } catch {} }}
                     className="lp-gallery-card group relative w-full overflow-hidden rounded-2xl bg-[#1a1a1a]/[0.06] aspect-[4/3] hover:shadow-lg transition-all duration-300">
-                    <img src={img.url} alt={img.altText || `${e.name} - Foto ${idx + 1}`} width={680} height={510} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" loading={idx < 4 ? 'eager' : 'lazy'} decoding="async" />
+                    <img src={img.url} alt={img.altText || `${e.name} - ${t('gallery.photoAlt', { n: idx + 1 })}`} width={680} height={510} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" loading={idx < 4 ? 'eager' : 'lazy'} decoding="async" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                       <div className="h-12 w-12 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-lg">
@@ -1221,7 +1207,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                     {/* Image counter on first card */}
                     {idx === 0 && images.length > 1 && (
                       <div className="absolute bottom-3 right-3 bg-black/50 backdrop-blur-sm text-white text-[11px] px-3 py-1.5 rounded-full">
-                        {images.length} fotos
+                        {t('gallery.countBadge', { count: images.length })}
                       </div>
                     )}
                   </button>
@@ -1239,9 +1225,9 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         <ScrollReveal>
           <section id="location" className="bg-[#F7F6F3]">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
-              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2 text-center">Localização</p>
+              <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2 text-center">{t('location.eyebrow')}</p>
               <div className="text-center mb-8 sm:mb-10">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Onde está localizado</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">{t('location.title')}</h2>
               </div>
               <div className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] shadow-sm overflow-hidden">
                 {/* Map */}
@@ -1281,10 +1267,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       <ScrollReveal>
         <section id="faq" className="bg-white">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
-            <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2 text-center">Dúvidas</p>
+            <p className="text-[11px] sm:text-xs font-medium text-[#1a1a1a]/30 uppercase tracking-[0.15em] mb-2 text-center">{t('faq.eyebrow')}</p>
             <div className="text-center mb-8 sm:mb-10">
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">Perguntas Frequentes</h2>
-              <p className="text-sm text-[#1a1a1a]/40 mt-2">Tire suas dúvidas antes de decidir</p>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">{t('faq.title')}</h2>
+              <p className="text-sm text-[#1a1a1a]/40 mt-2">{t('faq.subtitle')}</p>
             </div>
             <div className="space-y-3">
               {faqItems.map((item, idx) => (
@@ -1304,10 +1290,10 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               ))}
             </div>
             <div className="mt-6 sm:mt-8 text-center">
-              <p className="text-sm text-[#1a1a1a]/40 mb-3">Ficou com dúvida?</p>
+              <p className="text-sm text-[#1a1a1a]/40 mb-3">{t('faq.hasQuestion')}</p>
               <button type="button" onClick={() => openWhatsApp('faq_cta', 'faq', 'bottom')}
                 className="min-h-[44px] inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15">
-                <Phone className="h-4 w-4" /> Fale com um consultor
+                <Phone className="h-4 w-4" /> {t('faq.talkToConsultant')}
               </button>
             </div>
           </div>
@@ -1326,31 +1312,29 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-2xl bg-[#33492F]/10 flex items-center justify-center mb-4 sm:mb-5">
                   <Home className="h-5 w-5 sm:h-6 sm:w-6 text-[#33492F]" />
                 </div>
-                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 text-[#1a1a1a] leading-tight">
-                  Solicite informações sobre o <span className="text-[#33492F]">{e.name}</span>
-                </h2>
+                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 text-[#1a1a1a] leading-tight" dangerouslySetInnerHTML={{ __html: t('form.headingHtml', { name: e.name }) }} />
                 <p className="text-[#33492F]/80 text-sm sm:text-base font-medium mb-2">
-                  {showUrgencyBadge ? `${status} — conheça as condições disponíveis.` : priceText ? `A partir de ${priceText.replace('a partir de ', '')} — condições especiais.` : 'Condições especiais disponíveis para você.'}
+                  {showUrgencyBadge ? t('form.subtextWithInfo', { status }) : priceText ? t('form.subtextWithPrice', { price: priceText.replace('a partir de ', '') }) : t('form.subtextFallback')}
                 </p>
                 <p className="text-[#1a1a1a]/50 max-w-md text-sm sm:text-base leading-relaxed mb-5 sm:mb-6">
-                  {e.landingDescription || `Receba materiais, valores e condições comerciais. Atendimento personalizado${info?.location?.neighborhood ? ` no ${info.location.neighborhood}` : ''}. Sem compromisso.`}
+                  {e.landingDescription || `${t('form.descriptionBase')}${info?.location?.neighborhood ? ` ${t('form.descriptionIn', { neighborhood: info.location.neighborhood })}` : ''}. ${t('form.descriptionEnd')}`}
                 </p>
                 {/* Quick-value bullets */}
                 <ul className="space-y-2 mb-5 sm:mb-6">
-                  {areaRange && <li className="flex items-center gap-2 text-sm text-[#1a1a1a]/50"><Ruler className="h-3.5 w-3.5 text-[#33492F]/50" /> Unidades de {areaRange}</li>}
-                  {info?.totalUnits && info.totalUnits > 0 && <li className="flex items-center gap-2 text-sm text-[#1a1a1a]/50"><Building2 className="h-3.5 w-3.5 text-[#33492F]/50" /> {info.totalUnits} unidades</li>}
-                  {deliveryText && deliveryText !== 'Já entregue' && <li className="flex items-center gap-2 text-sm text-[#1a1a1a]/50"><CalendarDays className="h-3.5 w-3.5 text-[#33492F]/50" /> Entrega: {deliveryText}</li>}
+                  {areaRange && <li className="flex items-center gap-2 text-sm text-[#1a1a1a]/50"><Ruler className="h-3.5 w-3.5 text-[#33492F]/50" /> {t('form.areaRange', { areaRange })}</li>}
+                  {info?.totalUnits && info.totalUnits > 0 && <li className="flex items-center gap-2 text-sm text-[#1a1a1a]/50"><Building2 className="h-3.5 w-3.5 text-[#33492F]/50" /> {t('form.unitCount', { count: info.totalUnits })}</li>}
+                  {deliveryText && deliveryText !== t('summary.delivered') && <li className="flex items-center gap-2 text-sm text-[#1a1a1a]/50"><CalendarDays className="h-3.5 w-3.5 text-[#33492F]/50" /> {t('form.delivery', { deliveryText })}</li>}
                 </ul>
                 {/* Trust signals */}
                 <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-5 sm:mb-6 text-xs sm:text-sm text-[#1a1a1a]/50">
-                  <span className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5 text-[#33492F]/50" /> Dados seguros</span>
-                  <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-[#33492F]/50" /> Resposta 24h</span>
-                  <span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-[#33492F]/50" /> Sem compromisso</span>
+                  <span className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5 text-[#33492F]/50" /> {t('form.dataSafe')}</span>
+                  <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-[#33492F]/50" /> {t('form.response24h')}</span>
+                  <span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-[#33492F]/50" /> {t('form.noCommitment')}</span>
                 </div>
                 {/* WhatsApp CTA */}
                 <button type="button" onClick={() => openWhatsApp('form_section', 'cadastro', 'left')}
                   className="min-h-[44px] inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-[#25D366] text-white font-semibold text-sm hover:bg-[#20bd5a] transition-colors shadow-lg shadow-[#25D366]/15">
-                  <Phone className="h-4 w-4" /> Prefere o WhatsApp? Fale conosco
+                  <Phone className="h-4 w-4" /> {t('form.whatsappCta')}
                 </button>
               </div>
 
@@ -1360,7 +1344,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 <form id="landing-form" onSubmit={handleFormSubmit} className="relative z-10 rounded-3xl bg-white border border-[#1a1a1a]/[0.08] shadow-lg p-5 sm:p-8 lg:p-10 space-y-4 sm:space-y-5">
                   <div className="mb-1">
                     <div className="flex items-center justify-between mb-1">
-                      <h3 className="text-xl font-bold text-[#1a1a1a]">Cadastro</h3>
+                      <h3 className="text-xl font-bold text-[#1a1a1a]">{t('form.title')}</h3>
                       {formProgress > 0 && formProgress < 100 && <span className="text-xs text-[#33492F]/70 font-medium">{formProgress}%</span>}
                     </div>
                     {formProgress > 0 && (
@@ -1368,7 +1352,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                         <div className="h-full rounded-full transition-all duration-500 ease-out" style={{ width: `${formProgress}%`, backgroundColor: formProgress === 100 ? '#25D366' : '#33492F' }} />
                       </div>
                     )}
-                    <p className="text-sm text-[#1a1a1a]/40 mt-1">Preencha para receber informações e condições</p>
+                    <p className="text-sm text-[#1a1a1a]/40 mt-1">{t('form.subtitle')}</p>
                   </div>
 
                   {/* Error */}
@@ -1381,14 +1365,14 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
                   {/* Name */}
                   <div>
-                    <label htmlFor="form-name" className="block text-sm font-medium text-[#1a1a1a]/70 mb-2">Nome Completo <span className="text-red-500">*</span></label>
+                    <label htmlFor="form-name" className="block text-sm font-medium text-[#1a1a1a]/70 mb-2">{t('form.nameLabel')} <span className="text-red-500">*</span></label>
                     <div className="relative">
                       <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#1a1a1a]/30" />
                       <input id="form-name" type="text" value={formName}
                         onChange={(ev) => { setFormName(ev.target.value); updatePixelFormFields(ev.target.value, formPhone, formEmail, customAnswers); }}
                         onFocus={() => { fieldFocusTime.current.name = Date.now(); try { (window as any).CRMPIXEL?.trackFormFocus('name'); } catch {} }}
                         onBlur={() => { const t = fieldFocusTime.current.name || Date.now(); try { (window as any).CRMPIXEL?.trackFormBlur('name', Date.now() - t); } catch {} }}
-                        placeholder="Seu nome completo" autoComplete="name" required
+                        placeholder={t('form.namePlaceholder')} autoComplete="name" required
                         className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white border text-sm text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:ring-1 transition-all ${
                           formName.trim().length >= 2 ? 'border-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/20' : 'border-[#1a1a1a]/[0.12] focus:border-[#33492F] focus:ring-[#33492F]/20'
                         }`} />
@@ -1398,14 +1382,14 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
                   {/* Email */}
                   <div>
-                    <label htmlFor="form-email" className="block text-sm font-medium text-[#1a1a1a]/70 mb-2">E-mail <span className="text-red-500">*</span></label>
+                    <label htmlFor="form-email" className="block text-sm font-medium text-[#1a1a1a]/70 mb-2">{t('form.emailLabel')} <span className="text-red-500">*</span></label>
                     <div className="relative">
                       <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#1a1a1a]/30" />
                       <input id="form-email" type="email" value={formEmail}
                         onChange={(ev) => { setFormEmail(ev.target.value); updatePixelFormFields(formName, formPhone, ev.target.value, customAnswers); }}
                         onFocus={() => { fieldFocusTime.current.email = Date.now(); try { (window as any).CRMPIXEL?.trackFormFocus('email'); } catch {} }}
                         onBlur={() => { const t = fieldFocusTime.current.email || Date.now(); try { (window as any).CRMPIXEL?.trackFormBlur('email', Date.now() - t); } catch {} }}
-                        placeholder="seuemail@exemplo.com" autoComplete="email" required
+                        placeholder={t('form.emailPlaceholder')} autoComplete="email" required
                         className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white border text-sm text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:ring-1 transition-all ${
                           /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formEmail.trim().toLowerCase()) ? 'border-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/20' : 'border-[#1a1a1a]/[0.12] focus:border-[#33492F] focus:ring-[#33492F]/20'
                         }`} />
@@ -1415,13 +1399,13 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
                   {/* Phone */}
                   <div>
-                    <label htmlFor="form-phone" className="block text-sm font-medium text-[#1a1a1a]/70 mb-2">Telefone <span className="text-red-500">*</span></label>
+                    <label htmlFor="form-phone" className="block text-sm font-medium text-[#1a1a1a]/70 mb-2">{t('form.phoneLabel')} <span className="text-red-500">*</span></label>
                     <div className="relative">
                       <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#1a1a1a]/30" />
                       <input id="form-phone" type="tel" inputMode="numeric" value={formPhone} onChange={(ev) => { handlePhoneChange(ev.target.value); updatePixelFormFields(formName, ev.target.value, formEmail, customAnswers); }}
                         onFocus={() => { fieldFocusTime.current.phone = Date.now(); try { (window as any).CRMPIXEL?.trackFormFocus('phone'); } catch {} }}
                         onBlur={() => { const t = fieldFocusTime.current.phone || Date.now(); try { (window as any).CRMPIXEL?.trackFormBlur('phone', Date.now() - t); } catch {} }}
-                        placeholder="(11) 99999-9999" autoComplete="tel" required
+                        placeholder={t('form.phonePlaceholder')} autoComplete="tel" required
                         className={`lp-input-mobile w-full min-h-[44px] pl-11 pr-10 py-3.5 rounded-xl bg-white border text-sm text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:ring-1 transition-all ${
                           formPhone.replace(/\D/g, '').length >= 10 ? 'border-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/20' : 'border-[#1a1a1a]/[0.12] focus:border-[#33492F] focus:ring-[#33492F]/20'
                         }`} />
@@ -1449,13 +1433,13 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                             {field.fieldType === 'select' && field.options && (
                               <select id={`field-${field.id}`} value={val} onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.value }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                 className="lp-input-mobile w-full min-h-[44px] px-4 py-3.5 rounded-xl bg-white border border-[#1a1a1a]/[0.12] text-sm text-[#1a1a1a] focus:outline-none focus:ring-1 focus:border-[#33492F] focus:ring-[#33492F]/20 transition-all appearance-none">
-                                <option value="">{field.placeholder || 'Selecione...'}</option>
+                                <option value="">{field.placeholder || t('form.selectDefault')}</option>
                                 {field.options.split(',').map((opt) => <option key={opt.trim()} value={opt.trim()}>{opt.trim()}</option>)}
                               </select>
                             )}
                             {field.fieldType === 'checkbox' && (
                               <label htmlFor={`field-${field.id}`} className="flex items-center gap-3 cursor-pointer group py-1">
-                                <input id={`field-${field.id}`} type="checkbox" checked={val === 'Sim'} onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.checked ? 'Sim' : 'Não' }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
+                                <input id={`field-${field.id}`} type="checkbox" checked={val === t('form.yes')} onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.checked ? t('form.yes') : t('form.no') }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                   className="h-4 w-4 rounded border-[#1a1a1a]/20 bg-white text-[#33492F] focus:ring-[#33492F]/20 cursor-pointer accent-[#33492F]" />
                                 <span className="text-sm text-[#1a1a1a]/50 group-hover:text-[#1a1a1a]/70 transition-colors">{field.placeholder || field.label}</span>
                               </label>
@@ -1471,18 +1455,18 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                     className={`w-full min-h-[44px] flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl font-bold text-base sm:text-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed mt-2 hover:scale-[1.01] active:scale-[0.99] ${
                       formProgress === 100 ? 'bg-emerald-500 text-white shadow-emerald-500/20 hover:bg-emerald-600' : 'bg-[#33492F] text-white shadow-[#33492F]/20 hover:bg-[#33492F]/90'
                     }`}>
-                    {formSubmitting ? <><Loader2 className="h-5 w-5 animate-spin" /> Enviando...</> :
-                    formProgress === 100 ? <><Send className="h-4 w-4" /> Receber informações</> :
-                    <><Send className="h-4 w-4" /> Quero saber mais</>}
+                    {formSubmitting ? <><Loader2 className="h-5 w-5 animate-spin" /> {t('form.submitting')}</> :
+                    formProgress === 100 ? <><Send className="h-4 w-4" /> {t('form.submitWithPrice')}</> :
+                    <><Send className="h-4 w-4" /> {t('form.submitDefault')}</>}
                   </button>
 
                   {/* Trust signals */}
                   <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pt-1">
-                    <span className="flex items-center gap-1.5 text-xs text-[#1a1a1a]/30"><Shield className="h-3.5 w-3.5 text-[#33492F]/50" /> Dados seguros</span>
-                    <span className="flex items-center gap-1.5 text-xs text-[#1a1a1a]/30"><Mail className="h-3.5 w-3.5 text-[#33492F]/50" /> Sem spam</span>
-                    <span className="flex items-center gap-1.5 text-xs text-[#1a1a1a]/30"><Clock className="h-3.5 w-3.5 text-[#33492F]/50" /> Até 24h</span>
+                    <span className="flex items-center gap-1.5 text-xs text-[#1a1a1a]/30"><Shield className="h-3.5 w-3.5 text-[#33492F]/50" /> {t('form.dataSafe')}</span>
+                    <span className="flex items-center gap-1.5 text-xs text-[#1a1a1a]/30"><Mail className="h-3.5 w-3.5 text-[#33492F]/50" /> {t('form.noSpam')}</span>
+                    <span className="flex items-center gap-1.5 text-xs text-[#1a1a1a]/30"><Clock className="h-3.5 w-3.5 text-[#33492F]/50" /> {t('form.upto24h')}</span>
                   </div>
-                  <p className="text-xs text-[#1a1a1a]/25 text-center">Ao solicitar informações, você concorda em receber detalhes sobre este empreendimento.</p>
+                  <p className="text-xs text-[#1a1a1a]/25 text-center">{t('form.disclaimer')}</p>
                 </form>
               </div>
             </div>
@@ -1498,16 +1482,16 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
           <div className="py-8 sm:py-10 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6">
             <a href="/empreendimentos" className="flex items-center gap-2.5 group">
               <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center"><Building2 className="h-4 w-4 text-white" /></div>
-              <span className="text-sm font-bold text-white">Empreendimentos</span>
+              <span className="text-sm font-bold text-white">{t('footer.brand')}</span>
             </a>
             <button type="button" onClick={() => openWhatsApp('footer', 'footer', 'bottom')}
               className="min-h-[44px] flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-[#25D366]/15 text-white/80 hover:text-white text-sm font-medium transition-colors">
-              <Phone className="h-3.5 w-3.5 text-[#25D366]" /> WhatsApp
+              <Phone className="h-3.5 w-3.5 text-[#25D366]" /> {t('footer.whatsapp')}
             </button>
           </div>
           <div className="border-t border-white/10 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <p className="text-xs text-white/30">&copy; {new Date().getFullYear()} Todos os direitos reservados.</p>
-            <p className="text-xs text-white/20">Valores e informações sujeitos a alteração.</p>
+            <p className="text-xs text-white/30">&copy; {new Date().getFullYear()} {t('footer.copyright')}</p>
+            <p className="text-xs text-white/20">{t('footer.disclaimer')}</p>
           </div>
         </div>
       </footer>
@@ -1523,11 +1507,11 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
             <button type="button" onClick={() => openWhatsApp('bottom_bar', null, 'left')}
               className="flex-1 min-h-[52px] flex items-center justify-center gap-2 bg-[#25D366] text-white font-semibold text-sm shadow-[0_-4px_20px_rgba(37,211,102,0.3)]">
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" dangerouslySetInnerHTML={{ __html: WHATSAPP_ICON }} />
-              WhatsApp
+              {t('floatingBar.whatsapp')}
             </button>
             <button type="button" onClick={scrollToForm}
               className="flex-1 min-h-[52px] flex items-center justify-center gap-2 bg-[#33492F] text-white font-bold text-sm shadow-[0_-4px_20px_rgba(51,73,47,0.3)]">
-              Ver Condições
+              {t('floatingBar.seeConditions')}
             </button>
           </div>
           <div className="h-[env(safe-area-inset-bottom)]" />
@@ -1554,7 +1538,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
             </div>
             <div className="min-w-0">
               <p className="text-[11px] text-white/90 font-medium leading-tight">{socialProofPool[socialProofIdx].message}</p>
-              <p className="text-[10px] text-white/35 mt-0.5">há {socialProofPool[socialProofIdx].time}</p>
+              <p className="text-[10px] text-white/35 mt-0.5">{t('socialProof.timeAgo', { time: socialProofPool[socialProofIdx].time })}</p>
             </div>
           </div>
         </div>

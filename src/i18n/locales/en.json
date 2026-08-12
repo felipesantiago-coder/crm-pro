@@ -1,0 +1,273 @@
+{
+  "nav": {
+    "brand": "Residential Developments",
+    "cta": "I want to know more"
+  },
+  "errors": {
+    "notFound": "Not Found",
+    "notFoundDesc": "This residential development does not exist or has been removed.",
+    "notFoundCta": "View all residential developments",
+    "fetchFailed": "Residential development not found.",
+    "connectionError": "Connection error.",
+    "submitError": "Error submitting. Please try again.",
+    "connectionErrorFull": "Connection error. Please check your internet connection and try again.",
+    "boundaryTitle": "Residential Development",
+    "boundaryDesc": "An unexpected error occurred. Please try reloading the page or contact us directly on WhatsApp.",
+    "boundaryWhatsApp": "Talk to a consultant",
+    "boundaryReload": "Reload page",
+    "boundaryWhatsAppFallback": "I'm interested in a residential development"
+  },
+  "hero": {
+    "namePlaceholder": "Your name",
+    "phonePlaceholder": "(11) 99999-9999",
+    "cta": "Learn more",
+    "noCommitment": "No commitment · Response within 24h",
+    "seeDetails": "See more details",
+    "talkToConsultant": "Talk to a consultant",
+    "scroll": "Scroll"
+  },
+  "socialProof": {
+    "messages": [
+      "Someone just signed up",
+      "Someone just requested information",
+      "Another person just signed up",
+      "Someone asked about payment plans",
+      "Another person just registered"
+    ],
+    "times": ["just now", "1 min", "2 min", "3 min", "5 min"],
+    "person": "{count, plural, one {person} other {people}}",
+    "interested": "{count, plural, one {interested} other {interested}}",
+    "dataProtected": "Data protected",
+    "response24h": "24h response",
+    "timeAgo": "{time} ago"
+  },
+  "summary": {
+    "status": "Status",
+    "delivery": "Delivery",
+    "units": "Units",
+    "area": "Area",
+    "floors": "Floors",
+    "parking": "Parking spaces",
+    "delivered": "Delivered",
+    "rangeTo": "to"
+  },
+  "why": {
+    "eyebrow": "About the residential development",
+    "title": "Why {name}?",
+    "subtitle": "Everything you need to know before making a decision",
+    "locationTitle": "Prime Location",
+    "locationDesc": "In the heart of {neighborhood}, with easy access to shopping, schools, and public transit.",
+    "locationDescFallback": "A strategic area with full infrastructure nearby, making your daily life easier.",
+    "differentialsTitle": "Exclusive Features",
+    "differentialsDesc": "{differentials} and much more for you to enjoy.",
+    "differentialsDescFallback": "Complete amenities, 24/7 security, and premium finishes designed for your well-being.",
+    "investmentTitle": "Excellent Investment",
+    "investmentDesc": "Affordable prices and special terms in an area with strong appreciation potential."
+  },
+  "differentials": {
+    "eyebrow": "Features",
+    "title": "Amenities & Features",
+    "subtitle": "Everything designed for your comfort and well-being",
+    "tabs": {
+      "social": "Social & Amenities",
+      "comfort": "Comfort & Convenience",
+      "tech": "Technology & Security",
+      "sustainability": "Sustainability",
+      "others": "Other Features"
+    }
+  },
+  "apartments": {
+    "eyebrow": "Units",
+    "title": "Unit Types",
+    "subtitle": "Find the ideal floor plan for you",
+    "typeFallback": "Type {n}"
+  },
+  "floorPlans": {
+    "eyebrow": "Space · smart floor plans",
+    "title": "Every square meter designed for your lifestyle",
+    "subtitle": "From compact 1-bedroom layouts to more spacious options — optimized floor plans with efficient circulation and open-concept living areas.",
+    "close": "close",
+    "viewPlan": "view floor plan",
+    "noImage": "Floor plan image not available",
+    "disclaimer": "Image for illustrative purposes only. Subject to change per the development's incorporation filing.",
+    "bookEyebrow": "Complete Brochure",
+    "bookCta": "I want the complete brochure with all the details"
+  },
+  "plantLabels": {
+    "bedroom": "{count, plural, one {bedroom} other {bedrooms}}",
+    "suite": "{count, plural, one {suite} other {suites}}",
+    "withBalcony": "with Balcony",
+    "withBalconyStart": "With Balcony",
+    "garden": "Garden",
+    "penthouse": "Penthouse",
+    "default": "Floor Plan"
+  },
+  "gallery": {
+    "eyebrow": "Gallery",
+    "title": "Discover {name}",
+    "photoCount": "{count, plural, one {{count} photo of the residential development} other {{count} photos of the residential development}}",
+    "countBadge": "{count, plural, one {{count} photo} other {{count} photos}}",
+    "photoAlt": "Photo {n}"
+  },
+  "location": {
+    "eyebrow": "Location",
+    "title": "Where it's located",
+    "loading": "Loading map...",
+    "unavailable": "Map unavailable"
+  },
+  "faq": {
+    "eyebrow": "Questions",
+    "title": "Frequently Asked Questions",
+    "subtitle": "Get your questions answered before making a decision",
+    "hasQuestion": "Still have questions?",
+    "talkToConsultant": "Talk to a consultant",
+    "items": [
+      {
+        "q": "How does the personalized service work?",
+        "a": "After filling out the form, a dedicated consultant will get in touch within 24 hours. You'll receive one-on-one assistance with detailed information on floor plans, pricing, payment terms, and scheduling an in-person visit to the residential development."
+      },
+      {
+        "q": "Can I finance the property?",
+        "a": "Absolutely! We offer full support for bank financing. We work with the leading banks in the market, and our team assists you through the entire process — from the initial simulation to credit approval — ensuring the best terms for you."
+      },
+      {
+        "q": "What documents do I need to visit the residential development?",
+        "a": "To schedule a visit, simply fill out the form with your details. For the in-person visit, we recommend bringing a photo ID. Our consultant will contact you to confirm the best time and meeting point."
+      },
+      {
+        "q": "Is the service exclusive to this residential development?",
+        "a": "Yes, you'll have a dedicated consultant who knows every detail of this residential development. Our team is specialized and fully prepared to answer all your questions about the project, location, amenities, floor plans, and commercial terms."
+      },
+      {
+        "q": "Can I schedule an in-person visit?",
+        "a": "Of course! After registering, our consultant will contact you to schedule a visit at the most convenient time for you. We offer guided in-person visits to the construction site or to the completed residential development, depending on the project's status."
+      }
+    ]
+  },
+  "form": {
+    "heading": "Request information about {name}",
+    "headingHtml": "Request information about <span style=\"color:#33492F\">{name}</span>",
+    "subtextWithPrice": "Starting at {price} — special terms available.",
+    "subtextWithInfo": "{status} — check out the available terms.",
+    "subtextFallback": "Special terms available for you.",
+    "descriptionBase": "Receive brochures, pricing, and commercial terms. Personalized service",
+    "descriptionIn": "in {neighborhood}",
+    "descriptionEnd": "No commitment.",
+    "areaRange": "Units from {areaRange}",
+    "unitCount": "{count, plural, one {{count} unit} other {{count} units}}",
+    "delivery": "Delivery: {deliveryText}",
+    "dataSafe": "Secure data",
+    "noSpam": "No spam",
+    "response24h": "24h response",
+    "upto24h": "Up to 24h",
+    "noCommitment": "No commitment",
+    "whatsappCta": "Prefer WhatsApp? Chat with us",
+    "title": "Sign Up",
+    "subtitle": "Fill in to receive information and terms",
+    "nameLabel": "Full Name",
+    "namePlaceholder": "Your full name",
+    "emailLabel": "Email",
+    "emailPlaceholder": "youremail@example.com",
+    "phoneLabel": "Phone",
+    "phonePlaceholder": "(11) 99999-9999",
+    "selectDefault": "Select...",
+    "yes": "Yes",
+    "no": "No",
+    "submitting": "Submitting...",
+    "submitWithPrice": "Receive information",
+    "submitDefault": "I want to know more",
+    "disclaimer": "By requesting information, you agree to receive details about this residential development.",
+    "validation": {
+      "nameRequired": "Please enter your full name.",
+      "emailInvalid": "Please enter a valid email address.",
+      "phoneInvalid": "Please enter a valid phone number with area code (minimum 10 digits).",
+      "fieldRequired": "The \"{label}\" field is required."
+    }
+  },
+  "footer": {
+    "brand": "Residential Developments",
+    "whatsapp": "WhatsApp",
+    "copyright": "All rights reserved.",
+    "disclaimer": "All prices and information are subject to change."
+  },
+  "floatingBar": {
+    "whatsapp": "WhatsApp",
+    "seeConditions": "View Terms"
+  },
+  "exitPopup": {
+    "title": "Interested in {name}?",
+    "description": "Receive pricing and commercial terms directly on your WhatsApp. No commitment.",
+    "whatsappCta": "Chat on WhatsApp",
+    "formCta": "I want to know more",
+    "dataSafe": "Your data is safe and we do not send spam.",
+    "registeredCount": "{count, plural, one {{count} person has already signed up.} other {{count} people have already signed up.}}"
+  },
+  "success": {
+    "navBrand": "Residential Developments",
+    "heading": "Registration successful!",
+    "greeting": "Hello, {name}!",
+    "greetingFallback": "Thank you for your interest!",
+    "description": "Your registration for the residential development {name} has been received successfully.",
+    "descriptionFallback": "Your registration has been received successfully.",
+    "followUp": "One of our specialized consultants will soon contact you to present all the exclusive terms for this residential development.",
+    "trustPersonalized": "Personalized service",
+    "trustExclusive": "Exclusive terms",
+    "trustNoCommitment": "No commitment",
+    "nextSteps": "Next steps",
+    "step1": "You'll receive a call within 24h",
+    "step2": "We'll schedule an exclusive visit",
+    "step3": "We'll present special terms",
+    "quickService": "Quick Service",
+    "talkNow": "Talk now with {name}",
+    "whatsappCta": "Message on WhatsApp",
+    "preferWait": "Prefer to wait? No problem — we'll contact you at the phone number provided.",
+    "backToEnterprise": "Back to the residential development",
+    "seeAll": "View all residential developments",
+    "disclaimer": "All prices and information are subject to change without prior notice.",
+    "copyright": "All rights reserved.",
+    "whatsappMessage": "Hi! I just signed up on the website{enterprise} and I'd like to get more information."
+  },
+  "listing": {
+    "navBrand": "Residential Developments",
+    "badge": "Exclusive Portfolio",
+    "title": "Premium Residential Developments",
+    "titlePrefix": "Premium Residential",
+    "titleHighlight": "Developments",
+    "subtitle": "Discover carefully selected properties for those seeking the best in quality of life and investment.",
+    "stats": "{count, plural, one {{count} residential development available} other {{count} residential developments available}}",
+    "searching": "searching for \"{query}\"",
+    "searchPlaceholder": "Search residential developments...",
+    "emptyTitle": "No residential developments found",
+    "emptyDesc": "Try searching with a different term or clear the filter to view all available residential developments.",
+    "clearFilter": "Clear filter",
+    "comingSoon": "Coming soon",
+    "viewDetails": "View details",
+    "unavailable": "Unavailable",
+    "footerBrand": "Residential Developments",
+    "footerDesc": "Find the perfect property for you and your family. Quality, trust, and personalized service.",
+    "footerNav": "Navigation",
+    "footerAll": "All Residential Developments",
+    "footerConditions": "Special Terms",
+    "footerService": "Contact",
+    "footerWhatsapp": "Chat on WhatsApp",
+    "footerBottomText": "Explore our residential developments — projects that combine comfort, sophistication, and quality of life.",
+    "copyright": "All rights reserved.",
+    "disclaimer": "All prices and information are subject to change without prior notice."
+  },
+  "whatsapp": {
+    "landingMessage": "Hi! I came across the {name} listing and I'd like to receive information about available units."
+  },
+  "seo": {
+    "notFoundTitle": "Residential development not found",
+    "titleTemplate": "{name} | Residential Developments",
+    "descriptionTemplate": "Discover {name}. Exclusive floor plans, complete amenities, and special terms. Sign up and talk to a consultant.",
+    "listingTitle": "Residential Developments | Premium Properties",
+    "listingDescription": "Explore our premium residential developments. Exclusive floor plans, complete amenities, prime locations, and special investment terms.",
+    "listingOgSiteName": "Residential Developments"
+  },
+  "subtitle": {
+    "inLocation": "In {location}",
+    "areas": "Areas from {areaRange}",
+    "delivery": "Delivery {deliveryText}"
+  }
+}

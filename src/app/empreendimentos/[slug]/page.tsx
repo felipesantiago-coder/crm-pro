@@ -1,11 +1,22 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { db } from '@/lib/db';
 import LandingPageClient from './landing-page-client';
 import { LandingErrorBoundary } from './landing-error-boundary';
 import { peekNextUser } from '@/lib/lead-queue';
+import { locales, defaultLocale, isValidLocale, ogLocale, type Locale } from '@/i18n/config';
+import ptBRMessages from '@/i18n/locales/pt-BR.json';
+import enMessages from '@/i18n/locales/en.json';
+import esMessages from '@/i18n/locales/es.json';
 
 // ── Static data for known slugs (fallback when DB lookup fails) ──
 import enterprisesCatalog from '@/data/enterprises-catalog';
+
+const messagesMap: Record<string, Record<string, any>> = {
+  'pt-BR': ptBRMessages,
+  'en': enMessages,
+  'es': esMessages,
+};
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -62,6 +73,14 @@ async function fetchEnterpriseData(slug: string) {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
+
+  // Detect locale from middleware header
+  const headersList = await headers();
+  const xLocale = headersList.get('x-locale');
+  const locale: Locale = xLocale && isValidLocale(xLocale) ? xLocale : defaultLocale;
+  const msgs = messagesMap[locale];
+  const seo = msgs?.seo || {};
+
   let enterpriseName: string | null = null;
   let enterpriseDescription: string | null = null;
   let imageUrl: string | null = null;
@@ -81,12 +100,35 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     const catalog = enterprisesCatalog[slug];
     if (catalog) { enterpriseName = catalog.summary?.split('—')[0].trim() || slug; enterpriseDescription = catalog.summary || null; }
   }
-  if (!enterpriseName) return { title: 'Empreendimento não encontrado' };
-  const title = `${enterpriseName} | Empreendimentos`;
-  const description = enterpriseDescription || `Conheça o empreendimento ${enterpriseName}. Plantas exclusivas, lazer completo e condições especiais. Cadastre-se e fale com um consultor.`;
+  if (!enterpriseName) return { title: seo.notFoundTitle || 'Empreendimento não encontrado' };
+
+  const titleTemplate = seo.titleTemplate || '{name} | Empreendimentos';
+  const title = titleTemplate.replace('{name}', enterpriseName);
+  const descTemplate = seo.descriptionTemplate || '';
+  const description = enterpriseDescription || descTemplate.replace('{name}', enterpriseName);
+
+  // Build hreflang alternate links
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_VERCEL_URL || '';
+  const path = `/empreendimentos/${slug}`;
+  const alternateLanguages: Record<string, string> = {};
+  for (const l of locales) {
+    const prefix = l === defaultLocale ? '' : `/${l}`;
+    alternateLanguages[l === 'pt-BR' ? 'pt-BR' : l] = `${baseUrl}${prefix}${path}`;
+  }
+  alternateLanguages['x-default'] = `${baseUrl}${path}`;
+
   return {
     title, description,
-    openGraph: { title, description: description.slice(0, 200), type: 'website', locale: 'pt_BR', siteName: 'Empreendimentos', ...(imageUrl ? { images: [{ url: imageUrl, width: 1200, height: 630, alt: enterpriseName }] } : {}) },
+    alternates: {
+      canonical: `${baseUrl}${path}`,
+      languages: alternateLanguages,
+    },
+    openGraph: {
+      title, description: description.slice(0, 200), type: 'website',
+      locale: ogLocale[locale],
+      siteName: seo.listingOgSiteName || 'Empreendimentos',
+      ...(imageUrl ? { images: [{ url: imageUrl, width: 1200, height: 630, alt: enterpriseName }] } : {}),
+    },
     twitter: { card: 'summary_large_image', title, description: description.slice(0, 200), ...(imageUrl ? { images: [imageUrl] } : {}) },
     robots: { index: true, follow: true },
   };

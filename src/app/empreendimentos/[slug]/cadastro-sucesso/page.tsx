@@ -6,6 +6,7 @@ import {
   Loader2, User, Sparkles, ShieldCheck, Clock,
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 /* ─── Types ─────────────────────────────────────────────── */
 interface AssignedUser {
@@ -83,6 +84,7 @@ function ConfettiAnimation() {
 
 /* ─── Inner Content ─────────────────────────────────────── */
 function CadastroSucessoContent() {
+  const t = useTranslations();
   const searchParams = useSearchParams();
   const [enterpriseName, setEnterpriseName] = useState('');
   const [enterpriseSlug, setEnterpriseSlug] = useState('');
@@ -116,7 +118,7 @@ function CadastroSucessoContent() {
     : null;
 
   const whatsappUrl = whatsappNumber
-    ? `https://wa.me/${whatsappNumber.startsWith('55') ? whatsappNumber : '55' + whatsappNumber}?text=${encodeURIComponent(`Olá! Acabei de me cadastrar no site${enterpriseName ? ` para o empreendimento ${enterpriseName}` : ''} e gostaria de atendimento.`)}`
+    ? `https://wa.me/${whatsappNumber.startsWith('55') ? whatsappNumber : '55' + whatsappNumber}?text=${encodeURIComponent(t('success.whatsappMessage', { enterprise: enterpriseName ? ` para o empreendimento ${enterpriseName}` : '' }))}`
     : null;
 
   const backUrl = enterpriseSlug
@@ -143,7 +145,7 @@ function CadastroSucessoContent() {
             <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#C9A96E] to-[#8B6914] flex items-center justify-center shadow-lg shadow-[#C9A96E]/20">
               <Building2 className="h-4 w-4 text-white" />
             </div>
-            <span className="text-base font-bold tracking-tight hidden sm:block">Empreendimentos</span>
+            <span className="text-base font-bold tracking-tight hidden sm:block">{t('success.navBrand')}</span>
           </a>
         </div>
       </nav>
@@ -163,16 +165,13 @@ function CadastroSucessoContent() {
           {/* ── Heading ────────────────────────────────── */}
           <div className="float-in-delay-1">
             <h1 className="text-2xl sm:text-4xl font-bold mb-3 tracking-tight">
-              Cadastro realizado com{' '}
-              <span className="bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent">
-                sucesso!
-              </span>
+              {t('success.heading')}
             </h1>
             <p className="text-white/60 text-base sm:text-lg mb-1">
               {clientName ? (
-                <>Olá, <span className="text-white/90 font-medium">{clientName}</span>!</>
+                <>{t('success.greeting', { name: clientName })}</>
               ) : (
-                <>Obrigado pelo seu interesse!</>
+                <>{t('success.greetingFallback')}</>
               )}
             </p>
           </div>
@@ -181,13 +180,13 @@ function CadastroSucessoContent() {
           <div className="float-in-delay-2">
             <p className="text-white/40 text-sm max-w-md mx-auto mb-2 leading-relaxed">
               {enterpriseName ? (
-                <>Seu cadastro para o empreendimento <span className="text-[#C9A96E] font-medium">{enterpriseName}</span> foi recebido com sucesso.</>
+                <>{t('success.description', { name: enterpriseName })}</>
               ) : (
-                <>Seu cadastro foi recebido com sucesso.</>
+                <>{t('success.descriptionFallback')}</>
               )}
             </p>
             <p className="text-white/35 text-sm max-w-md mx-auto mb-10 leading-relaxed">
-              Em breve um de nossos consultores especializados entrará em contato para apresentar todas as condições exclusivas deste empreendimento.
+              {t('success.followUp')}
             </p>
           </div>
 
@@ -198,7 +197,7 @@ function CadastroSucessoContent() {
                 <User className="h-4 w-4 text-[#C9A96E]" />
               </div>
               <span className="text-[11px] sm:text-xs font-medium text-white/50 leading-tight">
-                Atendimento personalizado
+                {t('success.trustPersonalized')}
               </span>
             </div>
             <div className="flex flex-col items-center gap-2.5 p-4 rounded-xl bg-white/[0.03] border border-white/[0.05]">
@@ -206,7 +205,7 @@ function CadastroSucessoContent() {
                 <Sparkles className="h-4 w-4 text-[#C9A96E]" />
               </div>
               <span className="text-[11px] sm:text-xs font-medium text-white/50 leading-tight">
-                Condições exclusivas
+                {t('success.trustExclusive')}
               </span>
             </div>
             <div className="flex flex-col items-center gap-2.5 p-4 rounded-xl bg-white/[0.03] border border-white/[0.05]">
@@ -214,7 +213,7 @@ function CadastroSucessoContent() {
                 <ShieldCheck className="h-4 w-4 text-[#C9A96E]" />
               </div>
               <span className="text-[11px] sm:text-xs font-medium text-white/50 leading-tight">
-                Sem compromisso
+                {t('success.trustNoCommitment')}
               </span>
             </div>
           </div>
@@ -222,7 +221,7 @@ function CadastroSucessoContent() {
           {/* ── What Happens Next ───────────────────────── */}
           <div className="float-in-delay-4 mb-10">
             <h3 className="text-xs font-semibold text-[#C9A96E] uppercase tracking-wider mb-5">
-              Próximos passos
+              {t('success.nextSteps')}
             </h3>
             <div className="space-y-3 text-left max-w-sm mx-auto">
               <div className="flex items-start gap-3.5 p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
@@ -232,7 +231,7 @@ function CadastroSucessoContent() {
                 <div className="flex items-start gap-2.5">
                   <Clock className="h-4 w-4 text-white/25 mt-0.5 flex-shrink-0" />
                   <p className="text-sm text-white/50 leading-relaxed">
-                    Você receberá um contato em até <span className="text-white/70 font-medium">24h</span>
+                    {t('success.step1')}
                   </p>
                 </div>
               </div>
@@ -243,7 +242,7 @@ function CadastroSucessoContent() {
                 <div className="flex items-start gap-2.5">
                   <Building2 className="h-4 w-4 text-white/25 mt-0.5 flex-shrink-0" />
                   <p className="text-sm text-white/50 leading-relaxed">
-                    Agendaremos uma visita <span className="text-white/70 font-medium">exclusiva</span>
+                    {t('success.step2')}
                   </p>
                 </div>
               </div>
@@ -254,7 +253,7 @@ function CadastroSucessoContent() {
                 <div className="flex items-start gap-2.5">
                   <Sparkles className="h-4 w-4 text-white/25 mt-0.5 flex-shrink-0" />
                   <p className="text-sm text-white/50 leading-relaxed">
-                    Apresentaremos condições <span className="text-white/70 font-medium">especiais</span>
+                    {t('success.step3')}
                   </p>
                 </div>
               </div>
@@ -270,8 +269,8 @@ function CadastroSucessoContent() {
                     <MessageSquare className="h-5 w-5 text-[#C9A96E]" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-semibold text-white/90">Atendimento Rápido</p>
-                    <p className="text-xs text-white/50">Fale agora com {assignedUser.userName}</p>
+                    <p className="text-sm font-semibold text-white/90">{t('success.quickService')}</p>
+                    <p className="text-xs text-white/50">{t('success.talkNow', { name: assignedUser.userName })}</p>
                   </div>
                 </div>
 
@@ -282,10 +281,10 @@ function CadastroSucessoContent() {
                   className="whatsapp-pulse inline-flex items-center gap-2.5 px-8 py-4 rounded-xl bg-[#25D366] text-white font-semibold text-base hover:bg-[#20bd5a] transition-colors shadow-xl shadow-[#25D366]/20 w-full sm:w-auto justify-center"
                 >
                   <Phone className="h-5 w-5" />
-                  Chamar no WhatsApp
+                  {t('success.whatsappCta')}
                 </a>
                 <p className="text-xs text-white/30 mt-3">
-                  Prefere aguardar? Sem problemas — entraremos em contato pelo telefone informado.
+                  {t('success.preferWait')}
                 </p>
               </div>
             )}
@@ -298,14 +297,14 @@ function CadastroSucessoContent() {
               className="inline-flex items-center gap-2 text-sm text-[#C9A96E]/70 hover:text-[#C9A96E] transition-colors duration-200 font-medium"
             >
               <ArrowLeft className="h-4 w-4" />
-              Voltar para o empreendimento
+              {t('success.backToEnterprise')}
             </a>
             <a
               href="/empreendimentos"
               className="inline-flex items-center gap-1.5 text-sm text-white/30 hover:text-white/50 transition-colors duration-200"
             >
               <Building2 className="h-3.5 w-3.5" />
-              Ver todos os empreendimentos
+              {t('success.seeAll')}
             </a>
           </div>
         </div>
@@ -315,9 +314,9 @@ function CadastroSucessoContent() {
       <footer className="border-t border-white/[0.06] relative z-10">
         <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs text-white/25">
-            Todos os valores e informações são sujeitos a alteração sem aviso prévio.
+            {t('success.disclaimer')}
           </p>
-          <p className="text-xs text-white/15">&copy; {new Date().getFullYear()} Todos os direitos reservados.</p>
+          <p className="text-xs text-white/15">&copy; {new Date().getFullYear()} {t('success.copyright')}</p>
         </div>
       </footer>
     </div>
