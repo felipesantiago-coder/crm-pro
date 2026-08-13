@@ -114,10 +114,11 @@ model Enterprise {
   region            String?  @map("region")
   imageUrl          String?  @map("imageUrl")
   pdfContent        String?  @map("pdfContent")
-  landingTitle      String?  @map("landingTitle")
-  landingSubtitle   String?  @map("landingSubtitle")
-  landingDescription String? @map("landingDescription")
-  cachedInfo        Json?    @map("cachedInfo")
+  landingTitle      Json?    @map("landingTitle")      // { "pt-BR": "...", "en": "...", "es": "..." }
+  landingSubtitle   Json?    @map("landingSubtitle")     // { "pt-BR": "...", "en": "...", "es": "..." }
+  landingDescription Json?   @map("landingDescription")  // { "pt-BR": "...", "en": "...", "es": "..." }
+  cachedInfo        Json?    @map("cachedInfo")           // primary (pt-BR) cached info
+  cachedInfoI18n    Json?    @map("cachedInfoI18n")       // { "en": { ... }, "es": { ... } } — translated cachedInfo
   mapLatitude       Float?   @map("mapLatitude")
   mapLongitude      Float?   @map("mapLongitude")
   createdAt         DateTime @default(now()) @map("createdAt")

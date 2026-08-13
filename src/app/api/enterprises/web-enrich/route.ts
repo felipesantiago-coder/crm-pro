@@ -323,7 +323,11 @@ export async function POST(request: NextRequest) {
     }> = [];
 
     for (const enterprise of enterprises) {
-      const searchName = enterprise.landingTitle || enterprise.name;
+      // landingTitle is now JSONB { locale: string }, resolve to pt-BR or first available
+      const titleObj = typeof enterprise.landingTitle === 'object' && enterprise.landingTitle
+        ? enterprise.landingTitle as Record<string, string>
+        : null;
+      const searchName = titleObj?.['pt-BR'] || Object.values(titleObj || {})[0] || enterprise.name;
       const regionSuffix = enterprise.region ? ` ${enterprise.region}` : '';
 
       // Multiple search queries for better coverage

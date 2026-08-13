@@ -60,15 +60,33 @@ function mergeCachedInfo(dbCachedInfo: any, catalog: any): any {
   return merged;
 }
 
-async function fetchEnterpriseData(slug: string) {
+function resolveI18nString(field: any, locale: string): string | null {
+  if (!field || typeof field !== 'object') return typeof field === 'string' ? field : null;
+  return field[locale] || field['pt-BR'] || Object.values(field)[0] || null;
+}
+
+async function fetchEnterpriseData(slug: string, locale: string) {
   const enterprise = await db.enterprise.findUnique({
     where: { slug },
-    select: ENTERPRISE_SELECT,
+    select: { ...ENTERPRISE_SELECT, cachedInfoI18n: true } as any,
   });
   if (!enterprise) return null;
   const catalog = enterprisesCatalog[slug];
   if (catalog) enterprise.cachedInfo = mergeCachedInfo(enterprise.cachedInfo, catalog);
-  return JSON.parse(JSON.stringify(enterprise));
+
+  // Resolve i18n string fields → flat string for client
+  const raw = enterprise as any;
+  raw.landingTitle = resolveI18nString(raw.landingTitle, locale);
+  raw.landingSubtitle = resolveI18nString(raw.landingSubtitle, locale);
+  raw.landingDescription = resolveI18nString(raw.landingDescription, locale);
+
+  // Resolve cachedInfo i18n: merge translated locale over base
+  if (locale !== 'pt-BR' && raw.cachedInfoI18n && raw.cachedInfoI18n[locale]) {
+    raw.cachedInfo = { ...(raw.cachedInfo || {}), ...raw.cachedInfoI18n[locale] };
+  }
+  delete raw.cachedInfoI18n;
+
+  return JSON.parse(JSON.stringify(raw));
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -87,12 +105,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   try {
     const enterprise = await db.enterprise.findUnique({
       where: { slug },
-      select: { name: true, landingTitle: true, landingDescription: true, imageUrl: true, cachedInfo: true, images: { select: { url: true }, orderBy: { sortOrder: 'asc' }, take: 1 } },
+      select: { name: true, landingTitle: true, landingDescription: true, cachedInfoI18n: true, imageUrl: true, cachedInfo: true, images: { select: { url: true }, orderBy: { sortOrder: 'asc' }, take: 1 } },
     });
     if (enterprise) {
       const info = enterprise.cachedInfo as Record<string, any> | null;
-      enterpriseName = enterprise.landingTitle || enterprise.name;
-      enterpriseDescription = enterprise.landingDescription || info?.summary || null;
+      enterpriseName = resolveI18nString(enterprise.landingTitle, locale) || enterprise.name;
+      enterpriseDescription = resolveI18nString(enterprise.landingDescription, locale) || (locale !== 'pt-BR' && enterprise.cachedInfoI18n?.[locale] as any)?.summary || info?.summary || null;
       imageUrl = enterprise.imageUrl || enterprise.images[0]?.url || null;
     }
   } catch {}
@@ -136,8 +154,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function LandingPage({ params }: PageProps) {
   const { slug } = await params;
+  const headersList = await headers();
+  const xLocale = headersList.get('x-locale');
+  const locale: Locale = xLocale && isValidLocale(xLocale) ? xLocale : defaultLocale;
   const [initialData, queueUserData] = await Promise.all([
-    fetchEnterpriseData(slug).catch((err) => { console.error('[LandingPage] fetchEnterpriseData failed for slug', slug, err); return null; }),
+    fetchEnterpriseData(slug, locale).catch((err) => { console.error('[LandingPage] fetchEnterpriseData failed for slug', slug, err); return null; }),
     peekNextUser({ slug }).catch(() => null),
   ]);
   const initialQueueUser = queueUserData ? { userId: queueUserData.userId, userPhone: queueUserData.userPhone } : null;

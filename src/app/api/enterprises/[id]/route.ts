@@ -46,7 +46,10 @@ export async function PUT(
 
     const { id } = await params;
     const body = await request.json();
-    const { name, region, mapLatitude, mapLongitude } = body;
+    const {
+      name, region, mapLatitude, mapLongitude,
+      landingTitle, landingSubtitle, landingDescription, cachedInfoI18n,
+    } = body;
 
     const enterprise = await db.enterprise.findUnique({ where: { id } });
     if (!enterprise) {
@@ -69,6 +72,54 @@ export async function PUT(
     }
     if (mapLongitude !== undefined) {
       updateData.mapLongitude = mapLongitude;
+    }
+
+    // --- i18n fields: landingTitle, landingSubtitle, landingDescription ---
+    // Each is a { "pt-BR": "...", "en": "...", "es": "..." } JSON object
+    const VALID_LOCALES = ['pt-BR', 'en', 'es'] as const;
+    type LocaleKey = typeof VALID_LOCALES[number];
+
+    function sanitizeI18nField(
+      value: unknown,
+      existing: Record<string, unknown> | null,
+    ): Record<string, string> | null {
+      if (value === null) return null;
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        const cleaned: Record<string, string> = {};
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+          if (VALID_LOCALES.includes(k as LocaleKey) && typeof v === 'string') {
+            const trimmed = (v as string).trim();
+            if (trimmed) cleaned[k] = trimmed;
+          }
+        }
+        return Object.keys(cleaned).length > 0 ? cleaned : null;
+      }
+      return existing as Record<string, string> | null;
+    }
+
+    if (landingTitle !== undefined) {
+      updateData.landingTitle = sanitizeI18nField(landingTitle, enterprise.landingTitle as Record<string, unknown> | null);
+    }
+    if (landingSubtitle !== undefined) {
+      updateData.landingSubtitle = sanitizeI18nField(landingSubtitle, enterprise.landingSubtitle as Record<string, unknown> | null);
+    }
+    if (landingDescription !== undefined) {
+      updateData.landingDescription = sanitizeI18nField(landingDescription, enterprise.landingDescription as Record<string, unknown> | null);
+    }
+
+    // --- cachedInfoI18n: { "en": { ...fullCachedInfo }, "es": { ...fullCachedInfo } } ---
+    if (cachedInfoI18n !== undefined) {
+      if (cachedInfoI18n === null) {
+        updateData.cachedInfoI18n = null;
+      } else if (typeof cachedInfoI18n === 'object' && !Array.isArray(cachedInfoI18n)) {
+        const cleaned: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(cachedInfoI18n as Record<string, unknown>)) {
+          if (VALID_LOCALES.includes(k as LocaleKey) && k !== 'pt-BR' && typeof v === 'object' && v !== null) {
+            cleaned[k] = v;
+          }
+        }
+        updateData.cachedInfoI18n = Object.keys(cleaned).length > 0 ? cleaned : null;
+      }
     }
 
     const updated = await db.enterprise.update({

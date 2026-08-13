@@ -6,6 +6,7 @@ import {
   FileText, Users, Grid3X3, List, Maximize2,
   ZoomIn, ArrowLeft, Ruler, BedDouble, HardHat, Sparkles,
   Palette, Navigation, DollarSign, Clock, CheckCircle2, Camera, CalendarDays, LayoutGrid,
+  Globe, Save, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { GalleryManager } from './gallery-manager';
@@ -55,20 +56,30 @@ interface ExtractedInfo {
   summary: string | null;
 }
 
+// i18n locale-keyed string map: { "pt-BR": "...", "en": "...", "es": "..." }
+type I18nString = Record<string, string> | null;
+
 interface Enterprise {
   id: string;
   name: string;
   slug: string | null;
   region: string | null;
   imageUrl: string | null;
-  landingTitle: string | null;
-  landingSubtitle: string | null;
-  landingDescription: string | null;
+  landingTitle: I18nString;
+  landingSubtitle: I18nString;
+  landingDescription: I18nString;
   cachedInfo: ExtractedInfo | null;
+  cachedInfoI18n: Record<string, ExtractedInfo> | null;  // { "en": { ... }, "es": { ... } }
   createdAt: string;
   images: EnterpriseImage[];
   _count: { clients: number };
 }
+
+const LOCALES = [
+  { code: 'pt-BR', label: 'Português (BR)', flag: '🇧🇷' },
+  { code: 'en',    label: 'English',          flag: '🇺🇸' },
+  { code: 'es',    label: 'Español',          flag: '🇪🇸' },
+] as const;
 
 interface PanelData {
   enterprises: Enterprise[];
@@ -284,6 +295,67 @@ function EnterpriseListItem({ enterprise: e, onClick }: { enterprise: Enterprise
 function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery, onOpenFloorPlans }: { enterprise: Enterprise; onBack: () => void; onOpenGallery: () => void; onOpenFloorPlans: () => void }) {
   const [activeImgIdx, setActiveImgIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [showTranslations, setShowTranslations] = useState(false);
+  const [activeTransLocale, setActiveTransLocale] = useState<string>('en');
+  const [saving, setSaving] = useState(false);
+
+  // Working copies of i18n fields for editing
+  const [editTitle, setEditTitle]       = useState<Record<string, string>>({});
+  const [editSubtitle, setEditSubtitle] = useState<Record<string, string>>({});
+  const [editDesc, setEditDesc]         = useState<Record<string, string>>({});
+  const [editCachedInfo, setEditCachedInfo] = useState<Record<string, string>>({});
+
+  // Populate edits from enterprise data
+  useEffect(() => {
+    setEditTitle(e.landingTitle && typeof e.landingTitle === 'object' ? { ...(e.landingTitle as Record<string, string>) } : {});
+    setEditSubtitle(e.landingSubtitle && typeof e.landingSubtitle === 'object' ? { ...(e.landingSubtitle as Record<string, string>) } : {});
+    setEditDesc(e.landingDescription && typeof e.landingDescription === 'object' ? { ...(e.landingDescription as Record<string, string>) } : {});
+    // cachedInfoI18n: stringify each locale's object for textarea editing
+    const ci: Record<string, string> = {};
+    if (e.cachedInfoI18n && typeof e.cachedInfoI18n === 'object') {
+      for (const [k, v] of Object.entries(e.cachedInfoI18n)) {
+        ci[k] = JSON.stringify(v, null, 2);
+      }
+    }
+    setEditCachedInfo(ci);
+  }, [e.id]);
+
+  const handleSaveTranslations = async () => {
+    setSaving(true);
+    try {
+      const clean = (obj: Record<string, string>) => {
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(obj)) { if (v.trim()) out[k] = v.trim(); }
+        return Object.keys(out).length > 0 ? out : null;
+      };
+      const parseCachedInfoI18n = (obj: Record<string, string>) => {
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(obj)) {
+          if (!v.trim()) continue;
+          try { out[k] = JSON.parse(v); } catch { /* skip invalid JSON */ }
+        }
+        return Object.keys(out).length > 0 ? out : null;
+      };
+
+      const res = await fetch(`/api/enterprises/${e.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          landingTitle: clean(editTitle),
+          landingSubtitle: clean(editSubtitle),
+          landingDescription: clean(editDesc),
+          cachedInfoI18n: parseCachedInfoI18n(editCachedInfo),
+        }),
+      });
+      if (res.ok) {
+        toast.success('Traduções salvas com sucesso');
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error || 'Erro ao salvar traduções');
+      }
+    } catch { toast.error('Falha de conexão'); }
+    finally { setSaving(false); }
+  };
 
   const images = e.images.length > 0 ? e.images : [];
   const heroImage = e.imageUrl || images[0]?.url || null;
@@ -512,29 +584,127 @@ function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery, onOpenFloorPla
             </Card>
           )}
         </div>
-      ) : (
-        /* Fallback when no cached info */
-        <>
-          {e.landingDescription && (
-            <Card>
-              <CardContent className="p-4 sm:p-5">
-                {e.landingTitle && <h2 className="text-lg font-semibold mb-1 break-words">{e.landingTitle}</h2>}
-                {e.landingSubtitle && <p className="text-sm font-medium text-amber-600 dark:text-amber-400 mb-2">{e.landingSubtitle}</p>}
-                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap break-words">{e.landingDescription}</p>
-              </CardContent>
-            </Card>
-          )}
-          {!info && !e.landingDescription && (
-            <Card>
-              <CardContent className="p-6 sm:p-8 text-center">
-                <FileText className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/30 mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">Nenhuma informação detalhada disponível para este empreendimento.</p>
-                <p className="text-xs text-muted-foreground mt-1">O administrador pode adicionar documentos na seção de Administração.</p>
-              </CardContent>
-            </Card>
-          )}
-        </>
+      ) : null}
+
+      {/* i18n: Fallback when no cached info — read from locale-keyed JSON */}
+      {!hasInfo && (e.landingDescription || e.landingTitle || e.landingSubtitle) && (() => {
+        const descObj = typeof e.landingDescription === 'object' ? e.landingDescription as Record<string, string> : null;
+        const titleObj = typeof e.landingTitle === 'object' ? e.landingTitle as Record<string, string> : null;
+        const subObj = typeof e.landingSubtitle === 'object' ? e.landingSubtitle as Record<string, string> : null;
+        const desc = descObj?.['pt-BR'] || Object.values(descObj || {})[0] || '';
+        const title = titleObj?.['pt-BR'] || Object.values(titleObj || {})[0] || '';
+        const sub = subObj?.['pt-BR'] || Object.values(subObj || {})[0] || '';
+        return (
+          <Card>
+            <CardContent className="p-4 sm:p-5">
+              {title && <h2 className="text-lg font-semibold mb-1 break-words">{title}</h2>}
+              {sub && <p className="text-sm font-medium text-amber-600 dark:text-amber-400 mb-2">{sub}</p>}
+              {desc && <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap break-words">{desc}</p>}
+            </CardContent>
+          </Card>
+        );
+      })()}
+      {!info && !e.landingDescription && (
+        <Card>
+          <CardContent className="p-6 sm:p-8 text-center">
+            <FileText className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Nenhuma informação detalhada disponível para este empreendimento.</p>
+            <p className="text-xs text-muted-foreground mt-1">O administrador pode adicionar documentos na seção de Administração.</p>
+          </CardContent>
+        </Card>
       )}
+
+      {/* ── Translation Editor ────────────────────────── */}
+      <Card className="border-blue-200 dark:border-blue-800/50">
+        <CardContent className="p-0">
+          <button
+            className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-muted/30 transition-colors"
+            onClick={() => setShowTranslations((p) => !p)}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                <Globe className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="text-left min-w-0">
+                <h3 className="text-sm font-semibold">Traduções</h3>
+                <p className="text-xs text-muted-foreground truncate">landingTitle, landingDescription, cachedInfo (EN/ES)</p>
+              </div>
+            </div>
+            {showTranslations ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          </button>
+
+          {showTranslations && (
+            <div className="border-t px-3 sm:px-4 pb-3 sm:pb-4 pt-3 space-y-4">
+              {/* Locale tabs */}
+              <div className="flex gap-1.5 flex-wrap">
+                {LOCALES.filter((l) => l.code !== 'pt-BR').map((l) => (
+                  <button
+                    key={l.code}
+                    className={cn(
+                      'text-xs px-3 py-1.5 rounded-full font-medium transition-colors',
+                      activeTransLocale === l.code
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                        : 'bg-muted text-muted-foreground hover:text-foreground'
+                    )}
+                    onClick={() => setActiveTransLocale(l.code)}
+                  >
+                    {l.flag} {l.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Field editors for selected locale */}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Título da Landing ({activeTransLocale})</label>
+                  <Input
+                    value={editTitle[activeTransLocale] || ''}
+                    onChange={(ev) => setEditTitle((p) => ({ ...p, [activeTransLocale]: ev.target.value }))}
+                    placeholder={`Título em ${LOCALES.find((l) => l.code === activeTransLocale)?.label}...`}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Subtítulo ({activeTransLocale})</label>
+                  <Input
+                    value={editSubtitle[activeTransLocale] || ''}
+                    onChange={(ev) => setEditSubtitle((p) => ({ ...p, [activeTransLocale]: ev.target.value }))}
+                    placeholder={`Subtítulo em ${LOCALES.find((l) => l.code === activeTransLocale)?.label}...`}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Descrição ({activeTransLocale})</label>
+                  <textarea
+                    className="w-full min-h-[100px] rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y"
+                    value={editDesc[activeTransLocale] || ''}
+                    onChange={(ev) => setEditDesc((p) => ({ ...p, [activeTransLocale]: ev.target.value }))}
+                    placeholder={`Descrição em ${LOCALES.find((l) => l.code === activeTransLocale)?.label}...`}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                    cachedInfo ({activeTransLocale})
+                    <span className="text-[10px] ml-1 opacity-60">— JSON com mesma estrutura do pt-BR</span>
+                  </label>
+                  <textarea
+                    className="w-full min-h-[180px] rounded-md border border-input bg-transparent px-3 py-2 text-xs font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y"
+                    value={editCachedInfo[activeTransLocale] || ''}
+                    onChange={(ev) => setEditCachedInfo((p) => ({ ...p, [activeTransLocale]: ev.target.value }))}
+                    placeholder='{ "summary": "...", "differentials": [...], ... }'
+                  />
+                </div>
+              </div>
+
+              {/* Save button */}
+              <div className="flex justify-end pt-1">
+                <Button size="sm" onClick={handleSaveTranslations} disabled={saving} className="gap-1.5">
+                  <Save className="h-3.5 w-3.5" />
+                  {saving ? 'Salvando...' : 'Salvar traduções'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Lightbox */}
       {lightboxOpen && (

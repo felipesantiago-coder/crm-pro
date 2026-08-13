@@ -35,8 +35,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
     if (enterprise) {
       const info = enterprise.cachedInfo as Record<string, any> | null;
-      enterpriseName = enterprise.landingTitle || enterprise.name;
-      enterpriseDescription = enterprise.landingDescription
+      // landingTitle/landingDescription are now JSONB { locale: string }
+      const titleObj = typeof enterprise.landingTitle === 'object' && enterprise.landingTitle
+        ? enterprise.landingTitle as Record<string, string> : null;
+      const descObj = typeof enterprise.landingDescription === 'object' && enterprise.landingDescription
+        ? enterprise.landingDescription as Record<string, string> : null;
+      enterpriseName = titleObj?.['pt-BR'] || Object.values(titleObj || {})[0] || enterprise.name;
+      enterpriseDescription = descObj?.['pt-BR'] || Object.values(descObj || {})[0]
         || info?.summary
         || null;
       imageUrl = enterprise.imageUrl
