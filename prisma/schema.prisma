@@ -31,6 +31,7 @@ model Client {
   utmCampaign       String?   @map("utmCampaign")
   utmContent        String?   @map("utmContent")
   utmTerm           String?   @map("utmTerm")
+  metaLeadgenId     String?   @unique @map("metaLeadgenId")
 
   tags         ClientTag[]
   reminders    Reminder[]
@@ -39,6 +40,7 @@ model Client {
   partners     ClientPartner[]
   linkedEnterprise Enterprise? @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
   creator      User          @relation("CreatedClients", fields: [createdBy], references: [id], onDelete: Cascade)
+  queueAssignments LeadQueueAssignment[] @relation("AssignmentLead")
 
   @@index([createdBy])
   @@index([stage])
@@ -330,6 +332,7 @@ model LeadQueueAssignment {
 
   queue LeadQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
   user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead  Client?   @relation("AssignmentLead", fields: [leadId], references: [id], onDelete: SetNull)
 
   @@index([queueId, createdAt])
   @@index([userId])
