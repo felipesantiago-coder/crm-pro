@@ -392,14 +392,11 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // 5. Check for duplicate — search notes for leadgen_id (idempotency)
-        // FIX: prevents duplicate clients when Meta retries the webhook concurrently
-        // Note: Using notes contains as a simple dedup. For high volume,
-        // consider adding a dedicated metaLeadgenId column.
-        // Also: assignLeadToUser() has its own idempotency cache for leadId.
+        // 5. Check for duplicate — dedicated metaLeadgenId column (O(1) indexed lookup)
+        // Replaces old notes.contains approach which was a linear scan.
         try {
-          const existingByLeadgenId = await db.client.findFirst({
-            where: { notes: { contains: `Lead ID: ${leadgenId}` } },
+          const existingByLeadgenId = await db.client.findUnique({
+            where: { metaLeadgenId: leadgenId },
             select: { id: true },
           });
           if (existingByLeadgenId) {
@@ -447,6 +444,7 @@ export async function POST(request: NextRequest) {
               stage: 'LEAD',
               updatePeriod: 1,
               createdBy: creatorId,
+              metaLeadgenId: leadgenId,
               notes: `[Meta Ads] Lead recebido automaticamente.\nAnúncio: ${adName}${campaignName ? `\nCampanha: ${campaignName}` : ''}\nFormulário: ${formName}\nLead ID: ${leadgenId}`,
             },
           });

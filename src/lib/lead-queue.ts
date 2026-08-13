@@ -41,13 +41,16 @@ export async function assignLeadToUser(opts: {
 } = {}): Promise<AssignResult> {
   const { leadId, queueId, source } = opts;
 
-  // Idempotency: if this leadId was already assigned recently, return cached result
-  // This prevents double-assignment from Meta webhook retries or double-clicks
+  // ── Idempotency: two-layer protection ──
+  // Layer 1 (fast): in-memory cache — avoids DB query on hot retries within 60s
+  // Layer 2 (authoritative): DB lookup on lead_queue_assignments — works across
+  //   serverless instances, cold starts, and deployments. This is the real
+  //   source of truth; the in-memory cache is just an optimization.
   if (leadId) {
+    // Layer 1: in-memory fast path
     cleanupAssignmentCache();
     const cached = recentAssignments.get(leadId);
     if (cached) {
-      // Verify the user still exists and is valid
       const user = await db.user.findUnique({
         where: { id: cached.userId },
         select: { id: true, name: true, phone: true },
@@ -62,8 +65,44 @@ export async function assignLeadToUser(opts: {
           message: 'already_assigned',
         };
       }
-      // User was deleted, remove cache and proceed with new assignment
+      // User was deleted, remove cache and fall through to DB check
       recentAssignments.delete(leadId);
+    }
+
+    // Layer 2: DB-backed dedup (cross-instance safe)
+    // Check if this leadId already has a recent assignment in the database.
+    // Uses the index on leadId for O(log n) lookup.
+    try {
+      const existingAssignment = await db.leadQueueAssignment.findFirst({
+        where: { leadId },
+        select: {
+          userId: true,
+          queueId: true,
+          createdAt: true,
+          user: { select: { id: true, name: true, phone: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existingAssignment?.user) {
+        // Populate in-memory cache from DB result for future fast-path hits
+        recentAssignments.set(leadId, {
+          queueId: existingAssignment.queueId,
+          userId: existingAssignment.userId,
+          assignedAt: Date.now(),
+        });
+        return {
+          assigned: true,
+          userId: existingAssignment.user.id,
+          userName: existingAssignment.user.name,
+          userPhone: existingAssignment.user.phone,
+          queueId: existingAssignment.queueId,
+          message: 'already_assigned',
+        };
+      }
+    } catch (dbErr) {
+      // If DB dedup check fails, log but proceed — the Serializable
+      // transaction below is the final safety net against double-write.
+      console.warn('[Lead Queue] DB dedup check failed, proceeding to transaction:', dbErr);
     }
   }
 
