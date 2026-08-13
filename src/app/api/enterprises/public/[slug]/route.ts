@@ -3,6 +3,18 @@ import { db } from '@/lib/db';
 import enterprisesCatalog, { EnterpriseCatalogEntry } from '@/data/enterprises-catalog';
 
 /**
+ * Resolve a string from a locale-keyed JSON object.
+ * Falls back: requested locale → pt-BR → first available value.
+ */
+function resolveI18nString(
+  field: Record<string, string> | null | undefined,
+  locale: string,
+): string | null {
+  if (!field || typeof field !== 'object') return null;
+  return field[locale] || field['pt-BR'] || Object.values(field)[0] || null;
+}
+
+/**
  * Merge: DB cachedInfo is the PRIMARY source; catalog is FALLBACK only.
  * DB fields win when non-null. Catalog fills in only null/undefined DB fields.
  */
@@ -50,11 +62,14 @@ function mergeCachedInfo(
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
     const { slug } = await params;
+
+    // Read locale from middleware-set header (default: pt-BR)
+    const locale = request.headers.get('x-locale') || 'pt-BR';
 
     const enterprise = await db.enterprise.findUnique({
       where: { slug },
@@ -68,6 +83,7 @@ export async function GET(
         landingSubtitle: true,
         landingDescription: true,
         cachedInfo: true,
+        cachedInfoI18n: true,
         mapLatitude: true,
         mapLongitude: true,
         createdAt: true,
@@ -108,7 +124,30 @@ export async function GET(
       enterprise.cachedInfo = mergeCachedInfo(enterprise.cachedInfo, catalog);
     }
 
-    return NextResponse.json(enterprise);
+    // ── i18n resolution for text fields ──────────────
+    // Resolve locale-keyed JSON → flat string for the landing page client
+    const rawTitle = enterprise.landingTitle as Record<string, string> | null;
+    const rawSubtitle = enterprise.landingSubtitle as Record<string, string> | null;
+    const rawDesc = enterprise.landingDescription as Record<string, string> | null;
+
+    enterprise.landingTitle = resolveI18nString(rawTitle, locale);
+    enterprise.landingSubtitle = resolveI18nString(rawSubtitle, locale);
+    enterprise.landingDescription = resolveI18nString(rawDesc, locale);
+
+    // ── i18n resolution for cachedInfo ────────────────
+    // If locale is not pt-BR and a translation exists, use it (merged over base)
+    const i18nInfo = enterprise.cachedInfoI18n as Record<string, any> | null;
+    if (locale !== 'pt-BR' && i18nInfo && i18nInfo[locale]) {
+      // Deep-merge: translated fields override base, base fills missing
+      const base = (enterprise.cachedInfo && typeof enterprise.cachedInfo === 'object')
+        ? enterprise.cachedInfo as Record<string, any> : {};
+      const translated = i18nInfo[locale];
+      enterprise.cachedInfo = { ...base, ...(typeof translated === 'object' ? translated : {}) };
+    }
+
+    // Remove internal i18n field from public response
+    const { cachedInfoI18n: _removed, ...publicData } = enterprise;
+    return NextResponse.json(publicData);
   } catch (error) {
     console.error('[Enterprise Public] Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

@@ -18,6 +18,7 @@ export async function GET() {
         landingSubtitle: true,
         landingDescription: true,
         cachedInfo: true,
+        cachedInfoI18n: true,
         createdAt: true,
         images: { select: { id: true, url: true, altText: true, sortOrder: true }, orderBy: { sortOrder: 'asc' } },
         _count: { select: { clients: true } },

@@ -34,9 +34,9 @@ interface Enterprise {
   slug: string | null;
   region: string | null;
   imageUrl: string | null;
-  landingTitle: string | null;
-  landingSubtitle: string | null;
-  landingDescription: string | null;
+  landingTitle: Record<string, string> | null;  // i18n JSONB
+  landingSubtitle: Record<string, string> | null;
+  landingDescription: Record<string, string> | null;
   cachedInfo: Record<string, unknown> | null;
   images: EnterpriseImage[];
 }
@@ -138,7 +138,9 @@ export function LandingPagesTab() {
   function getSummary(e: Enterprise): string | null {
     const info = e.cachedInfo as Record<string, unknown> | null;
     if (info?.summary && typeof info.summary === 'string') return info.summary.slice(0, 100);
-    if (e.landingSubtitle) return e.landingSubtitle.slice(0, 100);
+    const sub = e.landingSubtitle;
+    const subStr = typeof sub === 'object' && sub ? (sub['pt-BR'] || Object.values(sub)[0]) : sub;
+    if (typeof subStr === 'string') return subStr.slice(0, 100);
     return null;
   }
 
