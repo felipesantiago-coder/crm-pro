@@ -324,6 +324,7 @@ export async function POST(request: NextRequest) {
 
         // 5. Verificar duplicata
         const existing = await findExistingClient(phone, email);
+        let assignedUserName: string | undefined;
         if (existing) {
           // Criar interação registrando o novo contato do anúncio
           await db.interaction.create({
@@ -461,7 +462,6 @@ export async function POST(request: NextRequest) {
           // 8. Assign via queue (direct function call, NOT HTTP)
           // FIX: replaced fragile self-referential HTTP call with direct function
           let assignedUserId: string | undefined;
-          let assignedUserName: string | undefined;
           try {
             const assignResult = await assignLeadToUser({
               leadId: newClient.id,
