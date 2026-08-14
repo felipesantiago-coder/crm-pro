@@ -72,7 +72,9 @@ export function middleware(request: NextRequest) {
   const isLandingPage = /^\/empreendimentos\/[^/]+(\/?$|\/cadastro-sucesso)/.test(pathname);
 
   if (isLandingPage) {
-    response.headers.set('Cache-Control', 'public, max-age=0, stale-while-revalidate=30');
+    // stale-while-revalidate: serve cached HTML immediately while revalidating in background.
+    // 60s matches the ISR revalidate interval on [slug]/page.tsx.
+    response.headers.set('Cache-Control', 'public, max-age=0, stale-while-revalidate=60');
     return response;
   }
 

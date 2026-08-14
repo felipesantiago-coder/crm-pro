@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef, useMemo, startTransition, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, startTransition } from 'react';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { useTranslations } from 'next-intl';
 import LanguageSwitcher from '@/i18n/LanguageSwitcher';
 import {
-  Building2, MapPin, ArrowLeft, ChevronLeft, ChevronRight,
-  X, Clock, DollarSign, Phone, Mail, MessageSquare,
+  Building2, MapPin, ArrowLeft,
+  Clock, DollarSign, Phone, Mail, MessageSquare,
   Loader2, ZoomIn, Check, User, Send, AlertCircle,
   Shield, ChevronDown, CalendarDays, TrendingUp, Users, Layers, Car, LayoutGrid,
   Sparkles, CheckCircle2, Ruler, BedDouble, Navigation, UserCheck, Home, Map,
@@ -1229,7 +1229,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 {images.map((img, idx) => (
                   <button key={img.id} type="button" onClick={() => { startTransition(() => { setActiveImgIdx(idx); setLightboxOpen(true); }); try { (window as any).CRMPIXEL?.trackGalleryClick(idx, images.length); } catch {} }}
                     className="lp-gallery-card group relative w-full overflow-hidden rounded-2xl bg-[#1a1a1a]/[0.06] aspect-[4/3] hover:shadow-lg transition-all duration-300">
-                    <img src={img.url} alt={img.altText || `${e.name} - ${t('gallery.photoAlt', { n: idx + 1 })}`} width={680} height={510} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" loading={idx < 4 ? 'eager' : 'lazy'} decoding="async" />
+                    <Image src={img.url} alt={img.altText || `${e.name} - ${t('gallery.photoAlt', { n: idx + 1 })}`} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.03]" sizes="(max-width: 768px) 50vw, 33vw" loading={idx < 4 ? 'eager' : 'lazy'} />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                       <div className="h-12 w-12 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-lg">
@@ -1581,29 +1581,25 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         </div>
       )}
 
-      {/* EXIT INTENT POPUP — loaded lazily */}
+      {/* EXIT INTENT POPUP — loaded lazily via dynamic() */}
       {exitPopupOpen && (
-        <Suspense fallback={null}>
-          <LandingExitPopup
-            enterpriseName={e?.name || ''}
-            onClose={() => setExitPopupOpen(false)}
-            onWhatsApp={() => { setExitPopupOpen(false); openWhatsApp('exit_popup', null, 'popup'); }}
-            showRealCount={showRealCount}
-            clientCount={clientCount}
-          />
-        </Suspense>
+        <LandingExitPopup
+          enterpriseName={e?.name || ''}
+          onClose={() => setExitPopupOpen(false)}
+          onWhatsApp={() => { setExitPopupOpen(false); openWhatsApp('exit_popup', null, 'popup'); }}
+          showRealCount={showRealCount}
+          clientCount={clientCount}
+        />
       )}
 
-      {/* LIGHTBOX — loaded lazily on first open */}
+      {/* LIGHTBOX — loaded lazily via dynamic() */}
       {lightboxOpen && (
-        <Suspense fallback={null}>
-          <LandingLightbox
-            images={images}
-            activeIdx={activeImgIdx}
-            onClose={() => setLightboxOpen(false)}
-            onIndexChange={(idx: number) => startTransition(() => setActiveImgIdx(idx))}
-          />
-        </Suspense>
+        <LandingLightbox
+          images={images}
+          activeIdx={activeImgIdx}
+          onClose={() => setLightboxOpen(false)}
+          onIndexChange={(idx: number) => startTransition(() => setActiveImgIdx(idx))}
+        />
       )}
 
 
