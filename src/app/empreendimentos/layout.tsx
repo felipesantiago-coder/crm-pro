@@ -26,6 +26,8 @@ export default async function EmpreendimentosLayout({
     <>
       {/* Preconnect: resolve DNS/TLS early for Meta Pixel */}
       <link rel="preconnect" href="https://connect.facebook.net" />
+      {/* Preconnect: Supabase Storage — serves all landing page images (hero, gallery, floor plans) */}
+      <link rel="preconnect" href="https://bxkpvzdqjokqshqmnwqr.supabase.co" crossorigin />
 
       {/* Set lang attribute dynamically */}
       <script

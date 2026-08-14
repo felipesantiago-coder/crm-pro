@@ -34,7 +34,13 @@
       "Alguien solicitó condiciones de pago",
       "Otra persona se acaba de registrar"
     ],
-    "times": ["ahora", "1 min", "2 min", "3 min", "5 min"],
+    "times": [
+      "ahora",
+      "1 min",
+      "2 min",
+      "3 min",
+      "5 min"
+    ],
     "person": "{count, plural, one {persona} other {personas}}",
     "interested": "{count, plural, one {interesada} other {interesadas}}",
     "dataProtected": "Datos protegidos",
@@ -269,5 +275,10 @@
     "inLocation": "En {location}",
     "areas": "Áreas de {areaRange}",
     "delivery": "Entrega {deliveryText}"
+  },
+  "midCta": {
+    "title": "¿Tienes dudas? Habla directamente con un asesor",
+    "subtitle": "Atención rápida, sin compromiso",
+    "button": "Hablar por WhatsApp"
   }
 }
