@@ -152,7 +152,7 @@
   },
   "form": {
     "heading": "Request information about {name}",
-    "headingHtml": "Request information about <span style=\"color:#33492F\">{name}</span>",
+    "headingRich": "Request information about <accent>{name}</accent>",
     "subtextWithPrice": "Starting at {price} — special terms available.",
     "subtextWithInfo": "{status} — check out the available terms.",
     "subtextFallback": "Special terms available for you.",

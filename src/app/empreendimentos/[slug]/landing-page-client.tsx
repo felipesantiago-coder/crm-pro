@@ -1344,7 +1344,12 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-2xl bg-[#33492F]/10 flex items-center justify-center mb-4 sm:mb-5">
                   <Home className="h-5 w-5 sm:h-6 sm:w-6 text-[#33492F]" />
                 </div>
-                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 text-[#1a1a1a] leading-tight" dangerouslySetInnerHTML={{ __html: t('form.headingHtml', { name: e.name }) }} />
+                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 text-[#1a1a1a] leading-tight">
+                  {t.rich('form.headingRich', {
+                    name: e.name,
+                    accent: (chunks) => <span className="text-[#33492F]">{chunks}</span>,
+                  })}
+                </h2>
                 <p className="text-[#33492F]/80 text-sm sm:text-base font-medium mb-2">
                   {showUrgencyBadge ? t('form.subtextWithInfo', { status }) : priceText ? t('form.subtextWithPrice', { price: priceText.replace('a partir de ', '') }) : t('form.subtextFallback')}
                 </p>
