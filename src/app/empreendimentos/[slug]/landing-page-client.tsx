@@ -764,8 +764,14 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         .lp-scrollbar::-webkit-scrollbar { height: 4px; }
         .lp-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .lp-scrollbar::-webkit-scrollbar-thumb { background: #1a1a1a/15; border-radius: 999px; }
-        .lp-gallery-card { transition: transform 0.3s ease, box-shadow 0.3s ease; }
-        .lp-gallery-card:active { transform: scale(0.98); }
+        @media (hover: hover) {
+          .lp-gallery-card { transition: transform 0.3s ease, box-shadow 0.3s ease; }
+          .lp-gallery-card:active { transform: scale(0.98); }
+        }
+        /* Touch devices: no transform transitions — they fight with scroll physics */
+        @media (hover: none) {
+          .lp-gallery-card { transition: box-shadow 0.3s ease; }
+        }
       `}</style>
 
       {/* ══════════════════════════════════════════════════
