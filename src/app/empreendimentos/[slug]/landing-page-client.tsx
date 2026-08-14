@@ -157,6 +157,19 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
   const { slug } = React.use(params);
   const t = useTranslations();
 
+  /** Sanitize form-field labels that look like raw i18n keys (e.g. "form.headingHtlm") */
+  const sanitizeLabel = useCallback((label: string): string => {
+    // Detect i18n key pattern: dot-separated segments with camelCase
+    if (/^[a-z]{2,10}\.[a-zA-Z]+[a-z][a-zA-Z]*$/.test(label)) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`[LandingPage] Suspicious i18n key used as form-field label: "${label}"`);
+      }
+      // Return empty string — the field will still render but without a confusing label
+      return '';
+    }
+    return label;
+  }, []);
+
   const faqItemsRaw = t.raw('faq.items') as Array<{ question?: string; answer?: string; q?: string; a?: string }>;
   const faqItems = faqItemsRaw.map(item => ({
     question: item.question || item.q || '',
@@ -1440,7 +1453,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                         return (
                           <div key={field.id}>
                             <label htmlFor={`field-${field.id}`} className="block text-sm font-medium text-[#1a1a1a]/70 mb-2">
-                              {field.label} {field.required && <span className="text-red-500">*</span>}
+                              {sanitizeLabel(field.label)} {field.required && <span className="text-red-500">*</span>}
                             </label>
                             {field.fieldType === 'text' && (
                               <input id={`field-${field.id}`} type="text" value={val} placeholder={field.placeholder || ''}
@@ -1460,7 +1473,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                               <label htmlFor={`field-${field.id}`} className="flex items-center gap-3 cursor-pointer group py-1">
                                 <input id={`field-${field.id}`} type="checkbox" checked={val === t('form.yes')} onChange={(ev) => { const next = { ...customAnswers, [field.id]: ev.target.checked ? t('form.yes') : t('form.no') }; setCustomAnswers(next); updatePixelFormFields(formName, formPhone, formEmail, next); }}
                                   className="h-4 w-4 rounded border-[#1a1a1a]/20 bg-white text-[#33492F] focus:ring-[#33492F]/20 cursor-pointer accent-[#33492F]" />
-                                <span className="text-sm text-[#1a1a1a]/50 group-hover:text-[#1a1a1a]/70 transition-colors">{field.placeholder || field.label}</span>
+                                <span className="text-sm text-[#1a1a1a]/50 group-hover:text-[#1a1a1a]/70 transition-colors">{field.placeholder || sanitizeLabel(field.label)}</span>
                               </label>
                             )}
                           </div>
