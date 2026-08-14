@@ -1,20 +1,24 @@
 'use client';
 
-import React, { createContext, useContext, useCallback, useMemo } from 'react';
-import { NextIntlClientProvider, useMessages as useNextMessages } from 'next-intl';
+import React, { createContext, useContext, useCallback, useMemo, useState, useEffect } from 'react';
+import { NextIntlClientProvider } from 'next-intl';
 import type { Locale } from './config';
 import { defaultLocale } from './config';
 
-// Import all locale messages
+// Only import the default locale statically — others load on demand.
+// This saves ~27KB (2 locale files) from the initial JS bundle.
 import ptBR from './locales/pt-BR.json';
-import en from './locales/en.json';
-import es from './locales/es.json';
 
-const messagesMap: Record<Locale, Record<string, unknown>> = {
-  'pt-BR': ptBR,
-  'en': en,
-  'es': es,
-};
+// Dynamic import cache to avoid re-fetching
+const localeCache = new Map<string, Record<string, unknown>>();
+
+async function loadLocaleAsync(l: Locale): Promise<Record<string, unknown>> {
+  const cached = localeCache.get(l);
+  if (cached) return cached;
+  const mod = await import(`./locales/${l}.json`);
+  localeCache.set(l, mod.default);
+  return mod.default;
+}
 
 interface LocaleContextValue {
   locale: Locale;
@@ -48,9 +52,31 @@ export function LocaleProvider({ children, serverLocale }: {
   children: React.ReactNode;
   serverLocale?: Locale;
 }) {
-  const [locale, setLocaleState] = React.useState<Locale>(
+  const [locale, setLocaleState] = useState<Locale>(
     () => serverLocale || getInitialLocale()
   );
+  const [messages, setMessages] = useState<Record<string, unknown>>(
+    () => (locale === 'pt-BR' ? ptBR : null)!
+  );
+  const [loading, setLoading] = useState(locale !== 'pt-BR');
+
+  // Load non-default locale messages on mount or locale change
+  useEffect(() => {
+    if (locale === 'pt-BR') {
+      setMessages(ptBR);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    loadLocaleAsync(locale).then((msgs) => {
+      if (!cancelled) {
+        setMessages(msgs);
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [locale]);
 
   const setLocale = useCallback((newLocale: Locale) => {
     setLocaleState(newLocale);
@@ -66,9 +92,12 @@ export function LocaleProvider({ children, serverLocale }: {
     window.history.replaceState(null, '', newPath);
   }, []);
 
-  const messages = useMemo(() => messagesMap[locale], [locale]);
-
   const contextValue = useMemo(() => ({ locale, setLocale }), [locale, setLocale]);
+
+  // Brief loading state while locale JSON loads — prevent flash of wrong language
+  if (loading) {
+    return null;
+  }
 
   return (
     <LocaleContext.Provider value={contextValue}>
