@@ -152,7 +152,7 @@
   },
   "form": {
     "heading": "Solicite informações sobre o {name}",
-    "headingHtml": "Solicite informações sobre o <span style=\"color:#33492F\">{name}</span>",
+    "headingRich": "Solicite informações sobre o <accent>{name}</accent>",
     "subtextWithPrice": "A partir de {price} — condições especiais.",
     "subtextWithInfo": "{status} — conheça as condições disponíveis.",
     "subtextFallback": "Condições especiais disponíveis para você.",
