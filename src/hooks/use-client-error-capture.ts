@@ -37,6 +37,11 @@ export function useClientErrorCapture({ slug, enabled = true }: ErrorCaptureOpti
       // while JS still holds a reference. Harmless; happens in FB/IG In-App Browser.
       if (/Java object is gone/.test(iabNoise)) return;
 
+      // Ignore IAB/SDK "webkit.messageHandlers is undefined" — third-party SDKs
+      // (TikTok Pixel, LinkedIn, IAB scripts) trying to access iOS WKWebView native
+      // bridge from non-iOS contexts. Harmless; SDKs fall back gracefully.
+      if (/webkit\.messageHandlers/.test(iabNoise)) return;
+
       // Ignore generic "Script error." from cross-origin scripts (e.g. Meta Pixel
       // fbevents.js failing inside Instagram/Facebook In-App Browser). These are
       // harmless CORS-masked errors that cannot be acted on.
@@ -109,7 +114,7 @@ export function useClientErrorCapture({ slug, enabled = true }: ErrorCaptureOpti
       // Skip Facebook/Instagram IAB injected script errors early
       if (source?.startsWith('iabjs://')) return false;
       const msg = String(message);
-      if (/sendDataToNative|sendPageHideMessage|Java object is gone/.test(msg)) return false;
+      if (/sendDataToNative|sendPageHideMessage|Java object is gone|webkit\.messageHandlers/.test(msg)) return false;
 
       // Skip generic "Script error." from cross-origin third-party scripts
       // (e.g. Meta Pixel fbevents.js inside IG/FB In-App Browser)
