@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface LightboxProps {
@@ -14,25 +14,53 @@ export default function LandingLightbox({ images, activeIdx, onClose, onIndexCha
   const scrollRef = useRef<HTMLDivElement>(null);
   const len = images.length;
 
-  // Snap scroll container to active image
+  // Track whether the current index change came from user scroll (not programmatic).
+  // This prevents the scrollToIndex effect from fighting with the user's swipe gesture.
+  const isUserScrolling = useRef(false);
+  const programmaticScroll = useRef(false);
+
+  // Snap scroll container to active image (only for external index changes: nav buttons, keyboard)
   const scrollToIndex = useCallback((idx: number) => {
     if (!scrollRef.current) return;
-    const child = scrollRef.current.children[idx];
-    if (child) child.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+    const child = scrollRef.current.children[idx] as HTMLElement | undefined;
+    if (!child) return;
+    programmaticScroll.current = true;
+    child.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+    // Reset flag after scroll animation completes
+    setTimeout(() => { programmaticScroll.current = false; }, 400);
   }, []);
 
-  useEffect(() => { scrollToIndex(activeIdx); }, [activeIdx, scrollToIndex]);
+  // Only scroll programmatically when index changed from OUTSIDE (keyboard, nav buttons)
+  // NOT when index changed from user's own swipe gesture
+  const prevActiveIdx = useRef(activeIdx);
+  useEffect(() => {
+    if (activeIdx === prevActiveIdx.current) return;
+    prevActiveIdx.current = activeIdx;
+    // Skip if the user is actively scrolling — they're already at the right position
+    if (isUserScrolling.current) return;
+    scrollToIndex(activeIdx);
+  }, [activeIdx, scrollToIndex]);
 
-  // Sync scroll position → active index
+  // Sync scroll position → active index (debounced to avoid rapid updates)
+  const scrollTimer = useRef<ReturnType<typeof setTimeout>>();
   const handleScroll = useCallback(() => {
-    if (!scrollRef.current) return;
+    if (!scrollRef.current || programmaticScroll.current) return;
     const container = scrollRef.current;
     const idx = Math.round(container.scrollLeft / container.clientWidth);
-    if (idx >= 0 && idx < len && idx !== activeIdx) onIndexChange(idx);
+    if (idx >= 0 && idx < len && idx !== activeIdx) {
+      isUserScrolling.current = true;
+      onIndexChange(idx);
+      // Keep the flag true while the user is still swiping
+      clearTimeout(scrollTimer.current);
+      scrollTimer.current = setTimeout(() => { isUserScrolling.current = false; }, 600);
+    }
   }, [len, activeIdx, onIndexChange]);
 
-  const goPrev = () => onIndexChange(Math.max(0, activeIdx - 1));
-  const goNext = () => onIndexChange(Math.min(len - 1, activeIdx + 1));
+  // Clear timer on unmount
+  useEffect(() => () => clearTimeout(scrollTimer.current), []);
+
+  const goPrev = () => { isUserScrolling.current = false; onIndexChange(Math.max(0, activeIdx - 1)); };
+  const goNext = () => { isUserScrolling.current = false; onIndexChange(Math.min(len - 1, activeIdx + 1)); };
 
   // Keyboard navigation
   useEffect(() => {
@@ -59,7 +87,7 @@ export default function LandingLightbox({ images, activeIdx, onClose, onIndexCha
         ref={scrollRef}
         onScroll={handleScroll}
         onClick={(ev) => ev.stopPropagation()}
-        className="flex-1 flex overflow-x-auto snap-x snap-mandatory scroll-smooth [-webkit-overflow-scrolling:touch] [overscroll-behavior-x:contain]"
+        className="flex-1 flex overflow-x-auto snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [overscroll-behavior-x:contain]"
       >
         {images.map((img, idx) => (
           <div key={img.id} className="flex-shrink-0 w-full h-full snap-start flex items-center justify-center p-2 sm:p-4">
