@@ -34,7 +34,13 @@
       "Someone asked about payment plans",
       "Another person just registered"
     ],
-    "times": ["just now", "1 min", "2 min", "3 min", "5 min"],
+    "times": [
+      "just now",
+      "1 min",
+      "2 min",
+      "3 min",
+      "5 min"
+    ],
     "person": "{count, plural, one {person} other {people}}",
     "interested": "{count, plural, one {interested} other {interested}}",
     "dataProtected": "Data protected",
@@ -269,5 +275,10 @@
     "inLocation": "In {location}",
     "areas": "Areas from {areaRange}",
     "delivery": "Delivery {deliveryText}"
+  },
+  "midCta": {
+    "title": "Have questions? Talk to a consultant directly",
+    "subtitle": "Fast service, no commitment",
+    "button": "Chat on WhatsApp"
   }
 }

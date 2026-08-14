@@ -22,7 +22,10 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export const dynamic = 'force-dynamic';
+// ISR: revalidate every 60s — landing page content changes infrequently.
+// This eliminates the DB query on every request, dramatically reducing TTFB.
+// generateMetadata still uses force-dynamic (separate request context).
+export const revalidate = 60;
 
 const ENTERPRISE_SELECT = {
   id: true, name: true, slug: true, region: true, imageUrl: true,

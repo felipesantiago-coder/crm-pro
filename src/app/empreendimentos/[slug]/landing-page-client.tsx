@@ -438,7 +438,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
     const onScroll = () => {
       setScrolled(window.scrollY > 60);
       const heroHeight = window.innerHeight;
-      setShowBottomBar(window.scrollY > heroHeight * 0.8 && window.innerWidth < 640);
+      setShowBottomBar(window.scrollY > heroHeight * 0.6 && window.innerWidth < 1024);
       if (formSectionRef.current && window.innerWidth < 640) {
         const rect = formSectionRef.current.getBoundingClientRect();
         const visible = rect.top < window.innerHeight && rect.bottom > 0;
@@ -453,7 +453,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
   // Floating WhatsApp button — show after 3s
   useEffect(() => {
-    const timer = setTimeout(() => setShowFloatingWhatsApp(true), 3000);
+    // Show floating WhatsApp faster (1.5s) — visitors from IAB may leave quickly
+    const timer = setTimeout(() => setShowFloatingWhatsApp(true), 1500);
     return () => clearTimeout(timer);
   }, []);
 
@@ -846,8 +847,9 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
             <a href="#cadastro" className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.08] border border-white/[0.15] text-white font-medium text-xs hover:bg-white/[0.15] transition-all backdrop-blur-sm">
               <MessageSquare className="h-3.5 w-3.5" /> {t('hero.seeDetails')}
             </a>
-            <button type="button" onClick={() => openWhatsApp('hero', 'hero', 'secondary')} className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.08] border border-white/[0.15] text-white font-medium text-xs hover:bg-white/[0.15] transition-all backdrop-blur-sm">
-              <Phone className="h-3.5 w-3.5" /> {t('hero.talkToConsultant')}
+            <button type="button" onClick={() => openWhatsApp('hero', 'hero', 'secondary')} className="min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#25D366] text-white font-semibold text-xs hover:bg-[#20bd5a] transition-all shadow-lg shadow-[#25D366]/25">
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" dangerouslySetInnerHTML={{ __html: WHATSAPP_ICON }} />
+              {t('hero.talkToConsultant')}
             </button>
           </div>
         </div>
@@ -999,6 +1001,23 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
           </div>
         </section>
       </ScrollReveal>
+
+      {/* ══════════════════════════════════════════════════
+          5.5 MID-PAGE CTA STRIP — WhatsApp (catches 45% drop-off)
+          ══════════════════════════════════════════════════ */}
+      <div className="bg-[#33492F]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-center sm:text-left">
+            <p className="text-white font-bold text-base sm:text-lg">{t('midCta.title')}</p>
+            <p className="text-white/50 text-xs sm:text-sm mt-1">{t('midCta.subtitle')}</p>
+          </div>
+          <button type="button" onClick={() => openWhatsApp('mid_page', 'why-vitta', 'cta_strip')}
+            className="flex-shrink-0 min-h-[48px] inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-[#25D366] text-white font-bold text-sm hover:bg-[#20bd5a] transition-all shadow-lg shadow-[#25D366]/20 active:scale-[0.98]">
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" dangerouslySetInnerHTML={{ __html: WHATSAPP_ICON }} />
+            {t('midCta.button')}
+          </button>
+        </div>
+      </div>
 
       {/* ══════════════════════════════════════════════════
           6. LEISURE & DIFFERENTIALS (Tabbed Cards)
@@ -1502,7 +1521,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
       {/* Fixed Bottom CTA Bar (Mobile) — WhatsApp left + Ver Condições right */}
       {showBottomBar && !isFormSectionVisible && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 sm:hidden animate-slide-up-bar">
+        <div className="fixed bottom-0 left-0 right-0 z-50 lg:hidden animate-slide-up-bar">
           <div className="flex">
             <button type="button" onClick={() => openWhatsApp('bottom_bar', null, 'left')}
               className="flex-1 min-h-[52px] flex items-center justify-center gap-2 bg-[#25D366] text-white font-semibold text-sm shadow-[0_-4px_20px_rgba(37,211,102,0.3)]">
@@ -1518,8 +1537,8 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
         </div>
       )}
 
-      {/* Floating WhatsApp Button (appears after 3s, bottom-right) */}
-      {showFloatingWhatsApp && !isFormSectionVisible && (
+      {/* Floating WhatsApp Button (appears after 1.5s, always visible on desktop) */}
+      {showFloatingWhatsApp && (!isFormSectionVisible || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
         <div className="fixed bottom-20 sm:bottom-6 right-4 z-40 animate-fade-in-up">
           <button type="button" onClick={() => openWhatsApp('floating_btn', null, 'floating')}
             className="relative h-14 w-14 rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-xl shadow-[#25D366]/30 hover:bg-[#20bd5a] transition-all active:scale-95">
