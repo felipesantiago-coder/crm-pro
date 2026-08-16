@@ -184,11 +184,19 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const errorText = await response.text();
       let errorMsg = `Erro da API Meta: HTTP ${response.status}`;
+      let metaErrorCode: string | undefined;
+      let metaErrorSubcode: string | undefined;
       try {
         const errorJson = JSON.parse(errorText);
         errorMsg = errorJson.error?.message || errorMsg;
+        metaErrorCode = errorJson.error?.code;
+        metaErrorSubcode = errorJson.error?.error_subcode;
       } catch {}
-      return NextResponse.json({ error: errorMsg }, { status: 400 });
+      console.error(`[Form Import] Erro da API Meta: HTTP ${response.status} | code=${metaErrorCode} | subcode=${metaErrorSubcode} | msg=${errorMsg} | accountId=${accountId}`);
+      return NextResponse.json(
+        { error: errorMsg, metaErrorCode, metaErrorSubcode },
+        { status: 400 }
+      );
     }
 
     const data = await response.json();

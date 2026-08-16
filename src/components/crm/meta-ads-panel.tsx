@@ -1158,7 +1158,10 @@ function ConfigTab() {
         loadFormMappings();
         loadCapiConfigs();
       } else {
-        toast.error(data.error || 'Erro ao importar');
+        const detail = data.metaErrorCode
+          ? `${data.error} (código ${data.metaErrorCode})`
+          : data.error || 'Erro ao importar';
+        toast.error(detail, { duration: 8000 });
       }
     } catch (err: any) {
       toast.error(err.message || 'Erro ao importar formulários');
