@@ -256,7 +256,8 @@ export async function GET() {
     // ─────────────────────────────────────────────────
     // CHECK 4 — Identificar a página do token
     // Se for um PAGE token, /me já É a página.
-    // Se for USER token, /me/accounts lista as páginas.
+    // Se for USER token, /me/accounts lista as páginas
+    // e EXTRAÍMOS o page token para salvar automaticamente.
     // ─────────────────────────────────────────────────
     if (hasPageToken) {
       try {
@@ -266,15 +267,60 @@ export async function GET() {
 
         if (pagesRes.ok) {
           const pagesData = await pagesRes.json();
-          const pages: Array<{ id: string; name: string }> = pagesData.data || [];
+          const pages: Array<{ id: string; name: string; access_token?: string }> = pagesData.data || [];
 
           if (pages.length > 0) {
-            checks.push({
-              name: 'Páginas associadas ao token',
-              status: 'ok',
-              details: `Token de USUÁRIO. ${pages.length} página(s) acessível(is): ${pages.map((p) => `${p.name} (${p.id})`).join(', ')}.`,
-              fix: 'Este é um token de usuário. Para leads, prefira gerar um token de PÁGINA no Graph API Explorer (selecione a página como Token User). Funciona, mas pode expirar.',
-            });
+            // Token de usuário detectado — tentar extrair e salvar o page token
+            const firstPage = pages[0];
+            const extractedPageToken = firstPage.access_token;
+
+            if (extractedPageToken && extractedPageToken !== pageToken) {
+              try {
+                // Validar o page token extraído com /me antes de salvar
+                const validateUrl = `https://graph.facebook.com/v25.0/me?access_token=${encodeURIComponent(extractedPageToken)}&fields=id,name`;
+                const validateRes = await fetch(validateUrl, { method: 'GET' });
+
+                if (validateRes.ok) {
+                  const validateData = await validateRes.json();
+                  // Salvar o page token no banco (substitui o user token)
+                  await db.userSettings.upsert({
+                    where: { key: 'meta_page_access_token' },
+                    update: { value: extractedPageToken },
+                    create: { key: 'meta_page_access_token', value: extractedPageToken },
+                  });
+
+                  checks.push({
+                    name: 'Páginas associadas ao token',
+                    status: 'ok',
+                    details: `Token de USUÁRIO detectado. Token de PÁGINA extraído e salvo automaticamente para "${firstPage.name}" (${firstPage.id}). Identidade do novo token: ${validateData.name || 'N/A'}.`,
+                  });
+                } else {
+                  // Page token extraído mas inválido — manter o user token
+                  checks.push({
+                    name: 'Páginas associadas ao token',
+                    status: 'warn',
+                    details: `Token de USUÁRIO. ${pages.length} página(s) acessível(is): ${pages.map((p) => `${p.name} (${p.id})`).join(', ')}. O page token extraído falhou na validação — user token mantido.`,
+                    fix: 'Gere manualmente um token de PÁGINA no Graph API Explorer (selecione a página como Token User).',
+                  });
+                }
+              } catch (saveErr: unknown) {
+                const errMsg = saveErr instanceof Error ? saveErr.message : 'Erro desconhecido';
+                checks.push({
+                  name: 'Páginas associadas ao token',
+                  status: 'warn',
+                  details: `Token de USUÁRIO. ${pages.length} página(s): ${pages.map((p) => `${p.name} (${p.id})`).join(', ')}. Page token extraído mas falha ao salvar (${errMsg}).`,
+                  fix: 'Salve manualmente o Page Access Token nas Configurações.',
+                });
+              }
+            } else {
+              // Sem page token na resposta ou já é um page token
+              checks.push({
+                name: 'Páginas associadas ao token',
+                status: 'warn',
+                details: `Token de USUÁRIO. ${pages.length} página(s) acessível(is): ${pages.map((p) => `${p.name} (${p.id})`).join(', ')}.`,
+                fix: 'Gere um token de PÁGINA no Graph API Explorer (selecione a página como Token User) ou clique em Diagnosticar novamente para extração automática.',
+              });
+            }
           } else {
             // /me/accounts vazio — pode ser PAGE token (a página é o próprio /me)
             const meUrl = `https://graph.facebook.com/v25.0/me?access_token=${encodeURIComponent(pageToken)}&fields=id,name,category`;
