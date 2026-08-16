@@ -206,7 +206,9 @@
     "whatsappCta": "Falar pelo WhatsApp",
     "formCta": "Quero saber mais",
     "dataSafe": "Seus dados estão seguros e não enviamos spam.",
-    "registeredCount": "{count, plural, one {{count} pessoa já se cadastrou.} other {{count} pessoas já se cadastraram.}}"
+    "registeredCount": "{count, plural, one {{count} pessoa já se cadastrou.} other {{count} pessoas já se cadastraram.}}",
+    "successTitle": "Quase lá!",
+    "successDescription": "Estamos te levando para completar seu cadastro..."
   },
   "success": {
     "navBrand": "Empreendimentos",

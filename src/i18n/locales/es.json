@@ -206,7 +206,9 @@
     "whatsappCta": "Hablar por WhatsApp",
     "formCta": "Quiero saber más",
     "dataSafe": "Sus datos están seguros y no enviamos spam.",
-    "registeredCount": "{count, plural, one {{count} persona ya se registró.} other {{count} personas ya se registraron.}}"
+    "registeredCount": "{count, plural, one {{count} persona ya se registró.} other {{count} personas ya se registraron.}}",
+    "successTitle": "¡Casi listo!",
+    "successDescription": "Te estamos llevando a completar tu registro..."
   },
   "success": {
     "navBrand": "Desarrollos residenciales",
