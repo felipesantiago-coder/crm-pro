@@ -868,6 +868,12 @@ function ConfigTab() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
 
+  // Manual lead import states
+  const [showManualImportDialog, setShowManualImportDialog] = useState(false);
+  const [manualImportIds, setManualImportIds] = useState('');
+  const [manualImporting, setManualImporting] = useState(false);
+  const [manualImportResult, setManualImportResult] = useState<any>(null);
+
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/webhooks/meta-leads`
     : '';
@@ -1170,6 +1176,34 @@ function ConfigTab() {
     }
   }
 
+  async function importManualLeads() {
+    const ids = manualImportIds.split(/[\s,\n]+/).map(s => s.trim()).filter(Boolean);
+    if (ids.length === 0) {
+      toast.error('Cole ao menos um leadgen_id');
+      return;
+    }
+    setManualImporting(true);
+    setManualImportResult(null);
+    try {
+      const res = await fetch('/api/webhooks/meta-leads/import-manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadgenIds: ids }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setManualImportResult(data);
+        toast.success(data.message);
+      } else {
+        toast.error(data.error || 'Erro na importação', { duration: 8000 });
+      }
+    } catch {
+      toast.error('Falha na importação manual');
+    } finally {
+      setManualImporting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -1398,6 +1432,15 @@ function ConfigTab() {
               ) : (
                 <><Zap className="h-4 w-4 mr-1" /> Diagnosticar</>
               )}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setShowManualImportDialog(true); setManualImportResult(null); setManualImportIds(''); }}
+              className="border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
+            >
+              <UserPlus className="h-4 w-4 mr-1" />
+              Importar Leads Perdidos
             </Button>
           </div>
 
@@ -1727,6 +1770,64 @@ function ConfigTab() {
         </div>
       )}
 
+      {/* ═══ Import Manual Leads Dialog ═══ */
+      {showManualImportDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowManualImportDialog(false)}>
+          <div className="bg-background rounded-lg border shadow-lg w-full max-w-lg mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-red-600" />
+                Importar Leads Perdidos
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Recupere leads que foram capturados pelo anúncio mas não chegaram ao CRM. Cole os leadgen_ids do Meta Ads Manager.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Leadgen IDs (um por linha ou separados por vírgula)</Label>
+              <textarea
+                className="w-full min-h-[120px] rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder={"Ex:\n123456789012345\n987654321098765\n555123456789012"}
+                value={manualImportIds}
+                onChange={(e) => setManualImportIds(e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Encontre os IDs em: Meta Ads Manager → Gerenciar Leads → clique no lead → o ID aparece na URL (ex: /lead/123456789012345)
+              </p>
+            </div>
+            {manualImportResult && (
+              <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                <p className="text-xs font-medium">{manualImportResult.message}</p>
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {manualImportResult.results?.map((r: any) => (
+                    <div key={r.leadgenId} className="flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-1.5">
+                        {r.success ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Circle className="h-3 w-3 text-red-500" />}
+                        <span className="font-mono">{r.leadgenId}</span>
+                      </div>
+                      <span className="text-muted-foreground truncate max-w-[200px]">
+                        {r.clientName || r.reason}
+                        {r.assignedTo ? ` → ${r.assignedTo}` : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowManualImportDialog(false)}>Cancelar</Button>
+              <Button
+                onClick={importManualLeads}
+                disabled={manualImporting || !manualImportIds.trim()}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {manualImporting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Importando...</> : <><UserPlus className="h-4 w-4 mr-1" /> Importar Leads</>}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═══ Import Form IDs Dialog ═══ */}
       {showImportDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowImportDialog(false); setImportResult(null); setImportForm({ accessToken: '', adAccountId: '', capiConfigId: '' }); }}>
@@ -1743,56 +1844,28 @@ function ConfigTab() {
             <div className="space-y-3">
               <div className="space-y-1">
                 <Label className="text-xs font-medium">ID da Conta de Anúncios *</Label>
-                <Input
-                  placeholder="Ex: act_1433936273727810 ou 1433936273727810"
-                  value={importForm.adAccountId}
-                  onChange={(e) => setImportForm({ ...importForm, adAccountId: e.target.value })}
-                  className="font-mono text-sm"
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Encontrado no Ads Manager → Configurações da conta, ou na URL do Ads Manager
-                </p>
+                <Input placeholder="Ex: act_1433936273727810 ou 1433936273727810" value={importForm.adAccountId} onChange={(e) => setImportForm({ ...importForm, adAccountId: e.target.value })} className="font-mono text-sm" />
+                <p className="text-[10px] text-muted-foreground">Encontrado no Ads Manager → Configurações da conta, ou na URL do Ads Manager</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Access Token do Cliente *</Label>
-                <Input
-                  type="password"
-                  placeholder="Token com permissão leads_retrieval"
-                  value={importForm.accessToken}
-                  onChange={(e) => setImportForm({ ...importForm, accessToken: e.target.value })}
-                  className="font-mono text-sm"
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  O cliente gera este token no Business Settings dele (System User com{' '}
-                  <code className="bg-muted px-1 rounded">leads_retrieval</code> +{' '}
-                  <code className="bg-muted px-1 rounded">ads_read</code>)
-                </p>
+                <Input type="password" placeholder="Token com permissão leads_retrieval" value={importForm.accessToken} onChange={(e) => setImportForm({ ...importForm, accessToken: e.target.value })} className="font-mono text-sm" />
+                <p className="text-[10px] text-muted-foreground">O cliente gera este token no Business Settings dele (System User com{' '}<code className="bg-muted px-1 rounded">leads_retrieval</code>{' + ' '}<code className="bg-muted px-1 rounded">ads_read</code>{'})</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Vincular automaticamente ao CAPI Config</Label>
-                <Select
-                  value={importForm.capiConfigId || '__none__'}
-                  onValueChange={(val) => setImportForm({ ...importForm, capiConfigId: val === '__none__' ? '' : val })}
-                >
-                  <SelectTrigger className="text-sm">
-                    <SelectValue placeholder="Opcional — vincular após importar" />
-                  </SelectTrigger>
+                <Select value={importForm.capiConfigId || '__none__'} onValueChange={(val) => setImportForm({ ...importForm, capiConfigId: val === '__none__' ? '' : val })}>
+                  <SelectTrigger className="text-sm"><SelectValue placeholder="Opcional — vincular após importar" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Não vincular</SelectItem>
-                    {capiConfigs.filter((c: any) => c.enabled).map((cfg: any) => (
-                      <SelectItem key={cfg.id} value={cfg.id}>{cfg.name}</SelectItem>
-                    ))}
+                    {capiConfigs.filter((c: any) => c.enabled).map((cfg: any) => (<SelectItem key={cfg.id} value={cfg.id}>{cfg.name}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
-
-            {/* Import Result */}
             {importResult && (
               <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
-                <p className="text-xs font-medium">
-                  {importResult.imported} formulário(s) importado(s) de {importResult.total} encontrado(s)
-                </p>
+                <p className="text-xs font-medium">{importResult.imported} formulário(s) importado(s) de {importResult.total} encontrado(s)</p>
                 {importResult.forms?.length > 0 && (
                   <div className="space-y-1 max-h-32 overflow-y-auto">
                     {importResult.forms.map((f: any) => (
@@ -1805,14 +1878,9 @@ function ConfigTab() {
                 )}
               </div>
             )}
-
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => { setShowImportDialog(false); setImportResult(null); setImportForm({ accessToken: '', adAccountId: '', capiConfigId: '' }); }}>Cancelar</Button>
-              <Button
-                onClick={importFormIds}
-                disabled={importing}
-                className="bg-purple-600 hover:bg-purple-700 text-white"
-              >
+              <Button onClick={importFormIds} disabled={importing} className="bg-purple-600 hover:bg-purple-700 text-white">
                 {importing ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Importando...</> : <><Download className="h-4 w-4 mr-1" /> Importar</>}
               </Button>
             </div>
