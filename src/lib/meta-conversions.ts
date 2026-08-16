@@ -205,7 +205,7 @@ export async function sendLeadConversionEvent(data: LeadConversionData): Promise
       ],
     };
 
-    const url = `https://graph.facebook.com/v26.0/${config.datasetId}/events?access_token=${encodeURIComponent(config.accessToken)}`;
+    const url = `https://graph.facebook.com/v22.0/${config.datasetId}/events?access_token=${encodeURIComponent(config.accessToken)}`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -238,14 +238,17 @@ export async function sendLeadConversionEvent(data: LeadConversionData): Promise
  * Envia um evento de teste para o CAPI.
  * Retorna o resultado da Meta para validação no frontend.
  */
-export async function sendTestCapEvent(accessToken: string, datasetId: string): Promise<{ success: boolean; message: string }> {
+export async function sendTestCapEvent(accessToken: string, datasetId: string): Promise<{ success: boolean; message: string; testEventCode?: string }> {
   try {
+    const testEventCode = 'TEST' + Math.floor(Math.random() * 9000 + 1000);
+
     const testPayload = {
       data: [
         {
           event_name: 'Lead',
           event_time: Math.floor(Date.now() / 1000),
           action_source: 'system_generated',
+          event_source_url: 'https://crm-pro-gilt.vercel.app/',
           custom_data: {
             event_source: 'crm',
             lead_event_source: CRM_NAME,
@@ -256,10 +259,10 @@ export async function sendTestCapEvent(accessToken: string, datasetId: string): 
           },
         },
       ],
-      test_event_code: 'TEST' + Math.floor(Math.random() * 9000 + 1000),
+      test_event_code: testEventCode,
     };
 
-    const url = `https://graph.facebook.com/v26.0/${datasetId}/events?access_token=${encodeURIComponent(accessToken)}`;
+    const url = `https://graph.facebook.com/v22.0/${datasetId}/events?access_token=${encodeURIComponent(accessToken)}`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -283,8 +286,9 @@ export async function sendTestCapEvent(accessToken: string, datasetId: string): 
 
     return {
       success: eventsReceived > 0,
+      testEventCode,
       message: eventsReceived > 0
-        ? `Evento de teste recebido pela Meta (${eventsReceived} evento${eventsReceived > 1 ? 's' : ''}). ${warnings?.length ? 'Avisos: ' + warnings.map((w: any) => w.message).join('; ') : 'Sem avisos.'}`
+        ? `Evento de teste recebido pela Meta (${eventsReceived} evento${eventsReceived > 1 ? 's' : ''}). Código: ${testEventCode}. ${warnings?.length ? 'Avisos: ' + warnings.map((w: any) => w.message).join('; ') : 'Sem avisos.'}`
         : 'Meta não confirmou recebimento do evento.',
     };
   } catch (error) {
