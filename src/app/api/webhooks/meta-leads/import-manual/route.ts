@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/api-auth';
 import { notifyNewLead } from '@/lib/telegram';
 import { assignLeadToUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
+import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 
 // ============================================================
 // POST /api/webhooks/meta-leads/import-manual
@@ -21,20 +22,7 @@ interface LeadgenData {
   created_time?: string;
 }
 
-function getFieldValue(fields: Array<{ name: string; values: string[] }>, fieldName: string): string | null {
-  const field = fields.find((f) =>
-    f.name.toLowerCase().replace(/[\s_-]/g, '') === fieldName.toLowerCase().replace(/[\s_-]/g, '')
-  );
-  return field?.values?.[0] || null;
-}
-
-function formatPhone(phone: string | null): string | null {
-  if (!phone) return null;
-  const digits = phone.replace(/\D/g, '');
-  if (digits.startsWith('55') && digits.length >= 12) return `+${digits}`;
-  if (digits.length === 11 || digits.length === 10) return `+55${digits}`;
-  return digits.length > 0 ? `+${digits}` : null;
-}
+// getFieldValue e formatPhone agora vêm de @/lib/meta-lead-utils
 
 async function fetchLeadFromMeta(leadgenId: string, pageAccessToken: string): Promise<LeadgenData | null> {
   const url = `https://graph.facebook.com/v22.0/${leadgenId}?access_token=${encodeURIComponent(pageAccessToken)}&fields=field_data,ad_id,campaign_id,form_id,created_time`;
@@ -131,24 +119,28 @@ export async function POST(request: NextRequest) {
       const campaignId = String(leadData.campaign_id || '');
 
       // 3. Extrair campos
-      const rawName = getFieldValue(fieldData, 'full_name')
-        || getFieldValue(fieldData, 'name')
-        || getFieldValue(fieldData, 'nome')
-        || getFieldValue(fieldData, 'nome_completo')
+      const rawName = getMetaFieldValue(fieldData, 'full_name')
+        || getMetaFieldValue(fieldData, 'name')
+        || getMetaFieldValue(fieldData, 'nome')
+        || getMetaFieldValue(fieldData, 'nome_completo')
         || 'Lead Meta Ads (importado)';
 
-      const rawEmail = getFieldValue(fieldData, 'email') || getFieldValue(fieldData, 'e_mail') || null;
-      const rawPhone = getFieldValue(fieldData, 'phone_number')
-        || getFieldValue(fieldData, 'phone')
-        || getFieldValue(fieldData, 'celular')
-        || getFieldValue(fieldData, 'telefone')
+      const rawEmail = getMetaFieldValue(fieldData, 'email') || getMetaFieldValue(fieldData, 'e_mail') || null;
+      const rawPhone = getMetaFieldValue(fieldData, 'phone_number')
+        || getMetaFieldValue(fieldData, 'phone')
+        || getMetaFieldValue(fieldData, 'celular')
+        || getMetaFieldValue(fieldData, 'telefone')
         || null;
-      const city = getFieldValue(fieldData, 'city') || getFieldValue(fieldData, 'cidade') || null;
+      const city = getMetaFieldValue(fieldData, 'city') || getMetaFieldValue(fieldData, 'cidade') || null;
 
       const name = rawName?.trim() || 'Lead Meta Ads (importado)';
       const email = rawEmail?.trim() || null;
-      const phone = formatPhone(rawPhone);
+      const phone = formatMetaPhone(rawPhone);
       const region = city?.trim() || null;
+
+      // Extrair respostas customizadas (perguntas extras do formulário)
+      const customAnswers = extractCustomAnswers(fieldData);
+      const customAnswersText = formatCustomAnswersText(customAnswers);
 
       // 4. Verificar duplicata por telefone/email
       const existingByContact = await db.client.findFirst({
@@ -168,11 +160,11 @@ export async function POST(request: NextRequest) {
           data: { metaLeadgenId: leadgenId, lastInteractionAt: new Date() },
         }).catch(() => {});
 
-        // Criar interação
+        // Criar interação com respostas do formulário
         await db.interaction.create({
           data: {
             clientId: existingByContact.id,
-            description: `[Meta Ads] Lead ${leadgenId} importado manualmente. Dados: ${email ? `Email: ${email}` : ''}${phone ? ` | Telefone: ${phone}` : ''}${region ? ` | Cidade: ${region}` : ''}.`,
+            description: `[Meta Ads] Lead ${leadgenId} importado manualmente. Dados: ${email ? `Email: ${email}` : ''}${phone ? ` | Telefone: ${phone}` : ''}${region ? ` | Cidade: ${region}` : ''}.${customAnswersText}`,
           },
         });
 
@@ -213,14 +205,14 @@ export async function POST(request: NextRequest) {
             createdBy: creatorId,
             metaLeadgenId: leadgenId,
             metaCapConfigId: capiConfigId,
-            notes: `[Meta Ads] Lead importado manualmente.\nLead ID: ${leadgenId}${formId ? `\nForm ID: ${formId}` : ''}${campaignId ? `\nCampaign ID: ${campaignId}` : ''}${leadData.created_time ? `\nCriado em: ${leadData.created_time}` : ''}`,
+            notes: `[Meta Ads] Lead importado manualmente.\nLead ID: ${leadgenId}${formId ? `\nForm ID: ${formId}` : ''}${campaignId ? `\nCampaign ID: ${campaignId}` : ''}${leadData.created_time ? `\nCriado em: ${leadData.created_time}` : ''}${customAnswersText}`,
           },
         });
 
         await db.interaction.create({
           data: {
             clientId: newClient.id,
-            description: '[Meta Ads] Lead importado manualmente via leadgen_id. Origem: Facebook/Instagram Lead Ads.',
+            description: `[Meta Ads] Lead importado manualmente via leadgen_id. Origem: Facebook/Instagram Lead Ads.${customAnswersText}`,
           },
         });
 
@@ -255,7 +247,7 @@ export async function POST(request: NextRequest) {
                 utmSource: 'meta_ads',
                 slug: undefined,
                 assignedUserName: assignedTo,
-                customAnswers: undefined,
+                customAnswers,
               }).catch(() => {});
             }
           }).catch(() => {});
