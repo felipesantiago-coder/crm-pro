@@ -174,33 +174,78 @@ export async function POST(request: NextRequest) {
     // Normalizar adAccountId (aceita com ou sem 'act_' prefixo)
     const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
 
-    // Buscar formulários de lead via Graph API
-    const url = `https://graph.facebook.com/v25.0/${accountId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
-    const response = await fetch(url, {
+    // Tentar buscar formulários de lead via Graph API
+    // Abordagem 1: direto pela edge leadgen_forms (requer ads_read no token)
+    // Abordagem 2: via campaigns com leadgen_forms aninhado (fallback)
+    let forms: Array<{ id: string; name?: string; status?: string; created_time?: string }> = [];
+    let lastErrorMsg = '';
+    let lastErrorCode: string | undefined;
+    let lastErrorSubcode: string | undefined;
+
+    // --- Tentativa 1: edge direta leadgen_forms ---
+    const directUrl = `https://graph.facebook.com/v22.0/${accountId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
+    let response = await fetch(directUrl, {
       method: 'GET',
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMsg = `Erro da API Meta: HTTP ${response.status}`;
-      let metaErrorCode: string | undefined;
-      let metaErrorSubcode: string | undefined;
-      try {
-        const errorJson = JSON.parse(errorText);
-        errorMsg = errorJson.error?.message || errorMsg;
-        metaErrorCode = errorJson.error?.code;
-        metaErrorSubcode = errorJson.error?.error_subcode;
-      } catch {}
-      console.error(`[Form Import] Erro da API Meta: HTTP ${response.status} | code=${metaErrorCode} | subcode=${metaErrorSubcode} | msg=${errorMsg} | accountId=${accountId}`);
+    if (response.ok) {
+      const data = await response.json();
+      forms = data.data || [];
+    } else {
+      // Salvar erro da tentativa 1
+      const errText = await response.text();
+      let parsed: any = {};
+      try { parsed = JSON.parse(errText); } catch {}
+      lastErrorMsg = parsed?.error?.message || `HTTP ${response.status}`;
+      lastErrorCode = parsed?.error?.code;
+      lastErrorSubcode = parsed?.error?.error_subcode;
+      console.warn(`[Form Import] Tentativa 1 (direct) falhou: code=${lastErrorCode} msg=${lastErrorMsg}`);
+
+      // --- Tentativa 2: via campaigns com leadgen_forms aninhado ---
+      if (String(lastErrorCode) === '100') {
+        console.log(`[Form Import] Tentando abordagem alternativa via campaigns...`);
+        const campaignsUrl = `https://graph.facebook.com/v22.0/${accountId}/campaigns?fields=leadgen_forms{id,name,status,created_time}&limit=100&effective_status=["ACTIVE","PAUSED"]`;
+        const campResponse = await fetch(campaignsUrl, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+
+        if (campResponse.ok) {
+          const campData = await campResponse.json();
+          const seen = new Set<string>();
+          for (const camp of (campData.data || [])) {
+            for (const f of (camp.leadgen_forms?.data || [])) {
+              if (!seen.has(f.id)) {
+                seen.add(f.id);
+                forms.push(f);
+              }
+            }
+          }
+          console.log(`[Form Import] Tentativa 2 (campaigns) encontrou ${forms.length} formulários`);
+        } else {
+          const err2Text = await campResponse.text();
+          let parsed2: any = {};
+          try { parsed2 = JSON.parse(err2Text); } catch {}
+          lastErrorMsg = parsed2?.error?.message || `HTTP ${campResponse.status}`;
+          lastErrorCode = parsed2?.error?.code;
+          lastErrorSubcode = parsed2?.error?.error_subcode;
+          console.error(`[Form Import] Tentativa 2 (campaigns) também falhou: code=${lastErrorCode} msg=${lastErrorMsg}`);
+        }
+      }
+    }
+
+    // Se nenhuma abordagem funcionou, retornar erro com orientação
+    if (forms.length === 0 && lastErrorMsg) {
+      const permissionHint = String(lastErrorCode) === '100'
+        ? ' O token precisa da permissão "ads_read". Use um System User Token ou User Access Token com permissão de ads gerada no Meta Business Suite > Configurações > Integrations > System Users.'
+        : '';
+      console.error(`[Form Import] Falha final: code=${lastErrorCode} subcode=${lastErrorSubcode} msg=${lastErrorMsg} accountId=${accountId}`);
       return NextResponse.json(
-        { error: errorMsg, metaErrorCode, metaErrorSubcode },
+        { error: lastErrorMsg + permissionHint, metaErrorCode: lastErrorCode, metaErrorSubcode: lastErrorSubcode },
         { status: 400 }
       );
     }
-
-    const data = await response.json();
-    const forms: Array<{ id: string; name?: string; status?: string; created_time?: string }> = data.data || [];
 
     if (forms.length === 0) {
       return NextResponse.json({
@@ -255,12 +300,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Verificar se há mais páginas (paginação)
-    let hasNextPage = false;
-    if (data.paging?.next) {
-      hasNextPage = true;
-    }
-
     return NextResponse.json({
       imported,
       total: forms.length,
@@ -269,8 +308,7 @@ export async function POST(request: NextRequest) {
         name: f.name,
         status: f.status,
       })),
-      hasNextPage,
-      message: `${imported} formulário${imported !== 1 ? 's' : ''} importado${imported !== 1 ? 's' : ''} com sucesso${hasNextPage ? ' (mais formulários disponíveis — increase limit)' : ''}`,
+      message: `${imported} formulário${imported !== 1 ? 's' : ''} importado${imported !== 1 ? 's' : ''} com sucesso`,
     });
   } catch (error: any) {
     if (error?.status === 401 || error?.status === 403) {
