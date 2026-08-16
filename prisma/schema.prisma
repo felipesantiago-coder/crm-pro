@@ -32,6 +32,7 @@ model Client {
   utmContent        String?   @map("utmContent")
   utmTerm           String?   @map("utmTerm")
   metaLeadgenId     String?   @unique @map("metaLeadgenId")
+  metaCapConfigId   String?   @map("metaCapConfigId")
 
   tags         ClientTag[]
   reminders    Reminder[]
@@ -39,6 +40,7 @@ model Client {
   schedules    Schedule[]
   partners     ClientPartner[]
   linkedEnterprise Enterprise? @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
+  capiConfig   MetaCapConfig?  @relation(fields: [metaCapConfigId], references: [id], onDelete: SetNull)
   creator      User          @relation("CreatedClients", fields: [createdBy], references: [id], onDelete: Cascade)
   queueAssignments LeadQueueAssignment[] @relation("AssignmentLead")
 
@@ -49,6 +51,7 @@ model Client {
   @@index([utmCampaign])
   @@index([phone])
   @@index([email])
+  @@index([metaCapConfigId])
   @@map("clients")
 }
 
@@ -425,4 +428,28 @@ model ClientErrorLog {
   @@index([slug])
   @@index([message])
   @@map("client_error_logs")
+}
+
+// ============================================================
+// META CAPI CONFIG — Multi-client Conversions API
+// Suporta múltiplos datasets/tokens para diferentes clientes.
+// Cada config pode ser vinculado a form_ids específicos para
+// auto-atribuição quando leads chegam via webhook.
+// ============================================================
+model MetaCapConfig {
+  id          String   @id @default(cuid()) @map("id")
+  name        String   @map("name")             // ex: "Felipe - Pixel", "Cliente X - Offline Dataset"
+  accessToken  String   @map("accessToken")
+  datasetId    String   @map("datasetId")
+  enabled     Boolean  @default(true) @map("enabled")
+  isDefault   Boolean  @default(false) @map("isDefault")
+  /** JSON array de form_ids Meta. Quando um lead chega via webhook
+   *  com form_id correspondente, este config é auto-atribuído ao cliente. */
+  formIds     String?  @map("formIds")          // JSON: ["123","456"]
+  createdAt   DateTime @default(now()) @map("createdAt")
+  updatedAt   DateTime @updatedAt @map("updatedAt")
+
+  clients Client[]
+
+  @@map("meta_cap_configs")
 }

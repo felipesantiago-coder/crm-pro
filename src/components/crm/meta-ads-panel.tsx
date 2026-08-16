@@ -850,13 +850,15 @@ function ConfigTab() {
   const [diagnosing, setDiagnosing] = useState(false);
   const [diagnosis, setDiagnosis] = useState<any>(null);
 
-  // CAPI (Conversions API) states
-  const [capiEnabled, setCapEnabled] = useState(false);
-  const [capAccessToken, setCapAccessToken] = useState('');
-  const [capiDatasetId, setCapiDatasetId] = useState('');
-  const [showCapToken, setShowCapToken] = useState(false);
-  const [hasCapAccessToken, setHasCapAccessToken] = useState(false);
-  const [testingCap, setTestingCap] = useState(false);
+  // CAPI Multi-config states
+  const [capiConfigs, setCapiConfigs] = useState<any[]>([]);
+  const [loadingCapi, setLoadingCapi] = useState(false);
+  const [showCapiDialog, setShowCapiDialog] = useState(false);
+  const [editingCapi, setEditingCapi] = useState<any>(null);
+  const [capiForm, setCapiForm] = useState({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true });
+  const [savingCapi, setSavingCapi] = useState(false);
+  const [testingCapId, setTestingCapId] = useState<string | null>(null);
+  const [showCapiTokenDialog, setShowCapiTokenDialog] = useState(false);
 
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/webhooks/meta-leads`
@@ -875,15 +877,13 @@ function ConfigTab() {
         setHasVerifyToken(data.hasVerifyToken);
         setHasAppSecret(data.hasAppSecret);
         setHasPageAccessToken(data.hasPageAccessToken);
-        setCapEnabled(data.capiEnabled);
-        setHasCapAccessToken(data.hasCapAccessToken);
-        setCapiDatasetId(data.capiDatasetId || '');
       }
     } catch {
       // Silencioso
     } finally {
       setLoading(false);
     }
+    loadCapiConfigs();
   }
 
   async function checkWebhookStatus() {
@@ -897,9 +897,6 @@ function ConfigTab() {
         setHasVerifyToken(data.hasVerifyToken);
         setHasAppSecret(data.hasAppSecret);
         setHasPageAccessToken(data.hasPageAccessToken);
-        setCapEnabled(data.capiEnabled);
-        setHasCapAccessToken(data.hasCapAccessToken);
-        setCapiDatasetId(data.capiDatasetId || '');
         if (data.enabled && data.hasVerifyToken && data.hasAppSecret && data.hasPageAccessToken) {
           toast.success('Webhook ativo e pronto para receber leads');
         } else if (data.enabled) {
@@ -951,9 +948,6 @@ function ConfigTab() {
           appSecret: appSecret || null,
           pageAccessToken: pageAccessToken || null,
           enabled,
-          capiAccessToken: capAccessToken || null,
-          capiDatasetId: capiDatasetId || null,
-          capiEnabled,
         }),
       });
 
@@ -962,7 +956,6 @@ function ConfigTab() {
         setVerifyToken('');
         setAppSecret('');
         setPageAccessToken('');
-        setCapAccessToken('');
         loadConfig();
       } else {
         const data = await res.json();
@@ -984,44 +977,121 @@ function ConfigTab() {
     }
   }
 
-  async function testCapIntegration() {
-    const token = capAccessToken || undefined;
-    const dataset = capiDatasetId || undefined;
-    if (!token && !hasCapAccessToken) {
-      toast.error('Preencha o Access Token do CAPI');
-      return;
-    }
-    if (!dataset) {
-      toast.error('Preencha o Dataset ID');
-      return;
-    }
-    setTestingCap(true);
+  // ═══ CAPI Multi-config functions ═══
+  async function loadCapiConfigs() {
+    setLoadingCapi(true);
     try {
-      // Use the token from input (if filled) or test with the saved one
-      const testToken = token;
-      if (!testToken) {
-        toast.error('Preencha o Access Token do CAPI no campo abaixo para testar');
-        return;
-      }
-      const res = await fetch('/api/webhooks/meta-leads/capi-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken: testToken, datasetId: dataset }),
-      });
+      const res = await fetch('/api/meta-capi-configs');
+      if (res.ok) setCapiConfigs(await res.json());
+    } catch { /* silent */ }
+    finally { setLoadingCapi(false); }
+  }
+
+  function openNewCapiDialog() {
+    setEditingCapi(null);
+    setCapiForm({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true });
+    setShowCapiDialog(true);
+  }
+
+  async function openEditCapiDialog(config: any) {
+    setEditingCapi(config);
+    // Fetch full config to get the unmasked token
+    try {
+      const res = await fetch(`/api/meta-capi-configs/${config.id}`);
       if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          toast.success(data.message);
-        } else {
-          toast.error(data.message);
-        }
-      } else {
-        toast.error('Erro ao enviar evento de teste');
+        const full = await res.json();
+        setCapiForm({
+          name: full.name,
+          accessToken: full.accessToken,
+          datasetId: full.datasetId,
+          isDefault: full.isDefault,
+          formIds: full.formIds ? JSON.parse(full.formIds).join(', ') : '',
+          enabled: full.enabled,
+        });
       }
     } catch {
-      toast.error('Falha de conexão ao testar CAPI');
+      setCapiForm({
+        name: config.name,
+        accessToken: '',
+        datasetId: config.datasetId,
+        isDefault: config.isDefault,
+        formIds: '',
+        enabled: config.enabled,
+      });
+    }
+    setShowCapiDialog(true);
+  }
+
+  async function saveCapiConfig() {
+    if (!capiForm.name || !capiForm.datasetId) {
+      toast.error('Nome e Dataset ID são obrigatórios');
+      return;
+    }
+    if (!editingCapi && !capiForm.accessToken) {
+      toast.error('Access Token é obrigatório para novos configs');
+      return;
+    }
+    setSavingCapi(true);
+    try {
+      const body: any = {
+        name: capiForm.name,
+        datasetId: capiForm.datasetId,
+        isDefault: capiForm.isDefault,
+        enabled: capiForm.enabled,
+        formIds: capiForm.formIds ? capiForm.formIds.split(/[,\s]+/).filter(Boolean) : [],
+      };
+      if (capiForm.accessToken) body.accessToken = capiForm.accessToken;
+
+      const url = editingCapi ? `/api/meta-capi-configs/${editingCapi.id}` : '/api/meta-capi-configs';
+      const method = editingCapi ? 'PATCH' : 'POST';
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (res.ok) {
+        toast.success(editingCapi ? 'Configuração CAPI atualizada' : 'Configuração CAPI criada');
+        setShowCapiDialog(false);
+        loadCapiConfigs();
+      } else {
+        const data = await res.json();
+        throw new Error(data.error || 'Erro ao salvar');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao salvar configuração CAPI');
     } finally {
-      setTestingCap(false);
+      setSavingCapi(false);
+    }
+  }
+
+  async function deleteCapiConfig(id: string) {
+    if (!confirm('Excluir esta configuração CAPI? Leads vinculados perderão a associação.')) return;
+    try {
+      const res = await fetch(`/api/meta-capi-configs/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Configuração CAPI excluída');
+        loadCapiConfigs();
+      }
+    } catch {
+      toast.error('Erro ao excluir configuração CAPI');
+    }
+  }
+
+  async function testCapiConfig(configId: string) {
+    setTestingCapId(configId);
+    try {
+      const res = await fetch(`/api/meta-capi-configs/${configId}`);
+      if (!res.ok) { toast.error('Erro ao buscar config'); return; }
+      const config = await res.json();
+      const testRes = await fetch('/api/webhooks/meta-leads/capi-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: config.accessToken, datasetId: config.datasetId }),
+      });
+      if (testRes.ok) {
+        const data = await testRes.json();
+        toast[data.success ? 'success' : 'error'](data.message);
+      }
+    } catch {
+      toast.error('Falha ao testar CAPI');
+    } finally {
+      setTestingCapId(null);
     }
   }
 
@@ -1315,153 +1385,161 @@ function ConfigTab() {
         </CardContent>
       </Card>
 
-      {/* ═══ CAPI — Conversions API (Leads Qualificados) ═══ */}
-      <Card className={capiEnabled ? 'border-purple-200 dark:border-purple-800/50 bg-purple-50/50 dark:bg-purple-950/20' : ''}>
+      {/* ═══ CAPI — Multi-client Conversions API ═══ */}
+      <Card className={capiConfigs.some((c: any) => c.enabled) ? 'border-purple-200 dark:border-purple-800/50 bg-purple-50/50 dark:bg-purple-950/20' : ''}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <ArrowUpRight className="h-4 w-4 text-purple-600" />
-                API de Conversões (Leads Qualificados)
+                API de Conversões (Multi-cliente)
               </CardTitle>
               <CardDescription className="mt-1">
-                Envia mudanças de stage de volta para a Meta, permitindo otimizar por leads qualificados
+                Configure múltiplos datasets para enviar eventos de conversão por cliente/campanha
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {capiEnabled ? (
-                <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 gap-1">
-                  <Zap className="h-3 w-3" />
-                  Ativo
-                </Badge>
-              ) : (
-                <Badge className="bg-muted text-muted-foreground gap-1">
-                  <Circle className="h-3 w-3" />
-                  Inativo
-                </Badge>
-              )}
+            <div className="flex items-center gap-2">
+              <Badge className={capiConfigs.some((c: any) => c.enabled) ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-muted text-muted-foreground'}>
+                {capiConfigs.filter((c: any) => c.enabled).length} ativo{capiConfigs.filter((c: any) => c.enabled).length !== 1 ? 's' : ''}
+              </Badge>
+              <Button size="sm" variant="outline" className="border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400" onClick={openNewCapiDialog}>
+                <Save className="h-3.5 w-3.5 mr-1" /> Adicionar
+              </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Toggle CAPI */}
-          <div className="flex items-center justify-between">
-            <Label htmlFor="capi-enabled" className="text-sm cursor-pointer">
-              {capiEnabled ? 'CAPI ativado' : 'Ativar API de Conversões'}
-            </Label>
-            <Switch id="capi-enabled" checked={capiEnabled} onCheckedChange={setCapEnabled} />
-          </div>
-
-          <Separator />
-
-          {/* Dataset ID */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="capi-dataset-id" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Dataset ID (Identificação do Conjunto de Dados)
-              </Label>
-              {capiDatasetId && (
-                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
-                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
-                  Configurado
-                </Badge>
-              )}
+          {loadingCapi ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : capiConfigs.length === 0 ? (
+            <div className="text-center py-8 space-y-2">
+              <p className="text-sm text-muted-foreground">Nenhuma configuração CAPI criada</p>
+              <p className="text-xs text-muted-foreground">
+                Adicione um dataset para cada conta de anúncios (sua ou de clientes)
+              </p>
             </div>
-            <Input
-              id="capi-dataset-id"
-              placeholder="Ex: 858296646928219"
-              value={capiDatasetId}
-              onChange={(e) => setCapiDatasetId(e.target.value)}
-              type="text"
-              className="font-mono text-sm"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Encontrado no Gerenciador de Eventos da Meta, na URL do ponto de extremidade fornecida nas instruções.
-            </p>
-          </div>
-
-          {/* CAPI Access Token */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="capi-access-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Access Token do Dataset
-              </Label>
-              {hasCapAccessToken && (
-                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
-                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
-                  Configurado
-                </Badge>
-              )}
+          ) : (
+            <div className="space-y-2">
+              {capiConfigs.map((config: any) => (
+                <div key={config.id} className={
+                  `rounded-lg border p-3 transition-colors ${config.enabled
+                    ? 'border-purple-200 dark:border-purple-800/50 bg-white dark:bg-gray-900/50'
+                    : 'border-muted bg-muted/30 opacity-60'}`
+                }>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm truncate">{config.name}</span>
+                        {config.isDefault && (
+                          <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[10px] px-1.5 py-0">Padrão</Badge>
+                        )}
+                        {!config.enabled && (
+                          <Badge className="bg-muted text-muted-foreground text-[10px] px-1.5 py-0">Inativo</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span className="font-mono">ID: {config.datasetId}</span>
+                        {config._count?.clients > 0 && (
+                          <span>{config._count.clients} lead{config._count.clients !== 1 ? 's' : ''}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => testCapiConfig(config.id)} disabled={testingCapId === config.id}>
+                        {testingCapId === config.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditCapiDialog(config)}>
+                        <Save className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700" onClick={() => deleteCapiConfig(config.id)}>
+                        <Circle className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="relative">
-              <Input
-                id="capi-access-token"
-                placeholder={hasCapAccessToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Cole o token gerado pelo Meta Business SDK'}
-                value={capAccessToken}
-                onChange={(e) => setCapAccessToken(e.target.value)}
-                type={showCapToken ? 'text' : 'password'}
-                className="font-mono text-sm pr-10"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
-                onClick={() => setShowCapToken(!showCapToken)}
-              >
-                {showCapToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </Button>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Gere um token de acesso para o dataset no Meta Business SDK ou nas configurações do conjunto de dados.
-            </p>
-          </div>
-
-          <Separator />
-
-          {/* CAPI Actions */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={testCapIntegration}
-              disabled={testingCap}
-              className="border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30"
-            >
-              {testingCap ? (
-                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Enviando...</>
-              ) : (
-                <><Zap className="h-4 w-4 mr-1" /> Testar CAPI</>
-              )}
-            </Button>
-          </div>
+          )}
 
           {/* CAPI Info */}
           <div className="rounded-lg bg-muted/50 border p-3 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Como funciona</p>
+            <p className="text-xs font-medium text-muted-foreground">Como funciona (multi-cliente)</p>
             <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
-              <li>Toda vez que o stage de um lead muda no CRM, o evento é enviado automaticamente para a Meta</li>
-              <li>A Meta usa esses dados para otimizar a entrega e habilitar a meta &quot;Maximizar leads qualificados&quot;</li>
-              <li>Os dados de email e telefone são hashados (SHA256) antes do envio, garantindo privacidade</li>
-              <li>Use &quot;Testar CAPI&quot; para enviar um evento de teste — ele aparece na aba &quot;Eventos de teste&quot; do Gerenciador de Eventos</li>
+              <li>Cada config tem seu próprio <strong>Access Token</strong> e <strong>Dataset ID</strong> — um por conta de anúncios</li>
+              <li>Quando um lead chega via webhook, o CRM busca o config pelo <strong>Form ID</strong> (auto-atribuição)</li>
+              <li>Se nenhum form_id corresponder, é usado o config <strong>Padrão</strong></li>
+              <li>Na mudança de stage, o evento é enviado para o dataset correto do lead</li>
+              <li>Dados PII (email, telefone, nome) são hashados (SHA256) antes do envio</li>
             </ul>
           </div>
 
-          {/* Tutorial CAPI */}
+          {/* Tutorial CAPI Multi-cliente */}
           <details className="group">
             <summary className="text-xs font-medium text-purple-600 dark:text-purple-400 cursor-pointer hover:underline flex items-center gap-1">
-              Como obter o Access Token e Dataset ID
+              Como configurar para múltiplos clientes
             </summary>
             <ol className="mt-2 text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
-              <li>No <strong>Gerenciador de Eventos</strong>, clique em &quot;Conectar fonte de dados&quot; → &quot;CRM&quot; → &quot;API de Conversões manualmente&quot;</li>
-              <li>A Meta fornecerá a <strong>URL do ponto de extremidade</strong> — copie o número após <code className="bg-muted px-1 rounded">v26.0/</code> (esse é o Dataset ID)</li>
-              <li>Gere o <strong>Access Token</strong> usando o Meta Business SDK ou nas configurações do conjunto de dados</li>
-              <li>Clique em &quot;Testar CAPI&quot; e verifique se o evento aparece na aba &quot;Eventos de teste&quot; do Gerenciador de Eventos</li>
-              <li>Ative o switch, salve, e a meta &quot;Maximizar leads qualificados&quot; estará disponível no Ads Manager</li>
+              <li><strong>Sua conta:</strong> Crie um config com seu token e pixel. Marque como &quot;Padrão&quot;</li>
+              <li><strong>Cliente:</strong> Peça ao cliente para criar um System User no Business Settings dele</li>
+              <li>O cliente gera um token com permissões <code className="bg-muted px-1 rounded">business_management</code> + <code className="bg-muted px-1 rounded">ads_management</code></li>
+              <li>Crie um novo config com o token e dataset ID do cliente</li>
+              <li>Opcional: preencha os <strong>Form IDs</strong> para auto-atribuir leads do formulário específico</li>
+              <li>Teste cada config com o botão de raio para confirmar o funcionamento</li>
             </ol>
           </details>
         </CardContent>
       </Card>
+
+      {/* ═══ CAPI Dialog ═══ */}
+      {showCapiDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowCapiDialog(false)}>
+          <div className="bg-background rounded-lg border shadow-lg w-full max-w-lg mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h3 className="text-lg font-semibold">{editingCapi ? 'Editar' : 'Nova'} Configuração CAPI</h3>
+              <p className="text-sm text-muted-foreground">
+                {editingCapi ? 'Altere os campos desejados. Deixe o token vazio para manter o atual.' : 'Configure o acesso a um dataset da Conversions API'}
+              </p>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Nome *</Label>
+                <Input placeholder='Ex: "Felipe - Pixel" ou "Cliente X - Offline"' value={capiForm.name} onChange={(e) => setCapiForm({ ...capiForm, name: e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Dataset ID *</Label>
+                <Input placeholder="Ex: 1482541132653965" value={capiForm.datasetId} onChange={(e) => setCapiForm({ ...capiForm, datasetId: e.target.value })} className="font-mono text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Access Token {editingCapi ? '(deixe vazio para manter)' : '*'}</Label>
+                <Input type="password" placeholder={editingCapi ? '••••••••••••• (manter atual)' : 'Cole o token gerado pelo Meta Business'} value={capiForm.accessToken} onChange={(e) => setCapiForm({ ...capiForm, accessToken: e.target.value })} className="font-mono text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Form IDs (opcional, separados por vírgula)</Label>
+                <Input placeholder="Ex: 123456789, 987654321" value={capiForm.formIds} onChange={(e) => setCapiForm({ ...capiForm, formIds: e.target.value })} className="font-mono text-sm" />
+                <p className="text-[10px] text-muted-foreground">IDs dos formulários Meta que devem usar este config. Encontrados no Ads Manager → Formulários de Lead.</p>
+              </div>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium cursor-pointer" onClick={() => setCapiForm({ ...capiForm, isDefault: !capiForm.isDefault })}>
+                  Configuração padrão (fallback)
+                </Label>
+                <Switch checked={capiForm.isDefault} onCheckedChange={(v) => setCapiForm({ ...capiForm, isDefault: v })} />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium cursor-pointer" onClick={() => setCapiForm({ ...capiForm, enabled: !capiForm.enabled })}>
+                  Ativado
+                </Label>
+                <Switch checked={capiForm.enabled} onCheckedChange={(v) => setCapiForm({ ...capiForm, enabled: v })} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowCapiDialog(false)}>Cancelar</Button>
+              <Button onClick={saveCapiConfig} disabled={savingCapi} className="bg-purple-600 hover:bg-purple-700 text-white">
+                {savingCapi ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Salvando...</> : <><Save className="h-4 w-4 mr-1" /> {editingCapi ? 'Atualizar' : 'Criar'}</>}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

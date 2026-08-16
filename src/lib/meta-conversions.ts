@@ -1,24 +1,20 @@
 import crypto from 'crypto';
 
 // ============================================================
-// Meta Conversions API (CAPI) — CRM Integration
+// Meta Conversions API (CAPI) — Multi-client CRM Integration
 // Envia eventos de mudança de stage do CRM de volta para a Meta
 // para otimização de leads qualificados.
 //
+// Suporta múltiplos datasets/tokens (um por cliente/campanha).
+// Cada lead pode ter um CAPI config específico via metaCapConfigId.
+// Se não tiver, usa o config padrão (isDefault=true).
+//
 // Fluxo:
 //   1. Corretor muda stage do cliente no CRM
-//   2. Este módulo envia o evento para a Meta via CAPI
-//   3. Meta usa os dados para otimizar entrega de anúncios
+//   2. Este módulo busca o CAPI config do cliente
+//   3. Envia o evento para o dataset correto da Meta
+//   4. Meta usa os dados para otimizar entrega de anúncios
 // ============================================================
-
-/**
- * Configurações do CAPI armazenadas no banco (userSettings).
- */
-interface CapiConfig {
-  enabled: boolean;
-  accessToken: string | null;
-  datasetId: string | null;
-}
 
 /**
  * Dados do cliente necessários para o evento.
@@ -33,6 +29,19 @@ export interface LeadConversionData {
   eventTime: number;
   /** Novo stage do cliente. */
   stage: string;
+  /** ID do CAPI config específico do cliente (se houver). */
+  capiConfigId?: string | null;
+}
+
+/**
+ * CAPI config resolved from database.
+ */
+interface ResolvedCapConfig {
+  id: string;
+  accessToken: string;
+  datasetId: string;
+  enabled: boolean;
+  name: string;
 }
 
 /**
@@ -52,31 +61,7 @@ function sha256Hash(value: string): string {
 }
 
 /**
- * Recupera as configurações do CAPI do banco de dados.
- */
-async function getCapConfig(): Promise<CapiConfig> {
-  const { db } = await import('@/lib/db');
-  const settings = await db.userSettings.findMany({
-    where: {
-      key: {
-        in: ['meta_capi_enabled', 'meta_capi_access_token', 'meta_capi_dataset_id'],
-      },
-    },
-  });
-
-  const map: Record<string, string> = {};
-  settings.forEach((s) => { map[s.key] = s.value; });
-
-  return {
-    enabled: map['meta_capi_enabled'] === 'true',
-    accessToken: map['meta_capi_access_token'] || null,
-    datasetId: map['meta_capi_dataset_id'] || null,
-  };
-}
-
-/**
  * Mapeia stages do CRM para nomes de eventos da Meta.
- * A Meta recomenda usar nomes descritivos para cada estágio crítico.
  */
 function stageToEventName(stage: string): string {
   const mapping: Record<string, string> = {
@@ -93,6 +78,70 @@ function stageToEventName(stage: string): string {
 }
 
 /**
+ * Busca o CAPI config correto para um cliente.
+ * Ordem de prioridade:
+ *   1. Config específico do cliente (metaCapConfigId)
+ *   2. Config padrão (isDefault=true)
+ *   3. Fallback: config legado do UserSettings (migração)
+ *   4. null (CAPI desabilitado)
+ */
+async function resolveCapConfig(capiConfigId?: string | null): Promise<ResolvedCapConfig | null> {
+  const { db } = await import('@/lib/db');
+
+  // 1. Config específico do cliente
+  if (capiConfigId) {
+    const specific = await db.metaCapConfig.findUnique({
+      where: { id: capiConfigId },
+    });
+    if (specific && specific.enabled) {
+      return {
+        id: specific.id,
+        accessToken: specific.accessToken,
+        datasetId: specific.datasetId,
+        enabled: true,
+        name: specific.name,
+      };
+    }
+  }
+
+  // 2. Config padrão
+  const defaultConfig = await db.metaCapConfig.findFirst({
+    where: { isDefault: true, enabled: true },
+  });
+  if (defaultConfig) {
+    return {
+      id: defaultConfig.id,
+      accessToken: defaultConfig.accessToken,
+      datasetId: defaultConfig.datasetId,
+      enabled: true,
+      name: defaultConfig.name,
+    };
+  }
+
+  // 3. Fallback: config legado do UserSettings
+  // Isso permite migração suave sem perder a config existente
+  const settings = await db.userSettings.findMany({
+    where: {
+      key: { in: ['meta_capi_enabled', 'meta_capi_access_token', 'meta_capi_dataset_id'] },
+    },
+  });
+  const map: Record<string, string> = {};
+  settings.forEach((s) => { map[s.key] = s.value; });
+
+  if (map['meta_capi_enabled'] === 'true' && map['meta_capi_access_token'] && map['meta_capi_dataset_id']) {
+    return {
+      id: '__legacy__',
+      accessToken: map['meta_capi_access_token'],
+      datasetId: map['meta_capi_dataset_id'],
+      enabled: true,
+      name: 'Configuração Legada',
+    };
+  }
+
+  return null;
+}
+
+/**
  * Envia um evento de conversão do CRM para a Meta via Conversions API.
  *
  * Chamado de forma assíncrona (fire-and-forget) quando o stage de um cliente muda.
@@ -100,9 +149,9 @@ function stageToEventName(stage: string): string {
  */
 export async function sendLeadConversionEvent(data: LeadConversionData): Promise<void> {
   try {
-    const config = await getCapConfig();
+    const config = await resolveCapConfig(data.capiConfigId);
 
-    if (!config.enabled || !config.accessToken || !config.datasetId) {
+    if (!config || !config.accessToken || !config.datasetId) {
       return; // CAPI desabilitado ou não configurado
     }
 
@@ -167,17 +216,18 @@ export async function sendLeadConversionEvent(data: LeadConversionData): Promise
     if (!response.ok) {
       const errorText = await response.text();
       console.error(
-        `[Meta CAPI] Falha ao enviar evento (${data.stage}) para cliente ${data.clientName}:`,
+        `[Meta CAPI] Falha ao enviar evento (${data.stage}) para cliente ${data.clientName}` +
+        ` [config: ${config.name}]:`,
         `HTTP ${response.status}`, errorText
       );
     } else {
       const result = await response.json();
-      // Meta retorna { messages: [...] } com possíveis warnings
       const warnings = result.messages?.filter((m: any) => m.type === 'warning');
       if (warnings?.length > 0) {
-        console.warn(`[Meta CAPI] Evento enviado com warnings (${data.stage}):`, warnings);
+        console.warn(`[Meta CAPI] Evento enviado com warnings (${data.stage}) [config: ${config.name}]:`, warnings);
       }
-      console.log(`[Meta CAPI] Evento enviado: ${stageToEventName(data.stage)} para ${data.clientName} (${data.metaLeadgenId || 'sem lead_id'})`);
+      console.log(`[Meta CAPI] Evento enviado: ${stageToEventName(data.stage)} para ${data.clientName}` +
+        ` (${data.metaLeadgenId || 'sem lead_id'}) [config: ${config.name}]`);
     }
   } catch (error) {
     console.error('[Meta CAPI] Erro ao enviar evento de conversão:', error);
@@ -243,4 +293,31 @@ export async function sendTestCapEvent(accessToken: string, datasetId: string): 
       message: error instanceof Error ? error.message : 'Erro desconhecido',
     };
   }
+}
+
+/**
+ * Busca um CAPI config que tenha um formId específico.
+ * Usado pelo webhook para auto-atribuir configs quando chega um lead.
+ */
+export async function findCapConfigByFormId(formId: string): Promise<{ id: string } | null> {
+  const { db } = await import('@/lib/db');
+
+  const configs = await db.metaCapConfig.findMany({
+    where: { enabled: true },
+    select: { id: true, formIds: true },
+  });
+
+  for (const config of configs) {
+    if (!config.formIds) continue;
+    try {
+      const ids: string[] = JSON.parse(config.formIds);
+      if (ids.includes(formId)) {
+        return { id: config.id };
+      }
+    } catch {
+      // Invalid JSON, skip
+    }
+  }
+
+  return null;
 }

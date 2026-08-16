@@ -96,6 +96,7 @@ export async function PATCH(
       metaLeadgenId: client.metaLeadgenId,
       eventTime: Math.floor(Date.now() / 1000),
       stage,
+      capiConfigId: client.metaCapConfigId,
     }).catch(() => {});
 
     return NextResponse.json(client);

@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import crypto from 'crypto';
 import { notifyNewLead } from '@/lib/telegram';
 import { assignLeadToUser } from '@/lib/lead-queue';
+import { findCapConfigByFormId } from '@/lib/meta-conversions';
 
 // ============================================================
 // Meta Lead Ads Webhook
@@ -233,14 +234,18 @@ export async function POST(request: NextRequest) {
     // 3. Parsear o payload
     let body: {
       entry?: Array<{
+        id?: string;
         changes?: Array<{
           field: string;
           value?: {
             leadgen_id?: string | number;
             field_data?: Array<{ name: string; values: string[] }>;
             ad_name?: string;
+            ad_id?: string;
             campaign_name?: string;
+            campaign_id?: string;
             form_name?: string;
+            form_id?: string;
           };
         }>;
       }>;
@@ -282,6 +287,20 @@ export async function POST(request: NextRequest) {
         const adName = leadData.ad_name || 'Anúncio Meta Ads';
         const campaignName = leadData.campaign_name || '';
         const formName = leadData.form_name || '';
+        const formId = leadData.form_id || '';
+
+        // Buscar CAPI config por form_id (para multi-client CAPI)
+        let capiConfigId: string | undefined;
+        if (formId) {
+          try {
+            const capiMatch = await findCapConfigByFormId(formId);
+            if (capiMatch) {
+              capiConfigId = capiMatch.id;
+            }
+          } catch (capiErr) {
+            console.warn(`[Meta Webhook] Falha ao buscar CAPI config para form ${formId}:`, capiErr);
+          }
+        }
 
         // O Meta envia apenas o ID — buscar dados via Graph API
         if (fieldData.length === 0 && config.pageAccessToken) {
@@ -445,7 +464,8 @@ export async function POST(request: NextRequest) {
               updatePeriod: 1,
               createdBy: creatorId,
               metaLeadgenId: leadgenId,
-              notes: `[Meta Ads] Lead recebido automaticamente.\nAnúncio: ${adName}${campaignName ? `\nCampanha: ${campaignName}` : ''}\nFormulário: ${formName}\nLead ID: ${leadgenId}`,
+              metaCapConfigId: capiConfigId,
+              notes: `[Meta Ads] Lead recebido automaticamente.\nAnúncio: ${adName}${campaignName ? `\nCampanha: ${campaignName}` : ''}\nFormulário: ${formName}${formId ? ` (ID: ${formId})` : ''}\nLead ID: ${leadgenId}${capiConfigId ? `\nCAPI Config: ${capiConfigId}` : ''}`,
             },
           });
 
