@@ -117,7 +117,7 @@ function formatPhone(phone: string | null): string | null {
  */
 async function fetchLeadData(leadgenId: string, pageAccessToken: string): Promise<Array<{ name: string; values: string[] }> | null> {
   try {
-    const url = `https://graph.facebook.com/v25.0/${leadgenId}?access_token=${encodeURIComponent(pageAccessToken)}&fields=field_data`;
+    const url = `https://graph.facebook.com/v22.0/${leadgenId}?access_token=${encodeURIComponent(pageAccessToken)}&fields=field_data`;
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
@@ -125,6 +125,7 @@ async function fetchLeadData(leadgenId: string, pageAccessToken: string): Promis
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`[Meta Webhook] fetchLeadData(${leadgenId}) HTTP ${response.status}: ${errorText.slice(0, 300)}`);
       return null;
     }
 
@@ -132,6 +133,7 @@ async function fetchLeadData(leadgenId: string, pageAccessToken: string): Promis
     const fieldData = data?.field_data;
 
     if (!fieldData || !Array.isArray(fieldData)) {
+      console.warn(`[Meta Webhook] fetchLeadData(${leadgenId}) — field_data ausente na resposta`);
       return null;
     }
 
@@ -211,12 +213,21 @@ export async function GET(request: NextRequest) {
 // formulário de lead em um anúncio.
 // ============================================================
 export async function POST(request: NextRequest) {
+  // Log de entrada — sempre presente para confirmar que Meta está chamando o webhook
+  console.log('[Meta Webhook] POST recebido');
+
   try {
     // 1. Verificar se o webhook está ativado
     const config = await getMetaConfig();
+    console.log(`[Meta Webhook] Config: enabled=${config.enabled}, hasAppSecret=${!!config.appSecret}, hasPageAccessToken=${!!config.pageAccessToken}, hasVerifyToken=${!!config.verifyToken}`);
 
     if (!config.enabled) {
-      return NextResponse.json({ received: true, processed: false, reason: 'webhook_disabled' });
+      console.error('[Meta Webhook] ⚠ WEBHOOK DESABILITADO — Lead perdido! Ative o webhook nas configurações.');
+      // Retorna 503 para que o Meta tente novamente mais tarde
+      return NextResponse.json(
+        { received: true, processed: false, reason: 'webhook_disabled' },
+        { status: 503 }
+      );
     }
 
     // 2. Validar assinatura HMAC (se app_secret configurado)
@@ -224,15 +235,18 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.text();
 
     if (!config.appSecret) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      console.error('[Meta Webhook] ⚠ APP_SECRET não configurado — impossível validar assinatura. Configure meta_app_secret nas configurações.');
+      return NextResponse.json({ error: 'App Secret não configurado' }, { status: 403 });
     }
 
     if (!isValidSignature(rawBody, signature, config.appSecret)) {
+      console.error(`[Meta Webhook] ⚠ ASSINATURA INVÁLIDA — header=${signature?.slice(0, 20)}... bodyLen=${rawBody.length}. Verifique se o App Secret está correto.`);
       return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 });
     }
 
     // 3. Parsear o payload
     let body: {
+      object?: string;
       entry?: Array<{
         id?: string;
         changes?: Array<{
@@ -253,15 +267,19 @@ export async function POST(request: NextRequest) {
     try {
       body = JSON.parse(rawBody);
     } catch {
-      console.error('[Meta Webhook] Payload JSON inválido');
+      console.error(`[Meta Webhook] ⚠ Payload JSON inválido (primeiros 200 chars): ${rawBody.slice(0, 200)}`);
       return NextResponse.json({ error: 'JSON inválido' }, { status: 400 });
     }
 
     // 4. Extrair dados do lead do payload
-    // Meta envia no formato: { object: "page", entry: [{ changes: [{ value: { field_data, ... } }] }] }
     const entries = body.entry || [];
 
+    // Log estrutural do payload (sem PII)
+    const allFields = entries.flatMap(e => (e.changes || []).map(c => c.field));
+    console.log(`[Meta Webhook] Payload: object=${body.object}, entries=${entries.length}, fields=[${allFields.join(', ')}]`);
+
     if (entries.length === 0) {
+      console.warn('[Meta Webhook] ⚠ Entries vazio no payload — nenhum lead para processar');
       return NextResponse.json({ received: true, processed: false, reason: 'empty_entry' });
     }
 
@@ -276,11 +294,21 @@ export async function POST(request: NextRequest) {
       const changes = entry.changes || [];
 
       for (const change of changes) {
+        // Log cada change para identificar field inesperados
+        const changeLeadgenId = change.value?.leadgen_id;
+        console.log(`[Meta Webhook] Change: field="${change.field}", leadgen_id=${changeLeadgenId ?? 'none'}, ad=${change.value?.ad_name || 'none'}, campaign=${change.value?.campaign_name || 'none'}`);
+
         // Meta pode enviar field como "leadgen" ou "leadgen_id"
-        if (change.field !== 'leadgen_id' && change.field !== 'leadgen') continue;
+        if (change.field !== 'leadgen_id' && change.field !== 'leadgen') {
+          console.warn(`[Meta Webhook] ⚠ Field "${change.field}" ignorado (esperado: leadgen ou leadgen_id)`);
+          continue;
+        }
 
         const leadData = change.value;
-        if (!leadData) continue;
+        if (!leadData) {
+          console.warn('[Meta Webhook] ⚠ Change sem value — ignorado');
+          continue;
+        }
 
         const leadgenId = String(leadData.leadgen_id || 'unknown');
         let fieldData = leadData.field_data || [];
@@ -290,6 +318,8 @@ export async function POST(request: NextRequest) {
         const formId = leadData.form_id || '';
         const adId = String(leadData.ad_id || '');
         const campaignId = String(leadData.campaign_id || '');
+
+        console.log(`[Meta Webhook] Processando leadgen_id=${leadgenId}, formId=${formId}, ad="${adName}", campaign="${campaignName}"`);
 
         // Auto-populate lead_form_mappings (fire-and-forget, non-critical)
         if (formId) {
@@ -328,14 +358,17 @@ export async function POST(request: NextRequest) {
 
         // O Meta envia apenas o ID — buscar dados via Graph API
         if (fieldData.length === 0 && config.pageAccessToken) {
+          console.log(`[Meta Webhook] Buscando dados do lead ${leadgenId} via Graph API (field_data vazio no webhook)`);
           const fetched = await fetchLeadData(leadgenId, config.pageAccessToken);
           if (fetched) {
             fieldData = fetched;
           } else {
-            console.warn(`[Meta Webhook] Não foi possível buscar dados do lead ${leadgenId}`);
+            console.error(`[Meta Webhook] ⚠ Não foi possível buscar dados do lead ${leadgenId} via Graph API — lead será criado com dados mínimos`);
           }
         } else if (fieldData.length === 0) {
-          console.warn(`[Meta Webhook] Sem field_data e sem pageAccessToken para lead ${leadgenId}`);
+          console.error(`[Meta Webhook] ⚠ Sem field_data e sem pageAccessToken para lead ${leadgenId} — lead será criado com dados mínimos`);
+        } else {
+          console.log(`[Meta Webhook] field_data presente no webhook com ${fieldData.length} campos para lead ${leadgenId}`);
         }
 
         // Extrair campos do formulário
@@ -365,10 +398,14 @@ export async function POST(request: NextRequest) {
         const phone = formatPhone(rawPhone);
         const region = city?.trim() || null;
 
-        // 5. Verificar duplicata
+        console.log(`[Meta Webhook] Dados extraídos: name="${name}", email=${email || 'null'}, phone=${phone || 'null'}, city=${region || 'null'}`);
+
+        // 5. Verificar duplicata por telefone/email
         const existing = await findExistingClient(phone, email);
         let assignedUserName: string | undefined;
         if (existing) {
+          console.log(`[Meta Webhook] Cliente existente encontrado: id=${existing.id}, name="${existing.name}" — criando interação`);
+
           // Criar interação registrando o novo contato do anúncio
           await db.interaction.create({
             data: {
@@ -390,7 +427,7 @@ export async function POST(request: NextRequest) {
             }).catch(() => {});
           }
 
-          // FIX: Assign via queue even for existing clients (was missing!)
+          // Assign via queue even for existing clients
           try {
             const assignResult = await assignLeadToUser({
               leadId: existing.id,
@@ -398,7 +435,7 @@ export async function POST(request: NextRequest) {
             });
             if (assignResult.assigned && assignResult.userId) {
               assignedUserName = assignResult.userName;
-              // Update client's createdBy to the assigned user
+              console.log(`[Meta Webhook] Fila: lead existente ${existing.id} atribuído a "${assignResult.userName}"`);
               await db.client.update({
                 where: { id: existing.id },
                 data: { createdBy: assignResult.userId },
@@ -421,9 +458,11 @@ export async function POST(request: NextRequest) {
                   console.warn(`[Meta Webhook] Usuário ${user?.name || assignResult.userId} sem Telegram. Lead existente ${existing.id} sem notificação.`);
                 }
               }).catch(() => {});
+            } else {
+              console.warn(`[Meta Webhook] ⚠ Fila: não foi possível atribuir lead existente ${existing.id}: ${assignResult.message}`);
             }
           } catch (queueErr) {
-            console.warn(`[Meta Webhook] Falha na atribuição de fila (lead existente):`, queueErr);
+            console.error(`[Meta Webhook] ⚠ Falha na atribuição de fila (lead existente ${existing.id}):`, queueErr);
           }
 
           results.push({
@@ -435,19 +474,18 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // 5. Check for duplicate — dedicated metaLeadgenId column (O(1) indexed lookup)
-        // Replaces old notes.contains approach which was a linear scan.
+        // 5b. Check for duplicate — dedicated metaLeadgenId column (O(1) indexed lookup)
         try {
           const existingByLeadgenId = await db.client.findUnique({
             where: { metaLeadgenId: leadgenId },
             select: { id: true },
           });
           if (existingByLeadgenId) {
+            console.log(`[Meta Webhook] Lead ${leadgenId} já processado anteriormente (client ${existingByLeadgenId.id}) — ignorando`);
             results.push({ success: true, clientName: 'dedup', reason: 'already_processed', leadId: leadgenId });
             continue;
           }
         } catch (dedupErr) {
-          // If dedup check fails, log but proceed (better to create a duplicate than lose a lead)
           console.warn(`[Meta Webhook] Falha na verificação de duplicata para lead ${leadgenId}:`, dedupErr);
         }
 
@@ -465,18 +503,17 @@ export async function POST(request: NextRequest) {
             creatorId = anyUser?.id;
           }
           if (!creatorId) {
-            console.error('[Meta Webhook] Nenhum usuário no sistema. Lead perdido:', name);
+            console.error(`[Meta Webhook] ⚠ NENHUM USUÁRIO NO SISTEMA — Lead "${name}" (${leadgenId}) PERDIDO!`);
             results.push({ success: false, clientName: name, reason: 'no_user', leadId: leadgenId });
             continue;
           }
         } catch {
-          console.error('[Meta Webhook] Erro ao buscar usuário');
+          console.error('[Meta Webhook] ⚠ Erro ao buscar usuário para createdBy');
           results.push({ success: false, clientName: name, reason: 'no_user', leadId: leadgenId });
           continue;
         }
 
         // 7. Create client FIRST (before queue assignment)
-        // FIX: if creation fails, we don't waste a queue turn
         try {
           const newClient = await db.client.create({
             data: {
@@ -492,6 +529,7 @@ export async function POST(request: NextRequest) {
               notes: `[Meta Ads] Lead recebido automaticamente.\nAnúncio: ${adName}${campaignName ? `\nCampanha: ${campaignName}` : ''}\nFormulário: ${formName}${formId ? ` (ID: ${formId})` : ''}\nLead ID: ${leadgenId}${capiConfigId ? `\nCAPI Config: ${capiConfigId}` : ''}`,
             },
           });
+          console.log(`[Meta Webhook] ✅ Cliente criado: id=${newClient.id}, name="${name}", phone=${phone || 'null'}, email=${email || 'null'}`);
 
           // Create initial interaction
           await db.interaction.create({
@@ -502,7 +540,6 @@ export async function POST(request: NextRequest) {
           });
 
           // 8. Assign via queue (direct function call, NOT HTTP)
-          // FIX: replaced fragile self-referential HTTP call with direct function
           let assignedUserId: string | undefined;
           try {
             const assignResult = await assignLeadToUser({
@@ -512,23 +549,23 @@ export async function POST(request: NextRequest) {
             if (assignResult.assigned && assignResult.userId) {
               assignedUserId = assignResult.userId;
               assignedUserName = assignResult.userName;
-              // Update client's createdBy to the assigned user
+              console.log(`[Meta Webhook] ✅ Fila: client ${newClient.id} atribuído a "${assignResult.userName}" (userId=${assignResult.userId})`);
               await db.client.update({
                 where: { id: newClient.id },
                 data: {
                   createdBy: assignedUserId,
-                  // Also store UTM info when available from Meta
                   utmSource: 'meta_ads',
                   utmCampaign: (campaignName || '').slice(0, 200) || undefined,
                 },
               }).catch(() => {});
+            } else {
+              console.warn(`[Meta Webhook] ⚠ Fila: não foi possível atribuir client ${newClient.id}: ${assignResult.message}`);
             }
           } catch (queueErr) {
-            console.error(`[Meta Webhook] Falha na atribuição de fila (lead salvo):`, queueErr);
+            console.error(`[Meta Webhook] ⚠ Falha na atribuição de fila (client ${newClient.id}):`, queueErr);
           }
 
           // 9. Send Telegram notification
-          // FIX: Pass assignedUserName so the agent knows it's their turn
           const notifyId = assignedUserId || creatorId;
           if (notifyId) {
             db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } }).then((user) => {
@@ -545,7 +582,6 @@ export async function POST(request: NextRequest) {
                   customAnswers: undefined,
                 }).catch((err) => console.warn('[Meta Webhook] Falha na notificação:', err));
               } else {
-                // FIX: Log when user has no Telegram configured
                 console.warn(`[Meta Webhook] Usuário ${user?.name || notifyId} atribuído mas sem Telegram. Lead ${newClient.id} (${name}) sem notificação.`);
               }
             }).catch(() => {});
@@ -553,14 +589,18 @@ export async function POST(request: NextRequest) {
 
           results.push({ success: true, clientName: name, leadId: leadgenId });
         } catch (createError) {
-          console.error(`[Meta Webhook] Erro ao criar cliente ${name}:`, createError);
+          console.error(`[Meta Webhook] ⚠ Erro ao criar cliente "${name}" (${leadgenId}):`, createError);
           results.push({ success: false, clientName: name, reason: 'create_failed', leadId: leadgenId });
         }
       }
     }
 
-    // 8. Incrementar contador de leads recebidos
+    // Log resumo final
     const successCount = results.filter((r) => r.success).length;
+    const failedResults = results.filter((r) => !r.success);
+    console.log(`[Meta Webhook] Resumo: ${successCount}/${results.length} processados com sucesso${failedResults.length > 0 ? `. Falhas: ${failedResults.map(r => `${r.reason}(${r.leadId})`).join(', ')}` : ''}`);
+
+    // Incrementar contador de leads recebidos
     if (successCount > 0) {
       try {
         const currentSetting = await db.userSettings.findUnique({
@@ -582,10 +622,10 @@ export async function POST(request: NextRequest) {
       processed: true,
       results,
       total: results.length,
-      succeeded: results.filter((r) => r.success).length,
+      succeeded: successCount,
     });
   } catch (error) {
-    console.error('[Meta Webhook] Erro interno:', error);
+    console.error('[Meta Webhook] ⚠ ERRO INTERNO:', error);
     return NextResponse.json(
       { error: 'Erro interno do servidor' },
       { status: 500 }
