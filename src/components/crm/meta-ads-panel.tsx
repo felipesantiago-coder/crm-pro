@@ -877,11 +877,22 @@ function ConfigTab() {
 
   async function checkWebhookStatus() {
     try {
-      const res = await fetch('/api/webhooks/meta-leads');
+      const res = await fetch('/api/webhooks/meta-leads/config');
       if (res.ok) {
         const data = await res.json();
         setWebhookStatus(data);
-        toast.success(data.enabled ? 'Webhook ativo e pronto' : 'Webhook configurado mas desativado');
+        setEnabled(data.enabled);
+        setLeadCount(data.leadCount);
+        setHasVerifyToken(data.hasVerifyToken);
+        setHasAppSecret(data.hasAppSecret);
+        setHasPageAccessToken(data.hasPageAccessToken);
+        if (data.enabled && data.hasVerifyToken && data.hasAppSecret && data.hasPageAccessToken) {
+          toast.success('Webhook ativo e pronto para receber leads');
+        } else if (data.enabled) {
+          toast.warning('Webhook ativado, mas falta configurar campos obrigatórios');
+        } else {
+          toast.info('Webhook configurado mas desativado — ative o switch para receber leads');
+        }
       }
     } catch {
       toast.error('Erro ao verificar status do webhook');
