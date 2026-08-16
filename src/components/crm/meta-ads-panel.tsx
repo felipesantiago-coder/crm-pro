@@ -874,6 +874,15 @@ function ConfigTab() {
   const [manualImporting, setManualImporting] = useState(false);
   const [manualImportResult, setManualImportResult] = useState<any>(null);
 
+  // Import by form + period states
+  const [importByFormTab, setImportByFormTab] = useState<'by-id' | 'by-form'>('by-form');
+  const [importByFormFormId, setImportByFormFormId] = useState('');
+  const [importByFormManualId, setImportByFormManualId] = useState('');
+  const [importByFormFromDate, setImportByFormFromDate] = useState('');
+  const [importByFormToDate, setImportByFormToDate] = useState('');
+  const [importByFormLoading, setImportByFormLoading] = useState(false);
+  const [importByFormResult, setImportByFormResult] = useState<any>(null);
+
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/webhooks/meta-leads`
     : '';
@@ -1204,6 +1213,44 @@ function ConfigTab() {
     }
   }
 
+  async function importLeadsByForm() {
+    const formId = importByFormTab === 'by-form' ? importByFormFormId : importByFormManualId.trim();
+    if (!formId) {
+      toast.error('Selecione ou digite um Form ID');
+      return;
+    }
+    if (!importByFormFromDate) {
+      toast.error('Selecione a data inicial');
+      return;
+    }
+    setImportByFormLoading(true);
+    setImportByFormResult(null);
+    try {
+      const body: any = { formId, fromDate: importByFormFromDate };
+      if (importByFormToDate) body.toDate = importByFormToDate;
+      const res = await fetch('/api/webhooks/meta-leads/import-by-form', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setImportByFormResult(data);
+        if (data.imported > 0) {
+          toast.success(data.message);
+        } else {
+          toast.info(data.message || 'Nenhum lead novo encontrado no período');
+        }
+      } else {
+        toast.error(data.error || 'Erro ao buscar leads do formulário', { duration: 8000 });
+      }
+    } catch {
+      toast.error('Falha na importação por formulário');
+    } finally {
+      setImportByFormLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -1436,7 +1483,7 @@ function ConfigTab() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { setShowManualImportDialog(true); setManualImportResult(null); setManualImportIds(''); }}
+              onClick={() => { setShowManualImportDialog(true); setManualImportResult(null); setManualImportIds(''); setImportByFormResult(null); setImportByFormFormId(''); setImportByFormFromDate(''); setImportByFormToDate(''); setImportByFormTab('by-form'); }}
               className="border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
             >
               <UserPlus className="h-4 w-4 mr-1" />
@@ -1766,63 +1813,187 @@ function ConfigTab() {
                 {savingCapi ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Salvando...</> : <><Save className="h-4 w-4 mr-1" /> {editingCapi ? 'Atualizar' : 'Criar'}</>}
               </Button>
             </div>
-          </Card>
+          </div>
         </div>
       )}
 
-      {/* ═══ Import Manual Leads Dialog ═══ */
+      {/* ═══ Import Manual Leads Dialog ═══ */}
       {showManualImportDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowManualImportDialog(false)}>
-          <div className="bg-background rounded-lg border shadow-lg w-full max-w-lg mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-background rounded-lg border shadow-lg w-full max-w-xl mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div>
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <UserPlus className="h-5 w-5 text-red-600" />
                 Importar Leads Perdidos
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Recupere leads que foram capturados pelo anúncio mas não chegaram ao CRM. Cole os leadgen_ids do Meta Ads Manager.
+                Recupere leads que foram capturados pelo anúncio mas não chegaram ao CRM.
               </p>
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Leadgen IDs (um por linha ou separados por vírgula)</Label>
-              <textarea
-                className="w-full min-h-[120px] rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder={"Ex:\n123456789012345\n987654321098765\n555123456789012"}
-                value={manualImportIds}
-                onChange={(e) => setManualImportIds(e.target.value)}
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Encontre os IDs em: Meta Ads Manager → Gerenciar Leads → clique no lead → o ID aparece na URL (ex: /lead/123456789012345)
-              </p>
-            </div>
-            {manualImportResult && (
-              <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
-                <p className="text-xs font-medium">{manualImportResult.message}</p>
-                <div className="space-y-1 max-h-40 overflow-y-auto">
-                  {manualImportResult.results?.map((r: any) => (
-                    <div key={r.leadgenId} className="flex items-center justify-between text-[11px]">
-                      <div className="flex items-center gap-1.5">
-                        {r.success ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Circle className="h-3 w-3 text-red-500" />}
-                        <span className="font-mono">{r.leadgenId}</span>
-                      </div>
-                      <span className="text-muted-foreground truncate max-w-[200px]">
-                        {r.clientName || r.reason}
-                        {r.assignedTo ? ` → ${r.assignedTo}` : ''}
-                      </span>
-                    </div>
-                  ))}
+
+            {/* Tabs: Por Formulário / Por ID */}
+            <Tabs value={importByFormTab} onValueChange={(v) => { setImportByFormTab(v as 'by-id' | 'by-form'); setImportByFormResult(null); }}>
+              <TabsList className="w-full">
+                <TabsTrigger value="by-form" className="flex-1 gap-1.5">
+                  <Download className="h-3.5 w-3.5" />
+                  Por Formulário + Período
+                </TabsTrigger>
+                <TabsTrigger value="by-id" className="flex-1 gap-1.5">
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Por Leadgen ID
+                </TabsTrigger>
+              </TabsList>
+
+              {/* ── Tab: Por Formulário + Período ── */}
+              <TabsContent value="by-form" className="space-y-3 mt-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Formulário</Label>
+                  {formMappings.length > 0 ? (
+                    <Select
+                      value={importByFormFormId || '__custom__'}
+                      onValueChange={(val) => setImportByFormFormId(val === '__custom__' ? '' : val)}
+                    >
+                      <SelectTrigger className="text-sm">
+                        <SelectValue placeholder="Selecione um formulário..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formMappings.map((fm: any) => (
+                          <SelectItem key={fm.formId} value={fm.formId}>
+                            {fm.formName || fm.formId}
+                            {fm.leadCount ? ` (${fm.leadCount} leads)` : ''}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__custom__">Digitar outro Form ID...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                  {(formMappings.length === 0 || importByFormFormId === '__custom__' || !importByFormFormId) && (
+                    <Input
+                      placeholder={formMappings.length > 0 ? 'Ou digite um Form ID manualmente...' : 'Digite o Form ID (ex: 123456789012345)'}
+                      value={importByFormFormId === '__custom__' ? '' : importByFormFormId}
+                      onChange={(e) => setImportByFormFormId(e.target.value)}
+                      className="font-mono text-sm mt-1.5"
+                    />
+                  )}
+                  <p className="text-[10px] text-muted-foreground">
+                    Selecione um formulário já mapeado ou digite o Form ID manualmente.
+                  </p>
                 </div>
-              </div>
-            )}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowManualImportDialog(false)}>Cancelar</Button>
-              <Button
-                onClick={importManualLeads}
-                disabled={manualImporting || !manualImportIds.trim()}
-                className="bg-red-600 hover:bg-red-700 text-white"
-              >
-                {manualImporting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Importando...</> : <><UserPlus className="h-4 w-4 mr-1" /> Importar Leads</>}
-              </Button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">Data inicial *</Label>
+                    <Input
+                      type="date"
+                      value={importByFormFromDate}
+                      onChange={(e) => setImportByFormFromDate(e.target.value)}
+                      max={importByFormToDate || new Date().toISOString().split('T')[0]}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">Data final (opcional)</Label>
+                    <Input
+                      type="date"
+                      value={importByFormToDate}
+                      onChange={(e) => setImportByFormToDate(e.target.value)}
+                      min={importByFormFromDate}
+                      max={new Date().toISOString().split('T')[0]}
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  O sistema buscará todos os leads deste formulário no período selecionado e importará apenas os que ainda não existem no CRM.
+                </p>
+
+                {importByFormResult && (
+                  <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-medium">{importByFormResult.message}</p>
+                    </div>
+                    {importByFormResult.results && importByFormResult.results.length > 0 && (
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {importByFormResult.results.map((r: any) => (
+                          <div key={r.leadgenId} className="flex items-center justify-between text-[11px]">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {r.isNew ? (
+                                <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />
+                              ) : r.success ? (
+                                <Circle className="h-3 w-3 text-blue-400 flex-shrink-0" />
+                              ) : (
+                                <Circle className="h-3 w-3 text-red-500 flex-shrink-0" />
+                              )}
+                              <span className="font-mono truncate">{r.leadgenId}</span>
+                              {r.isNew && <Badge className="text-[9px] px-1 py-0 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex-shrink-0">novo</Badge>}
+                            </div>
+                            <span className="text-muted-foreground truncate max-w-[180px] flex-shrink-0">
+                              {r.clientName || r.reason}
+                              {r.assignedTo ? ` → ${r.assignedTo}` : ''}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <Button
+                    onClick={importLeadsByForm}
+                    disabled={importByFormLoading || !importByFormFormId || importByFormFormId === '__custom__' || !importByFormFromDate}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {importByFormLoading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Buscando e importando...</> : <><Download className="h-4 w-4 mr-1" /> Buscar e Importar</>}
+                  </Button>
+                </div>
+              </TabsContent>
+
+              {/* ── Tab: Por Leadgen ID ── */}
+              <TabsContent value="by-id" className="space-y-3 mt-3">
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Leadgen IDs (um por linha ou separados por vírgula)</Label>
+                  <textarea
+                    className="w-full min-h-[120px] rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder={"Ex:\n123456789012345\n987654321098765\n555123456789012"}
+                    value={manualImportIds}
+                    onChange={(e) => setManualImportIds(e.target.value)}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Encontre os IDs em: Meta Ads Manager → Gerenciar Leads → clique no lead → o ID aparece na URL (ex: /lead/123456789012345)
+                  </p>
+                </div>
+                {manualImportResult && (
+                  <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                    <p className="text-xs font-medium">{manualImportResult.message}</p>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {manualImportResult.results?.map((r: any) => (
+                        <div key={r.leadgenId} className="flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5">
+                            {r.success ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Circle className="h-3 w-3 text-red-500" />}
+                            <span className="font-mono">{r.leadgenId}</span>
+                          </div>
+                          <span className="text-muted-foreground truncate max-w-[200px]">
+                            {r.clientName || r.reason}
+                            {r.assignedTo ? ` → ${r.assignedTo}` : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    onClick={importManualLeads}
+                    disabled={manualImporting || !manualImportIds.trim()}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {manualImporting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Importando...</> : <><UserPlus className="h-4 w-4 mr-1" /> Importar Leads</>}
+                  </Button>
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            <div className="flex justify-end pt-2 border-t">
+              <Button variant="outline" onClick={() => setShowManualImportDialog(false)}>Fechar</Button>
             </div>
           </div>
         </div>
@@ -1850,7 +2021,7 @@ function ConfigTab() {
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Access Token do Cliente *</Label>
                 <Input type="password" placeholder="Token com permissão leads_retrieval" value={importForm.accessToken} onChange={(e) => setImportForm({ ...importForm, accessToken: e.target.value })} className="font-mono text-sm" />
-                <p className="text-[10px] text-muted-foreground">O cliente gera este token no Business Settings dele (System User com{' '}<code className="bg-muted px-1 rounded">leads_retrieval</code>{' + ' '}<code className="bg-muted px-1 rounded">ads_read</code>{'})</p>
+                <p className="text-[10px] text-muted-foreground">O cliente gera este token no Business Settings dele (System User com{' '}<code className="bg-muted px-1 rounded">leads_retrieval</code>{' + '}&nbsp;<code className="bg-muted px-1 rounded">ads_read</code>)</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Vincular automaticamente ao CAPI Config</Label>
