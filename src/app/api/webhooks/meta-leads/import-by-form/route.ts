@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/api-auth';
 import { notifyNewLead } from '@/lib/telegram';
 import { assignLeadToUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
+import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 
 // ============================================================
 // POST /api/webhooks/meta-leads/import-by-form
@@ -31,20 +32,7 @@ interface MetaLeadsResponse {
   };
 }
 
-function getFieldValue(fields: Array<{ name: string; values: string[] }>, fieldName: string): string | null {
-  const field = fields.find((f) =>
-    f.name.toLowerCase().replace(/[\s_-]/g, '') === fieldName.toLowerCase().replace(/[\s_-]/g, '')
-  );
-  return field?.values?.[0] || null;
-}
-
-function formatPhone(phone: string | null): string | null {
-  if (!phone) return null;
-  const digits = phone.replace(/\D/g, '');
-  if (digits.startsWith('55') && digits.length >= 12) return `+${digits}`;
-  if (digits.length === 11 || digits.length === 10) return `+55${digits}`;
-  return digits.length > 0 ? `+${digits}` : null;
-}
+// getFieldValue e formatPhone agora vêm de @/lib/meta-lead-utils
 
 /**
  * Busca todos os leads de um formulário no Meta, com paginação.
@@ -125,24 +113,28 @@ async function processLead(
   const campaignId = String(lead.campaign_id || '');
 
   // Extrair campos
-  const rawName = getFieldValue(fieldData, 'full_name')
-    || getFieldValue(fieldData, 'name')
-    || getFieldValue(fieldData, 'nome')
-    || getFieldValue(fieldData, 'nome_completo')
+  const rawName = getMetaFieldValue(fieldData, 'full_name')
+    || getMetaFieldValue(fieldData, 'name')
+    || getMetaFieldValue(fieldData, 'nome')
+    || getMetaFieldValue(fieldData, 'nome_completo')
     || 'Lead Meta Ads (importado)';
 
-  const rawEmail = getFieldValue(fieldData, 'email') || getFieldValue(fieldData, 'e_mail') || null;
-  const rawPhone = getFieldValue(fieldData, 'phone_number')
-    || getFieldValue(fieldData, 'phone')
-    || getFieldValue(fieldData, 'celular')
-    || getFieldValue(fieldData, 'telefone')
+  const rawEmail = getMetaFieldValue(fieldData, 'email') || getMetaFieldValue(fieldData, 'e_mail') || null;
+  const rawPhone = getMetaFieldValue(fieldData, 'phone_number')
+    || getMetaFieldValue(fieldData, 'phone')
+    || getMetaFieldValue(fieldData, 'celular')
+    || getMetaFieldValue(fieldData, 'telefone')
     || null;
-  const city = getFieldValue(fieldData, 'city') || getFieldValue(fieldData, 'cidade') || null;
+  const city = getMetaFieldValue(fieldData, 'city') || getMetaFieldValue(fieldData, 'cidade') || null;
 
   const name = rawName?.trim() || 'Lead Meta Ads (importado)';
   const email = rawEmail?.trim() || null;
-  const phone = formatPhone(rawPhone);
+  const phone = formatMetaPhone(rawPhone);
   const region = city?.trim() || null;
+
+  // Extrair respostas customizadas (perguntas extras do formulário)
+  const customAnswers = extractCustomAnswers(fieldData);
+  const customAnswersText = formatCustomAnswersText(customAnswers);
 
   // 1. Verificar duplicata por metaLeadgenId
   try {
@@ -175,11 +167,11 @@ async function processLead(
       data: { metaLeadgenId: leadgenId, lastInteractionAt: new Date() },
     }).catch(() => {});
 
-    // Criar interação
+    // Criar interação com respostas do formulário
     await db.interaction.create({
       data: {
         clientId: existingByContact.id,
-        description: `[Meta Ads] Lead ${leadgenId} importado por formulário. Dados: ${email ? `Email: ${email}` : ''}${phone ? ` | Telefone: ${phone}` : ''}${region ? ` | Cidade: ${region}` : ''}.`,
+        description: `[Meta Ads] Lead ${leadgenId} importado por formulário. Dados: ${email ? `Email: ${email}` : ''}${phone ? ` | Telefone: ${phone}` : ''}${region ? ` | Cidade: ${region}` : ''}.${customAnswersText}`,
       },
     });
 
@@ -218,14 +210,14 @@ async function processLead(
         createdBy: creatorId,
         metaLeadgenId: leadgenId,
         metaCapConfigId: capiConfigId,
-        notes: `[Meta Ads] Lead importado por formulário e período.\nLead ID: ${leadgenId}${formId ? `\nForm ID: ${formId}` : ''}${campaignId ? `\nCampaign ID: ${campaignId}` : ''}${lead.created_time ? `\nCriado em: ${lead.created_time}` : ''}`,
+        notes: `[Meta Ads] Lead importado por formulário e período.\nLead ID: ${leadgenId}${formId ? `\nForm ID: ${formId}` : ''}${campaignId ? `\nCampaign ID: ${campaignId}` : ''}${lead.created_time ? `\nCriado em: ${lead.created_time}` : ''}${customAnswersText}`,
       },
     });
 
     await db.interaction.create({
       data: {
         clientId: newClient.id,
-        description: '[Meta Ads] Lead importado por formulário + período. Origem: Facebook/Instagram Lead Ads.',
+        description: `[Meta Ads] Lead importado por formulário + período. Origem: Facebook/Instagram Lead Ads.${customAnswersText}`,
       },
     });
 
@@ -260,7 +252,7 @@ async function processLead(
             utmSource: 'meta_ads',
             slug: undefined,
             assignedUserName: assignedTo,
-            customAnswers: undefined,
+            customAnswers,
           }).catch(() => {});
         }
       }).catch(() => {});

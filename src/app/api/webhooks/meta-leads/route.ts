@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { notifyNewLead } from '@/lib/telegram';
 import { assignLeadToUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
+import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 
 // ============================================================
 // Meta Lead Ads Webhook
@@ -74,40 +75,8 @@ function isValidSignature(payload: string, signature: string | null, appSecret: 
   }
 }
 
-/**
- * Extrai o valor de um campo do array field_data do Meta.
- * Retorna null se não encontrado.
- */
-function getFieldValue(fields: Array<{ name: string; values: string[] }>, fieldName: string): string | null {
-  const field = fields.find((f) =>
-    f.name.toLowerCase().replace(/[_\s-]/g, '') === fieldName.toLowerCase().replace(/[_\s-]/g, '')
-  );
-  return field?.values?.[0] || null;
-}
-
-/**
- * Formata telefone removendo caracteres não numéricos.
- * Para números brasileiros com 11 dígitos começando com 9,
- * adiciona o código do país (+55).
- */
-function formatPhone(phone: string | null): string | null {
-  if (!phone) return null;
-
-  const digits = phone.replace(/\D/g, '');
-
-  // Já tem código de país
-  if (digits.startsWith('55') && digits.length >= 12) {
-    return `+${digits}`;
-  }
-
-  // Número brasileiro (11 dígitos com 9 na frente) ou (10 dígitos)
-  if (digits.length === 11 || digits.length === 10) {
-    return `+55${digits}`;
-  }
-
-  // Retorno o que temos, adicionando + se não tiver
-  return digits.length > 0 ? `+${digits}` : null;
-}
+// getFieldValue e formatPhone agora vêm de @/lib/meta-lead-utils
+// (importados como getMetaFieldValue e formatMetaPhone)
 
 /**
  * Busca os dados completos do lead via Graph API.
@@ -372,31 +341,35 @@ export async function POST(request: NextRequest) {
         }
 
         // Extrair campos do formulário
-        const rawName = getFieldValue(fieldData, 'full_name')
-          || getFieldValue(fieldData, 'name')
-          || getFieldValue(fieldData, 'nome')
-          || getFieldValue(fieldData, 'nome_completo')
+        const rawName = getMetaFieldValue(fieldData, 'full_name')
+          || getMetaFieldValue(fieldData, 'name')
+          || getMetaFieldValue(fieldData, 'nome')
+          || getMetaFieldValue(fieldData, 'nome_completo')
           || 'Lead Meta Ads';
 
-        const rawEmail = getFieldValue(fieldData, 'email')
-          || getFieldValue(fieldData, 'e_mail')
+        const rawEmail = getMetaFieldValue(fieldData, 'email')
+          || getMetaFieldValue(fieldData, 'e_mail')
           || null;
 
-        const rawPhone = getFieldValue(fieldData, 'phone_number')
-          || getFieldValue(fieldData, 'phone')
-          || getFieldValue(fieldData, 'celular')
-          || getFieldValue(fieldData, 'telefone')
+        const rawPhone = getMetaFieldValue(fieldData, 'phone_number')
+          || getMetaFieldValue(fieldData, 'phone')
+          || getMetaFieldValue(fieldData, 'celular')
+          || getMetaFieldValue(fieldData, 'telefone')
           || null;
 
-        const city = getFieldValue(fieldData, 'city')
-          || getFieldValue(fieldData, 'cidade')
+        const city = getMetaFieldValue(fieldData, 'city')
+          || getMetaFieldValue(fieldData, 'cidade')
           || null;
 
         // Formatar dados
         const name = rawName?.trim() || 'Lead Meta Ads';
         const email = rawEmail?.trim() || null;
-        const phone = formatPhone(rawPhone);
+        const phone = formatMetaPhone(rawPhone);
         const region = city?.trim() || null;
+
+        // Extrair respostas customizadas (perguntas extras do formulário)
+        const customAnswers = extractCustomAnswers(fieldData);
+        const customAnswersText = formatCustomAnswersText(customAnswers);
 
         console.log(`[Meta Webhook] Dados extraídos: name="${name}", email=${email || 'null'}, phone=${phone || 'null'}, city=${region || 'null'}`);
 
@@ -410,7 +383,7 @@ export async function POST(request: NextRequest) {
           await db.interaction.create({
             data: {
               clientId: existing.id,
-              description: `[Meta Ads] Novo lead recebido via anúncio "${adName}"${campaignName ? ` (campanha: ${campaignName})` : ''}. Formulário: ${formName}. Dados: ${email ? `Email: ${email}` : ''}${phone ? ` | Telefone: ${phone}` : ''}${region ? ` | Cidade: ${region}` : ''}. Lead ID: ${leadgenId}`,
+              description: `[Meta Ads] Novo lead recebido via anúncio "${adName}"${campaignName ? ` (campanha: ${campaignName})` : ''}. Formulário: ${formName}. Dados: ${email ? `Email: ${email}` : ''}${phone ? ` | Telefone: ${phone}` : ''}${region ? ` | Cidade: ${region}` : ''}. Lead ID: ${leadgenId}${customAnswersText}`,
             },
           });
 
@@ -452,7 +425,7 @@ export async function POST(request: NextRequest) {
                     utmSource: 'meta_ads',
                     slug: undefined,
                     assignedUserName: assignResult.userName,
-                    customAnswers: undefined,
+                    customAnswers,
                   }).catch((err) => console.warn('[Meta Webhook] Falha na notificação (lead existente):', err));
                 } else {
                   console.warn(`[Meta Webhook] Usuário ${user?.name || assignResult.userId} sem Telegram. Lead existente ${existing.id} sem notificação.`);
@@ -526,7 +499,7 @@ export async function POST(request: NextRequest) {
               createdBy: creatorId,
               metaLeadgenId: leadgenId,
               metaCapConfigId: capiConfigId,
-              notes: `[Meta Ads] Lead recebido automaticamente.\nAnúncio: ${adName}${campaignName ? `\nCampanha: ${campaignName}` : ''}\nFormulário: ${formName}${formId ? ` (ID: ${formId})` : ''}\nLead ID: ${leadgenId}${capiConfigId ? `\nCAPI Config: ${capiConfigId}` : ''}`,
+              notes: `[Meta Ads] Lead recebido automaticamente.\nAnúncio: ${adName}${campaignName ? `\nCampanha: ${campaignName}` : ''}\nFormulário: ${formName}${formId ? ` (ID: ${formId})` : ''}\nLead ID: ${leadgenId}${capiConfigId ? `\nCAPI Config: ${capiConfigId}` : ''}${customAnswersText}`,
             },
           });
           console.log(`[Meta Webhook] ✅ Cliente criado: id=${newClient.id}, name="${name}", phone=${phone || 'null'}, email=${email || 'null'}`);
@@ -535,7 +508,7 @@ export async function POST(request: NextRequest) {
           await db.interaction.create({
             data: {
               clientId: newClient.id,
-              description: `[Meta Ads] Cliente criado automaticamente via lead do anúncio "${adName}"${campaignName ? ` (campanha: ${campaignName})` : ''}. Origem: Facebook/Instagram Lead Ads.`,
+              description: `[Meta Ads] Cliente criado automaticamente via lead do anúncio "${adName}"${campaignName ? ` (campanha: ${campaignName})` : ''}. Origem: Facebook/Instagram Lead Ads.${customAnswersText}`,
             },
           });
 
@@ -579,7 +552,7 @@ export async function POST(request: NextRequest) {
                   utmSource: 'meta_ads',
                   slug: undefined,
                   assignedUserName: assignedUserName,
-                  customAnswers: undefined,
+                  customAnswers,
                 }).catch((err) => console.warn('[Meta Webhook] Falha na notificação:', err));
               } else {
                 console.warn(`[Meta Webhook] Usuário ${user?.name || notifyId} atribuído mas sem Telegram. Lead ${newClient.id} (${name}) sem notificação.`);
