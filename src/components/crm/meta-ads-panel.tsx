@@ -860,6 +860,14 @@ function ConfigTab() {
   const [testingCapId, setTestingCapId] = useState<string | null>(null);
   const [showCapiTokenDialog, setShowCapiTokenDialog] = useState(false);
 
+  // Form Mappings states
+  const [formMappings, setFormMappings] = useState<any[]>([]);
+  const [loadingMappings, setLoadingMappings] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importForm, setImportForm] = useState({ accessToken: '', adAccountId: '', capiConfigId: '' });
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
+
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/webhooks/meta-leads`
     : '';
@@ -884,6 +892,7 @@ function ConfigTab() {
       setLoading(false);
     }
     loadCapiConfigs();
+    loadFormMappings();
   }
 
   async function checkWebhookStatus() {
@@ -1092,6 +1101,69 @@ function ConfigTab() {
       toast.error('Falha ao testar CAPI');
     } finally {
       setTestingCapId(null);
+    }
+  }
+
+  // ═══ Form Mappings functions ═══
+  async function loadFormMappings() {
+    setLoadingMappings(true);
+    try {
+      const res = await fetch('/api/meta-capi-configs/form-mappings?grouped=true');
+      if (res.ok) setFormMappings(await res.json());
+    } catch { /* silent */ }
+    finally { setLoadingMappings(false); }
+  }
+
+  async function linkFormToConfig(formId: string, capiConfigId: string | null) {
+    try {
+      const res = await fetch('/api/meta-capi-configs/form-mappings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formId, capiConfigId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(capiConfigId ? `${data.updated} mapeamento(s) vinculado(s)` : 'Vinculação removida');
+        loadFormMappings();
+        loadCapiConfigs();
+      }
+    } catch {
+      toast.error('Erro ao vincular formulário');
+    }
+  }
+
+  async function importFormIds() {
+    if (!importForm.accessToken || !importForm.adAccountId) {
+      toast.error('Access Token e ID da conta de anúncios são obrigatórios');
+      return;
+    }
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const body: any = {
+        accessToken: importForm.accessToken,
+        adAccountId: importForm.adAccountId,
+      };
+      if (importForm.capiConfigId) body.capiConfigId = importForm.capiConfigId;
+
+      const res = await fetch('/api/meta-capi-configs/form-mappings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || 'Formulários importados com sucesso');
+        setImportResult(data);
+        loadFormMappings();
+        loadCapiConfigs();
+      } else {
+        toast.error(data.error || 'Erro ao importar');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao importar formulários');
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -1473,6 +1545,117 @@ function ConfigTab() {
             </ul>
           </div>
 
+          {/* ═══ Form ID Mappings ═══ */}
+          <div className="rounded-lg border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">Formulários Detectados</span>
+                {formMappings.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px]">
+                    {formMappings.reduce((acc: number, m: any) => acc + (m.totalLeads || m.leadCount || 0), 0)} leads
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400"
+                  onClick={() => setShowImportDialog(true)}
+                >
+                  <Download className="h-3 w-3 mr-1" /> Importar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={loadFormMappings}
+                  disabled={loadingMappings}
+                >
+                  {loadingMappings ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                </Button>
+              </div>
+            </div>
+
+            {loadingMappings ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : formMappings.length === 0 ? (
+              <div className="text-center py-6 space-y-1.5">
+                <p className="text-xs text-muted-foreground">
+                  Nenhum formulário detectado ainda. Os Form IDs aparecem automaticamente quando chegam leads via webhook.
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Ou use o botão <strong>Importar</strong> para buscar formulários diretamente da conta de anúncios do cliente.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {formMappings.map((mapping: any) => {
+                  const campaigns = mapping.campaigns || [];
+                  const linkedConfig = mapping.capiConfig;
+                  const isMapped = !!mapping.capiConfigId;
+                  return (
+                    <div
+                      key={mapping.formId}
+                      className={`rounded-md border p-2.5 text-xs transition-colors ${isMapped
+                        ? 'border-green-200 dark:border-green-800/50 bg-green-50/50 dark:bg-green-950/20'
+                        : 'border-amber-200 dark:border-amber-800/50 bg-amber-50/30 dark:bg-amber-950/10'}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-medium text-[11px]">{mapping.formId}</span>
+                            {isMapped ? (
+                              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[9px] px-1.5 py-0">
+                                {linkedConfig?.name || 'Vinculado'}
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] px-1.5 py-0">
+                                Sem CAPI
+                              </Badge>
+                            )}
+                          </div>
+                          {mapping.formName && (
+                            <p className="text-muted-foreground mt-0.5 truncate">{mapping.formName}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                            <span>{mapping.totalLeads || mapping.leadCount || 0} lead{(mapping.totalLeads || mapping.leadCount || 0) !== 1 ? 's' : ''}</span>
+                            {campaigns.length > 0 && campaigns[0].campaignName && (
+                              <span className="truncate">· {campaigns[0].campaignName}</span>
+                            )}
+                            {campaigns.length > 1 && (
+                              <span>+{campaigns.length - 1} campanha{campaigns.length - 1 > 1 ? 's' : ''}</span>
+                            )}
+                          </div>
+                        </div>
+                        <Select
+                          value={mapping.capiConfigId || '__none__'}
+                          onValueChange={(val) => linkFormToConfig(mapping.formId, val === '__none__' ? null : val)}
+                        >
+                          <SelectTrigger className="h-7 w-[130px] text-[11px]">
+                            <SelectValue placeholder="Vincular CAPI" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Nenhum</SelectItem>
+                            {capiConfigs.filter((c: any) => c.enabled).map((cfg: any) => (
+                              <SelectItem key={cfg.id} value={cfg.id}>{cfg.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <p className="text-[10px] text-muted-foreground">
+              Form IDs detectados automaticamente via webhook. Vincule cada formulário a um config CAPI para rotear os eventos de conversão corretamente.
+            </p>
+          </div>
+
           {/* Tutorial CAPI Multi-cliente */}
           <details className="group">
             <summary className="text-xs font-medium text-purple-600 dark:text-purple-400 cursor-pointer hover:underline flex items-center gap-1">
@@ -1516,7 +1699,7 @@ function ConfigTab() {
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Form IDs (opcional, separados por vírgula)</Label>
                 <Input placeholder="Ex: 123456789, 987654321" value={capiForm.formIds} onChange={(e) => setCapiForm({ ...capiForm, formIds: e.target.value })} className="font-mono text-sm" />
-                <p className="text-[10px] text-muted-foreground">IDs dos formulários Meta que devem usar este config. Encontrados no Ads Manager → Formulários de Lead.</p>
+                <p className="text-[10px] text-muted-foreground">IDs dos formulários Meta que devem usar este config. Encontrados no Ads Manager → Formulários de Lead. Ou use o botão <strong>Importar</strong> acima.</p>
               </div>
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-medium cursor-pointer" onClick={() => setCapiForm({ ...capiForm, isDefault: !capiForm.isDefault })}>
@@ -1535,6 +1718,99 @@ function ConfigTab() {
               <Button variant="outline" onClick={() => setShowCapiDialog(false)}>Cancelar</Button>
               <Button onClick={saveCapiConfig} disabled={savingCapi} className="bg-purple-600 hover:bg-purple-700 text-white">
                 {savingCapi ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Salvando...</> : <><Save className="h-4 w-4 mr-1" /> {editingCapi ? 'Atualizar' : 'Criar'}</>}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Import Form IDs Dialog ═══ */}
+      {showImportDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowImportDialog(false); setImportResult(null); setImportForm({ accessToken: '', adAccountId: '', capiConfigId: '' }); }}>
+          <div className="bg-background rounded-lg border shadow-lg w-full max-w-lg mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Download className="h-5 w-5 text-purple-600" />
+                Importar Form IDs do Meta
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Busca automaticamente os formulários de lead de uma conta de anúncios do cliente
+              </p>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">ID da Conta de Anúncios *</Label>
+                <Input
+                  placeholder="Ex: act_1433936273727810 ou 1433936273727810"
+                  value={importForm.adAccountId}
+                  onChange={(e) => setImportForm({ ...importForm, adAccountId: e.target.value })}
+                  className="font-mono text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Encontrado no Ads Manager → Configurações da conta, ou na URL do Ads Manager
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Access Token do Cliente *</Label>
+                <Input
+                  type="password"
+                  placeholder="Token com permissão leads_retrieval"
+                  value={importForm.accessToken}
+                  onChange={(e) => setImportForm({ ...importForm, accessToken: e.target.value })}
+                  className="font-mono text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  O cliente gera este token no Business Settings dele (System User com{' '}
+                  <code className="bg-muted px-1 rounded">leads_retrieval</code> +{' '}
+                  <code className="bg-muted px-1 rounded">ads_read</code>)
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Vincular automaticamente ao CAPI Config</Label>
+                <Select
+                  value={importForm.capiConfigId || '__none__'}
+                  onValueChange={(val) => setImportForm({ ...importForm, capiConfigId: val === '__none__' ? '' : val })}
+                >
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder="Opcional — vincular após importar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Não vincular</SelectItem>
+                    {capiConfigs.filter((c: any) => c.enabled).map((cfg: any) => (
+                      <SelectItem key={cfg.id} value={cfg.id}>{cfg.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Import Result */}
+            {importResult && (
+              <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                <p className="text-xs font-medium">
+                  {importResult.imported} formulário(s) importado(s) de {importResult.total} encontrado(s)
+                </p>
+                {importResult.forms?.length > 0 && (
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {importResult.forms.map((f: any) => (
+                      <div key={f.id} className="flex items-center justify-between text-[11px]">
+                        <span className="font-mono">{f.id}</span>
+                        <span className="text-muted-foreground truncate ml-2">{f.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => { setShowImportDialog(false); setImportResult(null); setImportForm({ accessToken: '', adAccountId: '', capiConfigId: '' }); }}>Cancelar</Button>
+              <Button
+                onClick={importFormIds}
+                disabled={importing}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                {importing ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Importando...</> : <><Download className="h-4 w-4 mr-1" /> Importar</>}
               </Button>
             </div>
           </div>

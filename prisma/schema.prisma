@@ -449,7 +449,38 @@ model MetaCapConfig {
   createdAt   DateTime @default(now()) @map("createdAt")
   updatedAt   DateTime @updatedAt @map("updatedAt")
 
-  clients Client[]
+  clients     Client[]
+  formMappings LeadFormMapping[]
 
   @@map("meta_cap_configs")
+}
+
+// ============================================================
+// LEAD FORM MAPPING — Auto-populated mapping table
+// Every time a lead arrives via webhook, the form_id, ad_name,
+// campaign_name, ad_id, campaign_id are recorded.
+// This builds an automatic mapping that helps the admin know
+// which Form IDs belong to which campaigns/clients.
+// ============================================================
+model LeadFormMapping {
+  id           String   @id @default(cuid()) @map("id")
+  formId       String   @map("formId")           // Meta leadgen form ID
+  formName     String?  @map("formName")         // Form name from Meta
+  adId         String?  @map("adId")             // Ad ID
+  adName       String?  @map("adName")           // Ad name
+  campaignId   String?  @map("campaignId")       // Campaign ID
+  campaignName String?  @map("campaignName")     // Campaign name
+  leadCount    Int      @default(1) @map("leadCount") // How many leads came through this form
+  firstSeenAt  DateTime @default(now()) @map("firstSeenAt")
+  lastSeenAt   DateTime @updatedAt @map("lastSeenAt")
+  /** If admin manually links this form to a CAPI config */
+  capiConfigId String?  @map("capiConfigId")
+
+  capiConfig   MetaCapConfig?  @relation(fields: [capiConfigId], references: [id], onDelete: SetNull)
+
+  @@unique([formId, campaignId])
+  @@index([formId])
+  @@index([capiConfigId])
+  @@index([campaignName])
+  @@map("lead_form_mappings")
 }
