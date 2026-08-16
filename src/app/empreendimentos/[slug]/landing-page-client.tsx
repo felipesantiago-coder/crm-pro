@@ -816,49 +816,51 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
             <p className="mt-4 sm:mt-6 text-lg sm:text-2xl lg:text-[1.7rem] text-white/90 max-w-2xl leading-relaxed [text-shadow:0_1px_8px_rgba(0,0,0,0.35)]">{displaySubtitle}</p>
           )}
 
-          {/* Mini-form (name + phone) */}
+          {/* Mini-form (name + phone) — prominent card style */}
           <div className="mt-5 sm:mt-8 animate-fade-in-up max-w-lg">
-            <form
-              id="hero-mini-form"
-              onSubmit={(ev) => {
-                ev.preventDefault();
-                try {
-                  const heroName = (document.getElementById('hero-name') as HTMLInputElement)?.value?.trim() || '';
-                  const heroPhone = (document.getElementById('hero-phone') as HTMLInputElement)?.value?.replace(/\D/g, '') || '';
-                  if (heroName.length < 2) {
+            <div className="rounded-2xl bg-white/[0.92] backdrop-blur-md border border-white/30 shadow-2xl shadow-black/30 p-3 sm:p-4">
+              <form
+                id="hero-mini-form"
+                onSubmit={(ev) => {
+                  ev.preventDefault();
+                  try {
+                    const heroName = (document.getElementById('hero-name') as HTMLInputElement)?.value?.trim() || '';
+                    const heroPhone = (document.getElementById('hero-phone') as HTMLInputElement)?.value?.replace(/\D/g, '') || '';
+                    if (heroName.length < 2) {
+                      setFormName(heroName);
+                      const form = document.getElementById('landing-form') as HTMLFormElement | null;
+                      if (form) { form.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => { const ni = document.getElementById('form-name') as HTMLInputElement | null; if (ni) { ni.focus(); ni.classList.add('ring-2', 'ring-[#33492F]'); setTimeout(() => ni.classList.remove('ring-2', 'ring-[#33492F]'), 3000); } }, 600); }
+                      return;
+                    }
+                    if (heroPhone.length < 10 && heroPhone.length > 0) return;
                     setFormName(heroName);
+                    setFormPhone(heroPhone.length >= 10 ? (document.getElementById('hero-phone') as HTMLInputElement)?.value || '' : '');
                     const form = document.getElementById('landing-form') as HTMLFormElement | null;
-                    if (form) { form.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => { const ni = document.getElementById('form-name') as HTMLInputElement | null; if (ni) { ni.focus(); ni.classList.add('ring-2', 'ring-[#33492F]'); setTimeout(() => ni.classList.remove('ring-2', 'ring-[#33492F]'), 3000); } }, 600); }
-                    return;
-                  }
-                  if (heroPhone.length < 10 && heroPhone.length > 0) return;
-                  setFormName(heroName);
-                  setFormPhone(heroPhone.length >= 10 ? (document.getElementById('hero-phone') as HTMLInputElement)?.value || '' : '');
-                  const form = document.getElementById('landing-form') as HTMLFormElement | null;
-                  if (form) { form.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => { const ei = document.getElementById('form-email') as HTMLInputElement | null; if (ei && !formEmail.trim()) { ei.focus(); ei.classList.add('ring-2', 'ring-[#33492F]'); setTimeout(() => ei.classList.remove('ring-2', 'ring-[#33492F]'), 3000); } }, 600); }
-                } catch {}
-              }}
-              className="w-full"
-            >
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="flex-1 relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
-                  <input id="hero-name" type="text" placeholder={t('hero.namePlaceholder')} autoComplete="name" required
-                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#33492F]/50 focus:ring-1 focus:ring-[#33492F]/20 transition-all" />
+                    if (form) { form.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => { const ei = document.getElementById('form-email') as HTMLInputElement | null; if (ei && !formEmail.trim()) { ei.focus(); ei.classList.add('ring-2', 'ring-[#33492F]'); setTimeout(() => ei.classList.remove('ring-2', 'ring-[#33492F]'), 3000); } }, 600); }
+                  } catch {}
+                }}
+                className="w-full"
+              >
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex-1 relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#33492F]/50" />
+                    <input id="hero-name" type="text" placeholder={t('hero.namePlaceholder')} autoComplete="name" required
+                      className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3 rounded-xl bg-white border border-[#1a1a1a]/10 text-sm text-[#1a1a1a] placeholder:text-[#1a1a1a]/35 focus:outline-none focus:border-[#33492F]/50 focus:ring-2 focus:ring-[#33492F]/20 transition-all" />
+                  </div>
+                  <div className="flex-1 relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#33492F]/50" />
+                    <input id="hero-phone" type="tel" inputMode="numeric" placeholder={t('hero.phonePlaceholder')} autoComplete="tel" required
+                      onChange={(ev) => { const d = ev.target.value.replace(/\D/g, '').slice(0, 11); let m = ''; if (d.length > 0) m += `(${d.slice(0, 2)}`; if (d.length > 2) m += `) ${d.slice(2, 7)}`; if (d.length > 7) m += `-${d.slice(7)}`; ev.target.value = m; }}
+                      className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3 rounded-xl bg-white border border-[#1a1a1a]/10 text-sm text-[#1a1a1a] placeholder:text-[#1a1a1a]/35 focus:outline-none focus:border-[#33492F]/50 focus:ring-2 focus:ring-[#33492F]/20 transition-all" />
+                  </div>
+                  <button type="submit" onClick={() => { try { (window as any).CRMPIXEL?.trackCTA('hero_form', 'Saber mais', 'hero', 'primary'); } catch {} }}
+                    className="flex-shrink-0 min-h-[44px] flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#33492F] text-white font-bold text-sm hover:bg-[#33492F]/90 transition-all shadow-lg shadow-[#33492F]/25 hover:shadow-[#33492F]/40 active:scale-[0.98]">
+                    <Send className="h-4 w-4" /><span>{t('hero.cta')}</span>
+                  </button>
                 </div>
-                <div className="flex-1 relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
-                  <input id="hero-phone" type="tel" inputMode="numeric" placeholder={t('hero.phonePlaceholder')} autoComplete="tel" required
-                    onChange={(ev) => { const d = ev.target.value.replace(/\D/g, '').slice(0, 11); let m = ''; if (d.length > 0) m += `(${d.slice(0, 2)}`; if (d.length > 2) m += `) ${d.slice(2, 7)}`; if (d.length > 7) m += `-${d.slice(7)}`; ev.target.value = m; }}
-                    className="lp-input-mobile w-full min-h-[44px] pl-10 pr-4 py-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#33492F]/50 focus:ring-1 focus:ring-[#33492F]/20 transition-all" />
-                </div>
-                <button type="submit" onClick={() => { try { (window as any).CRMPIXEL?.trackCTA('hero_form', 'Saber mais', 'hero', 'primary'); } catch {} }}
-                  className="flex-shrink-0 min-h-[44px] flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#33492F] text-white font-bold text-sm hover:bg-[#33492F]/90 transition-all shadow-lg shadow-[#33492F]/25 hover:shadow-[#33492F]/40 active:scale-[0.98]">
-                  <Send className="h-4 w-4" /><span>{t('hero.cta')}</span>
-                </button>
-              </div>
-              <p className="text-[11px] text-white/30 mt-1.5 text-center sm:text-left">{t('hero.noCommitment')}</p>
-            </form>
+                <p className="text-[11px] text-[#1a1a1a]/30 mt-1.5 text-center sm:text-left">{t('hero.noCommitment')}</p>
+              </form>
+            </div>
           </div>
 
           {/* Secondary CTAs */}
@@ -1543,27 +1545,49 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
           FLOATING ELEMENTS
           ══════════════════════════════════════════════════ */}
 
-      {/* Fixed Bottom CTA Bar (Mobile) — WhatsApp left + Ver Condições right */}
+      {/* Fixed Bottom CTA Bar (Mobile) — Inline micro-form for cold visitors */}
       {showBottomBar && !isFormSectionVisible && (
         <div className="fixed bottom-0 left-0 right-0 z-50 lg:hidden animate-slide-up-bar">
-          <div className="flex">
-            <button type="button" onClick={() => openWhatsApp('bottom_bar', null, 'left')}
-              className="flex-1 min-h-[52px] flex items-center justify-center gap-2 bg-[#25D366] text-white font-semibold text-sm shadow-[0_-4px_20px_rgba(37,211,102,0.3)]">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" dangerouslySetInnerHTML={{ __html: WHATSAPP_ICON }} />
-              {t('floatingBar.whatsapp')}
-            </button>
-            <button type="button" onClick={scrollToForm}
-              className="flex-1 min-h-[52px] flex items-center justify-center gap-2 bg-[#33492F] text-white font-bold text-sm shadow-[0_-4px_20px_rgba(51,73,47,0.3)]">
-              {t('floatingBar.seeConditions')}
-            </button>
-          </div>
-          <div className="h-[env(safe-area-inset-bottom)]" />
+          <form
+            id="sticky-micro-form"
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              try {
+                const stickyName = (document.getElementById('sticky-name') as HTMLInputElement)?.value?.trim() || '';
+                const stickyPhone = (document.getElementById('sticky-phone') as HTMLInputElement)?.value?.replace(/\D/g, '') || '';
+                if (stickyName.length < 2) return;
+                if (stickyPhone.length < 10 && stickyPhone.length > 0) return;
+                setFormName(stickyName);
+                setFormPhone(stickyPhone.length >= 10 ? (document.getElementById('sticky-phone') as HTMLInputElement)?.value || '' : '');
+                const form = document.getElementById('landing-form') as HTMLFormElement | null;
+                if (form) { form.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => { const ei = document.getElementById('form-email') as HTMLInputElement | null; if (ei && !formEmail.trim()) { ei.focus(); ei.classList.add('ring-2', 'ring-[#33492F]'); setTimeout(() => ei.classList.remove('ring-2', 'ring-[#33492F]'), 3000); } }, 600); }
+                try { (window as any).CRMPIXEL?.trackCTA('sticky_form', 'Cadastrar', 'bottom_bar', 'micro-form'); } catch {}
+              } catch {}
+            }}
+            className="bg-white border-t border-[#1a1a1a]/[0.08] shadow-[0_-4px_20px_rgba(0,0,0,0.12)] px-3 py-2.5"
+          >
+            <div className="flex items-center gap-2">
+              <div className="flex-1 flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-[#1a1a1a]/25 flex-shrink-0" />
+                <input id="sticky-name" type="text" placeholder={t('hero.namePlaceholder')} autoComplete="name" required
+                  className="lp-input-mobile flex-1 min-h-[36px] px-2 py-1.5 rounded-lg bg-[#F7F6F3] border border-[#1a1a1a]/[0.08] text-xs text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:border-[#33492F]/40 focus:ring-1 focus:ring-[#33492F]/15 transition-all" />
+                <Phone className="h-3.5 w-3.5 text-[#1a1a1a]/25 flex-shrink-0" />
+                <input id="sticky-phone" type="tel" inputMode="numeric" placeholder={t('hero.phonePlaceholder')} autoComplete="tel" required
+                  onChange={(ev) => { const d = ev.target.value.replace(/\D/g, '').slice(0, 11); let m = ''; if (d.length > 0) m += `(${d.slice(0, 2)}`; if (d.length > 2) m += `) ${d.slice(2, 7)}`; if (d.length > 7) m += `-${d.slice(7)}`; ev.target.value = m; }}
+                  className="lp-input-mobile flex-1 min-h-[36px] px-2 py-1.5 rounded-lg bg-[#F7F6F3] border border-[#1a1a1a]/[0.08] text-xs text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:border-[#33492F]/40 focus:ring-1 focus:ring-[#33492F]/15 transition-all" />
+              </div>
+              <button type="submit" className="flex-shrink-0 min-h-[36px] flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#33492F] text-white font-bold text-xs shadow-md shadow-[#33492F]/20 active:scale-[0.97] transition-all">
+                <Send className="h-3.5 w-3.5" /><span>{t('hero.cta')}</span>
+              </button>
+            </div>
+          </form>
+          <div className="h-[env(safe-area-inset-bottom)] bg-white" />
         </div>
       )}
 
       {/* Floating WhatsApp Button (appears after 1.5s, always visible on desktop) */}
       {showFloatingWhatsApp && (!isFormSectionVisible || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
-        <div className="fixed bottom-20 sm:bottom-6 right-4 z-40 animate-fade-in-up">
+        <div className="fixed bottom-24 sm:bottom-6 right-4 z-40 animate-fade-in-up">
           <button type="button" onClick={() => openWhatsApp('floating_btn', null, 'floating')}
             className="relative h-14 w-14 rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-xl shadow-[#25D366]/30 hover:bg-[#20bd5a] transition-all active:scale-95">
             <span className="absolute inset-0 rounded-full bg-[#25D366] animate-pulse-ring" />

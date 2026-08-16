@@ -206,7 +206,9 @@
     "whatsappCta": "Chat on WhatsApp",
     "formCta": "I want to know more",
     "dataSafe": "Your data is safe and we do not send spam.",
-    "registeredCount": "{count, plural, one {{count} person has already signed up.} other {{count} people have already signed up.}}"
+    "registeredCount": "{count, plural, one {{count} person has already signed up.} other {{count} people have already signed up.}}",
+    "successTitle": "Almost there!",
+    "successDescription": "We are taking you to complete your registration..."
   },
   "success": {
     "navBrand": "Residential Developments",
