@@ -21,6 +21,9 @@ export async function GET() {
             'meta_webhook_enabled',
             'meta_lead_count',
             'meta_page_access_token',
+            'meta_capi_enabled',
+            'meta_capi_access_token',
+            'meta_capi_dataset_id',
           ],
         },
       },
@@ -37,6 +40,10 @@ export async function GET() {
       hasAppSecret: !!map['meta_app_secret'],
       hasPageAccessToken: !!map['meta_page_access_token'],
       leadCount: parseInt(map['meta_lead_count'] || '0', 10),
+      // CAPI (Conversions API)
+      capiEnabled: map['meta_capi_enabled'] === 'true',
+      hasCapAccessToken: !!map['meta_capi_access_token'],
+      capiDatasetId: map['meta_capi_dataset_id'] || '',
       // O frontend preenche a webhookUrl com window.location.origin
     });
   } catch (error) {
@@ -51,7 +58,7 @@ export async function PUT(request: NextRequest) {
     if (error) return error;
 
     const body = await request.json();
-    const { verifyToken, appSecret, pageAccessToken, enabled } = body;
+    const { verifyToken, appSecret, pageAccessToken, enabled, capiAccessToken, capiDatasetId, capiEnabled } = body;
 
     // Upsert cada configuração individualmente
     const upserts: Promise<unknown>[] = [];
@@ -92,6 +99,36 @@ export async function PUT(request: NextRequest) {
           where: { key: 'meta_webhook_enabled' },
           update: { value: enabled ? 'true' : 'false' },
           create: { key: 'meta_webhook_enabled', value: enabled ? 'true' : 'false' },
+        })
+      );
+    }
+
+    if (capiAccessToken !== undefined) {
+      upserts.push(
+        db.userSettings.upsert({
+          where: { key: 'meta_capi_access_token' },
+          update: { value: String(capiAccessToken).trim() },
+          create: { key: 'meta_capi_access_token', value: String(capiAccessToken).trim() },
+        })
+      );
+    }
+
+    if (capiDatasetId !== undefined) {
+      upserts.push(
+        db.userSettings.upsert({
+          where: { key: 'meta_capi_dataset_id' },
+          update: { value: String(capiDatasetId).trim() },
+          create: { key: 'meta_capi_dataset_id', value: String(capiDatasetId).trim() },
+        })
+      );
+    }
+
+    if (capiEnabled !== undefined) {
+      upserts.push(
+        db.userSettings.upsert({
+          where: { key: 'meta_capi_enabled' },
+          update: { value: capiEnabled ? 'true' : 'false' },
+          create: { key: 'meta_capi_enabled', value: capiEnabled ? 'true' : 'false' },
         })
       );
     }

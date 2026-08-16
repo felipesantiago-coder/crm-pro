@@ -850,6 +850,14 @@ function ConfigTab() {
   const [diagnosing, setDiagnosing] = useState(false);
   const [diagnosis, setDiagnosis] = useState<any>(null);
 
+  // CAPI (Conversions API) states
+  const [capiEnabled, setCapEnabled] = useState(false);
+  const [capAccessToken, setCapAccessToken] = useState('');
+  const [capiDatasetId, setCapiDatasetId] = useState('');
+  const [showCapToken, setShowCapToken] = useState(false);
+  const [hasCapAccessToken, setHasCapAccessToken] = useState(false);
+  const [testingCap, setTestingCap] = useState(false);
+
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/webhooks/meta-leads`
     : '';
@@ -867,6 +875,9 @@ function ConfigTab() {
         setHasVerifyToken(data.hasVerifyToken);
         setHasAppSecret(data.hasAppSecret);
         setHasPageAccessToken(data.hasPageAccessToken);
+        setCapEnabled(data.capiEnabled);
+        setHasCapAccessToken(data.hasCapAccessToken);
+        setCapiDatasetId(data.capiDatasetId || '');
       }
     } catch {
       // Silencioso
@@ -886,6 +897,9 @@ function ConfigTab() {
         setHasVerifyToken(data.hasVerifyToken);
         setHasAppSecret(data.hasAppSecret);
         setHasPageAccessToken(data.hasPageAccessToken);
+        setCapEnabled(data.capiEnabled);
+        setHasCapAccessToken(data.hasCapAccessToken);
+        setCapiDatasetId(data.capiDatasetId || '');
         if (data.enabled && data.hasVerifyToken && data.hasAppSecret && data.hasPageAccessToken) {
           toast.success('Webhook ativo e pronto para receber leads');
         } else if (data.enabled) {
@@ -937,6 +951,9 @@ function ConfigTab() {
           appSecret: appSecret || null,
           pageAccessToken: pageAccessToken || null,
           enabled,
+          capiAccessToken: capAccessToken || null,
+          capiDatasetId: capiDatasetId || null,
+          capiEnabled,
         }),
       });
 
@@ -945,6 +962,7 @@ function ConfigTab() {
         setVerifyToken('');
         setAppSecret('');
         setPageAccessToken('');
+        setCapAccessToken('');
         loadConfig();
       } else {
         const data = await res.json();
@@ -963,6 +981,47 @@ function ConfigTab() {
       toast.success(`${label} copiado!`);
     } catch {
       toast.error('Falha ao copiar');
+    }
+  }
+
+  async function testCapIntegration() {
+    const token = capAccessToken || undefined;
+    const dataset = capiDatasetId || undefined;
+    if (!token && !hasCapAccessToken) {
+      toast.error('Preencha o Access Token do CAPI');
+      return;
+    }
+    if (!dataset) {
+      toast.error('Preencha o Dataset ID');
+      return;
+    }
+    setTestingCap(true);
+    try {
+      // Use the token from input (if filled) or test with the saved one
+      const testToken = token;
+      if (!testToken) {
+        toast.error('Preencha o Access Token do CAPI no campo abaixo para testar');
+        return;
+      }
+      const res = await fetch('/api/webhooks/meta-leads/capi-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: testToken, datasetId: dataset }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          toast.success(data.message);
+        } else {
+          toast.error(data.message);
+        }
+      } else {
+        toast.error('Erro ao enviar evento de teste');
+      }
+    } catch {
+      toast.error('Falha de conexão ao testar CAPI');
+    } finally {
+      setTestingCap(false);
     }
   }
 
@@ -1251,6 +1310,154 @@ function ConfigTab() {
               <li>Em &quot;Subscribe to&quot;, selecione <strong>leadgen</strong> (Lead Ads)</li>
               <li>No <strong>Ads Manager</strong>, crie um formulário de Lead Ads</li>
               <li>Ao publicar o anúncio, os leads serão criados automaticamente no CRM com stage <strong>LEAD</strong></li>
+            </ol>
+          </details>
+        </CardContent>
+      </Card>
+
+      {/* ═══ CAPI — Conversions API (Leads Qualificados) ═══ */}
+      <Card className={capiEnabled ? 'border-purple-200 dark:border-purple-800/50 bg-purple-50/50 dark:bg-purple-950/20' : ''}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <ArrowUpRight className="h-4 w-4 text-purple-600" />
+                API de Conversões (Leads Qualificados)
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Envia mudanças de stage de volta para a Meta, permitindo otimizar por leads qualificados
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {capiEnabled ? (
+                <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 gap-1">
+                  <Zap className="h-3 w-3" />
+                  Ativo
+                </Badge>
+              ) : (
+                <Badge className="bg-muted text-muted-foreground gap-1">
+                  <Circle className="h-3 w-3" />
+                  Inativo
+                </Badge>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Toggle CAPI */}
+          <div className="flex items-center justify-between">
+            <Label htmlFor="capi-enabled" className="text-sm cursor-pointer">
+              {capiEnabled ? 'CAPI ativado' : 'Ativar API de Conversões'}
+            </Label>
+            <Switch id="capi-enabled" checked={capiEnabled} onCheckedChange={setCapEnabled} />
+          </div>
+
+          <Separator />
+
+          {/* Dataset ID */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="capi-dataset-id" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Dataset ID (Identificação do Conjunto de Dados)
+              </Label>
+              {capiDatasetId && (
+                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                  Configurado
+                </Badge>
+              )}
+            </div>
+            <Input
+              id="capi-dataset-id"
+              placeholder="Ex: 858296646928219"
+              value={capiDatasetId}
+              onChange={(e) => setCapiDatasetId(e.target.value)}
+              type="text"
+              className="font-mono text-sm"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Encontrado no Gerenciador de Eventos da Meta, na URL do ponto de extremidade fornecida nas instruções.
+            </p>
+          </div>
+
+          {/* CAPI Access Token */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="capi-access-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Access Token do Dataset
+              </Label>
+              {hasCapAccessToken && (
+                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                  Configurado
+                </Badge>
+              )}
+            </div>
+            <div className="relative">
+              <Input
+                id="capi-access-token"
+                placeholder={hasCapAccessToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Cole o token gerado pelo Meta Business SDK'}
+                value={capAccessToken}
+                onChange={(e) => setCapAccessToken(e.target.value)}
+                type={showCapToken ? 'text' : 'password'}
+                className="font-mono text-sm pr-10"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                onClick={() => setShowCapToken(!showCapToken)}
+              >
+                {showCapToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Gere um token de acesso para o dataset no Meta Business SDK ou nas configurações do conjunto de dados.
+            </p>
+          </div>
+
+          <Separator />
+
+          {/* CAPI Actions */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={testCapIntegration}
+              disabled={testingCap}
+              className="border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30"
+            >
+              {testingCap ? (
+                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Enviando...</>
+              ) : (
+                <><Zap className="h-4 w-4 mr-1" /> Testar CAPI</>
+              )}
+            </Button>
+          </div>
+
+          {/* CAPI Info */}
+          <div className="rounded-lg bg-muted/50 border p-3 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Como funciona</p>
+            <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
+              <li>Toda vez que o stage de um lead muda no CRM, o evento é enviado automaticamente para a Meta</li>
+              <li>A Meta usa esses dados para otimizar a entrega e habilitar a meta &quot;Maximizar leads qualificados&quot;</li>
+              <li>Os dados de email e telefone são hashados (SHA256) antes do envio, garantindo privacidade</li>
+              <li>Use &quot;Testar CAPI&quot; para enviar um evento de teste — ele aparece na aba &quot;Eventos de teste&quot; do Gerenciador de Eventos</li>
+            </ul>
+          </div>
+
+          {/* Tutorial CAPI */}
+          <details className="group">
+            <summary className="text-xs font-medium text-purple-600 dark:text-purple-400 cursor-pointer hover:underline flex items-center gap-1">
+              Como obter o Access Token e Dataset ID
+            </summary>
+            <ol className="mt-2 text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
+              <li>No <strong>Gerenciador de Eventos</strong>, clique em &quot;Conectar fonte de dados&quot; → &quot;CRM&quot; → &quot;API de Conversões manualmente&quot;</li>
+              <li>A Meta fornecerá a <strong>URL do ponto de extremidade</strong> — copie o número após <code className="bg-muted px-1 rounded">v26.0/</code> (esse é o Dataset ID)</li>
+              <li>Gere o <strong>Access Token</strong> usando o Meta Business SDK ou nas configurações do conjunto de dados</li>
+              <li>Clique em &quot;Testar CAPI&quot; e verifique se o evento aparece na aba &quot;Eventos de teste&quot; do Gerenciador de Eventos</li>
+              <li>Ative o switch, salve, e a meta &quot;Maximizar leads qualificados&quot; estará disponível no Ads Manager</li>
             </ol>
           </details>
         </CardContent>
