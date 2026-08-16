@@ -1547,7 +1547,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
       {/* Fixed Bottom CTA Bar (Mobile) — Inline micro-form for cold visitors */}
       {showBottomBar && !isFormSectionVisible && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 lg:hidden animate-slide-up-bar">
+        <div className="fixed bottom-0 left-0 right-0 z-50 lg:hidden animate-slide-up-bar max-w-screen overflow-hidden">
           <form
             id="sticky-micro-form"
             onSubmit={(ev) => {
@@ -1564,19 +1564,23 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 try { (window as any).CRMPIXEL?.trackCTA('sticky_form', 'Cadastrar', 'bottom_bar', 'micro-form'); } catch {}
               } catch {}
             }}
-            className="bg-white border-t border-[#1a1a1a]/[0.08] shadow-[0_-4px_20px_rgba(0,0,0,0.12)] px-3 py-2.5"
+            className="bg-white border-t border-[#1a1a1a]/[0.08] shadow-[0_-4px_20px_rgba(0,0,0,0.12)] px-3 pt-2 pb-2.5"
           >
-            <div className="flex items-center gap-2">
-              <div className="flex-1 flex items-center gap-1.5">
-                <User className="h-3.5 w-3.5 text-[#1a1a1a]/25 flex-shrink-0" />
-                <input id="sticky-name" type="text" placeholder={t('hero.namePlaceholder')} autoComplete="name" required
-                  className="lp-input-mobile flex-1 min-h-[36px] px-2 py-1.5 rounded-lg bg-[#F7F6F3] border border-[#1a1a1a]/[0.08] text-xs text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:border-[#33492F]/40 focus:ring-1 focus:ring-[#33492F]/15 transition-all" />
-                <Phone className="h-3.5 w-3.5 text-[#1a1a1a]/25 flex-shrink-0" />
+            {/* Row 1: Name */}
+            <div className="relative">
+              <User className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#1a1a1a]/25 pointer-events-none" />
+              <input id="sticky-name" type="text" placeholder={t('hero.namePlaceholder')} autoComplete="name" required
+                className="lp-input-mobile w-full min-h-[38px] pl-8 pr-3 py-1.5 rounded-lg bg-[#F7F6F3] border border-[#1a1a1a]/[0.08] text-xs text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:border-[#33492F]/40 focus:ring-1 focus:ring-[#33492F]/15 transition-all" />
+            </div>
+            {/* Row 2: Phone + Submit */}
+            <div className="flex items-center gap-2 mt-1.5">
+              <div className="relative flex-1 min-w-0">
+                <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#1a1a1a]/25 pointer-events-none" />
                 <input id="sticky-phone" type="tel" inputMode="numeric" placeholder={t('hero.phonePlaceholder')} autoComplete="tel" required
                   onChange={(ev) => { const d = ev.target.value.replace(/\D/g, '').slice(0, 11); let m = ''; if (d.length > 0) m += `(${d.slice(0, 2)}`; if (d.length > 2) m += `) ${d.slice(2, 7)}`; if (d.length > 7) m += `-${d.slice(7)}`; ev.target.value = m; }}
-                  className="lp-input-mobile flex-1 min-h-[36px] px-2 py-1.5 rounded-lg bg-[#F7F6F3] border border-[#1a1a1a]/[0.08] text-xs text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:border-[#33492F]/40 focus:ring-1 focus:ring-[#33492F]/15 transition-all" />
+                  className="lp-input-mobile w-full min-h-[38px] pl-8 pr-3 py-1.5 rounded-lg bg-[#F7F6F3] border border-[#1a1a1a]/[0.08] text-xs text-[#1a1a1a] placeholder:text-[#1a1a1a]/30 focus:outline-none focus:border-[#33492F]/40 focus:ring-1 focus:ring-[#33492F]/15 transition-all" />
               </div>
-              <button type="submit" className="flex-shrink-0 min-h-[36px] flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#33492F] text-white font-bold text-xs shadow-md shadow-[#33492F]/20 active:scale-[0.97] transition-all">
+              <button type="submit" className="flex-shrink-0 min-h-[38px] flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#33492F] text-white font-bold text-xs shadow-md shadow-[#33492F]/20 active:scale-[0.97] transition-all">
                 <Send className="h-3.5 w-3.5" /><span>{t('hero.cta')}</span>
               </button>
             </div>
@@ -1587,7 +1591,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
 
       {/* Floating WhatsApp Button (appears after 1.5s, always visible on desktop) */}
       {showFloatingWhatsApp && (!isFormSectionVisible || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
-        <div className="fixed bottom-24 sm:bottom-6 right-4 z-40 animate-fade-in-up">
+        <div className="fixed bottom-28 sm:bottom-6 right-4 z-40 animate-fade-in-up">
           <button type="button" onClick={() => openWhatsApp('floating_btn', null, 'floating')}
             className="relative h-14 w-14 rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-xl shadow-[#25D366]/30 hover:bg-[#20bd5a] transition-all active:scale-95">
             <span className="absolute inset-0 rounded-full bg-[#25D366] animate-pulse-ring" />
