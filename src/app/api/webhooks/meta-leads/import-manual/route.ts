@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
-import { notifyNewLead } from '@/lib/telegram';
-import { assignLeadToUser } from '@/lib/lead-queue';
+import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
+import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 
@@ -219,11 +219,13 @@ export async function POST(request: NextRequest) {
         // 7. Atribuir à fila
         let assignedTo: string | undefined;
         let assignedUserId: string | undefined;
+        let assignedQueueId: string | undefined;
         try {
           const assignResult = await assignLeadToUser({ leadId: newClient.id, source: 'meta_ads:import_manual' });
           if (assignResult.assigned && assignResult.userId) {
             assignedTo = assignResult.userName;
             assignedUserId = assignResult.userId;
+            assignedQueueId = assignResult.queueId;
             await db.client.update({
               where: { id: newClient.id },
               data: { createdBy: assignResult.userId, utmSource: 'meta_ads', utmCampaign: 'import_manual' },
@@ -233,7 +235,7 @@ export async function POST(request: NextRequest) {
           console.error(`[Import Manual] Falha na fila para ${newClient.id}:`, queueErr);
         }
 
-        // 8. Notificação Telegram
+        // 8. Notificação Telegram para o atendente
         const notifyId = assignedUserId || creatorId;
         if (notifyId) {
           db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } }).then((user) => {
@@ -251,6 +253,28 @@ export async function POST(request: NextRequest) {
               }).catch(() => {});
             }
           }).catch(() => {});
+        }
+
+        // 9. Notify admin about queue rotation (fire-and-forget)
+        if (assignedUserId && assignedQueueId) {
+          const capturedQueueId = assignedQueueId;
+          const capturedUserName = assignedTo;
+          (async () => {
+            try {
+              const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+              if (!adminUser?.telegramChatId) return;
+              const nextUser = await peekNextUser({ queueId: capturedQueueId });
+              await notifyQueueUpdate(adminUser.telegramChatId, {
+                source: 'meta_ads:import_manual',
+                assignedUserName: capturedUserName || 'Desconhecido',
+                nextUserName: nextUser?.userName || null,
+                leadName: newClient.name,
+                leadPhone: newClient.phone || undefined,
+              });
+            } catch (err) {
+              console.warn('[Import Manual] Admin queue notification failed:', err instanceof Error ? err.message : err);
+            }
+          })();
         }
 
         results.push({ leadgenId, success: true, clientName: name, clientId: newClient.id, assignedTo });

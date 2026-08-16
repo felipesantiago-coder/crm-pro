@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import crypto from 'crypto';
-import { notifyNewLead } from '@/lib/telegram';
-import { assignLeadToUser } from '@/lib/lead-queue';
+import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
+import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 
@@ -413,7 +413,7 @@ export async function POST(request: NextRequest) {
                 where: { id: existing.id },
                 data: { createdBy: assignResult.userId },
               }).catch(() => {});
-              // Send Telegram notification
+              // Send Telegram notification to assigned agent
               db.user.findUnique({ where: { id: assignResult.userId }, select: { telegramChatId: true, name: true } }).then((user) => {
                 if (user?.telegramChatId) {
                   notifyNewLead(user.telegramChatId, {
@@ -431,6 +431,26 @@ export async function POST(request: NextRequest) {
                   console.warn(`[Meta Webhook] Usuário ${user?.name || assignResult.userId} sem Telegram. Lead existente ${existing.id} sem notificação.`);
                 }
               }).catch(() => {});
+
+              // Notify admin about queue rotation (fire-and-forget)
+              if (assignResult.message !== 'already_assigned') {
+                (async () => {
+                  try {
+                    const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+                    if (!admin?.telegramChatId) return;
+                    const nextUser = await peekNextUser({ queueId: assignResult.queueId });
+                    await notifyQueueUpdate(admin.telegramChatId, {
+                      source: `meta_ads:${(campaignName || adName || '').slice(0, 200)}`,
+                      assignedUserName: assignResult.userName || 'Desconhecido',
+                      nextUserName: nextUser?.userName || null,
+                      leadName: existing.name,
+                      leadPhone: existing.phone || phone || undefined,
+                    });
+                  } catch (err) {
+                    console.warn('[Meta Webhook] Admin queue notification failed (existing):', err instanceof Error ? err.message : err);
+                  }
+                })();
+              }
             } else {
               console.warn(`[Meta Webhook] ⚠ Fila: não foi possível atribuir lead existente ${existing.id}: ${assignResult.message}`);
             }
@@ -514,6 +534,7 @@ export async function POST(request: NextRequest) {
 
           // 8. Assign via queue (direct function call, NOT HTTP)
           let assignedUserId: string | undefined;
+          let assignedQueueId: string | undefined;
           try {
             const assignResult = await assignLeadToUser({
               leadId: newClient.id,
@@ -521,6 +542,7 @@ export async function POST(request: NextRequest) {
             });
             if (assignResult.assigned && assignResult.userId) {
               assignedUserId = assignResult.userId;
+              assignedQueueId = assignResult.queueId;
               assignedUserName = assignResult.userName;
               console.log(`[Meta Webhook] ✅ Fila: client ${newClient.id} atribuído a "${assignResult.userName}" (userId=${assignResult.userId})`);
               await db.client.update({
@@ -538,7 +560,7 @@ export async function POST(request: NextRequest) {
             console.error(`[Meta Webhook] ⚠ Falha na atribuição de fila (client ${newClient.id}):`, queueErr);
           }
 
-          // 9. Send Telegram notification
+          // 9. Send Telegram notification to assigned agent
           const notifyId = assignedUserId || creatorId;
           if (notifyId) {
             db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } }).then((user) => {
@@ -558,6 +580,28 @@ export async function POST(request: NextRequest) {
                 console.warn(`[Meta Webhook] Usuário ${user?.name || notifyId} atribuído mas sem Telegram. Lead ${newClient.id} (${name}) sem notificação.`);
               }
             }).catch(() => {});
+          }
+
+          // 10. Notify admin about queue rotation (fire-and-forget)
+          if (assignedUserId && assignedQueueId) {
+            const capturedQueueId = assignedQueueId;
+            const capturedUserName = assignedUserName;
+            (async () => {
+              try {
+                const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+                if (!admin?.telegramChatId) return;
+                const nextUser = await peekNextUser({ queueId: capturedQueueId });
+                await notifyQueueUpdate(admin.telegramChatId, {
+                  source: `meta_ads:${(campaignName || adName || '').slice(0, 200)}`,
+                  assignedUserName: capturedUserName || 'Desconhecido',
+                  nextUserName: nextUser?.userName || null,
+                  leadName: newClient.name,
+                  leadPhone: newClient.phone || undefined,
+                });
+              } catch (err) {
+                console.warn('[Meta Webhook] Admin queue notification failed (new):', err instanceof Error ? err.message : err);
+              }
+            })();
           }
 
           results.push({ success: true, clientName: name, leadId: leadgenId });

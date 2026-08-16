@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
-import { notifyNewLead } from '@/lib/telegram';
-import { assignLeadToUser } from '@/lib/lead-queue';
+import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
+import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 
@@ -224,11 +224,13 @@ async function processLead(
     // 5. Atribuir à fila
     let assignedTo: string | undefined;
     let assignedUserId: string | undefined;
+    let assignedQueueId: string | undefined;
     try {
       const assignResult = await assignLeadToUser({ leadId: newClient.id, source: 'meta_ads:import_by_form' });
       if (assignResult.assigned && assignResult.userId) {
         assignedTo = assignResult.userName;
         assignedUserId = assignResult.userId;
+        assignedQueueId = assignResult.queueId;
         await db.client.update({
           where: { id: newClient.id },
           data: { createdBy: assignResult.userId, utmSource: 'meta_ads', utmCampaign: `import_by_form:${formId}` },
@@ -238,7 +240,7 @@ async function processLead(
       console.error(`[Import by Form] Falha na fila para ${newClient.id}:`, queueErr);
     }
 
-    // 6. Notificação Telegram
+    // 6. Notificação Telegram para o atendente
     const notifyId = assignedUserId || creatorId;
     if (notifyId) {
       db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } }).then((user) => {
@@ -256,6 +258,28 @@ async function processLead(
           }).catch(() => {});
         }
       }).catch(() => {});
+    }
+
+    // 7. Notify admin about queue rotation (fire-and-forget)
+    if (assignedUserId && assignedQueueId) {
+      const capturedQueueId = assignedQueueId;
+      const capturedUserName = assignedTo;
+      (async () => {
+        try {
+          const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+          if (!adminUser?.telegramChatId) return;
+          const nextUser = await peekNextUser({ queueId: capturedQueueId });
+          await notifyQueueUpdate(adminUser.telegramChatId, {
+            source: `meta_ads:import_by_form:${formId}`,
+            assignedUserName: capturedUserName || 'Desconhecido',
+            nextUserName: nextUser?.userName || null,
+            leadName: newClient.name,
+            leadPhone: newClient.phone || undefined,
+          });
+        } catch (err) {
+          console.warn('[Import by Form] Admin queue notification failed:', err instanceof Error ? err.message : err);
+        }
+      })();
     }
 
     console.log(`[Import by Form] ✅ Lead ${leadgenId} importado como client ${newClient.id} (${name})`);
