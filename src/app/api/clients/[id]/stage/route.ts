@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
+import { sendLeadConversionEvent } from '@/lib/meta-conversions';
 
 const VALID_STAGES = [
   'LEAD',
@@ -86,6 +87,16 @@ export async function PATCH(
           : {}),
       },
     });
+
+    // Enviar evento de conversão para a Meta CAPI (fire-and-forget)
+    sendLeadConversionEvent({
+      clientName: client.name,
+      email: client.email,
+      phone: client.phone,
+      metaLeadgenId: client.metaLeadgenId,
+      eventTime: Math.floor(Date.now() / 1000),
+      stage,
+    }).catch(() => {});
 
     return NextResponse.json(client);
   } catch (error) {
