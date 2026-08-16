@@ -298,10 +298,28 @@ export async function sendTestCapEvent(accessToken: string, datasetId: string): 
 /**
  * Busca um CAPI config que tenha um formId específico.
  * Usado pelo webhook para auto-atribuir configs quando chega um lead.
+ *
+ * Ordem de busca:
+ *   1. lead_form_mappings.capiConfigId (mapeamento manual)
+ *   2. meta_cap_configs.formIds (array JSON no config)
  */
 export async function findCapConfigByFormId(formId: string): Promise<{ id: string } | null> {
   const { db } = await import('@/lib/db');
 
+  // 1. Buscar mapeamento manual na tabela lead_form_mappings
+  try {
+    const mapping = await db.leadFormMapping.findFirst({
+      where: { formId, capiConfigId: { not: null } },
+      select: { capiConfigId: true },
+    });
+    if (mapping?.capiConfigId) {
+      return { id: mapping.capiConfigId };
+    }
+  } catch {
+    // Table might not exist yet during migration
+  }
+
+  // 2. Buscar nos formIds (JSON array) dos configs
   const configs = await db.metaCapConfig.findMany({
     where: { enabled: true },
     select: { id: true, formIds: true },

@@ -288,6 +288,30 @@ export async function POST(request: NextRequest) {
         const campaignName = leadData.campaign_name || '';
         const formName = leadData.form_name || '';
         const formId = leadData.form_id || '';
+        const adId = String(leadData.ad_id || '');
+        const campaignId = String(leadData.campaign_id || '');
+
+        // Auto-populate lead_form_mappings (fire-and-forget, non-critical)
+        if (formId) {
+          db.leadFormMapping.upsert({
+            where: { formId_campaignId: { formId, campaignId: campaignId || '__no_campaign' } },
+            create: {
+              formId,
+              formName: formName || null,
+              adId: adId || null,
+              adName: adName !== 'Anúncio Meta Ads' ? adName : null,
+              campaignId: campaignId || null,
+              campaignName: campaignName || null,
+            },
+            update: {
+              leadCount: { increment: 1 },
+              formName: formName || undefined,
+              adName: adName !== 'Anúncio Meta Ads' ? adName : undefined,
+            },
+          }).catch((err: any) => {
+            console.warn(`[Meta Webhook] Falha ao upsert form mapping ${formId}:`, err?.message || err);
+          });
+        }
 
         // Buscar CAPI config por form_id (para multi-client CAPI)
         let capiConfigId: string | undefined;
