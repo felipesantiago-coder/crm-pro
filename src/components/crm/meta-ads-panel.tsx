@@ -1766,7 +1766,7 @@ function ConfigTab() {
                 {savingCapi ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Salvando...</> : <><Save className="h-4 w-4 mr-1" /> {editingCapi ? 'Atualizar' : 'Criar'}</>}
               </Button>
             </div>
-          </div>
+          </Card>
         </div>
       )}
 
