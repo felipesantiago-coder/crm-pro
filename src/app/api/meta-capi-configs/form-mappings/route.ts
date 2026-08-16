@@ -237,9 +237,11 @@ export async function POST(request: NextRequest) {
 
     // Se nenhuma abordagem funcionou, retornar erro com orientação
     if (forms.length === 0 && lastErrorMsg) {
-      const permissionHint = String(lastErrorCode) === '100'
-        ? ' O token precisa da permissão "ads_read". Use um System User Token ou User Access Token com permissão de ads gerada no Meta Business Suite > Configurações > Integrations > System Users.'
-        : '';
+      let permissionHint = '';
+      const code = String(lastErrorCode);
+      if (code === '100' || code === '200') {
+        permissionHint = '\n\nPara resolver:\n1. Vá em Meta Business Manager > System Users (business.facebook.com/settings/system-users)\n2. Crie ou edite um System User com permissão "ads_read"\n3. Atribua esse usuário à conta de anúncios\n4. Gere um novo token e use-o aqui.';
+      }
       console.error(`[Form Import] Falha final: code=${lastErrorCode} subcode=${lastErrorSubcode} msg=${lastErrorMsg} accountId=${accountId}`);
       return NextResponse.json(
         { error: lastErrorMsg + permissionHint, metaErrorCode: lastErrorCode, metaErrorSubcode: lastErrorSubcode },
