@@ -201,10 +201,14 @@ export async function GET() {
 
     // ─────────────────────────────────────────────────
     // CHECK 3 — Permissões do token
+    // NOTA: /me/permissions só funciona com USER tokens.
+    // Para PAGE tokens, verificamos indiretamente via uma
+    // chamada real à API de leads (se houver form ID salvo)
+    // ou marcamos como info, já que o token já foi validado no CHECK 2.
     // ─────────────────────────────────────────────────
     if (hasPageToken) {
       try {
-        const permsUrl = `https://graph.facebook.com/v25.0/me/permissions?access_token=${encodeURIComponent(pageToken)}`;
+        const permsUrl = `https://graph.facebook.com/v22.0/me/permissions?access_token=${encodeURIComponent(pageToken)}`;
         const permsRes = await fetch(permsUrl, { method: 'GET' });
 
         if (permsRes.ok) {
@@ -229,13 +233,50 @@ export async function GET() {
               : undefined,
           });
         } else {
+          // /me/permissions falhou — provavelmente é um PAGE token.
+          // Verifica se o erro é #100 (campo inexistente), o que confirma
+          // que é um Page Token (Pages não têm o endpoint /permissions).
           const errData = await permsRes.json().catch(() => ({}));
-          checks.push({
-            name: 'Permissões do Token',
-            status: 'error',
-            details: `Não foi possível verificar permissões. Erro: ${errData?.error?.message || 'desconhecido'}`,
-            fix: 'O token pode ser inválido. Tente gerar um novo.',
-          });
+          const metaErrorCode = errData?.error?.code;
+          const isPageToken = metaErrorCode === 100
+            || String(errData?.error?.message || '').includes('nonexisting field');
+
+          if (isPageToken) {
+            // Page Token: verifica permissões indiretamente
+            // tentando acessar /me/leadgen_forms (precisa de leads_retrieval)
+            const leadFormsUrl = `https://graph.facebook.com/v22.0/me/leadgen_forms?limit=1&access_token=${encodeURIComponent(pageToken)}`;
+            const lfRes = await fetch(leadFormsUrl, { method: 'GET' });
+            const lfData = await lfRes.json().catch(() => ({}));
+            const lfErrCode = lfData?.error?.code;
+
+            if (lfRes.ok || lfErrCode === 100) {
+              // Se OK = tem leads_retrieval. Se #100 = não tem formulários,
+              // mas o endpoint existe = token tem permissão.
+              // Se #200 ou #298 = sem permissão.
+              const hasPermission = lfRes.ok || lfErrCode === 100;
+              checks.push({
+                name: 'Permissões do Token',
+                status: hasPermission ? 'ok' : 'error',
+                details: `Token de PÁGINA detectado. Permissão leads_retrieval: ${hasPermission ? 'SIM (verificado indiretamente)' : 'NAO'}. Não é possível listar permissões de Page Tokens via /me/permissions — isso é normal.`,
+                fix: hasPermission ? undefined : 'O Page Token não tem permissão leads_retrieval. No Meta Business Suite, gere um novo token com essa permissão.',
+              });
+            } else {
+              checks.push({
+                name: 'Permissões do Token',
+                status: 'error',
+                details: `Token de PÁGINA detectado. Não foi possível verificar permissões. Erro: ${lfData?.error?.message || `HTTP ${lfRes.status}`}`,
+                fix: 'Gere um novo Page Access Token no Graph API Explorer com leads_retrieval e pages_read_engagement.',
+              });
+            }
+          } else {
+            // Erro diferente de #100 — pode ser token inválido
+            checks.push({
+              name: 'Permissões do Token',
+              status: 'error',
+              details: `Não foi possível verificar permissões. Erro: ${errData?.error?.message || 'desconhecido'}`,
+              fix: 'O token pode ser inválido. Tente gerar um novo.',
+            });
+          }
         }
       } catch (permErr: unknown) {
         const errMsg = permErr instanceof Error ? permErr.message : 'Erro desconhecido';
