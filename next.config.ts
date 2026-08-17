@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
 
   // Allow Supabase Storage images in next/image
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
