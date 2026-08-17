@@ -136,7 +136,8 @@ export async function GET(request: NextRequest) {
         ? await db.$queryRaw<Array<{id: string}>>`
             SELECT c.id FROM "clients" c
             WHERE
-              CASE
+              c.stage NOT IN ('FECHADO_GANHO', 'FECHADO_PERDIDO')
+              AND CASE
                 WHEN c."lastInteractionAt" IS NOT NULL
                 THEN (c."lastInteractionAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
                 ELSE (c."createdAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
@@ -149,6 +150,7 @@ export async function GET(request: NextRequest) {
               (c."createdBy" = ${currentUser.id} OR EXISTS (
                 SELECT 1 FROM client_partners cp WHERE cp."clientId" = c.id AND cp."userId" = ${currentUser.id}
               ))
+              AND c.stage NOT IN ('FECHADO_GANHO', 'FECHADO_PERDIDO')
               AND CASE
                 WHEN c."lastInteractionAt" IS NOT NULL
                 THEN (c."lastInteractionAt" + (c."updatePeriod" || ' days')::interval) <= ${now}

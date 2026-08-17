@@ -166,14 +166,16 @@ interface UserOption {
   email: string;
 }
 
-function needsUpdate(lastInteractionAt: string | null, createdAt: string, updatePeriod: number): boolean {
+function needsUpdate(lastInteractionAt: string | null, createdAt: string, updatePeriod: number, stage?: string): boolean {
+  if (stage === 'FECHADO_GANHO' || stage === 'FECHADO_PERDIDO') return false;
   const referenceDate = lastInteractionAt ? new Date(lastInteractionAt) : new Date(createdAt);
   const dueDate = new Date(referenceDate);
   dueDate.setDate(dueDate.getDate() + updatePeriod);
   return dueDate <= new Date();
 }
 
-function daysUntilUpdate(lastInteractionAt: string | null, createdAt: string, updatePeriod: number): number {
+function daysUntilUpdate(lastInteractionAt: string | null, createdAt: string, updatePeriod: number, stage?: string): number {
+  if (stage === 'FECHADO_GANHO' || stage === 'FECHADO_PERDIDO') return Infinity;
   const referenceDate = lastInteractionAt ? new Date(lastInteractionAt) : new Date(createdAt);
   const dueDate = new Date(referenceDate);
   dueDate.setDate(dueDate.getDate() + updatePeriod);
@@ -259,8 +261,8 @@ function DetailContent({
   const [deletingSchedule, setDeletingSchedule] = useState<string | null>(null);
   const [portalLinkCopied, setPortalLinkCopied] = useState(false);
   const period = client.updatePeriod || 30;
-  const isOverdue = needsUpdate(client.lastInteractionAt, client.createdAt, period);
-  const daysLeft = daysUntilUpdate(client.lastInteractionAt, client.createdAt, period);
+  const isOverdue = needsUpdate(client.lastInteractionAt, client.createdAt, period, client.stage);
+  const daysLeft = daysUntilUpdate(client.lastInteractionAt, client.createdAt, period, client.stage);
 
   const whatsappUrl = client.phone ? getWhatsAppUrl(client.phone) : null;
   const phoneUrl = client.phone ? getPhoneCallUrl(client.phone) : null;
@@ -616,7 +618,8 @@ function DetailContent({
         </div>
       </div>
 
-      {/* Update Status Card */}
+      {/* Update Status Card — hidden for closed stages */}
+      {client.stage !== 'FECHADO_GANHO' && client.stage !== 'FECHADO_PERDIDO' && (
       <div className={`p-4 rounded-xl border ${
         isOverdue
           ? 'border-rose-200 bg-rose-50 dark:border-rose-800/50 dark:bg-rose-950/20'
@@ -649,6 +652,7 @@ function DetailContent({
           </div>
         </div>
       </div>
+      )}
 
       {/* Pipeline Stage */}
       <div className="space-y-3">
