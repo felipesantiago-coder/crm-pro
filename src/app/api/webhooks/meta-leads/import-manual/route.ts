@@ -219,11 +219,55 @@ export async function POST(request: NextRequest) {
 
         // Tentar atribuir à fila
         let assignedTo: string | undefined;
+        let assignedUserId: string | undefined;
+        let assignedQueueId: string | undefined;
         try {
           const assignResult = await assignLeadToUser({ leadId: existingByContact.id, source: 'meta_ads:import_manual' });
-          if (assignResult.assigned) {
+          if (assignResult.assigned && assignResult.message !== 'already_assigned') {
+            // New assignment — notify agent
             assignedTo = assignResult.userName;
+            assignedUserId = assignResult.userId;
+            assignedQueueId = assignResult.queueId;
             await db.client.update({ where: { id: existingByContact.id }, data: { createdBy: assignResult.userId! } }).catch(() => {});
+            db.user.findUnique({ where: { id: assignResult.userId }, select: { telegramChatId: true, name: true } }).then((user) => {
+              if (user?.telegramChatId) {
+                notifyNewLead(user.telegramChatId, {
+                  leadName: existingByContact.name,
+                  leadPhone: phone || existingByContact.phone || '',
+                  leadEmail: email || existingByContact.email || '',
+                  enterpriseName: undefined,
+                  utmCampaign: 'import_manual',
+                  utmSource: 'meta_ads',
+                  slug: undefined,
+                  assignedUserName: assignResult.userName,
+                  customAnswers,
+                }).catch((err) => console.warn('[Import Manual] Falha na notificação (lead existente, nova atribuição):', err));
+              }
+            }).catch(() => {});
+            // Notify admin
+            if (assignResult.queueId) {
+              const capturedQueueId = assignResult.queueId;
+              const capturedUserName = assignResult.userName;
+              (async () => {
+                try {
+                  const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+                  if (!adminUser?.telegramChatId) return;
+                  const nextUser = await peekNextUser({ queueId: capturedQueueId });
+                  await notifyQueueUpdate(adminUser.telegramChatId, {
+                    source: 'meta_ads:import_manual',
+                    assignedUserName: capturedUserName || 'Desconhecido',
+                    nextUserName: nextUser?.userName || null,
+                    leadName: existingByContact.name,
+                    leadPhone: phone || undefined,
+                  });
+                } catch (err) {
+                  console.warn('[Import Manual] Admin queue notification failed (existing):', err instanceof Error ? err.message : err);
+                }
+              })();
+            }
+          } else if (assignResult.assigned) {
+            // already_assigned — no notification needed, queue didn't advance
+            assignedTo = assignResult.userName;
           }
         } catch {}
 
