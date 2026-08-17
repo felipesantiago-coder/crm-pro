@@ -15,14 +15,16 @@ interface ClientTag {
   };
 }
 
-function needsUpdate(lastInteractionAt: string | null, createdAt: string, updatePeriod: number): boolean {
+function needsUpdate(lastInteractionAt: string | null, createdAt: string, updatePeriod: number, stage?: string): boolean {
+  if (stage === 'FECHADO_GANHO' || stage === 'FECHADO_PERDIDO') return false;
   const referenceDate = lastInteractionAt ? new Date(lastInteractionAt) : new Date(createdAt);
   const dueDate = new Date(referenceDate);
   dueDate.setDate(dueDate.getDate() + updatePeriod);
   return dueDate <= new Date();
 }
 
-function daysUntilUpdate(lastInteractionAt: string | null, createdAt: string, updatePeriod: number): number {
+function daysUntilUpdate(lastInteractionAt: string | null, createdAt: string, updatePeriod: number, stage?: string): number {
+  if (stage === 'FECHADO_GANHO' || stage === 'FECHADO_PERDIDO') return Infinity;
   const referenceDate = lastInteractionAt ? new Date(lastInteractionAt) : new Date(createdAt);
   const dueDate = new Date(referenceDate);
   dueDate.setDate(dueDate.getDate() + updatePeriod);
@@ -81,8 +83,8 @@ const STAGE_LABELS: Record<string, string> = {
 
 export function ClientCard({ client, onClick }: ClientCardProps) {
   const period = client.updatePeriod || 30;
-  const isOverdue = needsUpdate(client.lastInteractionAt || null, client.createdAt, period);
-  const daysLeft = daysUntilUpdate(client.lastInteractionAt || null, client.createdAt, period);
+  const isOverdue = needsUpdate(client.lastInteractionAt || null, client.createdAt, period, client.stage);
+  const daysLeft = daysUntilUpdate(client.lastInteractionAt || null, client.createdAt, period, client.stage);
 
   const whatsappUrl = client.phone ? getWhatsAppUrl(client.phone) : null;
   const phoneUrl = client.phone ? getPhoneCallUrl(client.phone) : null;
@@ -164,6 +166,7 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
           )}
         </div>
 
+        {client.stage !== 'FECHADO_GANHO' && client.stage !== 'FECHADO_PERDIDO' && (
         <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
           <Clock className="h-3 w-3 flex-shrink-0" />
           <span>
@@ -175,6 +178,7 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
             )}
           </span>
         </div>
+        )}
 
         {client.stage && STAGE_BADGES[client.stage] && (
           <div className="flex items-center gap-1.5 mt-3">
