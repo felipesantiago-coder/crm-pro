@@ -386,7 +386,18 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    console.log(`[Import by Form] ${metaLeads.length} leads encontrados no Meta. Iniciando processamento...`);
+    console.log(`[Import by Form] ${metaLeads.length} leads encontrados no Meta. Ordenando por created_time (mais antigo primeiro) para garantir distribuição cronológica na fila...`);
+
+    // Ordenar leads por created_time ASC (mais antigo primeiro)
+    // A API do Meta retorna em ordem reversa (mais recente primeiro).
+    // Ordenar garante que a fila round-robin distribua na ordem real de cadastro.
+    metaLeads.sort((a, b) => {
+      const timeA = a.created_time ? new Date(a.created_time).getTime() : 0;
+      const timeB = b.created_time ? new Date(b.created_time).getTime() : 0;
+      return timeA - timeB;
+    });
+
+    console.log(`[Import by Form] Primeiro lead: ${metaLeads[0]?.id} (${metaLeads[0]?.created_time}), Último: ${metaLeads[metaLeads.length - 1]?.id} (${metaLeads[metaLeads.length - 1]?.created_time})`);
 
     // Processar cada lead
     const results: Array<{
