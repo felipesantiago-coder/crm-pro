@@ -12,6 +12,11 @@ import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomA
 // Usa o Page Access Token (não precisa de ads_read).
 //
 // Body: { leadgenIds: string[] }
+//
+// ORDEM CRONOLÓGICA: Os leads são buscados da Meta em paralelo,
+// ordenados por created_time (mais antigo primeiro) e só então
+// processados. Isso garante que a fila round-robin distribua
+// os leads na ordem real em que foram cadastrados no Meta.
 // ============================================================
 
 interface LeadgenData {
@@ -21,8 +26,6 @@ interface LeadgenData {
   form_id?: string;
   created_time?: string;
 }
-
-// getFieldValue e formatPhone agora vêm de @/lib/meta-lead-utils
 
 async function fetchLeadFromMeta(leadgenId: string, pageAccessToken: string): Promise<LeadgenData | null> {
   const url = `https://graph.facebook.com/v22.0/${leadgenId}?access_token=${encodeURIComponent(pageAccessToken)}&fields=field_data,ad_id,campaign_id,form_id,created_time`;
@@ -80,6 +83,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nenhum usuário cadastrado no sistema' }, { status: 400 });
     }
 
+    // ══════════════════════════════════════════════════════════
+    // FASE 1: Buscar todos os leads da Meta em paralelo
+    // ══════════════════════════════════════════════════════════
+    console.log(`[Import Manual] Fase 1: Buscando ${leadgenIds.length} leads da Meta em paralelo...`);
+
+    interface FetchedLead {
+      leadgenId: string;
+      data: LeadgenData;
+    }
+
+    const validIds = leadgenIds.map(id => String(id).trim()).filter(Boolean);
+    const fetchPromises = validIds.map(async (leadgenId) => {
+      const data = await fetchLeadFromMeta(leadgenId, pageAccessToken);
+      return data ? { leadgenId, data } as FetchedLead : null;
+    });
+
+    const fetchResults = await Promise.allSettled(fetchPromises);
+    const fetchedLeads: FetchedLead[] = [];
     const results: Array<{
       leadgenId: string;
       success: boolean;
@@ -89,11 +110,46 @@ export async function POST(request: NextRequest) {
       assignedTo?: string;
     }> = [];
 
-    for (const rawId of leadgenIds) {
-      const leadgenId = String(rawId).trim();
-      if (!leadgenId) continue;
+    for (let i = 0; i < fetchResults.length; i++) {
+      const leadgenId = validIds[i];
+      const fetchResult = fetchResults[i];
+      if (fetchResult.status === 'fulfilled' && fetchResult.value) {
+        fetchedLeads.push(fetchResult.value);
+      } else {
+        const errMsg = fetchResult.status === 'rejected'
+          ? (fetchResult.reason?.message || 'erro desconhecido')
+          : 'Não foi possível buscar dados do lead na Meta';
+        results.push({
+          leadgenId,
+          success: false,
+          reason: `${errMsg}. Verifique se o Page Access Token está correto e se o leadgen_id é válido.`,
+        });
+      }
+    }
 
-      console.log(`[Import Manual] Processando leadgen_id=${leadgenId}`);
+    // ══════════════════════════════════════════════════════════
+    // FASE 2: Ordenar por created_time ASC (mais antigo primeiro)
+    // A ordem em que o admin cola os IDs não é confiável — o Meta
+    // Ads Manager mostra leads mais recentes primeiro. O created_time
+    // do Meta é a fonte de verdade da ordem de cadastro.
+    // ══════════════════════════════════════════════════════════
+    fetchedLeads.sort((a, b) => {
+      const timeA = a.data.created_time ? new Date(a.data.created_time).getTime() : 0;
+      const timeB = b.data.created_time ? new Date(b.data.created_time).getTime() : 0;
+      return timeA - timeB;
+    });
+
+    if (fetchedLeads.length > 0) {
+      const first = fetchedLeads[0];
+      const last = fetchedLeads[fetchedLeads.length - 1];
+      console.log(`[Import Manual] Fase 2: ${fetchedLeads.length} leads buscados com sucesso. Ordenação cronológica: mais antigo=${first.leadgenId} (${first.data.created_time || 'sem data'}), mais recente=${last.leadgenId} (${last.data.created_time || 'sem data'})`);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // FASE 3: Processar cada lead na ordem cronológica
+    // ══════════════════════════════════════════════════════════
+    for (const { leadgenId, data: leadData } of fetchedLeads) {
+      console.log(`[Import Manual] Fase 3: Processando leadgen_id=${leadgenId} (${leadData.created_time || 'sem data'})`);
 
       // 1. Verificar se já foi processado
       try {
@@ -104,21 +160,14 @@ export async function POST(request: NextRequest) {
           continue;
         }
       } catch (dedupErr) {
-        console.warn(`[Import Manual] Falha ao verificar duplicata para ${leadgenId}:`, dedupErr);
-      }
-
-      // 2. Buscar dados do lead na Meta
-      const leadData = await fetchLeadFromMeta(leadgenId, pageAccessToken);
-      if (!leadData) {
-        results.push({ leadgenId, success: false, reason: 'Não foi possível buscar dados do lead na Meta. Verifique se o Page Access Token está correto e se o leadgen_id é válido.' });
-        continue;
+        console.warn(`[Import Manual] Falha na verificar duplicata para ${leadgenId}:`, dedupErr);
       }
 
       const fieldData = leadData.field_data;
       const formId = leadData.form_id || '';
       const campaignId = String(leadData.campaign_id || '');
 
-      // 3. Extrair campos
+      // 2. Extrair campos
       const rawName = getMetaFieldValue(fieldData, 'full_name')
         || getMetaFieldValue(fieldData, 'name')
         || getMetaFieldValue(fieldData, 'nome')
@@ -142,7 +191,7 @@ export async function POST(request: NextRequest) {
       const customAnswers = extractCustomAnswers(fieldData);
       const customAnswersText = formatCustomAnswersText(customAnswers);
 
-      // 4. Verificar duplicata por telefone/email
+      // 3. Verificar duplicata por telefone/email
       const existingByContact = await db.client.findFirst({
         where: {
           OR: [
@@ -183,7 +232,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // 5. Buscar CAPI config
+      // 4. Buscar CAPI config
       let capiConfigId: string | undefined;
       if (formId) {
         try {
@@ -192,7 +241,7 @@ export async function POST(request: NextRequest) {
         } catch {}
       }
 
-      // 6. Criar cliente
+      // 5. Criar cliente
       try {
         const newClient = await db.client.create({
           data: {
@@ -216,7 +265,7 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // 7. Atribuir à fila
+        // 6. Atribuir à fila
         let assignedTo: string | undefined;
         let assignedUserId: string | undefined;
         let assignedQueueId: string | undefined;
@@ -235,7 +284,7 @@ export async function POST(request: NextRequest) {
           console.error(`[Import Manual] Falha na fila para ${newClient.id}:`, queueErr);
         }
 
-        // 8. Notificação Telegram para o atendente
+        // 7. Notificação Telegram para o atendente
         const notifyId = assignedUserId || creatorId;
         if (notifyId) {
           db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } }).then((user) => {
@@ -255,7 +304,7 @@ export async function POST(request: NextRequest) {
           }).catch(() => {});
         }
 
-        // 9. Notify admin about queue rotation (fire-and-forget)
+        // 8. Notify admin about queue rotation (fire-and-forget)
         if (assignedUserId && assignedQueueId) {
           const capturedQueueId = assignedQueueId;
           const capturedUserName = assignedTo;
@@ -288,7 +337,7 @@ export async function POST(request: NextRequest) {
     const succeeded = results.filter(r => r.success).length;
     const failed = results.filter(r => !r.success);
 
-    console.log(`[Import Manual] Resumo: ${succeeded}/${results.length} com sucesso`);
+    console.log(`[Import Manual] Resumo: ${succeeded}/${results.length} com sucesso (${fetchedLeads.length} buscados da Meta, ordenados por created_time ASC)`);
 
     return NextResponse.json({
       imported: succeeded,
