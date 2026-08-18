@@ -146,16 +146,19 @@ async function findExistingClient(phone: string | null, email: string | null) {
 // ============================================================
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-
   const mode = searchParams.get('hub.mode');
   const token = searchParams.get('hub.verify_token');
   const challenge = searchParams.get('hub.challenge');
+
+  const reqId = crypto.randomBytes(4).toString('hex');
+  console.log(`[Meta Webhook][${reqId}] GET recebido — mode=${mode}, token=${token ? '***' + token.slice(-6) : 'null'}, challenge=${challenge ? 'present' : 'null'}, IP=${request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'}`);
 
   // Verificação padrão do Meta
   if (mode === 'subscribe' && token && challenge) {
     const config = await getMetaConfig();
 
     if (!config.verifyToken) {
+      console.error(`[Meta Webhook][${reqId}] GET rejeitado — verifyToken não configurado`);
       return NextResponse.json(
         { error: 'Forbidden' },
         { status: 403 }
@@ -163,16 +166,19 @@ export async function GET(request: NextRequest) {
     }
 
     if (token === config.verifyToken) {
+      console.log(`[Meta Webhook][${reqId}] GET hub.challenge VERIFICADO com sucesso — Meta está assinando o webhook`);
       return new NextResponse(challenge, {
         status: 200,
         headers: { 'Content-Type': 'text/plain' },
       });
     }
 
+    console.warn(`[Meta Webhook][${reqId}] GET rejeitado — token inválido (esperado ***${config.verifyToken.slice(-6)}, recebido ***${token.slice(-6)})`);
     return NextResponse.json({ error: 'Token inválido' }, { status: 403 });
   }
 
-  // Non-verification GET — return generic response
+  // Non-verification GET — log e return generic response
+  console.log(`[Meta Webhook][${reqId}] GET não é verificação — retornando status ok`);
   return NextResponse.json({ status: 'ok' });
 }
 
@@ -182,8 +188,9 @@ export async function GET(request: NextRequest) {
 // formulário de lead em um anúncio.
 // ============================================================
 export async function POST(request: NextRequest) {
-  // Log de entrada — sempre presente para confirmar que Meta está chamando o webhook
-  console.log('[Meta Webhook] POST recebido');
+  const reqId = crypto.randomBytes(4).toString('hex');
+  const startTime = Date.now();
+  console.log(`[Meta Webhook][${reqId}] POST recebido — method=${request.method}, contentType=${request.headers.get('content-type')}, IP=${request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'}, UA=${request.headers.get('user-agent') || 'unknown'}`);
 
   try {
     // 0. Ler o body UMA VEZ (necessário para validação HMAC)
@@ -192,7 +199,7 @@ export async function POST(request: NextRequest) {
 
     // 1. Verificar se o webhook está ativado
     const config = await getMetaConfig();
-    console.log(`[Meta Webhook] Config: enabled=${config.enabled}, hasAppSecret=${!!config.appSecret}, hasPageAccessToken=${!!config.pageAccessToken}, hasVerifyToken=${!!config.verifyToken}`);
+  console.log(`[Meta Webhook][${reqId}] Config: enabled=${config.enabled}, hasAppSecret=${!!config.appSecret}, hasPageAccessToken=${!!config.pageAccessToken}, hasVerifyToken=${!!config.verifyToken}, bodyLen=${rawBody.length}`);
 
     if (!config.enabled) {
       // WEBHOOK DESABILITADO — Salvar o lead perdido ANTES de rejeitar
@@ -663,7 +670,8 @@ export async function POST(request: NextRequest) {
     // Log resumo final
     const successCount = results.filter((r) => r.success).length;
     const failedResults = results.filter((r) => !r.success);
-    console.log(`[Meta Webhook] Resumo: ${successCount}/${results.length} processados com sucesso${failedResults.length > 0 ? `. Falhas: ${failedResults.map(r => `${r.reason}(${r.leadId})`).join(', ')}` : ''}`);
+    const elapsed = Date.now() - startTime;
+    console.log(`[Meta Webhook][${reqId}] Resumo: ${successCount}/${results.length} processados com sucesso em ${elapsed}ms${failedResults.length > 0 ? `. Falhas: ${failedResults.map(r => `${r.reason}(${r.leadId})`).join(', ')}` : ''}`);
 
     // Incrementar contador de leads recebidos
     if (successCount > 0) {
