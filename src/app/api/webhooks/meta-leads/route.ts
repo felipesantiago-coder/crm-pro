@@ -186,30 +186,80 @@ export async function POST(request: NextRequest) {
   console.log('[Meta Webhook] POST recebido');
 
   try {
+    // 0. Ler o body UMA VEZ (necessário para validação HMAC)
+    const rawBody = await request.text();
+    const signature = request.headers.get('x-hub-signature-256');
+
     // 1. Verificar se o webhook está ativado
     const config = await getMetaConfig();
     console.log(`[Meta Webhook] Config: enabled=${config.enabled}, hasAppSecret=${!!config.appSecret}, hasPageAccessToken=${!!config.pageAccessToken}, hasVerifyToken=${!!config.verifyToken}`);
 
     if (!config.enabled) {
-      console.error('[Meta Webhook] ⚠ WEBHOOK DESABILITADO — Lead perdido! Ative o webhook nas configurações.');
-      // Retorna 503 para que o Meta tente novamente mais tarde
+      // WEBHOOK DESABILITADO — Salvar o lead perdido ANTES de rejeitar
+      console.error('[Meta Webhook] ⚠ WEBHOOK DESABILITADO — Salvando lead perdido para recuperação futura');
+      try {
+        // Extrair leadgen_ids do payload para referência futura
+        let parsedPayload: any = {};
+        try { parsedPayload = JSON.parse(rawBody); } catch {}
+        const leadgenIds = (parsedPayload?.entry || [])
+          .flatMap((e: any) => (e.changes || []).map((c: any) => String(c.value?.leadgen_id || '')))
+          .filter(Boolean);
+
+        await db.lostLead.create({
+          data: {
+            source: 'meta_webhook_disabled',
+            name: `Webhook desabilitado — ${leadgenIds.length} lead(s): ${leadgenIds.join(', ')}`,
+            formData: {
+              reason: 'webhook_disabled',
+              leadgenIds,
+              rawPayloadPreview: rawBody.slice(0, 3000),
+              timestamp: new Date().toISOString(),
+            },
+          },
+        });
+        console.warn(`[Meta Webhook] ⚠ Lead perdido salvo na tabela lostLeads (razão: webhook_disabled, leadgenIds: [${leadgenIds.join(', ')}])`);
+      } catch (saveErr) {
+        console.error('[Meta Webhook] ⚠ CRÍTICO: Webhook desabilitado E falha ao salvar lead perdido:', saveErr);
+      }
+      // Retorna 200 (não 503!) para que o Meta NÃO retenta —
+      // o lead foi salvo para recuperação manual pelo admin.
       return NextResponse.json(
-        { received: true, processed: false, reason: 'webhook_disabled' },
-        { status: 503 }
+        { received: true, processed: false, reason: 'webhook_disabled', saved_for_recovery: true },
+        { status: 200 }
       );
     }
 
-    // 2. Validar assinatura HMAC (se app_secret configurado)
-    const signature = request.headers.get('x-hub-signature-256');
-    const rawBody = await request.text();
-
+    // 2. Validar assinatura HMAC
     if (!config.appSecret) {
       console.error('[Meta Webhook] ⚠ APP_SECRET não configurado — impossível validar assinatura. Configure meta_app_secret nas configurações.');
       return NextResponse.json({ error: 'App Secret não configurado' }, { status: 403 });
     }
 
     if (!isValidSignature(rawBody, signature, config.appSecret)) {
+      // ASSINATURA INVÁLIDA — Log detalhado + salvar payload para diagnóstico
       console.error(`[Meta Webhook] ⚠ ASSINATURA INVÁLIDA — header=${signature?.slice(0, 20)}... bodyLen=${rawBody.length}. Verifique se o App Secret está correto.`);
+      try {
+        let parsedPayload: any = {};
+        try { parsedPayload = JSON.parse(rawBody); } catch {}
+        const leadgenIds = (parsedPayload?.entry || [])
+          .flatMap((e: any) => (e.changes || []).map((c: any) => String(c.value?.leadgen_id || '')))
+          .filter(Boolean);
+
+        await db.lostLead.create({
+          data: {
+            source: 'meta_webhook_invalid_signature',
+            name: `Assinatura inválida — ${leadgenIds.length} lead(s): ${leadgenIds.join(', ')}`,
+            formData: {
+              reason: 'invalid_signature',
+              leadgenIds,
+              signatureHeader: signature?.slice(0, 30) || 'missing',
+              bodyLength: rawBody.length,
+              rawPayloadPreview: rawBody.slice(0, 3000),
+              timestamp: new Date().toISOString(),
+            },
+          },
+        });
+      } catch {}
       return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 });
     }
 
@@ -263,19 +313,17 @@ export async function POST(request: NextRequest) {
       const changes = entry.changes || [];
 
       for (const change of changes) {
-        // Log cada change para identificar field inesperados
-        const changeLeadgenId = change.value?.leadgen_id;
-        console.log(`[Meta Webhook] Change: field="${change.field}", leadgen_id=${changeLeadgenId ?? 'none'}, ad=${change.value?.ad_name || 'none'}, campaign=${change.value?.campaign_name || 'none'}`);
-
-        // Meta pode enviar field como "leadgen" ou "leadgen_id"
-        if (change.field !== 'leadgen_id' && change.field !== 'leadgen') {
-          console.warn(`[Meta Webhook] ⚠ Field "${change.field}" ignorado (esperado: leadgen ou leadgen_id)`);
-          continue;
-        }
-
         const leadData = change.value;
-        if (!leadData) {
-          console.warn('[Meta Webhook] ⚠ Change sem value — ignorado');
+
+        // Log cada change para identificar field inesperados
+        const changeLeadgenId = leadData?.leadgen_id;
+        console.log(`[Meta Webhook] Change: field="${change.field}", leadgen_id=${changeLeadgenId ?? 'none'}, ad=${leadData?.ad_name || 'none'}, campaign=${leadData?.campaign_name || 'none'}`);
+
+        // Meta pode enviar field como "leadgen", "leadgen_id", ou conter o leadgen_id
+        // no value mesmo com field diferente (ex: versões antigas da API).
+        // CRÍTICO: Só ignorar se NÃO houver leadgen_id no value.
+        if (!leadData || !leadData.leadgen_id) {
+          console.warn(`[Meta Webhook] ⚠ Change field="${change.field}" sem leadgen_id no value — ignorado`);
           continue;
         }
 
