@@ -161,11 +161,13 @@ export async function POST(request: NextRequest) {
       console.error('[Lost Leads] Falha na atribuição de fila:', queueErr);
     }
 
-    // Notify assigned agent via Telegram
+    // Notify assigned agent via Telegram (await — serverless-safe)
     if (assignedUserId) {
-      db.user.findUnique({ where: { id: assignedUserId }, select: { telegramChatId: true, name: true } }).then((user) => {
-        if (user?.telegramChatId) {
-          notifyNewLead(user.telegramChatId, {
+      try {
+        const agentUser = await db.user.findUnique({ where: { id: assignedUserId }, select: { telegramChatId: true, name: true } });
+        if (agentUser?.telegramChatId) {
+          console.log(`[Lost Leads] Enviando notificação Telegram para agente "${agentUser.name}" (lead recuperado ${client.id})`);
+          await notifyNewLead(agentUser.telegramChatId, {
             leadName: client.name,
             leadPhone: client.phone || '',
             leadEmail: client.email || '',
@@ -175,34 +177,38 @@ export async function POST(request: NextRequest) {
             slug: lostLead.slug || undefined,
             assignedUserName: assignedUserName,
             customAnswers: undefined,
-          }).catch((err) => console.warn('[Lost Leads] Falha na notificação do atendente:', err));
+          });
+          console.log(`[Lost Leads] ✅ Notificação Telegram enviada ao agente "${agentUser.name}"`);
         } else {
-          console.warn(`[Lost Leads] Usuário ${user?.name || assignedUserId} sem Telegram configurado. Lead recuperado ${client.id} sem notificação.`);
+          console.warn(`[Lost Leads] Usuário ${agentUser?.name || assignedUserId} sem Telegram configurado. Lead recuperado ${client.id} sem notificação.`);
         }
-      }).catch(() => {});
+      } catch (notifyErr) {
+        console.warn('[Lost Leads] Falha na notificação do atendente:', notifyErr);
+      }
 
-      // Notify admin about queue rotation
+      // Notify admin about queue rotation (await — serverless-safe)
       if (assignedQueueId && assignedUserName) {
-        const capturedQueueId = assignedQueueId;
-        const capturedUserName = assignedUserName;
-        (async () => {
-          try {
-            const { peekNextUser } = await import('@/lib/lead-queue');
-            const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
-            if (!admin?.telegramChatId) return;
-            const nextUser = await peekNextUser({ queueId: capturedQueueId });
+        try {
+          const { peekNextUser } = await import('@/lib/lead-queue');
+          const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+          if (admin?.telegramChatId) {
+            const nextUser = await peekNextUser({ queueId: assignedQueueId });
+            console.log(`[Lost Leads] Enviando notificação de fila ao admin`);
             await notifyQueueUpdate(admin.telegramChatId, {
               source: `recovered_lost_lead:${lostLead.slug || 'unknown'}`,
-              assignedUserName: capturedUserName,
+              assignedUserName: assignedUserName,
               nextUserName: nextUser?.userName || null,
               leadName: client.name,
               leadPhone: client.phone || undefined,
               enterpriseName: enterpriseName || undefined,
             });
-          } catch (err) {
-            console.warn('[Lost Leads] Admin queue notification failed:', err instanceof Error ? err.message : err);
+            console.log(`[Lost Leads] ✅ Notificação de fila enviada ao admin`);
+          } else {
+            console.warn(`[Lost Leads] Admin sem Telegram configurado — notificação de fila pulada`);
           }
-        })();
+        } catch (err) {
+          console.warn('[Lost Leads] Admin queue notification failed:', err instanceof Error ? err.message : err);
+        }
       }
     }
 
