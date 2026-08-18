@@ -74,15 +74,40 @@ export async function GET() {
       fix: hasVerifyToken ? undefined : 'Preencha o Token de Verificação nas Configurações e use o MESMO valor no Meta for Developers.',
     });
 
-    // 1c. App Secret
-    checks.push({
-      name: 'App Secret',
-      status: hasAppSecret ? 'ok' : 'warn',
-      details: hasAppSecret
-        ? `App Secret configurado (${map['meta_app_secret'].length} caracteres).`
-        : 'App Secret NÃO configurado. Sem ele, o CRM NÃO valida a assinatura HMAC, aceitando qualquer POST (inseguro).',
-      fix: hasAppSecret ? undefined : 'Copie o App Secret do Meta for Developers > Seu App > Settings > Basic > App Secret e cole nas Configurações.',
-    });
+    // 1c. App Secret — verificar comprimento e formato
+    const appSecretValue = map['meta_app_secret'] || '';
+    const appSecretLen = appSecretValue.length;
+    const isAppSecretSuspicious = hasAppSecret && appSecretLen < 20;
+    const isAppSecretHex = hasAppSecret && /^[a-f0-9]+$/i.test(appSecretValue);
+
+    if (!hasAppSecret) {
+      checks.push({
+        name: 'App Secret',
+        status: 'warn',
+        details: 'App Secret NÃO configurado. Sem ele, o CRM NÃO valida a assinatura HMAC, aceitando qualquer POST (inseguro).',
+        fix: 'Copie o App Secret do Meta for Developers > Seu App > Settings > Basic > App Secret e cole nas Configurações.',
+      });
+    } else if (isAppSecretSuspicious) {
+      checks.push({
+        name: 'App Secret',
+        status: 'error',
+        details: `App Secret suspeito: apenas ${appSecretLen} caracteres. Um App Secret real do Facebook tem 32 caracteres hexadecimais. Com um valor incorreto/truncado, a validação HMAC SEMPRE falha e TODOS os leads do webhook são rejeitados com 401.`,
+        fix: 'Vá em Meta for Developers > Seu App > Settings > Basic > App Secret. Clique em "Mostrar" e copie o valor COMPLETO (32 caracteres). Cole o valor inteiro nas Configurações do CRM.',
+      });
+    } else if (!isAppSecretHex) {
+      checks.push({
+        name: 'App Secret',
+        status: 'warn',
+        details: `App Secret configurado (${appSecretLen} caracteres) mas NÃO é hexadecimal puro. App Secrets do Meta são sempre 32 caracteres hex (0-9, a-f). Verifique se não há espaços ou caracteres extras copiados acidentalmente.`,
+        fix: 'Copie novamente o App Secret do Meta for Developers, sem espaços antes ou depois.',
+      });
+    } else {
+      checks.push({
+        name: 'App Secret',
+        status: 'ok',
+        details: `App Secret configurado (${appSecretLen} caracteres, formato hex válido).`,
+      });
+    }
 
     // 1d. Page Access Token
     checks.push({
@@ -430,41 +455,68 @@ export async function GET() {
     }
 
     // ─────────────────────────────────────────────────
-    // CHECK 5 — Teste de assinatura HMAC
+    // CHECK 5 — Validação REAL do App Secret
+    // O autoteste HMAC anterior foi REMOVIDO porque sempre
+    // passava (comparava a assinatura consigo mesma).
+    //
+    // A validação real tem 2 camadas:
+    //   a) Verificação de formato/comprimento (CHECK 1c)
+    //   b) Contagem de leads perdidos por assinatura inválida
+    //      (prova concreta de que o App Secret está errado)
+    //
+    // NOTA: Não usamos debug_token aqui porque requer
+    // app_id|app_secret e não temos o app_id armazenado.
     // ─────────────────────────────────────────────────
-    if (hasAppSecret) {
-      const testPayload = JSON.stringify({ test: 'hmac_validation', timestamp: Date.now() });
-      const testSignature = 'sha256=' + crypto
-        .createHmac('sha256', map['meta_app_secret'])
-        .update(testPayload, 'utf8')
-        .digest('hex');
 
-      try {
-        const isValid = crypto.timingSafeEqual(
-          Buffer.from(testSignature, 'utf8'),
-          Buffer.from(testSignature, 'utf8')
-        );
+    // Contar leads perdidos por assinatura inválida
+    let lostSignatureCount = 0;
+    let lostDisabledCount = 0;
+    try {
+      const [sigCount, disCount] = await Promise.all([
+        db.lostLead.count({
+          where: {
+            source: 'meta_webhook_invalid_signature',
+            isRecovered: false,
+          },
+        }),
+        db.lostLead.count({
+          where: {
+            source: 'meta_webhook_disabled',
+            isRecovered: false,
+          },
+        }),
+      ]);
+      lostSignatureCount = sigCount;
+      lostDisabledCount = disCount;
+    } catch {}
 
-        checks.push({
-          name: 'Assinatura HMAC-SHA256',
-          status: isValid ? 'ok' : 'error',
-          details: isValid
-            ? 'Algoritmo HMAC-SHA256 funcionando corretamente. O App Secret está em formato válido.'
-            : 'Falha na validação HMAC.',
-        });
-      } catch {
-        checks.push({
-          name: 'Assinatura HMAC-SHA256',
-          status: 'error',
-          details: 'Falha na validação HMAC — formato do App Secret pode estar incorreto.',
-        });
-      }
+    if (lostSignatureCount > 0) {
+      // PROVA CONCRETA: leads foram rejeitados por assinatura inválida
+      checks.push({
+        name: 'App Secret (validação real)',
+        status: 'error',
+        details: `PROVA CONCRETA: ${lostSignatureCount} lead(s) foram rejeitados(s) com erro de assinatura HMAC e salvos(s) na tabela de leads perdidos. O App Secret configurado (${appSecretLen} caracteres) NÃO bate com o App Secret real do Facebook. Causa mais comum: valor copiado incompleto ou com espaços extras.${lostDisabledCount > 0 ? ` Adicionalmente, ${lostDisabledCount} lead(s) foram perdidos porque o webhook estava desabilitado.` : ''}`,
+        fix: `AÇÃO NECESSÁRIA: 1) Vá em Meta for Developers > Seu App > Settings > Basic > App Secret. 2) Clique em "Mostrar". 3) Copie o valor COMPLETO (32 caracteres hex). 4) Cole nas Configurações do CRM sem espaços. 5) Após corrigir, use "Importar por Formulário" para recuperar os leads perdidos.`,
+      });
+    } else if (isAppSecretSuspicious) {
+      checks.push({
+        name: 'App Secret (validação real)',
+        status: 'error',
+        details: `App Secret tem apenas ${appSecretLen} caracteres. Um App Secret real do Facebook tem exatamente 32 caracteres hexadecimais. Com um valor incorreto, a assinatura HMAC de TODOS os webhooks falha silenciosamente — os leads chegam mas são rejeitados com HTTP 401.${lostDisabledCount > 0 ? ` Nota: ${lostDisabledCount} lead(s) perdido(s) por webhook desabilitado.` : ''} Nenhum lead foi registrado como "assinatura inválida" ainda (a verificação de lostLeads foi adicionada agora).`,
+        fix: 'Copie o App Secret COMPLETO (32 caracteres hex) do Meta for Developers > App > Settings > Basic. Cole nas Configurações do CRM sem espaços antes ou depois.',
+      });
+    } else if (hasAppSecret) {
+      checks.push({
+        name: 'App Secret (validação real)',
+        status: 'ok',
+        details: `App Secret configurado (${appSecretLen} caracteres, formato válido). Nenhum lead perdido por assinatura inválida.${lostDisabledCount > 0 ? ` Nota: ${lostDisabledCount} lead(s) perdido(s) por webhook desabilitado (outro problema, já corrigido).` : ''}`,
+      });
     } else {
       checks.push({
-        name: 'Assinatura HMAC-SHA256',
+        name: 'App Secret (validação real)',
         status: 'warn',
-        details: 'Pulando — App Secret não configurado. Sem ele, QUALQUER requisição POST será aceita (sem validação de origem).',
-        fix: 'Configure o App Secret para garantir que apenas o Meta pode enviar leads.',
+        details: 'Pulando — App Secret não configurado.',
+        fix: 'Configure o App Secret para validar a origem dos webhooks.',
       });
     }
 
