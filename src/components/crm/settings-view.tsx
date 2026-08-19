@@ -43,6 +43,7 @@ export function SettingsView() {
   const [pollLoading, setPollLoading] = useState(true);
   const [pollEnabled, setPollEnabled] = useState(false);
   const [pollFormIds, setPollFormIds] = useState<string[]>(['']);
+  const [pollSavedEnabled, setPollSavedEnabled] = useState(false); // o que está no banco
   const [pollSaving, setPollSaving] = useState(false);
   const [pollTriggering, setPollTriggering] = useState(false);
   const [pollLastRun, setPollLastRun] = useState<string | null>(null);
@@ -77,6 +78,7 @@ export function SettingsView() {
         .then((data) => {
           if (data) {
             setPollEnabled(data.enabled === true);
+            setPollSavedEnabled(data.enabled === true);
             setPollFormIds(data.formIds?.length ? data.formIds : ['']);
             setPollLastRun(data.lastRun || null);
             setPollLastResult(data.lastResult || null);
@@ -269,8 +271,8 @@ export function SettingsView() {
       const data = await res.json();
       if (res.ok) {
         toast.success(pollEnabled ? 'Polling ativado! Leads serão importados a cada 5 minutos.' : 'Polling desativado.');
-        // Atualizar formIds com o que foi salvo (sem strings vazias)
         setPollFormIds(validIds.length ? validIds : ['']);
+        setPollSavedEnabled(pollEnabled); // sincronizar estado salvo
       } else {
         toast.error(data.error || 'Erro ao salvar configuração');
       }
@@ -282,6 +284,31 @@ export function SettingsView() {
   }
 
   async function triggerPollNow() {
+    // Se há mudanças não salvas (enabled ou formIds divergem do banco), salvar primeiro
+    const hasUnsaved = pollEnabled !== pollSavedEnabled;
+    if (hasUnsaved) {
+      toast.info('Salvando configuração antes de executar...');
+      const validIds = pollFormIds.filter((id) => id.length > 0);
+      try {
+        const saveRes = await fetch('/api/cron/fetch-meta-leads/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: pollEnabled, formIds: validIds }),
+        });
+        if (saveRes.ok) {
+          setPollSavedEnabled(pollEnabled);
+          setPollFormIds(validIds.length ? validIds : ['']);
+        } else {
+          const saveData = await saveRes.json();
+          toast.error(`Erro ao salvar: ${saveData.error || 'desconhecido'}`);
+          return;
+        }
+      } catch {
+        toast.error('Erro ao salvar configuração');
+        return;
+      }
+    }
+
     setPollTriggering(true);
     try {
       const res = await fetch('/api/cron/fetch-meta-leads');
