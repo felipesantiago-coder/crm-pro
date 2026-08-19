@@ -298,9 +298,6 @@ export function SettingsView() {
         if (saveRes.ok) {
           setPollSavedEnabled(pollEnabled);
           setPollFormIds(validIds.length ? validIds : ['']);
-        if (saveRes.ok) {
-          setPollSavedEnabled(pollEnabled);
-          setPollFormIds(validIds.length ? validIds : ['']);
         } else {
           const saveData = await saveRes.json();
           toast.error(`Erro ao salvar: ${saveData.error || 'desconhecido'}`);
