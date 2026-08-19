@@ -5,6 +5,8 @@ import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
 
+export const maxDuration = 30;
+
 /**
  * Admin API — list and manage lost leads (safety net captures).
  * Requires authentication.

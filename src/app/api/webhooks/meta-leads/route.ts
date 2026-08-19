@@ -6,6 +6,8 @@ import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 
+export const maxDuration = 30;
+
 // ============================================================
 // Meta Lead Ads Webhook
 // Recebe leads de anúncios do Facebook/Instagram e cria
