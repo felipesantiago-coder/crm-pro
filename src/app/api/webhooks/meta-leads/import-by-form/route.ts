@@ -187,9 +187,11 @@ async function processLead(
         assignedUserId = assignResult.userId;
         assignedQueueId = assignResult.queueId;
         await db.client.update({ where: { id: existingByContact.id }, data: { createdBy: assignResult.userId! } }).catch(() => {});
-        db.user.findUnique({ where: { id: assignResult.userId }, select: { telegramChatId: true, name: true } }).then((user) => {
-          if (user?.telegramChatId) {
-            notifyNewLead(user.telegramChatId, {
+        // Notificar agente (await — serverless-safe)
+        try {
+          const agentUser = await db.user.findUnique({ where: { id: assignResult.userId }, select: { telegramChatId: true, name: true } });
+          if (agentUser?.telegramChatId) {
+            await notifyNewLead(agentUser.telegramChatId, {
               leadName: existingByContact.name,
               leadPhone: phone || existingByContact.phone || '',
               leadEmail: email || existingByContact.email || '',
@@ -199,29 +201,24 @@ async function processLead(
               slug: undefined,
               assignedUserName: assignResult.userName,
               customAnswers,
-            }).catch((err) => console.warn('[Import by Form] Falha na notificação (lead existente, nova atribuição):', err));
+            });
           }
-        }).catch(() => {});
-        // Notify admin
+        } catch (notifyErr) { console.warn('[Import by Form] Falha notificação agente (existente):', notifyErr); }
+        // Notify admin (await — serverless-safe)
         if (assignResult.queueId) {
-          const capturedQueueId = assignResult.queueId;
-          const capturedUserName = assignResult.userName;
-          (async () => {
-            try {
-              const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
-              if (!adminUser?.telegramChatId) return;
-              const nextUser = await peekNextUser({ queueId: capturedQueueId });
+          try {
+            const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+            if (adminUser?.telegramChatId) {
+              const nextUser = await peekNextUser({ queueId: assignResult.queueId });
               await notifyQueueUpdate(adminUser.telegramChatId, {
                 source: 'meta_ads:import_by_form',
-                assignedUserName: capturedUserName || 'Desconhecido',
+                assignedUserName: assignResult.userName || 'Desconhecido',
                 nextUserName: nextUser?.userName || null,
                 leadName: existingByContact.name,
                 leadPhone: phone || undefined,
               });
-            } catch (err) {
-              console.warn('[Import by Form] Admin queue notification failed (existing):', err instanceof Error ? err.message : err);
             }
-          })();
+          } catch (err) { console.warn('[Import by Form] Admin notification failed (existing):', err instanceof Error ? err.message : err); }
         }
       } else if (assignResult.assigned) {
         // already_assigned — no notification needed, queue didn't advance
@@ -284,12 +281,13 @@ async function processLead(
       console.error(`[Import by Form] Falha na fila para ${newClient.id}:`, queueErr);
     }
 
-    // 6. Notificação Telegram para o atendente
+    // 6. Notificação Telegram para o atendente (await — serverless-safe)
     const notifyId = assignedUserId || creatorId;
     if (notifyId) {
-      db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } }).then((user) => {
-        if (user?.telegramChatId) {
-          notifyNewLead(user.telegramChatId, {
+      try {
+        const agentUser = await db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } });
+        if (agentUser?.telegramChatId) {
+          await notifyNewLead(agentUser.telegramChatId, {
             leadName: newClient.name,
             leadPhone: newClient.phone || '',
             leadEmail: newClient.email || '',
@@ -299,31 +297,26 @@ async function processLead(
             slug: undefined,
             assignedUserName: assignedTo,
             customAnswers,
-          }).catch(() => {});
+          });
         }
-      }).catch(() => {});
+      } catch (notifyErr) { console.warn('[Import by Form] Falha notificação agente:', notifyErr); }
     }
 
-    // 7. Notify admin about queue rotation (fire-and-forget)
+    // 7. Notify admin about queue rotation (await — serverless-safe)
     if (assignedUserId && assignedQueueId) {
-      const capturedQueueId = assignedQueueId;
-      const capturedUserName = assignedTo;
-      (async () => {
-        try {
-          const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
-          if (!adminUser?.telegramChatId) return;
-          const nextUser = await peekNextUser({ queueId: capturedQueueId });
+      try {
+        const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+        if (adminUser?.telegramChatId) {
+          const nextUser = await peekNextUser({ queueId: assignedQueueId });
           await notifyQueueUpdate(adminUser.telegramChatId, {
             source: `meta_ads:import_by_form:${formId}`,
-            assignedUserName: capturedUserName || 'Desconhecido',
+            assignedUserName: assignedTo || 'Desconhecido',
             nextUserName: nextUser?.userName || null,
             leadName: newClient.name,
             leadPhone: newClient.phone || undefined,
           });
-        } catch (err) {
-          console.warn('[Import by Form] Admin queue notification failed:', err instanceof Error ? err.message : err);
         }
-      })();
+      } catch (err) { console.warn('[Import by Form] Admin notification failed:', err instanceof Error ? err.message : err); }
     }
 
     console.log(`[Import by Form] ✅ Lead ${leadgenId} importado como client ${newClient.id} (${name})`);
