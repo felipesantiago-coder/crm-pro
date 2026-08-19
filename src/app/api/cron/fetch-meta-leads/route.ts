@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
 import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
 import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
@@ -32,10 +34,17 @@ interface MetaLead {
   created_time?: string;
 }
 
-function authenticate(request: NextRequest): boolean {
+async function authenticate(request: NextRequest): Promise<boolean> {
+  // 1. Admin autenticado via sessão (botão "Executar Agora" da UI)
+  try {
+    const session = await getServerSession(authOptions);
+    if (session?.user?.role === 'ADMIN') return true;
+  } catch {}
+
+  // 2. Vercel Cron / serviço externo via CRON_SECRET
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
-    console.error('[Meta Polling] CRON_SECRET não configurado nas env vars');
+    // Sem CRON_SECRET, permite apenas admin autenticado
     return false;
   }
 
@@ -166,8 +175,8 @@ async function importSingleLead(lead: MetaLead, creatorId: string): Promise<{ le
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
 
-  // 1. Autenticação
-  if (!authenticate(request)) {
+  // 1. Autenticação (suporta sessão admin OU CRON_SECRET)
+  if (!(await authenticate(request))) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 

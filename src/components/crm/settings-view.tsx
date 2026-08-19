@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Moon, Sun, CheckCircle2, Circle, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle, Bell, Smartphone, Check } from 'lucide-react';
+import { Moon, Sun, CheckCircle2, Circle, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle, Bell, Smartphone, Check, RefreshCw, Plus, X, Clock, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +39,15 @@ export function SettingsView() {
   const [tgTesting, setTgTesting] = useState(false);
   const [tgSaving, setTgSaving] = useState(false);
 
+  // Polling automático Meta Leads
+  const [pollLoading, setPollLoading] = useState(true);
+  const [pollEnabled, setPollEnabled] = useState(false);
+  const [pollFormIds, setPollFormIds] = useState<string[]>(['']);
+  const [pollSaving, setPollSaving] = useState(false);
+  const [pollTriggering, setPollTriggering] = useState(false);
+  const [pollLastRun, setPollLastRun] = useState<string | null>(null);
+  const [pollLastResult, setPollLastResult] = useState<any>(null);
+
   useEffect(() => {
     // Verificar status da conexão Google Calendar
     fetch('/api/google-calendar/status')
@@ -57,6 +66,27 @@ export function SettingsView() {
       })
       .catch(() => {})
       .finally(() => setNotifLoading(false));
+
+    // Carregar configuração do polling Meta Leads (admin only)
+    if (isAdmin) {
+      fetch('/api/cron/fetch-meta-leads/config')
+        .then((r) => {
+          if (r.status === 403) return null;
+          return r.json();
+        })
+        .then((data) => {
+          if (data) {
+            setPollEnabled(data.enabled === true);
+            setPollFormIds(data.formIds?.length ? data.formIds : ['']);
+            setPollLastRun(data.lastRun || null);
+            setPollLastResult(data.lastResult || null);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setPollLoading(false));
+    } else {
+      setPollLoading(false);
+    }
 
     // Verificar feedback de conexão via URL params
     const params = new URLSearchParams(window.location.search);
@@ -207,6 +237,73 @@ export function SettingsView() {
       toast.error('Erro ao enviar notificação de teste');
     } finally {
       setTgTesting(false);
+    }
+  }
+
+  // ── Polling Meta Leads ──
+  function addPollFormId() {
+    setPollFormIds([...pollFormIds, '']);
+  }
+
+  function removePollFormId(index: number) {
+    setPollFormIds(pollFormIds.filter((_, i) => i !== index));
+  }
+
+  function updatePollFormId(index: number, value: string) {
+    const updated = [...pollFormIds];
+    updated[index] = value.trim();
+    setPollFormIds(updated);
+  }
+
+  async function savePollConfig() {
+    setPollSaving(true);
+    try {
+      const validIds = pollFormIds.filter((id) => id.length > 0);
+      const res = await fetch('/api/cron/fetch-meta-leads/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: pollEnabled, formIds: validIds }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(pollEnabled ? 'Polling ativado! Leads serão importados a cada 5 minutos.' : 'Polling desativado.');
+        // Atualizar formIds com o que foi salvo (sem strings vazias)
+        setPollFormIds(validIds.length ? validIds : ['']);
+      } else {
+        toast.error(data.error || 'Erro ao salvar configuração');
+      }
+    } catch {
+      toast.error('Erro ao salvar configuração do polling');
+    } finally {
+      setPollSaving(false);
+    }
+  }
+
+  async function triggerPollNow() {
+    setPollTriggering(true);
+    try {
+      const res = await fetch('/api/cron/fetch-meta-leads');
+      const data = await res.json();
+      if (res.status === 401) {
+        toast.error('Sessão expirada. Faça login novamente.');
+      } else if (res.ok) {
+        if (data.status === 'disabled') {
+          toast.warning('Polling está desativado. Ative primeiro e salve.');
+        } else if (data.status === 'idle') {
+          toast.info('Nenhum form ID configurado. Adicione ao menos um form ID.');
+        } else {
+          toast.success(`Polling executado: ${data.totalFetched} encontrados, ${data.totalImported} importados (${data.elapsed}).`);
+          // Atualizar resultado exibido
+          setPollLastResult(data);
+          setPollLastRun(new Date().toISOString());
+        }
+      } else {
+        toast.error(data.error || 'Erro ao executar polling');
+      }
+    } catch {
+      toast.error('Erro ao executar polling manual');
+    } finally {
+      setPollTriggering(false);
     }
   }
 
@@ -584,6 +681,164 @@ export function SettingsView() {
             )}
           </CardContent>
         </Card>
+
+        {/* ==================== POLLING AUTOMÁTICO META LEADS (Admin) ==================== */}
+        {isAdmin && (
+          <Card className={`hover:shadow-md transition-shadow duration-200 col-span-1 lg:col-span-2 ${
+            pollEnabled
+              ? 'border-violet-200 dark:border-violet-800/50 bg-violet-50/30 dark:bg-violet-950/10'
+              : ''
+          }`}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <RefreshCw className={`h-4 w-4 ${pollEnabled ? 'text-violet-500 animate-spin' : 'text-muted-foreground'}`} style={pollEnabled ? { animationDuration: '3s' } : undefined} />
+                    Importação Automática de Leads
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    Polling da Meta Graph API a cada 5 minutos como alternativa ao webhook
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  {pollEnabled && (
+                    <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Ativo
+                    </Badge>
+                  )}
+                  <Switch
+                    checked={pollEnabled}
+                    onCheckedChange={setPollEnabled}
+                    aria-label="Ativar polling automático"
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {pollLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Carregando configuração...
+                </div>
+              ) : (
+                <>
+                  {/* Explicação */}
+                  <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Quando o webhook do Meta Ads falhar ou não entregar leads, esta funcionalidade busca
+                      automaticamente novos leads nos formulários configurados via Graph API a cada 5 minutos.
+                      Os leads são importados com o mesmo pipeline: criação de cliente, atribuição à fila e notificação Telegram.
+                      {pollEnabled && ' O Vercel Cron requer plano Pro. No plano Hobby, configure um serviço externo (ex: cron-job.org) para chamar o endpoint.'}
+                    </p>
+                  </div>
+
+                  {/* Form IDs */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">IDs dos Formulários Meta</Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={addPollFormId}
+                        className="text-violet-600 hover:text-violet-700 h-7 px-2"
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1" />
+                        Adicionar
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Cole os Form IDs dos formulários de lead do Facebook. Encontre em Meta Business Suite &gt; Formulários de Leads &gt; Configurações.
+                    </p>
+                    <div className="space-y-2">
+                      {pollFormIds.map((formId, index) => (
+                        <div key={index} className="flex gap-2 items-center">
+                          <Input
+                            placeholder={"Ex: 123456789012345"}
+                            value={formId}
+                            onChange={(e) => updatePollFormId(index, e.target.value)}
+                            className="font-mono text-sm"
+                            disabled={pollSaving}
+                          />
+                          {pollFormIds.length > 1 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removePollFormId(index)}
+                              disabled={pollSaving}
+                              className="text-destructive hover:text-destructive h-9 w-9 flex-shrink-0"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Última execução */}
+                  {pollLastRun && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Clock className="h-3.5 w-3.5" />
+                      Última execução: {new Date(pollLastRun).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+                      {pollLastResult && (
+                        <span className="ml-2">
+                          ({pollLastResult.totalFetched} encontrados, {pollLastResult.totalImported} importados, {pollLastResult.elapsed})
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Erros na última execução */}
+                  {pollLastResult?.errors?.length > 0 && (
+                    <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                        <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">Erros na última execução</span>
+                      </div>
+                      <ul className="text-xs text-amber-600 dark:text-amber-400 space-y-1">
+                        {pollLastResult.errors.slice(0, 5).map((err: string, i: number) => (
+                          <li key={i} className="truncate" title={err}>{err}</li>
+                        ))}
+                        {pollLastResult.errors.length > 5 && (
+                          <li className="text-muted-foreground">...e mais {pollLastResult.errors.length - 5} erros</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  <Separator />
+
+                  {/* Ações */}
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={savePollConfig}
+                      disabled={pollSaving}
+                      className="bg-violet-600 hover:bg-violet-700 text-white"
+                    >
+                      {pollSaving ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
+                      ) : (
+                        <><Save className="h-4 w-4 mr-2" /> Salvar Configuração</>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={triggerPollNow}
+                      disabled={pollTriggering || !pollEnabled}
+                    >
+                      {pollTriggering ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Executando...</>
+                      ) : (
+                        <><RefreshCw className="h-4 w-4 mr-2" /> Executar Agora</>
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
       </div>
     </div>
