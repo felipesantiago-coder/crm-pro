@@ -2,11 +2,5 @@
   "framework": "nextjs",
   "installCommand": "npm install",
   "outputDirectory": ".next",
-  "regions": ["gru1"],
-  "crons": [
-    {
-      "path": "/api/cron/fetch-meta-leads",
-      "schedule": "*/5 * * * *"
-    }
-  ]
+  "regions": ["gru1"]
 }

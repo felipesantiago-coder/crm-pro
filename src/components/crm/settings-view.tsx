@@ -241,6 +241,8 @@ export function SettingsView() {
   }
 
   // ── Polling Meta Leads ──
+  const pollingEndpointUrl = (typeof window !== 'undefined' ? window.location.origin : '') + '/api/cron/fetch-meta-leads';
+
   function addPollFormId() {
     setPollFormIds([...pollFormIds, '']);
   }
@@ -726,12 +728,44 @@ export function SettingsView() {
                   {/* Explicação */}
                   <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      Quando o webhook do Meta Ads falhar ou não entregar leads, esta funcionalidade busca
-                      automaticamente novos leads nos formulários configurados via Graph API a cada 5 minutos.
-                      Os leads são importados com o mesmo pipeline: criação de cliente, atribuição à fila e notificação Telegram.
-                      {pollEnabled && ' O Vercel Cron requer plano Pro. No plano Hobby, configure um serviço externo (ex: cron-job.org) para chamar o endpoint.'}
+                      Busca automaticamente novos leads nos formulários configurados via Meta Graph API.
+                      Os leads são importados com o pipeline completo: criação de cliente, atribuição à fila e notificação Telegram.
                     </p>
                   </div>
+
+                  {/* Instruções cron-job.org */}
+                  {pollEnabled && (
+                    <div className="p-4 rounded-xl bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800/30 space-y-3">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                        <span className="text-sm font-semibold text-violet-700 dark:text-violet-300">Configurar execução automática (a cada 5 min)</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        O plano Hobby da Vercel não permite cron com intervalo menor que 1 dia.
+                        Use o <strong>cron-job.org</strong> (gratuito) para chamar o endpoint automaticamente:
+                      </p>
+                      <ol className="text-xs text-muted-foreground space-y-2 list-decimal list-inside">
+                        <li>Acesse <strong>cron-job.org</strong> e crie uma conta gratuita</li>
+                        <li>Clique em <strong>"Create cronjob"</strong></li>
+                        <li>
+                          No campo <strong>URL</strong>, cole:
+                          <code
+                            className="ml-1.5 bg-white dark:bg-zinc-800 px-2 py-0.5 rounded font-mono text-[10px] text-violet-600 dark:text-violet-400 select-all cursor-pointer"
+                            onClick={() => copyToClipboard(pollingEndpointUrl + '?secret=SEU_CRON_SECRET', 'Endpoint URL')}
+                            title="Clique para copiar"
+                          >
+                            {pollingEndpointUrl}<span className="text-amber-600 dark:text-amber-400">?secret=SEU_CRON_SECRET</span>
+                          </code>
+                        </li>
+                        <li>Em <strong>Schedule</strong>, selecione <strong>"Every 5 minutes"</strong></li>
+                        <li>Salve. O endpoint será chamado automaticamente a cada 5 minutos.</li>
+                      </ol>
+                      <p className="text-[10px] text-muted-foreground">
+                        Substitua <code className="font-mono">SEU_CRON_SECRET</code> pelo valor da env var <code className="font-mono">CRON_SECRET</code> configurada na Vercel.
+                        Ou use o botão "Executar Agora" abaixo (não precisa de CRON_SECRET, usa sua sessão).
+                      </p>
+                    </div>
+                  )}
 
                   {/* Form IDs */}
                   <div className="space-y-3">
