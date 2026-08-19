@@ -161,13 +161,19 @@ export async function POST(request: NextRequest) {
       console.error('[Lost Leads] Falha na atribuição de fila:', queueErr);
     }
 
-    // Notify assigned agent via Telegram (await — serverless-safe)
+    // ── Notificações Telegram ──
+    const notifications: {
+      agent: { sent: boolean; userName?: string; reason?: string };
+      admin: { sent: boolean; reason?: string };
+    } = { agent: { sent: false }, admin: { sent: false } };
+
     if (assignedUserId) {
+      // Notificação do agente atribuído
       try {
         const agentUser = await db.user.findUnique({ where: { id: assignedUserId }, select: { telegramChatId: true, name: true } });
         if (agentUser?.telegramChatId) {
-          console.log(`[Lost Leads] Enviando notificação Telegram para agente "${agentUser.name}" (lead recuperado ${client.id})`);
-          await notifyNewLead(agentUser.telegramChatId, {
+          console.log(`[Lost Leads] Enviando notificação Telegram para agente "${agentUser.name}" (lead ${client.id})`);
+          const ok = await notifyNewLead(agentUser.telegramChatId, {
             leadName: client.name,
             leadPhone: client.phone || '',
             leadEmail: client.email || '',
@@ -178,23 +184,26 @@ export async function POST(request: NextRequest) {
             assignedUserName: assignedUserName,
             customAnswers: undefined,
           });
-          console.log(`[Lost Leads] ✅ Notificação Telegram enviada ao agente "${agentUser.name}"`);
+          notifications.agent = { sent: ok, userName: agentUser.name, reason: ok ? 'delivered' : 'Telegram API returned false' };
+          console.log(`[Lost Leads] ${ok ? '✅' : '❌'} Notificação agente "${agentUser.name}": ${ok ? 'enviada' : 'FALHOU'}`);
         } else {
-          console.warn(`[Lost Leads] Usuário ${agentUser?.name || assignedUserId} sem Telegram configurado. Lead recuperado ${client.id} sem notificação.`);
+          notifications.agent = { sent: false, userName: agentUser?.name, reason: `telegramChatId não configurado para o usuário "${agentUser?.name || assignedUserId}"` };
+          console.warn(`[Lost Leads] Usuário ${agentUser?.name || assignedUserId} sem Telegram. Lead ${client.id} sem notificação do agente.`);
         }
       } catch (notifyErr) {
-        console.warn('[Lost Leads] Falha na notificação do atendente:', notifyErr);
+        notifications.agent = { sent: false, reason: notifyErr instanceof Error ? notifyErr.message : String(notifyErr) };
+        console.warn('[Lost Leads] Falha na notificação do agente:', notifyErr);
       }
 
-      // Notify admin about queue rotation (await — serverless-safe)
+      // Notificação do admin (rotação de fila)
       if (assignedQueueId && assignedUserName) {
         try {
           const { peekNextUser } = await import('@/lib/lead-queue');
-          const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+          const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true, name: true } });
           if (admin?.telegramChatId) {
             const nextUser = await peekNextUser({ queueId: assignedQueueId });
-            console.log(`[Lost Leads] Enviando notificação de fila ao admin`);
-            await notifyQueueUpdate(admin.telegramChatId, {
+            console.log(`[Lost Leads] Enviando notificação de fila ao admin "${admin.name}"`);
+            const ok = await notifyQueueUpdate(admin.telegramChatId, {
               source: `recovered_lost_lead:${lostLead.slug || 'unknown'}`,
               assignedUserName: assignedUserName,
               nextUserName: nextUser?.userName || null,
@@ -202,14 +211,21 @@ export async function POST(request: NextRequest) {
               leadPhone: client.phone || undefined,
               enterpriseName: enterpriseName || undefined,
             });
-            console.log(`[Lost Leads] ✅ Notificação de fila enviada ao admin`);
+            notifications.admin = { sent: ok, reason: ok ? 'delivered' : 'Telegram API returned false' };
+            console.log(`[Lost Leads] ${ok ? '✅' : '❌'} Notificação admin: ${ok ? 'enviada' : 'FALHOU'}`);
           } else {
+            notifications.admin = { sent: false, reason: `Admin "${admin?.name || '?'}" sem telegramChatId configurado` };
             console.warn(`[Lost Leads] Admin sem Telegram configurado — notificação de fila pulada`);
           }
         } catch (err) {
-          console.warn('[Lost Leads] Admin queue notification failed:', err instanceof Error ? err.message : err);
+          notifications.admin = { sent: false, reason: err instanceof Error ? err.message : String(err) };
+          console.warn('[Lost Leads] Admin queue notification failed:', err);
         }
+      } else {
+        notifications.admin = { sent: false, reason: assignedQueueId ? 'assignedUserName ausente' : 'Sem atribuição de fila (sem queueId)' };
       }
+    } else {
+      notifications.agent = { sent: false, reason: 'Lead não foi atribuído a nenhuma fila' };
     }
 
     // Mark as recovered
@@ -218,7 +234,13 @@ export async function POST(request: NextRequest) {
       data: { isRecovered: true, recoveredToClientId: client.id },
     });
 
-    return NextResponse.json({ success: true, clientId: client.id, clientName: client.name });
+    return NextResponse.json({
+      success: true,
+      clientId: client.id,
+      clientName: client.name,
+      assignedTo: assignedUserName || null,
+      notifications,
+    });
   } catch (error) {
     console.error('[Lost Leads] Erro:', error);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {

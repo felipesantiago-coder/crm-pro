@@ -95,10 +95,21 @@ export function LostLeadsTab() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        toast.success(data.alreadyExisted
-          ? `Cliente com este e-mail já existia — ID: ${data.clientId}`
-          : `Lead "${data.clientName}" recuperado com sucesso!`
-        );
+        if (data.alreadyExisted) {
+          toast.success(`Cliente com este e-mail já existia — ID: ${data.clientId}`);
+        } else {
+          toast.success(`Lead "${data.clientName}" recuperado!${data.assignedTo ? ` Atribuído a ${data.assignedTo}.` : ''}`);
+        }
+        // Mostrar alertas de notificação com detalhes
+        const notifs = data.notifications;
+        if (notifs) {
+          if (!notifs.agent.sent) {
+            toast.warning(`Telegram: agente ${notifs.agent.userName ? `"${notifs.agent.userName}"` : ''} não notificado — ${notifs.agent.reason}`, { duration: 6000 });
+          }
+          if (!notifs.admin.sent) {
+            toast.warning(`Telegram: admin não notificado — ${notifs.admin.reason}`, { duration: 6000 });
+          }
+        }
         loadLeads();
       } else {
         toast.error(data.error || 'Erro ao recuperar lead');
@@ -131,6 +142,7 @@ export function LostLeadsTab() {
 
     let success = 0;
     let errors = 0;
+    const notifyIssues: string[] = [];
     for (const item of recoverable) {
       try {
         const res = await fetch('/api/leads/lost-leads', {
@@ -138,13 +150,28 @@ export function LostLeadsTab() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lostLeadId: item.id }),
         });
-        if (res.ok) success++;
-        else errors++;
+        const data = await res.json();
+        if (res.ok && data.success) {
+          success++;
+          if (data.notifications) {
+            if (!data.notifications.agent.sent) {
+              notifyIssues.push(`Agente ${data.notifications.agent.userName || '?'}: ${data.notifications.agent.reason}`);
+            }
+            if (!data.notifications.admin.sent) {
+              notifyIssues.push(`Admin: ${data.notifications.admin.reason}`);
+            }
+          }
+        } else {
+          errors++;
+        }
       } catch {
         errors++;
       }
     }
     toast.success(`${success} leads recuperados${errors > 0 ? `, ${errors} erros` : ''}`);
+    if (notifyIssues.length > 0) {
+      toast.warning(`Alertas de notificação Telegram: ${notifyIssues.join(' | ')}`, { duration: 8000 });
+    }
     loadLeads();
   };
 
