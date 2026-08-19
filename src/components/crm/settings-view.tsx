@@ -255,7 +255,7 @@ export function SettingsView() {
 
   function updatePollFormId(index: number, value: string) {
     const updated = [...pollFormIds];
-    updated[index] = value.trim();
+    updated[index] = value.replace(/\D/g, ''); // apenas dígitos
     setPollFormIds(updated);
   }
 
@@ -295,6 +295,9 @@ export function SettingsView() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: pollEnabled, formIds: validIds }),
         });
+        if (saveRes.ok) {
+          setPollSavedEnabled(pollEnabled);
+          setPollFormIds(validIds.length ? validIds : ['']);
         if (saveRes.ok) {
           setPollSavedEnabled(pollEnabled);
           setPollFormIds(validIds.length ? validIds : ['']);
@@ -815,11 +818,13 @@ export function SettingsView() {
                       {pollFormIds.map((formId, index) => (
                         <div key={index} className="flex gap-2 items-center">
                           <Input
-                            placeholder={"Ex: 123456789012345"}
+                            placeholder="Ex: 123456789012345"
                             value={formId}
                             onChange={(e) => updatePollFormId(index, e.target.value)}
                             className="font-mono text-sm"
                             disabled={pollSaving}
+                            inputMode="numeric"
+                            maxLength={30}
                           />
                           {pollFormIds.length > 1 && (
                             <Button
@@ -844,27 +849,24 @@ export function SettingsView() {
                       Última execução: {new Date(pollLastRun).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
                       {pollLastResult && (
                         <span className="ml-2">
-                          ({pollLastResult.totalFetched} encontrados, {pollLastResult.totalImported} importados, {pollLastResult.elapsed})
+                          ({pollLastResult.totalFetched ?? 0} encontrados, {pollLastResult.totalImported ?? 0} importados{pollLastResult.errorCount ? `, ${pollLastResult.errorCount} erros` : ''}, {pollLastResult.elapsed ?? '?'})
                         </span>
                       )}
                     </div>
                   )}
 
                   {/* Erros na última execução */}
-                  {pollLastResult?.errors?.length > 0 && (
+                  {(pollLastResult?.errorCount ?? 0) > 0 && (
                     <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
-                      <div className="flex items-center gap-1.5 mb-1.5">
+                      <div className="flex items-center gap-1.5">
                         <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                        <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">Erros na última execução</span>
+                        <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                          {pollLastResult.errorCount} erro{(pollLastResult.errorCount ?? 0) > 1 ? 's' : ''} na última execução
+                        </span>
                       </div>
-                      <ul className="text-xs text-amber-600 dark:text-amber-400 space-y-1">
-                        {pollLastResult.errors.slice(0, 5).map((err: string, i: number) => (
-                          <li key={i} className="truncate" title={err}>{err}</li>
-                        ))}
-                        {pollLastResult.errors.length > 5 && (
-                          <li className="text-muted-foreground">...e mais {pollLastResult.errors.length - 5} erros</li>
-                        )}
-                      </ul>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        Verifique os logs do servidor (Vercel Dashboard &gt; Logs) para detalhes.
+                      </p>
                     </div>
                   )}
 
