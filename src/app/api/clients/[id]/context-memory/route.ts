@@ -186,7 +186,7 @@ Regras:
 - Use linguagem profissional mas acessível.
 - Mantenha o resumo conciso mas completo.`;
 
-    // Gerar o resumo com IA via camada unificada (Qwen → Gemini → Groq)
+    // Gerar o resumo com IA via camada unificada (DeepSeek)
     const { reply: summary, provider } = await callAI(aiPrompt, contextText, {
       temperature: 0.3,
       maxTokens: 2048,

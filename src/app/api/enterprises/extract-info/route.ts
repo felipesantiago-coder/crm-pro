@@ -180,7 +180,7 @@ export async function extractAndCache(enterpriseId: string): Promise<ExtractedIn
 
   let rawReply = '';
 
-  // Chamar IA via camada unificada (Qwen → Gemini → Groq) com retry
+  // Chamar IA via camada unificada (DeepSeek) com retry
   try {
     const { reply, provider } = await callAI(EXTRACTION_PROMPT, userMessage, {
       temperature: 0.1,

@@ -42,7 +42,7 @@ export function AIContextMemory({ clientId }: { clientId: string }) {
         setData(json);
         if (!json.summary) {
           setError(
-            'Não foi possível gerar o resumo. Verifique se as chaves de API (Gemini ou Groq) estão configuradas.'
+            'Não foi possível gerar o resumo. Verifique se a chave de API (DEEPSEEK_API_KEY) está configurada.'
           );
         }
       } else {

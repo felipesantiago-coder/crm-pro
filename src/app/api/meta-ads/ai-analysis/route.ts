@@ -146,7 +146,7 @@ REGRAS DE ANÁLISE:
 10. Não invente dados que não estejam no contexto fornecido.
 11. Mantenha o tom profissional mas acessível, como um consultor falando com o gestor do CRM.`;
 
-    // Chamar IA via camada unificada (Qwen → Gemini → Groq)
+    // Chamar IA via camada unificada (DeepSeek)
     const { reply: analysis, provider } = await callAI(
       systemPrompt,
       'Analise os dados dos anúncios Meta e gere um relatório completo com insights e recomendações.',
