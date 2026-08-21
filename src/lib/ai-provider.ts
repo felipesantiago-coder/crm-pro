@@ -121,6 +121,12 @@ async function callDeepSeek(
         throw new Error('DeepSeek retornou resposta vazia');
       }
 
+      // Log de tokens para monitoramento de custo
+      const usage = data.usage;
+      if (usage) {
+        console.log(`[AI Provider] Tokens — input: ${usage.prompt_tokens ?? '?'} | output: ${usage.completion_tokens ?? '?'} | total: ${usage.total_tokens ?? '?'}`);
+      }
+
       return { reply: choice.message.content, provider: 'DeepSeek-V4-Flash' };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
