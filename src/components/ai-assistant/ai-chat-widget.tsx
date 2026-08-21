@@ -144,7 +144,8 @@ export function AIChatWidget() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Erro na resposta');
+        const errMsg = err.detail ? `${err.error || 'Erro'}: ${err.detail}` : (err.error || 'Erro na resposta');
+        throw new Error(errMsg);
       }
 
       const data = await res.json();

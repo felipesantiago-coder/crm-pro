@@ -305,99 +305,136 @@ function validateMessages(input: unknown): { valid: boolean; error?: string } {
 
 // ── Handler principal ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  // ── 1. Autenticação (isolado) ─────────────────────────────────────────
+  let session;
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    session = await getServerSession(authOptions);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[AI ASSISTANT] Auth failed:', msg);
+    return NextResponse.json({ error: 'Erro de autenticação', detail: msg }, { status: 401 });
+  }
+
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  }
+
+  const userId = session.user.id || '';
+
+  // Rate limiting
+  if (!checkRateLimit(userId)) {
+    return NextResponse.json({ error: 'Muitas requisições. Aguarde um momento.' }, { status: 429 });
+  }
+
+  // ── 2. Parse do body (isolado) ─────────────────────────────────────────
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch (err) {
+    return NextResponse.json({ error: 'Corpo da requisição inválido (JSON malformado)' }, { status: 400 });
+  }
+
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Requisição inválida' }, { status: 400 });
+  }
+  const bodyKeys = Object.keys(body);
+  if (bodyKeys.length !== 1 || bodyKeys[0] !== 'messages') {
+    return NextResponse.json({ error: 'Requisição inválida' }, { status: 400 });
+  }
+
+  const { messages } = body;
+  const validation = validateMessages(messages);
+  if (!validation.valid) {
+    return NextResponse.json({ error: validation.error }, { status: 400 });
+  }
+
+  const limitedMessages = messages.slice(-10);
+
+  // Sanitizar TODAS as mensagens (user E assistant)
+  const sanitizedMessages = limitedMessages.map((m) => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.role === 'user' ? sanitizeUserInput(m.content) : m.content.substring(0, 1000),
+  }));
+
+  const lastUserMessage = sanitizedMessages.filter(m => m.role === 'user').pop()?.content || '';
+
+  // System prompt adaptativo
+  let systemParts = [SYSTEM_PROMPT];
+  if (NEEDS_CALENDAR_PATTERNS.test(lastUserMessage)) {
+    systemParts.push(GOOGLE_CALENDAR_DETAILS);
+  }
+
+  // ── 3. Dados do CRM (isolado, degrada graciosamente) ───────────────────
+  let dataContext = '';
+  let dbError = false;
+
+  if (NEEDS_CRM_PATTERNS.test(lastUserMessage)) {
+    try {
+      const userRole = (session.user as { role?: string })?.role || 'USER';
+      dataContext = await fetchUserData(userId, userRole);
+    } catch (err) {
+      dbError = true;
+      console.error('[AI ASSISTANT] DB fetch failed:', err);
     }
+  }
 
-    const userId = session.user.id || '';
-
-    // Rate limiting
-    if (!checkRateLimit(userId)) {
-      return NextResponse.json({ error: 'Muitas requisições. Aguarde um momento.' }, { status: 429 });
+  // ── 4. Empreendimentos (isolado, degrada graciosamente) ────────────────
+  let enterpriseContext = '';
+  if (ENTERPRISE_PATTERNS.test(lastUserMessage)) {
+    try {
+      await ensureEnterpriseCache();
+      enterpriseContext = findEnterpriseInCache(lastUserMessage);
+    } catch (err) {
+      console.error('[AI ASSISTANT] Enterprise lookup failed:', err);
     }
+  }
 
-    // V1 fix: validar body estritamente — rejeitar campos extras
-    const body = await req.json();
-    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-      return NextResponse.json({ error: 'Requisição inválida' }, { status: 400 });
-    }
-    const bodyKeys = Object.keys(body);
-    if (bodyKeys.length !== 1 || bodyKeys[0] !== 'messages') {
-      return NextResponse.json({ error: 'Requisição inválida' }, { status: 400 });
-    }
+  // ── 5. Chamada à IA (isolado) ──────────────────────────────────────────
+  let fullSystemText = systemParts.join('\n\n');
+  if (dataContext) fullSystemText += `\n\nContexto atualizado:\n${dataContext}`;
+  if (enterpriseContext) fullSystemText += `\n\n${enterpriseContext}`;
 
-    const { messages } = body;
-
-    const validation = validateMessages(messages);
-    if (!validation.valid) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
-    }
-
-    const limitedMessages = messages.slice(-10);
-
-    // Sanitizar TODAS as mensagens (user E assistant)
-    const sanitizedMessages = limitedMessages.map((m) => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.role === 'user' ? sanitizeUserInput(m.content) : m.content.substring(0, 1000),
-    }));
-
-    const lastUserMessage = sanitizedMessages.filter(m => m.role === 'user').pop()?.content || '';
-
-    // System prompt adaptativo
-    let systemParts = [SYSTEM_PROMPT];
-    if (NEEDS_CALENDAR_PATTERNS.test(lastUserMessage)) {
-      systemParts.push(GOOGLE_CALENDAR_DETAILS);
-    }
-
-    // Buscar dados do CRM apenas se necessário
-    let dataContext = '';
-    let dbError = false;
-
-    if (NEEDS_CRM_PATTERNS.test(lastUserMessage)) {
-      try {
-        const userRole = (session.user as { role?: string })?.role || 'USER';
-        dataContext = await fetchUserData(userId, userRole);
-      } catch (err) {
-        dbError = true;
-        console.error('[AI ASSISTANT] DB fetch failed:', err);
-      }
-    }
-
-    // Empreendimentos (cache em memória)
-    let enterpriseContext = '';
-    if (ENTERPRISE_PATTERNS.test(lastUserMessage)) {
-      try {
-        await ensureEnterpriseCache();
-        enterpriseContext = findEnterpriseInCache(lastUserMessage);
-      } catch (err) {
-        console.error('[AI ASSISTANT] Enterprise lookup failed:', err);
-      }
-    }
-
-    // Montar system text final
-    let fullSystemText = systemParts.join('\n\n');
-    if (dataContext) fullSystemText += `\n\nContexto atualizado:\n${dataContext}`;
-    if (enterpriseContext) fullSystemText += `\n\n${enterpriseContext}`;
-
-    const { reply, provider } = await callAI(fullSystemText, sanitizedMessages as AIMessage[], {
+  let reply: string;
+  let provider: string;
+  try {
+    const result = await callAI(fullSystemText, sanitizedMessages as AIMessage[], {
       temperature: 0.3,
       maxTokens: 1024,
       isChat: true,
     });
+    reply = result.reply;
+    provider = result.provider;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[AI ASSISTANT] AI call failed:', msg);
 
-    console.log(`[AI ASSISTANT] Provider: ${provider} | Input chars: ${fullSystemText.length} | History: ${sanitizedMessages.length} msgs`);
+    // Mensagens específicas para erros conhecidos
+    if (msg.includes('não configurada') || msg.includes('not configured')) {
+      return NextResponse.json({ error: 'API de IA não configurada. Verifique as variáveis de ambiente.' }, { status: 503 });
+    }
+    if (msg.includes('401') || msg.includes('403') || msg.includes('auth') || msg.includes('Unauthorized')) {
+      return NextResponse.json({ error: 'Chave de API inválida ou sem permissão.' }, { status: 503 });
+    }
+    if (msg.includes('402') || msg.includes('insufficient') || msg.includes('quota') || msg.includes('credits') || msg.includes('balance')) {
+      return NextResponse.json({ error: 'Sem créditos suficientes na API de IA.' }, { status: 503 });
+    }
+    if (msg.includes('429') || msg.includes('rate')) {
+      return NextResponse.json({ error: 'Rate limit da API de IA atingido. Tente novamente em instantes.' }, { status: 503 });
+    }
+    if (msg.includes('timeout')) {
+      return NextResponse.json({ error: 'A API de IA demorou muito para responder. Tente novamente.' }, { status: 504 });
+    }
 
-    const safeReply = sanitizeReply(reply);
-
-    const finalReply = dbError
-      ? safeReply + '\n\n⚠️ Não foi possível acessar todos os dados do CRM neste momento.'
-      : safeReply;
-
-    return NextResponse.json({ reply: finalReply, provider });
-  } catch (error) {
-    console.error('[AI ASSISTANT] Error:', error);
-    return NextResponse.json({ error: 'Erro ao processar sua mensagem' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao chamar a API de IA.', detail: msg }, { status: 502 });
   }
+
+  console.log(`[AI ASSISTANT] Provider: ${provider} | Input chars: ${fullSystemText.length} | History: ${sanitizedMessages.length} msgs`);
+
+  const safeReply = sanitizeReply(reply);
+
+  const finalReply = dbError
+    ? safeReply + '\n\n⚠️ Não foi possível acessar todos os dados do CRM neste momento.'
+    : safeReply;
+
+  return NextResponse.json({ reply: finalReply, provider });
 }
