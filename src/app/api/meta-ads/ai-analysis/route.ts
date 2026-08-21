@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = 'llama-3.1-8b-instant';
+import { callAI } from '@/lib/ai-provider';
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,14 +41,11 @@ export async function POST(req: NextRequest) {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Extrair dados das notas
     const parsedLeads = metaClients.map((c) => {
       const adMatch = c.notes?.match(/Anúncio:\s*(.+)/i);
       const campaignMatch = c.notes?.match(/Campanha:\s*(.+)/i);
       return {
-        nome: c.name,
-        etapa: c.stage,
-        regiao: c.region || 'N/A',
+        nome: c.name, etapa: c.stage, regiao: c.region || 'N/A',
         empreendimento: c.enterprise || 'N/A',
         anuncio: adMatch?.[1]?.trim() || 'Não identificado',
         campanha: campaignMatch?.[1]?.trim() || 'Não identificada',
@@ -61,7 +54,6 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // Estatísticas rápidas
     const total = parsedLeads.length;
     const thisMonth = parsedLeads.filter((l) => new Date(l.dataCriacao) >= monthStart).length;
     const won = parsedLeads.filter((l) => l.etapa === 'FECHADO_GANHO').length;
@@ -69,7 +61,6 @@ export async function POST(req: NextRequest) {
     const stillLead = parsedLeads.filter((l) => l.etapa === 'LEAD').length;
     const convRate = total > 0 ? Math.round((won / total) * 100) : 0;
 
-    // Agrupar por campanha
     const campaignStats = new Map<string, { total: number; won: number; lost: number; stages: Record<string, number> }>();
     for (const lead of parsedLeads) {
       const key = lead.campanha;
@@ -81,7 +72,6 @@ export async function POST(req: NextRequest) {
       entry.stages[lead.etapa] = (entry.stages[lead.etapa] || 0) + 1;
     }
 
-    // Agrupar por anúncio
     const adStats = new Map<string, { total: number; won: number; campanha: string }>();
     for (const lead of parsedLeads) {
       const key = lead.anuncio;
@@ -91,68 +81,44 @@ export async function POST(req: NextRequest) {
       if (lead.etapa === 'FECHADO_GANHO') entry.won++;
     }
 
-    // Top campanhas
     const topCampaigns = Array.from(campaignStats.entries())
-      .sort((a, b) => b[1].total - a[1].total)
-      .slice(0, 10)
+      .sort((a, b) => b[1].total - a[1].total).slice(0, 10)
       .map(([name, data]) => ({
-        nome: name,
-        total: data.total,
-        ganhos: data.won,
-        perdidos: data.lost,
+        nome: name, total: data.total, ganhos: data.won, perdidos: data.lost,
         taxaConversao: data.total > 0 ? Math.round((data.won / data.total) * 100) : 0,
         distribuicao: data.stages,
       }));
 
-    // Top anúncios
     const topAds = Array.from(adStats.entries())
-      .sort((a, b) => b[1].total - a[1].total)
-      .slice(0, 10)
+      .sort((a, b) => b[1].total - a[1].total).slice(0, 10)
       .map(([name, data]) => ({
-        nome: name,
-        total: data.total,
-        ganhos: data.won,
-        campanha: data.campanha,
+        nome: name, total: data.total, ganhos: data.won, campanha: data.campanha,
         taxaConversao: data.total > 0 ? Math.round((data.won / data.total) * 100) : 0,
       }));
 
-    // Regiões
     const regionCount = new Map<string, number>();
     for (const lead of parsedLeads) {
-      if (lead.regiao !== 'N/A') {
-        regionCount.set(lead.regiao, (regionCount.get(lead.regiao) || 0) + 1);
-      }
+      if (lead.regiao !== 'N/A') regionCount.set(lead.regiao, (regionCount.get(lead.regiao) || 0) + 1);
     }
-    const topRegions = Array.from(regionCount.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
+    const topRegions = Array.from(regionCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5)
       .map(([name, count]) => ({ regiao: name, leads: count }));
 
-    // Empreendimentos
     const entCount = new Map<string, number>();
     for (const lead of parsedLeads) {
-      if (lead.empreendimento !== 'N/A') {
-        entCount.set(lead.empreendimento, (entCount.get(lead.empreendimento) || 0) + 1);
-      }
+      if (lead.empreendimento !== 'N/A') entCount.set(lead.empreendimento, (entCount.get(lead.empreendimento) || 0) + 1);
     }
-    const topEnterprises = Array.from(entCount.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
+    const topEnterprises = Array.from(entCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5)
       .map(([name, count]) => ({ empreendimento: name, leads: count }));
 
-    // Leads sem avanço (ainda LEAD há mais de 7 dias)
     const staleLeads = parsedLeads.filter((l) => {
       const age = (Date.now() - new Date(l.dataCriacao).getTime()) / 86400000;
       return l.etapa === 'LEAD' && age > 7;
     });
 
-    // 3. Montar prompt para IA
     const dataSummary = JSON.stringify({
       periodo: `Dados até ${now.toLocaleDateString('pt-BR')}`,
       resumo: { total, esteMes: thisMonth, ganhos: won, perdidos: lost, aindaLead: stillLead, taxaConversao: `${convRate}%` },
-      campanhas: topCampaigns,
-      anuncios: topAds,
-      regioes: topRegions,
+      campanhas: topCampaigns, anuncios: topAds, regioes: topRegions,
       empreendimentos: topEnterprises,
       leadsEstagnados: {
         quantidade: staleLeads.length,
@@ -180,70 +146,16 @@ REGRAS DE ANÁLISE:
 10. Não invente dados que não estejam no contexto fornecido.
 11. Mantenha o tom profissional mas acessível, como um consultor falando com o gestor do CRM.`;
 
-    // 4. Chamar IA (Gemini primário, Groq fallback)
-    let reply: string;
-    let provider: string;
+    // Chamar IA via camada unificada (Qwen → Gemini → Groq)
+    const { reply: analysis, provider } = await callAI(
+      systemPrompt,
+      'Analise os dados dos anúncios Meta e gere um relatório completo com insights e recomendações.',
+      { temperature: 0.4, maxTokens: 4096 },
+    );
 
-    if (GEMINI_API_KEY) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemPrompt }] },
-            contents: [{ role: 'user', parts: [{ text: 'Analise os dados dos anúncios Meta e gere um relatório completo com insights e recomendações.' }] }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
-          }),
-        });
+    console.log(`[META ADS AI] Análise gerada por: ${provider}`);
 
-        if (res.ok) {
-          const data = await res.json();
-          reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Não foi possível gerar a análise.';
-          provider = 'Gemini';
-        } else {
-          throw new Error(`Gemini ${res.status}`);
-        }
-      } catch (err) {
-        console.warn('[META ADS AI] Gemini falhou, tentando Groq:', err);
-        if (!GROQ_API_KEY) throw err;
-      }
-    }
-
-    if (!reply && GROQ_API_KEY) {
-      const url = 'https://api.groq.com/openai/v1/chat/completions';
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: GROQ_MODEL,
-          temperature: 0.4,
-          max_tokens: 2048,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: 'Analise os dados dos anúncios Meta e gere um relatório completo com insights e recomendações.' },
-          ],
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        reply = data.choices?.[0]?.message?.content || 'Não foi possível gerar a análise.';
-        provider = 'Groq (fallback)';
-      } else {
-        const errText = await res.text();
-        throw new Error(`Groq ${res.status}: ${errText}`);
-      }
-    }
-
-    if (!reply) {
-      throw new Error('Nenhum provedor de IA disponível. Configure GEMINI_API_KEY ou GROQ_API_KEY.');
-    }
-
-    return NextResponse.json({ analysis: reply, provider });
+    return NextResponse.json({ analysis, provider });
   } catch (error) {
     console.error('[META ADS AI] Erro:', error);
     const msg = error instanceof Error ? error.message : 'Erro desconhecido';

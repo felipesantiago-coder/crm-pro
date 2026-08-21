@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
+import { callAI } from '@/lib/ai-provider';
 
 async function canAccessClient(clientId: string, userId: string, isAdmin: boolean): Promise<boolean> {
   if (isAdmin) return true;
@@ -30,7 +31,6 @@ export async function GET(
 
     const { id } = await params;
 
-    // Verificar permissão de acesso ao cliente
     const currentUser = await db.user.findUnique({
       where: { email: session.user.email },
       select: { id: true, role: true },
@@ -44,14 +44,11 @@ export async function GET(
       return NextResponse.json({ error: 'Acesso negado a este cliente' }, { status: 403 });
     }
 
-    // Buscar dados completos do cliente
     const client = await db.client.findUnique({
       where: { id },
       include: {
         tags: { select: { tag: { select: { name: true, color: true } } } },
-        partners: {
-          select: { user: { select: { name: true } } },
-        },
+        partners: { select: { user: { select: { name: true } } } },
         creator: { select: { name: true } },
         linkedEnterprise: { select: { name: true } },
       },
@@ -61,7 +58,6 @@ export async function GET(
       return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
     }
 
-    // Buscar interações, agendamentos e lembretes
     const [interactions, schedules, reminders] = await Promise.all([
       db.interaction.findMany({
         where: { clientId: id },
@@ -74,12 +70,9 @@ export async function GET(
         orderBy: { scheduledDate: 'desc' },
         take: 20,
         select: {
-          scheduledDate: true,
-          scheduledTime: true,
-          description: true,
-          status: true,
-          completedAt: true,
-          createdAt: true,
+          scheduledDate: true, scheduledTime: true,
+          description: true, status: true,
+          completedAt: true, createdAt: true,
           creatorUser: { select: { name: true } },
         },
       }),
@@ -92,22 +85,16 @@ export async function GET(
     ]);
 
     const STAGE_LABELS: Record<string, string> = {
-      LEAD: 'Lead',
-      PROSPECT: 'Prospect',
-      VISITA_AGENDADA: 'Visita Agendada',
-      VISITA_REALIZADA: 'Visita Realizada',
-      CARTA_PROPOSTA: 'Carta Proposta',
-      CONTRATO_GERADO: 'Contrato Gerado',
-      FECHADO_GANHO: 'Fechado e Ganho',
-      FECHADO_PERDIDO: 'Fechado e Perdido',
+      LEAD: 'Lead', PROSPECT: 'Prospect',
+      VISITA_AGENDADA: 'Visita Agendada', VISITA_REALIZADA: 'Visita Realizada',
+      CARTA_PROPOSTA: 'Carta Proposta', CONTRATO_GERADO: 'Contrato Gerado',
+      FECHADO_GANHO: 'Fechado e Ganho', FECHADO_PERDIDO: 'Fechado e Perdido',
     };
 
     const stageLabel = STAGE_LABELS[client.stage] || client.stage;
     const tags = client.tags.map((t) => t.tag.name).join(', ') || 'Nenhuma';
 
-    // Montar texto de contexto para a IA
     const parts: string[] = [];
-
     parts.push(`PERFIL DO CLIENTE:`);
     parts.push(`Nome: ${client.name}`);
     if (client.phone) parts.push(`Telefone: ${client.phone}`);
@@ -141,25 +128,17 @@ export async function GET(
     }
 
     if (schedules.length > 0) {
-      const statusLabels: Record<string, string> = {
-        PENDING: 'Pendente',
-        COMPLETED: 'Concluído',
-        CANCELLED: 'Cancelado',
-      };
+      const statusLabels: Record<string, string> = { PENDING: 'Pendente', COMPLETED: 'Concluído', CANCELLED: 'Cancelado' };
       parts.push(`\nHISTORICO DE AGENDAMENTOS (${schedules.length} total):`);
       schedules.slice(0, 15).forEach((s) => {
         const d = new Date(s.scheduledDate).toLocaleDateString('pt-BR');
         const label = statusLabels[s.status] || s.status;
         const creator = s.creatorUser?.name || 'N/A';
-        parts.push(
-          `- [${d}] ${s.scheduledTime} — ${label} (por ${creator})${s.description ? ': ' + s.description : ''}`
-        );
+        parts.push(`- [${d}] ${s.scheduledTime} — ${label} (por ${creator})${s.description ? ': ' + s.description : ''}`);
       });
       if (schedules.length > 15) {
         parts.push(`(... e mais ${schedules.length - 15} agendamentos)`);
       }
-
-      // Resumo de agendamentos
       const completed = schedules.filter((s) => s.status === 'COMPLETED').length;
       const cancelled = schedules.filter((s) => s.status === 'CANCELLED').length;
       const pending = schedules.filter((s) => s.status === 'PENDING').length;
@@ -176,10 +155,6 @@ export async function GET(
     }
 
     const contextText = parts.join('\n');
-
-    // Gerar o resumo com IA (Gemini ou Groq)
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
     const aiPrompt = `Com base nos dados do cliente abaixo, gere um resumo de contexto inteligente e estratégico para preparar um profissional para o próximo atendimento.
 
@@ -211,72 +186,14 @@ Regras:
 - Use linguagem profissional mas acessível.
 - Mantenha o resumo conciso mas completo.`;
 
-    let summary = '';
+    // Gerar o resumo com IA via camada unificada (Qwen → Gemini → Groq)
+    const { reply: summary, provider } = await callAI(aiPrompt, contextText, {
+      temperature: 0.3,
+      maxTokens: 2048,
+      retry: true,
+    });
 
-    if (GEMINI_API_KEY) {
-      try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              system_instruction: {
-                parts: [{ text: aiPrompt }],
-              },
-              contents: [
-                {
-                  role: 'user',
-                  parts: [{ text: contextText }],
-                },
-              ],
-              generationConfig: {
-                temperature: 0.3,
-                maxOutputTokens: 2048,
-              },
-            }),
-          }
-        );
-
-        if (res.ok) {
-          const data = await res.json();
-          summary =
-            data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        }
-      } catch (err) {
-        console.error('[Context Memory] Erro Gemini:', err);
-      }
-    }
-
-    // Fallback para Groq
-    if (!summary && GROQ_API_KEY) {
-      try {
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${GROQ_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: 'llama-3.1-8b-instant',
-            messages: [
-              { role: 'system', content: aiPrompt },
-              { role: 'user', content: contextText },
-            ],
-            temperature: 0.3,
-            max_tokens: 2048,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          summary =
-            data?.choices?.[0]?.message?.content || '';
-        }
-      } catch (err) {
-        console.error('[Context Memory] Erro Groq:', err);
-      }
-    }
+    console.log(`[Context Memory] Resumo gerado por: ${provider}`);
 
     return NextResponse.json({
       summary,

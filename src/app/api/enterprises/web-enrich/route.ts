@@ -3,9 +3,7 @@ import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
 import { Prisma } from '@prisma/client';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
+import { callAI } from '@/lib/ai-provider';
 
 // ============================================================
 // Types — same as extract-info for consistency
@@ -110,61 +108,18 @@ async function structureWithAI(
 
   const userMessage = `Empreendimento: "${enterpriseName}"\n\nResultados da busca na internet:\n\n${context}`;
 
-  // Try Gemini
-  if (GEMINI_API_KEY) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: STRUCTURING_PROMPT }] },
-          contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return parseAIResponse(text);
-      }
-    } catch (err) {
-      console.error('[Web Enrich] Erro Gemini:', err);
-    }
+  // Chamar IA via camada unificada (Qwen → Gemini → Groq)
+  try {
+    const { reply, provider } = await callAI(STRUCTURING_PROMPT, userMessage, {
+      temperature: 0.2,
+      maxTokens: 2048,
+    });
+    console.log(`[Web Enrich] Estruturação feita por: ${provider}`);
+    return parseAIResponse(reply);
+  } catch (err) {
+    console.error('[Web Enrich] Todos os provedores falharam:', err);
+    return null;
   }
-
-  // Fallback: Groq
-  if (GROQ_API_KEY) {
-    try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: STRUCTURING_PROMPT },
-            { role: 'user', content: userMessage },
-          ],
-          temperature: 0.2,
-          max_tokens: 2048,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.choices?.[0]?.message?.content;
-        if (text) return parseAIResponse(text);
-      }
-    } catch (err) {
-      console.error('[Web Enrich] Erro Groq:', err);
-    }
-  }
-
-  return null;
 }
 
 function parseAIResponse(text: string): ExtractedInfo | null {
