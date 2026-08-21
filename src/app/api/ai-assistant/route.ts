@@ -2,13 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
-
-// --- Provedores de IA ---
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-2.5-flash';
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = 'llama-3.1-8b-instant';
+import { callAI, type AIMessage } from '@/lib/ai-provider';
 
 // --- Prompt do sistema ---
 const SYSTEM_PROMPT = `Você é o assistente virtual do CRM Pro, um sistema brasileiro de gestão de relacionamento com clientes. Seu papel é ajudar o usuário a:
@@ -68,8 +62,6 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
-
-type ProviderResult = { reply: string; provider: string };
 
 // --- Busca de dados do CRM ---
 async function fetchUserData(userId: string, userRole: string) {
@@ -136,7 +128,7 @@ async function fetchUserData(userId: string, userRole: string) {
 }
 
 // --- Base de dados de empreendimentos ---
-const MAX_ENTERPRISE_CONTEXT_CHARS = 30000; // Gemini suporta 1M tokens — folga total
+const MAX_ENTERPRISE_CONTEXT_CHARS = 30000;
 
 async function fetchEnterpriseContent(userMessage: string): Promise<string> {
   try {
@@ -156,7 +148,6 @@ async function fetchEnterpriseContent(userMessage: string): Promise<string> {
 
     const normalizedMessage = normalize(userMessage);
 
-    // Buscar o empreendimento mais relevante mencionado na mensagem
     let matched = enterprises.find(e => {
       const normalizedName = normalize(e.name);
       return normalizedMessage.includes(normalizedName);
@@ -237,7 +228,7 @@ function formatDataForContext(data: Awaited<ReturnType<typeof fetchUserData>>): 
   return parts.join('\n');
 }
 
-// --- Montar system text completo (sem truncar — Gemini suporta 1M tokens) ---
+// --- Montar system text completo ---
 function buildFullSystemText(dataContext: string, enterpriseContext: string): string {
   let systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${dataContext}`;
   if (enterpriseContext) {
@@ -246,129 +237,11 @@ function buildFullSystemText(dataContext: string, enterpriseContext: string): st
   return systemText;
 }
 
-// --- Montar system text reduzido para Groq fallback (limite 6000 TPM) ---
-function buildGroqSystemText(dataContext: string, enterpriseContext: string): string {
-  // Groq free tier: 6000 TPM. Português com markdown ≈ 3 chars/token.
-  // System prompt ~3500 chars (~1100 tokens). Mensagens (4) ~500 tokens.
-  // Reserve 1024 tokens para resposta. Disponível: 6000-1100-500-1024 = 3376 tokens ≈ 10000 chars.
-  const MAX_GROQ_TOTAL = 10000;
-
-  // Primeiro, truncar o dataContext se necessário
-  let trimmedData = dataContext;
-  const baseLen = SYSTEM_PROMPT.length + 30; // +30 para "\n\n---\nDADOS DO CRM:\n"
-  const maxDataLen = MAX_GROQ_TOTAL - baseLen - 400; // 400 de margem para enterprise header
-  if (trimmedData.length > maxDataLen) {
-    // Cortar por linhas
-    const lines = trimmedData.split('\n');
-    let totalLen = 0;
-    const keptLines: string[] = [];
-    for (const line of lines) {
-      if (totalLen + line.length + 1 > maxDataLen) break;
-      keptLines.push(line);
-      totalLen += line.length + 1;
-    }
-    trimmedData = keptLines.join('\n') + '\n[...] Dados truncados pelo limite de tokens do provedor fallback.';
-  }
-
-  let systemText = `${SYSTEM_PROMPT}\n\n---\nDADOS DO CRM:\n${trimmedData}`;
-
-  // Calcular espaço restante para a base de dados da empresa
-  const remaining = MAX_GROQ_TOTAL - systemText.length - 100;
-  if (enterpriseContext && remaining > 150) {
-    if (enterpriseContext.length <= remaining) {
-      systemText += `\n\n---\n${enterpriseContext}`;
-    } else {
-      let cutIndex = enterpriseContext.lastIndexOf('\n', remaining);
-      if (cutIndex < remaining * 0.5) cutIndex = remaining;
-      systemText += `\n\n---\n${enterpriseContext.slice(0, cutIndex)}\n\n[...] Conteúdo truncado pelo limite de tokens do provedor fallback.`;
-    }
-  } else if (enterpriseContext) {
-
-  }
-
-  return systemText;
-}
-
-// --- Provedor: Google Gemini (primário) ---
-async function askGemini(systemText: string, messages: Message[]): Promise<string> {
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY não configurada');
-  }
-
-  // Converter mensagens para formato Gemini ("assistant" → "model")
-  const contents = messages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': GEMINI_API_KEY,
-    },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemText }] },
-      contents,
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 2048,
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Gemini API ${res.status}: ${errText}`);
-  }
-
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text
-    || 'Desculpe, não consegui gerar uma resposta.';
-}
-
-// --- Provedor: Groq (fallback) ---
-async function askGroq(systemText: string, messages: Message[]): Promise<string> {
-  if (!GROQ_API_KEY) {
-    throw new Error('GROQ_API_KEY não configurada');
-  }
-
-  const url = 'https://api.groq.com/openai/v1/chat/completions';
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      temperature: 0.3,
-      max_tokens: 1024,
-      messages: [
-        { role: 'system', content: systemText },
-        ...messages.map(m => ({ role: m.role, content: m.content })),
-      ],
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Groq API ${res.status}: ${errText}`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || 'Desculpe, não consegui gerar uma resposta.';
-}
-
 // --- Pós-processamento de segurança da resposta ---
 function sanitizeReply(reply: string): string {
   let sanitized = reply;
   let wasSanitized = false;
 
-  // 1. Detectar vazamento de marcadores internos de seção
   const sectionMarkers = [
     /===\s*BASE DE DADOS DO EMPREENDIMENTO/gi,
     /===\s*CLIENTES\s*===/gi,
@@ -385,11 +258,8 @@ function sanitizeReply(reply: string): string {
     }
   }
 
-  // 2. Detectar dump de dados: múltiplas linhas com padrão pipe (tabela de dados do CRM)
-  // Ex: "- João | Região X | LEAD | Empresa Y | Tel: 11999..."
   const pipeLines = sanitized.split('\n').filter(line => line.includes(' | ') && line.includes('Tel:'));
   if (pipeLines.length > 5) {
-    // Cortar para máximo 5 linhas com dados de contato
     const lines = sanitized.split('\n');
     const sanitizedLines: string[] = [];
     let contactLinesIncluded = 0;
@@ -399,7 +269,6 @@ function sanitizeReply(reply: string): string {
           sanitizedLines.push(line);
           contactLinesIncluded++;
         }
-        // Linhas além de 5 são silenciosamente removidas
       } else {
         sanitizedLines.push(line);
       }
@@ -408,10 +277,8 @@ function sanitizeReply(reply: string): string {
     wasSanitized = true;
   }
 
-  // 3. Detectar múltiplos e-mails expostos (mais de 3 numa resposta = provável dump)
   const emailMatches = sanitized.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
   if (emailMatches && emailMatches.length > 3) {
-    // Manter apenas os 3 primeiros e remover o resto
     let count = 0;
     sanitized = sanitized.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, (match) => {
       count++;
@@ -420,7 +287,6 @@ function sanitizeReply(reply: string): string {
     wasSanitized = true;
   }
 
-  // 4. Detectar múltiplos telefones expostos (mais de 5)
   const phoneMatches = sanitized.match(/\b\d{2}[\s.-]?\d{4,5}[\s.-]?\d{4}\b/g);
   if (phoneMatches && phoneMatches.length > 5) {
     let count = 0;
@@ -431,7 +297,6 @@ function sanitizeReply(reply: string): string {
     wasSanitized = true;
   }
 
-  // 5. Detectar tentativa de prompt injection na resposta (IA repetindo instruções)
   const injectionPatterns = [
     /REGRAS DE SEGURANÇA/gi,
     /PRIORIDADE MÁXIMA/gi,
@@ -453,38 +318,9 @@ function sanitizeReply(reply: string): string {
   return sanitized;
 }
 
-// --- Chamada principal com fallback automático ---
-async function askAI(dataContext: string, enterpriseContext: string, messages: Message[]): Promise<ProviderResult> {
-  // 1) Tentar Gemini primeiro (1M tokens, 1500 req/dia grátis)
-  if (GEMINI_API_KEY) {
-    try {
-      const fullSystemText = buildFullSystemText(dataContext, enterpriseContext);
-      const reply = await askGemini(fullSystemText, messages);
-      return { reply, provider: 'Gemini' };
-    } catch (err) {
-      console.warn('[AI ASSISTANT] Gemini falhou, tentando Groq como fallback:', err instanceof Error ? err.message : err);
-    }
-  } else {
-
-  }
-
-  // 2) Fallback para Groq — construir system text com limites estritos (6000 TPM)
-  if (GROQ_API_KEY) {
-    const groqSystemText = buildGroqSystemText(dataContext, enterpriseContext);
-    const groqMessages = messages.slice(-4); // Menos histórico para economizar tokens
-    const reply = await askGroq(groqSystemText, groqMessages);
-    return { reply, provider: 'Groq (fallback)' };
-  }
-
-  throw new Error('Nenhum provedor de IA disponível. Configure GEMINI_API_KEY ou GROQ_API_KEY.');
-}
-
 // --- Sanitização de input do usuário contra prompt injection ---
 function sanitizeUserInput(content: string): string {
-  // Limitar tamanho (max 2000 chars por mensagem)
   let sanitized = content.substring(0, 2000);
-  
-  // Remover tentativas comuns de prompt injection
   const injectionPatterns = [
     /ignore\s+(all\s+)?(previous\s+)?(instructions?|rules?|prompts?)/gi,
     /esque[cç]a\s+(todas\s+)?(as\s+)?(instru[cç][oõ]es|regras)/gi,
@@ -495,11 +331,9 @@ function sanitizeUserInput(content: string): string {
     /<\|im_start\|>/g,
     /<\|im_end\|>/g,
   ];
-
   for (const pattern of injectionPatterns) {
     sanitized = sanitized.replace(pattern, '[filtrado]');
   }
-
   return sanitized;
 }
 
@@ -520,10 +354,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Mensagens inválidas' }, { status: 400 });
     }
 
-    // Limitar número de mensagens no histórico (max 20)
     const limitedMessages = messages.slice(-20);
 
-    // Sanitizar mensagens do usuário contra prompt injection
     const sanitizedMessages = limitedMessages.map((m) => ({
       ...m,
       content: m.role === 'user' ? sanitizeUserInput(m.content) : m.content,
@@ -542,7 +374,6 @@ export async function POST(req: NextRequest) {
       console.error('[AI ASSISTANT] DB fetch failed, continuing without data:', err);
     }
 
-    // Buscar base de dados de empreendimento se a pergunta mencionar um
     const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content || '';
     try {
       enterpriseContext = await fetchEnterpriseContent(lastUserMessage);
@@ -550,10 +381,16 @@ export async function POST(req: NextRequest) {
       console.error('[AI ASSISTANT] Enterprise content fetch failed:', err);
     }
 
-    // Enviar para IA com fallback automático
-    const { reply, provider } = await askAI(dataContext, enterpriseContext, sanitizedMessages);
+    // Enviar para IA via camada unificada (Qwen → Gemini → Groq)
+    const fullSystemText = buildFullSystemText(dataContext, enterpriseContext);
+    const { reply, provider } = await callAI(fullSystemText, sanitizedMessages as AIMessage[], {
+      temperature: 0.3,
+      maxTokens: 2048,
+      isChat: true,
+    });
 
-    // Pós-processamento de segurança: detectar e remover possíveis vazamentos de dados
+    console.log(`[AI ASSISTANT] Resposta gerada por: ${provider}`);
+
     const safeReply = sanitizeReply(reply);
 
     const finalReply = dbError
@@ -563,7 +400,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reply: finalReply });
   } catch (error) {
     console.error('[AI ASSISTANT] Error:', error);
-    const msg = 'Erro ao processar sua mensagem';
     return NextResponse.json(
       { error: 'Erro ao processar sua mensagem' },
       { status: 500 }

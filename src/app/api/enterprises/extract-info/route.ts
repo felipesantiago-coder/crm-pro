@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = 'llama-3.1-8b-instant';
+import { callAI } from '@/lib/ai-provider';
 
 // ============================================================
 // Types
@@ -41,18 +37,10 @@ interface ExtractedInfo {
 
 const EMPTY_INFO: ExtractedInfo = {
   location: { address: null, neighborhood: null, city: null, state: null, region: null, additionalInfo: null },
-  builder: null,
-  architecture: null,
-  landscaping: null,
-  status: null,
-  deliveryDate: null,
-  price: null,
-  totalUnits: null,
-  floors: null,
-  parkingSpots: null,
-  differentials: [],
-  apartmentTypes: [],
-  summary: null,
+  builder: null, architecture: null, landscaping: null,
+  status: null, deliveryDate: null, price: null,
+  totalUnits: null, floors: null, parkingSpots: null,
+  differentials: [], apartmentTypes: [], summary: null,
 };
 
 // ============================================================
@@ -111,118 +99,8 @@ REGRAS IMPORTANTES:
 - O JSON deve ser válido e bem formatado.`;
 
 // ============================================================
-// Helpers
+// JSON parsing
 // ============================================================
-
-/** Abort a fetch after `ms` milliseconds */
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms),
-    ),
-  ]);
-}
-
-/** Sleep helper */
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-// ============================================================
-// AI providers (with retry)
-// ============================================================
-const AI_TIMEOUT_MS = 30_000; // 30s per attempt
-const MAX_RETRIES = 2;
-
-async function askGemini(systemText: string, userContent: string): Promise<string> {
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY não configurada');
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-  const body = JSON.stringify({
-    system_instruction: { parts: [{ text: systemText }] },
-    contents: [{ role: 'user', parts: [{ text: userContent }] }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
-  });
-
-  let lastError: Error | null = null;
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const res = await withTimeout(
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-        }),
-        AI_TIMEOUT_MS,
-        'Gemini',
-      );
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Gemini ${res.status}: ${errText.slice(0, 300)}`);
-      }
-
-      const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-      if (!text) throw new Error('Gemini retornou resposta vazia');
-
-      return text;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      console.warn(`[Extract Info] Gemini attempt ${attempt}/${MAX_RETRIES} failed:`, lastError.message);
-      if (attempt < MAX_RETRIES) await sleep(1000 * attempt); // 1s, 2s
-    }
-  }
-  throw lastError || new Error('Gemini falhou');
-}
-
-async function askGroq(systemText: string, userContent: string): Promise<string> {
-  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY não configurada');
-
-  const url = 'https://api.groq.com/openai/v1/chat/completions';
-  const body = JSON.stringify({
-    model: GROQ_MODEL,
-    temperature: 0.1,
-    max_tokens: 4096,
-    messages: [
-      { role: 'system', content: systemText },
-      { role: 'user', content: userContent },
-    ],
-  });
-
-  let lastError: Error | null = null;
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const res = await withTimeout(
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
-          body,
-        }),
-        AI_TIMEOUT_MS,
-        'Groq',
-      );
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Groq ${res.status}: ${errText.slice(0, 300)}`);
-      }
-
-      const data = await res.json();
-      const text = data.choices?.[0]?.message?.content || '';
-
-      if (!text) throw new Error('Groq retornou resposta vazia');
-
-      return text;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      console.warn(`[Extract Info] Groq attempt ${attempt}/${MAX_RETRIES} failed:`, lastError.message);
-      if (attempt < MAX_RETRIES) await sleep(1000 * attempt);
-    }
-  }
-  throw lastError || new Error('Groq falhou');
-}
-
 function parseJSON(raw: string): ExtractedInfo {
   let cleaned = raw.trim();
 
@@ -285,21 +163,15 @@ export async function extractAndCache(enterpriseId: string): Promise<ExtractedIn
 
   if (!enterprise) return { ...EMPTY_INFO };
 
-  // If no content, return with region fallback
   if (!enterprise.pdfContent || enterprise.pdfContent.trim().length < 20) {
     const result: ExtractedInfo = {
       ...EMPTY_INFO,
       location: { ...EMPTY_INFO.location, region: enterprise.region || null },
     };
-    await db.enterprise.update({
-      where: { id: enterpriseId },
-      data: { cachedInfo: result as any },
-    });
+    await db.enterprise.update({ where: { id: enterpriseId }, data: { cachedInfo: result as any } });
     return result;
   }
 
-  // Increased from 12000 to 30000 to avoid truncating delivery dates
-  // and other info that typically appear at the end of documents
   const content = enterprise.pdfContent.length > 30000
     ? enterprise.pdfContent.substring(0, 30000) + '\n\n[Conteúdo truncado...]'
     : enterprise.pdfContent;
@@ -308,30 +180,23 @@ export async function extractAndCache(enterpriseId: string): Promise<ExtractedIn
 
   let rawReply = '';
 
-  // 1) Try Gemini first (better quality)
-  if (GEMINI_API_KEY) {
-    try {
-      rawReply = await askGemini(EXTRACTION_PROMPT, userMessage);
-    } catch (err) {
-      console.warn('[Extract Info] Gemini failed after retries:', err instanceof Error ? err.message : err);
-    }
-  }
-
-  // 2) Fallback to Groq
-  if (!rawReply && GROQ_API_KEY) {
-    try {
-      rawReply = await askGroq(EXTRACTION_PROMPT, userMessage);
-    } catch (err) {
-      console.error('[Extract Info] Groq also failed after retries:', err instanceof Error ? err.message : err);
-    }
+  // Chamar IA via camada unificada (Qwen → Gemini → Groq) com retry
+  try {
+    const { reply, provider } = await callAI(EXTRACTION_PROMPT, userMessage, {
+      temperature: 0.1,
+      maxTokens: 4096,
+      retry: true,
+      maxRetries: 2,
+    });
+    rawReply = reply;
+    console.log(`[Extract Info] Extração feita por: ${provider}`);
+  } catch (err) {
+    console.error('[Extract Info] Todos os provedores falharam:', err instanceof Error ? err.message : err);
   }
 
   let info: ExtractedInfo;
   if (!rawReply) {
-    info = {
-      ...EMPTY_INFO,
-      location: { ...EMPTY_INFO.location, region: enterprise.region || null },
-    };
+    info = { ...EMPTY_INFO, location: { ...EMPTY_INFO.location, region: enterprise.region || null } };
   } else {
     info = parseJSON(rawReply);
     if (!info.location.region && enterprise.region) {
@@ -339,17 +204,13 @@ export async function extractAndCache(enterpriseId: string): Promise<ExtractedIn
     }
   }
 
-  // Save to cache
-  await db.enterprise.update({
-    where: { id: enterpriseId },
-    data: { cachedInfo: info as any },
-  });
+  await db.enterprise.update({ where: { id: enterpriseId }, data: { cachedInfo: info as any } });
 
   return info;
 }
 
 // ============================================================
-// POST handler — extract for a single enterprise (still used by admin)
+// POST handler — extract for a single enterprise
 // ============================================================
 export async function POST(req: NextRequest) {
   try {
@@ -365,9 +226,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(info);
   } catch (error) {
     console.error('[Extract Info] Error:', error);
-    return NextResponse.json(
-      { error: 'Erro ao extrair informações' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Erro ao extrair informações' }, { status: 500 });
   }
 }

@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GEMINI_MODEL = 'gemini-2.5-flash';
+import { callAI } from '@/lib/ai-provider';
 
 /**
  * API de Análise IA dos Leads do Meta Ads + Landing Pages
@@ -1542,69 +1540,27 @@ CONTEXTO:
 - Se os dados forem exclusivamente do pixel (sem leads CRM), foque a análise no comportamento dos visitantes, funil de conversão da landing page e performance técnica.`;
 
     // ─────────────────────────────────────────
-    // 4. Chamar IA
+    // 4. Chamar IA via camada unificada (Qwen → Gemini → Groq)
     // ─────────────────────────────────────────
-    let analysis: string | null = null;
+    let analysis: string;
+    let provider: string;
 
-    if (GEMINI_API_KEY) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemPrompt }] },
-            contents: [{ role: 'user', parts: [{ text: dataSummary }] }],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 8192,
-            },
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          analysis = data.candidates?.[0]?.content?.parts?.[0]?.text || null;
-        }
-      } catch (err) {
-        console.error('[Meta Ads Analyze] Erro Gemini:', err);
-      }
-    }
-
-    if (!analysis && GROQ_API_KEY) {
-      try {
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${GROQ_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: dataSummary },
-            ],
-            temperature: 0.1,
-            max_tokens: 8192,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          analysis = data.choices?.[0]?.message?.content || null;
-        }
-      } catch (err) {
-        console.error('[Meta Ads Analyze] Erro Groq:', err);
-      }
-    }
-
-    if (!analysis) {
+    try {
+      const result = await callAI(systemPrompt, dataSummary, {
+        temperature: 0.1,
+        maxTokens: 8192,
+      });
+      analysis = result.reply;
+      provider = result.provider;
+    } catch (err) {
+ console.error('[Meta Ads Analyze] Erro IA:', err);
       return NextResponse.json({
         analysis: null,
-        error: 'Nenhum provedor de IA disponível. Configure GEMINI_API_KEY ou GROQ_API_KEY.',
+        error: 'Nenhum provedor de IA disponível. Configure DASHSCOPE_API_KEY, GEMINI_API_KEY ou GROQ_API_KEY.',
       }, { status: 503 });
     }
+
+    console.log(`[Meta Ads Analyze] Análise gerada por: ${provider}`);
 
     return NextResponse.json({
       analysis,
