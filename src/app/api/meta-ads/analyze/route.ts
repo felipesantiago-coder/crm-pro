@@ -1540,7 +1540,7 @@ CONTEXTO:
 - Se os dados forem exclusivamente do pixel (sem leads CRM), foque a análise no comportamento dos visitantes, funil de conversão da landing page e performance técnica.`;
 
     // ─────────────────────────────────────────
-    // 4. Chamar IA via camada unificada (Qwen → Gemini → Groq)
+    // 4. Chamar IA via camada unificada (DeepSeek)
     // ─────────────────────────────────────────
     let analysis: string;
     let provider: string;
@@ -1556,7 +1556,7 @@ CONTEXTO:
  console.error('[Meta Ads Analyze] Erro IA:', err);
       return NextResponse.json({
         analysis: null,
-        error: 'Nenhum provedor de IA disponível. Configure DASHSCOPE_API_KEY ou GROQ_API_KEY.',
+        error: 'Nenhum provedor de IA disponível. Configure DEEPSEEK_API_KEY.',
       }, { status: 503 });
     }
 

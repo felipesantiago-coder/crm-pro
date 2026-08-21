@@ -381,7 +381,7 @@ export async function POST(req: NextRequest) {
       console.error('[AI ASSISTANT] Enterprise content fetch failed:', err);
     }
 
-    // Enviar para IA via camada unificada (Qwen → Gemini → Groq)
+    // Enviar para IA via camada unificada (DeepSeek)
     const fullSystemText = buildFullSystemText(dataContext, enterpriseContext);
     const { reply, provider } = await callAI(fullSystemText, sanitizedMessages as AIMessage[], {
       temperature: 0.3,

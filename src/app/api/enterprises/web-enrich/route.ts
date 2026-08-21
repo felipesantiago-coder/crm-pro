@@ -57,7 +57,7 @@ async function webSearch(query: string, num = 5): Promise<Array<{ url: string; n
 }
 
 // ============================================================
-// AI structuring — Gemini (primary) / Groq (fallback)
+// AI structuring — DeepSeek
 // ============================================================
 const STRUCTURING_PROMPT = `Você é um assistente especializado em pesquisar e estruturar informações sobre empreendimentos imobiliários no Brasil.
 
@@ -108,7 +108,7 @@ async function structureWithAI(
 
   const userMessage = `Empreendimento: "${enterpriseName}"\n\nResultados da busca na internet:\n\n${context}`;
 
-  // Chamar IA via camada unificada (Qwen → Gemini → Groq)
+  // Chamar IA via camada unificada (DeepSeek)
   try {
     const { reply, provider } = await callAI(STRUCTURING_PROMPT, userMessage, {
       temperature: 0.2,
