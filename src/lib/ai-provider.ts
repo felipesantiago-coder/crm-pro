@@ -49,8 +49,8 @@ export interface AIResult {
 const QWEN_API_KEY = process.env.DASHSCOPE_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
-const QWEN_MODEL = 'qwen3-7b-flash';
-const QWEN_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+const QWEN_MODEL = 'qwen3.7-flash';
+const QWEN_BASE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions';
 const GROQ_CHAT_MODEL = 'llama-3.3-70b-versatile'; // Used for analysis/extraction (better quality)
 const GROQ_FAST_MODEL = 'llama-3.1-8b-instant'; // Used for chat assistant (faster)
 
@@ -95,8 +95,7 @@ async function callQwen(
     messages.push({ role: 'user', content: userContent });
   }
 
-  // Qwen3 supports thinking mode — enable for complex tasks, disable for simple chat
-  // extra_body enables thinking when temperature < 0.6
+  // Qwen3.7 supports thinking mode — enable for analytical/extraction tasks (low temperature)
   const enableThinking = temperature <= 0.2;
 
   const body: Record<string, unknown> = {
@@ -107,8 +106,9 @@ async function callQwen(
   };
 
   // Enable thinking for analytical/extraction tasks (low temperature)
+  // Note: enable_thinking must be a top-level field in the JSON body, NOT nested in extra_body
   if (enableThinking) {
-    body.extra_body = { enable_thinking: true };
+    body.enable_thinking = true;
   }
 
   const bodyStr = JSON.stringify(body);
@@ -143,7 +143,7 @@ async function callQwen(
         throw new Error('Qwen retornou resposta vazia');
       }
 
-      return { reply: choice.message.content, provider: 'Qwen3-7B-Flash' };
+      return { reply: choice.message.content, provider: 'Qwen3.7-Flash' };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       console.warn(`[AI Provider] Qwen attempt ${attempt}/${maxRetries} failed:`, lastError.message);
@@ -287,7 +287,7 @@ export async function callAI(
  */
 export function getConfiguredProviders(): Array<{ name: string; isPrimary: boolean }> {
   const list: Array<{ name: string; isPrimary: boolean }> = [];
-  if (QWEN_API_KEY) list.push({ name: 'Qwen3-7B-Flash', isPrimary: true });
+  if (QWEN_API_KEY) list.push({ name: 'Qwen3.7-Flash', isPrimary: true });
   if (GROQ_API_KEY) list.push({ name: 'Groq', isPrimary: !QWEN_API_KEY });
   return list;
 }
