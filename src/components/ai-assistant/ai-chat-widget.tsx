@@ -25,6 +25,7 @@ import {
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  provider?: string;
 }
 
 // ============================================================
@@ -147,7 +148,7 @@ export function AIChatWidget() {
       }
 
       const data = await res.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply, provider: data.provider }]);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro inesperado';
       setMessages(prev => [
@@ -262,7 +263,12 @@ export function AIChatWidget() {
                 )}
               >
                 {msg.role === 'assistant' ? (
-                  <SimpleMarkdown text={msg.content} />
+                  <>
+                    <SimpleMarkdown text={msg.content} />
+                    {msg.provider && (
+                      <span className="block text-[10px] text-muted-foreground/50 mt-1.5 text-right">{msg.provider}</span>
+                    )}
+                  </>
                 ) : (
                   <p className="text-sm">{msg.content}</p>
                 )}

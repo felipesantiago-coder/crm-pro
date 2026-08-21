@@ -397,7 +397,7 @@ export async function POST(req: NextRequest) {
       ? safeReply + '\n\n⚠️ *Nota: Não foi possível acessar os dados do CRM neste momento.*'
       : safeReply;
 
-    return NextResponse.json({ reply: finalReply });
+    return NextResponse.json({ reply: finalReply, provider });
   } catch (error) {
     console.error('[AI ASSISTANT] Error:', error);
     return NextResponse.json(
