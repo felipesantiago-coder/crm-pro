@@ -1556,7 +1556,7 @@ CONTEXTO:
  console.error('[Meta Ads Analyze] Erro IA:', err);
       return NextResponse.json({
         analysis: null,
-        error: 'Nenhum provedor de IA disponível. Configure DASHSCOPE_API_KEY, GEMINI_API_KEY ou GROQ_API_KEY.',
+        error: 'Nenhum provedor de IA disponível. Configure DASHSCOPE_API_KEY ou GROQ_API_KEY.',
       }, { status: 503 });
     }
 

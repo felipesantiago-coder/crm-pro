@@ -1,10 +1,9 @@
 /**
  * ai-provider.ts — Unified AI Provider Layer
  *
- * Supports three providers with automatic failover:
+ * Supports two providers with automatic failover:
  *   1. Qwen (DashScope / Alibaba Cloud) — PRIMARY if DASHSCOPE_API_KEY is set
- *   2. Google Gemini — fallback
- *   3. Groq — last resort
+ *   2. Groq — fallback
  *
  * All routes should use callAI() instead of calling providers directly.
  *
@@ -37,7 +36,7 @@ export interface AIOptions {
   /** If true, `userContent` is treated as AIMessage[] (chat history) */
   isChat?: boolean;
   /** Force a specific provider (skip failover). Useful for testing. */
-  forceProvider?: 'qwen' | 'gemini' | 'groq';
+  forceProvider?: 'qwen' | 'groq';
 }
 
 export interface AIResult {
@@ -48,12 +47,10 @@ export interface AIResult {
 // ── Provider Config ─────────────────────────────────────────────────────────
 
 const QWEN_API_KEY = process.env.DASHSCOPE_API_KEY;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 const QWEN_MODEL = 'qwen3-7b-flash';
 const QWEN_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
-const GEMINI_MODEL = 'gemini-2.5-flash';
 const GROQ_CHAT_MODEL = 'llama-3.3-70b-versatile'; // Used for analysis/extraction (better quality)
 const GROQ_FAST_MODEL = 'llama-3.1-8b-instant'; // Used for chat assistant (faster)
 
@@ -156,74 +153,6 @@ async function callQwen(
   throw lastError || new Error('Qwen falhou');
 }
 
-// ── Gemini ─────────────────────────────────────────────────────────────────
-
-async function callGemini(
-  systemText: string,
-  userContent: string | AIMessage[],
-  options: AIOptions,
-): Promise<AIResult> {
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY não configurada');
-
-  const temperature = options.temperature ?? 0.3;
-  const maxTokens = options.maxTokens ?? 2048;
-  const timeoutMs = options.timeoutMs ?? 30_000;
-  const maxRetries = options.maxRetries ?? (options.retry ? 2 : 1);
-
-  // Build Gemini-native request body
-  let contents: Array<{ role: string; parts: Array<{ text: string }> }>;
-
-  if (Array.isArray(userContent)) {
-    // Chat history — convert "assistant" to "model" for Gemini
-    contents = userContent.map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }));
-  } else {
-    contents = [{ role: 'user', parts: [{ text: userContent }] }];
-  }
-
-  const geminiBody: Record<string, unknown> = {
-    system_instruction: { parts: [{ text: systemText }] },
-    contents,
-    generationConfig: { temperature, maxOutputTokens: maxTokens },
-  };
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-  const bodyStr = JSON.stringify(geminiBody);
-
-  let lastError: Error | null = null;
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const res = await withTimeout(
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: bodyStr,
-        }),
-        timeoutMs,
-        'Gemini',
-      );
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Gemini ${res.status}: ${errText.slice(0, 300)}`);
-      }
-
-      const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) throw new Error('Gemini retornou resposta vazia');
-
-      return { reply: text, provider: 'Gemini' };
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      console.warn(`[AI Provider] Gemini attempt ${attempt}/${maxRetries} failed:`, lastError.message);
-      if (attempt < maxRetries) await sleep(1000 * attempt);
-    }
-  }
-  throw lastError || new Error('Gemini falhou');
-}
-
 // ── Groq ───────────────────────────────────────────────────────────────────
 
 async function callGroq(
@@ -296,7 +225,7 @@ async function callGroq(
 // ── Main Entry Point ───────────────────────────────────────────────────────
 
 /**
- * Call AI with automatic failover chain: Qwen → Gemini → Groq
+ * Call AI with automatic failover chain: Qwen → Groq
  *
  * @param systemPrompt  The system instruction text
  * @param userContent   Either a string (single user message) or AIMessage[] (chat history)
@@ -316,7 +245,6 @@ export async function callAI(
     // Force a specific provider (for testing)
     const map: Record<string, { key: string | undefined; fn: typeof callQwen }> = {
       qwen: { key: QWEN_API_KEY, fn: callQwen },
-      gemini: { key: GEMINI_API_KEY, fn: callGemini },
       groq: { key: GROQ_API_KEY, fn: callGroq },
     };
     const forced = map[options.forceProvider];
@@ -328,12 +256,11 @@ export async function callAI(
 
   // Normal failover chain
   if (QWEN_API_KEY) providers.push({ name: 'Qwen', key: QWEN_API_KEY, fn: callQwen });
-  if (GEMINI_API_KEY) providers.push({ name: 'Gemini', key: GEMINI_API_KEY, fn: callGemini });
   if (GROQ_API_KEY) providers.push({ name: 'Groq', key: GROQ_API_KEY, fn: callGroq });
 
   if (providers.length === 0) {
     throw new Error(
-      'Nenhum provedor de IA disponível. Configure DASHSCOPE_API_KEY, GEMINI_API_KEY ou GROQ_API_KEY.',
+      'Nenhum provedor de IA disponível. Configure DASHSCOPE_API_KEY ou GROQ_API_KEY.',
     );
   }
 
@@ -361,7 +288,6 @@ export async function callAI(
 export function getConfiguredProviders(): Array<{ name: string; isPrimary: boolean }> {
   const list: Array<{ name: string; isPrimary: boolean }> = [];
   if (QWEN_API_KEY) list.push({ name: 'Qwen3-7B-Flash', isPrimary: true });
-  if (GEMINI_API_KEY) list.push({ name: 'Gemini', isPrimary: !QWEN_API_KEY });
-  if (GROQ_API_KEY) list.push({ name: 'Groq', isPrimary: !QWEN_API_KEY && !GEMINI_API_KEY });
+  if (GROQ_API_KEY) list.push({ name: 'Groq', isPrimary: !QWEN_API_KEY });
   return list;
 }
