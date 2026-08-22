@@ -77,7 +77,6 @@ function checkRateLimit(userId: string): boolean {
 // ── Detecção de intenção ─────────────────────────────────────────────────
 const NEEDS_CRM_PATTERNS = /cliente|contato|lead|prospect|visita|agendament|lembrete|interaç|históric|funil|pipeline|empresa|empreendiment|telefone|email|regi|tag|parceir|negóc|fechado|perdido|ganho|proposta|contrato|crm|dashboard|kpi|estat|quantos|quais|lista|busque|encontre|mostre|meus clientes|meus dados|minhas visitas/gi;
 const NEEDS_CALENDAR_PATTERNS = /google.?calendar|conectar.?calendar|calendar|sincroniz|integr.*calendar|calendário|erro.*403.*calendar|event.*google/gi;
-const ENTERPRISE_PATTERNS = /empreendiment|planta|metragem|valor|preço|condi[çc].*pagamento|suite|apartamento|torre/gi;
 
 // ── Busca de dados do CRM (com cache) ───────────────────────────────────
 async function fetchUserData(userId: string, userRole: string): Promise<string> {
@@ -378,15 +377,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── 4. Empreendimentos (isolado, degrada graciosamente) ────────────────
+  // ── 4. Empreendimentos (sempre verifica — cache carrega uma vez) ───────
   let enterpriseContext = '';
-  if (ENTERPRISE_PATTERNS.test(lastUserMessage)) {
-    try {
-      await ensureEnterpriseCache();
-      enterpriseContext = findEnterpriseInCache(lastUserMessage);
-    } catch (err) {
-      console.error('[AI ASSISTANT] Enterprise lookup failed:', err);
-    }
+  try {
+    await ensureEnterpriseCache();
+    enterpriseContext = findEnterpriseInCache(lastUserMessage);
+  } catch (err) {
+    console.error('[AI ASSISTANT] Enterprise lookup failed:', err);
   }
 
   // ── 5. Chamada à IA (isolado) ──────────────────────────────────────────
