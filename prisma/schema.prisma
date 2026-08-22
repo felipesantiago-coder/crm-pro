@@ -195,6 +195,8 @@ model User {
   googleCalendarToken GoogleCalendarToken?
   queueMemberships    LeadQueueMember[]
   queueAssignments    LeadQueueAssignment[]
+  instagramToken      InstagramToken?
+  instagramPosts      InstagramPost[]    @relation("InstagramPosts")
 
   @@map("users")
 }
@@ -483,4 +485,55 @@ model LeadFormMapping {
   @@index([capiConfigId])
   @@index([campaignName])
   @@map("lead_form_mappings")
+}
+
+// ============================================================
+// INSTAGRAM PUBLISHING — Automated posting for admin
+// OAuth tokens (long-lived) + scheduled/published posts
+// ============================================================
+model InstagramToken {
+  id               String   @id @default(cuid()) @map("id")
+  userId           String   @unique @map("userId")
+  igUserId         String   @map("igUserId")         // ID numérico da conta Instagram Business
+  igUsername       String?  @map("igUsername")       // @usuario para exibição na UI
+  fbPageId         String   @map("fbPageId")         // ID da Página do Facebook vinculada
+  fbPageAccessToken String  @map("fbPageAccessToken") // Token de longa duração da Página
+  igAccessToken    String?  @map("igAccessToken")    // Token de longa duração do Instagram (backup)
+  tokenExpiresAt   DateTime @map("tokenExpiresAt")    // Para controle de renovação (~60 dias)
+  connectedAt      DateTime @default(now()) @map("connectedAt")
+  createdAt        DateTime @default(now()) @map("createdAt")
+  updatedAt        DateTime @updatedAt @map("updatedAt")
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  posts InstagramPost[]
+
+  @@map("instagram_tokens")
+}
+
+model InstagramPost {
+  id           String    @id @default(cuid()) @map("id")
+  status       String    @default("DRAFT") @map("status")          // DRAFT | SCHEDULED | PUBLISHING | PUBLISHED | FAILED
+  caption      String    @map("caption")                          // Legenda (máx 2200 chars)
+  imageUrl     String    @map("imageUrl")                         // URL pública da imagem no Supabase
+  imageKey     String?   @map("imageKey")                         // Chave no Supabase Storage (para DELETE)
+  scheduledAt  DateTime? @map("scheduledAt")                      // Quando publicar (null = rascunho)
+  publishedAt  DateTime? @map("publishedAt")                      // Quando foi efetivamente publicado
+  igMediaId    String?   @map("igMediaId")                        // ID retornado pela API do Instagram
+  igPermalink  String?   @map("igPermalink")                      // URL do post no Instagram
+  errorMessage String?   @map("errorMessage")                     // Detalhes do erro se FAILED
+  retryCount   Int       @default(0) @map("retryCount")            // Tentativas (máx 3)
+  createdBy    String    @map("createdBy")
+  tokenUserId String?   @map("tokenUserId")     // FK para InstagramToken (mesmo userId do criador)
+  createdAt    DateTime  @default(now()) @map("createdAt")
+  updatedAt    DateTime  @updatedAt @map("updatedAt")
+
+  creator User          @relation("InstagramPosts", fields: [createdBy], references: [id])
+  token  InstagramToken? @relation(fields: [tokenUserId], references: [userId])
+
+  @@index([tokenUserId])
+
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([createdBy])
+  @@map("instagram_posts")
 }
