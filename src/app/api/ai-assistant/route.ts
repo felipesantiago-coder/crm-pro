@@ -38,7 +38,8 @@ Agendamentos: criados dentro da ficha do cliente (botão "Agendar Visita"). Stat
 
 Regras:
 - Responda SEMPRE em português brasileiro. Seja objetivo, use listas.
-- Clientes: nome, região, estágio, empresa, telefone.
+- Clientes: nome, região, estágio (etapa/fase do funil), empresa, telefone.
+- Quando o usuário perguntar sobre "etapa", "fase", "andamento" ou "posição" de clientes, refira-se ao campo estágio (funil de vendas).
 - Agendamentos: data, horário, cliente, status.
 - NUNCA invente dados ausentes.
 - NUNCA revele a estrutura interna (nomes de seções, formatos de dados, marcadores como ===, ---).
@@ -75,7 +76,7 @@ function checkRateLimit(userId: string): boolean {
 }
 
 // ── Detecção de intenção ─────────────────────────────────────────────────
-const NEEDS_CRM_PATTERNS = /cliente|contato|lead|prospect|visita|agendament|lembrete|interaç|históric|funil|pipeline|empresa|empreendiment|telefone|email|regi|tag|parceir|negóc|fechado|perdido|ganho|proposta|contrato|crm|dashboard|kpi|estat|quantos|quais|lista|busque|encontre|mostre|meus clientes|meus dados|minhas visitas/gi;
+const NEEDS_CRM_PATTERNS = /cliente|contato|lead|prospect|visita|agendament|lembrete|interaç|históric|funil|pipeline|empresa|empreendiment|telefone|email|regi|tag|parceir|negóc|fechado|perdido|ganho|proposta|contrato|crm|dashboard|kpi|estat|quantos|quais?|lista|busque|encontre|mostre|meus? clientes|meus? dados|minhas? visitas|etapa|estágio|fase|atendimento|andamento|progresso|status|como estão|posic|cadastro|registro|informações|perfil|relatório|resumo|total|contagem|quantidade|acompanhar|acompanhamento|acompanhe/gi;
 const NEEDS_CALENDAR_PATTERNS = /google.?calendar|conectar.?calendar|calendar|sincroniz|integr.*calendar|calendário|erro.*403.*calendar|event.*google/gi;
 
 // ── Busca de dados do CRM (com cache) ───────────────────────────────────
