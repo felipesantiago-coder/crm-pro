@@ -169,17 +169,38 @@ async function ensureEnterpriseCache(): Promise<void> {
   }
 }
 
-function findEnterpriseInCache(userMessage: string): string {
+/**
+ * Busca empreendimento no cache analisando TODAS as mensagens recentes do usuário.
+ * Isso permite que perguntas de acompanhamento (sem repetir o nome) ainda encontrem
+ * o empreendimento correto, pois o nome foi mencionado em uma mensagem anterior.
+ */
+function findEnterpriseInCache(recentUserMessages: string[]): string {
   if (enterpriseCache.size === 0) return '';
   const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
-  const msg = normalize(userMessage);
-  for (const [, e] of enterpriseCache) { if (msg.includes(e.nameNormalized)) return truncateEnterpriseContent(e); }
+
+  // Combinar todas as mensagens do usuário em um único texto para busca
+  // Dar prioridade à última mensagem (peso 2x) para resolver ambiguidades
+  const combined = normalize(recentUserMessages.join(' '));
+  const lastMsg = normalize(recentUserMessages[recentUserMessages.length - 1] || '');
+
+  // 1a passagem: busca exata do nome completo em qualquer mensagem
+  for (const [, e] of enterpriseCache) {
+    if (combined.includes(e.nameNormalized)) {
+      // Se múltiplos empreendimentos baterem na última mensagem, priorizar o mais recente
+      return truncateEnterpriseContent(e);
+    }
+  }
+
+  // 2a passagem: busca parcial (pelo menos 50% das partes do nome)
   let best: { e: typeof enterpriseCache extends Map<string, infer V> ? V : never; score: number } | null = null;
   for (const [, e] of enterpriseCache) {
     if (e.nameParts.length === 0) continue;
-    const matched = e.nameParts.filter(p => msg.includes(p)).length;
+    const matched = e.nameParts.filter(p => combined.includes(p)).length;
     const score = matched / e.nameParts.length;
-    if (score >= 0.5 && (!best || score > best.score)) best = { e, score };
+    // Bonus se a última mensagem também contém partes do nome
+    const lastMatched = e.nameParts.filter(p => lastMsg.includes(p)).length;
+    const finalScore = score + (lastMatched > 0 ? 0.1 : 0);
+    if (finalScore >= 0.5 && (!best || finalScore > best.score)) best = { e, score: finalScore };
   }
   return best ? truncateEnterpriseContent(best.e) : '';
 }
@@ -374,12 +395,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: validation.error }, { status: 400 });
   }
 
-  const limitedMessages = messages.slice(-6);
+  // Manter até 10 mensagens (5 trocas) para preservar contexto de conversa.
+  // Mais do que isso causaria token excessivo; menos causaria perda de contexto.
+  const limitedMessages = messages.slice(-10);
 
   // Sanitizar TODAS as mensagens (user E assistant)
+  // Assistant truncado em 800 chars para preservar referências contextuais (nomes, temas)
   const sanitizedMessages = limitedMessages.map((m) => ({
     role: m.role as 'user' | 'assistant',
-    content: m.role === 'user' ? sanitizeUserInput(m.content) : m.content.substring(0, 400),
+    content: m.role === 'user' ? sanitizeUserInput(m.content) : m.content.substring(0, 800),
   }));
 
   const lastUserMessage = sanitizedMessages.filter(m => m.role === 'user').pop()?.content || '';
@@ -415,10 +439,12 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 4. Empreendimentos (sempre verifica — cache carrega uma vez) ───────
+  // Coletar todas as mensagens do usuário para busca contextual de empreendimento
+  const allUserTexts = sanitizedMessages.filter(m => m.role === 'user').map(m => m.content);
   let enterpriseContext = '';
   try {
     await ensureEnterpriseCache();
-    enterpriseContext = findEnterpriseInCache(lastUserMessage);
+    enterpriseContext = findEnterpriseInCache(allUserTexts);
   } catch (err) {
     console.error('[AI ASSISTANT] Enterprise lookup failed:', err);
   }
