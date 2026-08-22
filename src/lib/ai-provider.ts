@@ -70,7 +70,7 @@ async function callDeepSeek(
   const temperature = options.temperature ?? 0.3;
   const maxTokens = options.maxTokens ?? 2048;
   const timeoutMs = options.timeoutMs ?? 30_000;
-  const maxRetries = options.maxRetries ?? (options.retry ? 2 : 1);
+  const maxRetries = options.maxRetries ?? 2; // Sempre retry — respostas vazias são comuns e transitórias
 
   // Build messages array for OpenAI-compatible API
   const messages: Array<{ role: string; content: string }> = [
@@ -117,8 +117,19 @@ async function callDeepSeek(
 
       const data = await res.json();
       const choice = data.choices?.[0];
-      if (!choice?.message?.content) {
-        throw new Error('DeepSeek retornou resposta vazia');
+      const content = choice?.message?.content;
+      const finishReason = choice?.finish_reason;
+
+      if (!content) {
+        // Log detalhado para debug — ajuda a identificar se é filtro de conteúdo
+        console.error('[AI Provider] DeepSeek empty response:', JSON.stringify({
+          finish_reason: finishReason,
+          has_choices: !!data.choices,
+          choices_len: data.choices?.length,
+          model: data.model,
+          usage: data.usage,
+        }));
+        throw new Error(`DeepSeek retornou resposta vazia (finish_reason: ${finishReason ?? 'unknown'})`);
       }
 
       // Log de tokens para monitoramento de custo

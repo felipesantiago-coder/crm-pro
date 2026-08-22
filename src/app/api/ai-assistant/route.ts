@@ -431,7 +431,7 @@ export async function POST(req: NextRequest) {
   // maxTokens dinâmico: perguntas simples gastam menos
   const hasEnterpriseData = enterpriseContext.length > 0;
   const hasCrmData = dataContext.length > 0;
-  const dynamicMaxTokens = hasEnterpriseData ? 1024 : hasCrmData ? 768 : 384;
+  const dynamicMaxTokens = hasEnterpriseData ? 1024 : hasCrmData ? 768 : 512;
 
   let reply: string;
   let provider: string;
