@@ -65,6 +65,12 @@ server.log
 /scripts/*.jpeg
 /scripts/*.webp
 
+# Generated docs & screenshots
+/guia-configuracao-supabase.md
+crm-dashboard-v2.png
+crm-full.png
+crm-dashboard.png
+
 # Use npm lock for Vercel
 bun.lock
 crm-fix
