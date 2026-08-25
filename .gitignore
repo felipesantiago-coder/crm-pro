@@ -58,6 +58,12 @@ server.log
 /upload/
 /download/
 /worklog.md
+/worklog/
+/scripts/*.pdf
+/scripts/*.png
+/scripts/*.jpg
+/scripts/*.jpeg
+/scripts/*.webp
 
 # Use npm lock for Vercel
 bun.lock
