@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, startTransition } from 'react';
-import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { useTranslations } from 'next-intl';
 import LanguageSwitcher from '@/i18n/LanguageSwitcher';
@@ -801,7 +800,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       <section id="hero" className="relative min-h-[100dvh] min-h-[640px] flex items-end">
         {heroImage && (
           <div className="absolute inset-0">
-            <Image src={heroImage} alt={e.name} fill className="object-cover" priority sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 1200px" />
+            <img src={heroImage} alt={e.name} className='absolute inset-0 w-full h-full object-cover' />
             <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/40 to-black/15" />
           </div>
         )}
@@ -1237,7 +1236,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 {images.map((img, idx) => (
                   <button key={img.id} type="button" onClick={() => { startTransition(() => { setActiveImgIdx(idx); setLightboxOpen(true); }); try { (window as any).CRMPIXEL?.trackGalleryClick(idx, images.length); } catch {} }}
                     className="lp-gallery-card group relative w-full overflow-hidden rounded-2xl bg-[#1a1a1a]/[0.06] aspect-[4/3] hover:shadow-lg transition-all duration-300">
-                    <Image src={img.url} alt={img.altText || `${e.name} - ${t('gallery.photoAlt', { n: idx + 1 })}`} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.03]" sizes="(max-width: 768px) 50vw, 33vw" loading={idx < 4 ? 'eager' : 'lazy'} />
+                    <img src={img.url} alt={img.altText || `${e.name} - ${t('gallery.photoAlt', { n: idx + 1 })}`} className='absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]' loading={idx < 4 ? 'eager' : 'lazy'} />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                       <div className="h-12 w-12 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-lg">

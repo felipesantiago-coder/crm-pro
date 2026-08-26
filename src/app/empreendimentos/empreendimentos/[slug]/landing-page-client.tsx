@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Image from 'next/image';
 import {
   Building2, MapPin, ArrowLeft, ChevronLeft, ChevronRight,
   X, Navigation, HardHat, Palette, Sparkles, Ruler, BedDouble,
@@ -622,14 +621,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
         {/* Background image */}
         {heroImage && (
           <div className="absolute inset-0">
-            <Image
-              src={heroImage}
-              alt={e.name}
-              fill
-              className="object-cover"
-              priority
-              sizes="100vw"
-            />
+            <img src={heroImage} alt={e.name} className='absolute inset-0 w-full h-full object-cover' />
             <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/50 to-[#0A0A0A]/20" />
             <div className="absolute inset-0 bg-gradient-to-r from-[#0A0A0A]/30 to-transparent" />
           </div>
@@ -902,13 +894,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                   setLightboxOpen(true);
                 }}
               >
-                <Image
-                  src={images[activeImgIdx]?.url || heroImage || ''}
-                  alt={images[activeImgIdx]?.altText || e.name}
-                  fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-[1.02]"
-                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 960px"
-                />
+                <img src={images[activeImgIdx]?.url || heroImage || ''} alt={images[activeImgIdx]?.altText || e.name} className='absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]' />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10 pointer-events-none" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -939,7 +925,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
                           : 'border-transparent opacity-50 hover:opacity-80'
                       }`}
                     >
-                      <Image src={img.url} alt={img.altText || ''} fill className="object-cover" sizes="112px" />
+                      <img src={img.url} alt={img.altText || ''} className='absolute inset-0 w-full h-full object-cover' />
                     </button>
                   ))}
                 </div>
@@ -2014,14 +2000,7 @@ export default function LandingPageClient({ params }: { params: Promise<{ slug: 
           <div className="absolute top-3 left-3 sm:top-5 sm:left-5 text-white/60 text-xs sm:text-sm bg-white/10 backdrop-blur-sm px-3 py-1.5 sm:px-4 sm:py-2 rounded-full">
             {activeImgIdx + 1} / {images.length}
           </div>
-          <Image
-            src={images[activeImgIdx]?.url}
-            alt={images[activeImgIdx]?.altText || ''}
-            width={1200}
-            height={800}
-            className="max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] sm:max-h-[85vh] object-contain rounded-xl"
-            onClick={(ev) => ev.stopPropagation()}
-          />
+          <img src={images[activeImgIdx]?.url} alt={images[activeImgIdx]?.altText || ''} className='max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] sm:max-h-[85vh] object-contain rounded-xl' onClick={(ev) => ev.stopPropagation()} />
           {images.length > 1 && (
             <>
               <button

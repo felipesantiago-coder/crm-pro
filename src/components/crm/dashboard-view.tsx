@@ -52,6 +52,7 @@ import { format, differenceInDays, isToday, isTomorrow, isPast, isThisWeek } fro
 import { ptBR } from 'date-fns/locale';
 import { useCRMStore } from '@/store/crm-store';
 import { toast } from 'sonner';
+import { getCached, invalidateCache } from '@/lib/fetch-cache';
 
 interface ClientSummary {
   id: string;
@@ -173,18 +174,18 @@ export function DashboardView() {
     async function loadDashboard() {
       try {
         const [clientsRes, remindersRes, needsUpdateRes, statsRes, schedulesRes] = await Promise.all([
-          fetch('/api/clients?page=1&limit=5'),
-          fetch('/api/reminders?limit=50'),
-          fetch('/api/clients?needsUpdate=true&limit=10'),
-          fetch('/api/clients/stats'),
-          fetch('/api/schedules?limit=30'),
+          getCached('/api/clients?page=1&limit=5', () => fetch('/api/clients?page=1&limit=5').then(r => r.json())),
+          getCached('/api/reminders?limit=50', () => fetch('/api/reminders?limit=50').then(r => r.json())),
+          getCached('/api/clients?needsUpdate=true&limit=10', () => fetch('/api/clients?needsUpdate=true&limit=10').then(r => r.json())),
+          getCached('/api/clients/stats', () => fetch('/api/clients/stats').then(r => r.json())),
+          getCached('/api/schedules?limit=30', () => fetch('/api/schedules?limit=30').then(r => r.json())),
         ]);
 
-        const clientsData = await clientsRes.json();
-        const remindersData = await remindersRes.json();
-        const needsUpdateData = await needsUpdateRes.json();
-        const statsData = await statsRes.json();
-        const schedulesData = await schedulesRes.json();
+        const clientsData = clientsRes;
+        const remindersData = remindersRes;
+        const needsUpdateData = needsUpdateRes;
+        const statsData = statsRes;
+        const schedulesData = schedulesRes;
 
         setTotalClients(statsData.total || clientsData.total || 0);
         setClientsThisMonth(statsData.thisMonth || 0);

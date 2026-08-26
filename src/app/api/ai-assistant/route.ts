@@ -6,7 +6,7 @@ import { callAI, type AIMessage } from '@/lib/ai-provider';
 
 // ── Cache de dados do CRM por usuário ────────────────────────────────────
 const crmCache = new Map<string, { data: string; ts: number }>();
-const CRM_CACHE_TTL = 60_000;
+const CRM_CACHE_TTL = 120_000; // 2min — reduces DB load with 50+ users
 
 // ── Cache de bases de dados de empreendimentos ──────────────────────────
 const enterpriseCache = new Map<string, { name: string; content: string; nameNormalized: string; nameParts: string[] }>();
@@ -373,19 +373,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Muitas requisições. Aguarde um momento.' }, { status: 429 });
   }
 
-  // ── 2. Parse do body (isolado) ─────────────────────────────────────────
+  // ── 2. Parse do body (early exit before heavy work) ──────────
   let body: Record<string, unknown>;
   try {
     body = await req.json();
-  } catch (err) {
-    return NextResponse.json({ error: 'Corpo da requisição inválido (JSON malformado)' }, { status: 400 });
+  } catch {
+    return NextResponse.json({ error: 'JSON inválido' }, { status: 400 });
   }
 
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return NextResponse.json({ error: 'Requisição inválida' }, { status: 400 });
   }
-  const bodyKeys = Object.keys(body);
-  if (bodyKeys.length !== 1 || bodyKeys[0] !== 'messages') {
+  if (!Array.isArray((body as any).messages)) {
     return NextResponse.json({ error: 'Requisição inválida' }, { status: 400 });
   }
 

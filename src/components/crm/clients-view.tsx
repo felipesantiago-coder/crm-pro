@@ -19,6 +19,7 @@ import { ClientForm } from './client-form';
 import { ClientDetail } from './client-detail';
 import { ImportExport } from './import-export';
 import { useCRMStore } from '@/store/crm-store';
+import { getCached, invalidateCache } from '@/lib/fetch-cache';
 
 interface Client {
   id: string;
@@ -120,14 +121,11 @@ export function ClientsView() {
   useEffect(() => {
     async function fetchFilters() {
       try {
-        const [regionsRes, tagsRes, campaignsRes] = await Promise.all([
-          fetch('/api/clients/regions'),
-          fetch('/api/tags'),
-          fetch('/api/clients/campaigns'),
+        const [regionsData, tagsData, campaignsData] = await Promise.all([
+          getCached('/api/clients/regions', () => fetch('/api/clients/regions').then(r => r.ok ? r.json() : []), 60_000),
+          getCached('/api/tags', () => fetch('/api/tags').then(r => r.ok ? r.json() : []), 60_000),
+          getCached('/api/clients/campaigns', () => fetch('/api/clients/campaigns').then(r => r.ok ? r.json() : []), 60_000),
         ]);
-        const regionsData = regionsRes.ok ? await regionsRes.json() : [];
-        const tagsData = tagsRes.ok ? await tagsRes.json() : [];
-        const campaignsData = campaignsRes.ok ? await campaignsRes.json() : [];
         setRegions(Array.isArray(regionsData) ? regionsData : []);
         setTags(Array.isArray(tagsData) ? tagsData : []);
         setCampaigns(Array.isArray(campaignsData) ? campaignsData : []);

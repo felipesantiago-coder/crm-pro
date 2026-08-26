@@ -22,7 +22,6 @@ import {
   X,
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -657,12 +656,7 @@ export function InstagramPanel() {
           ) : (
             <div className="relative rounded-lg overflow-hidden border bg-muted">
               <div className="relative w-full max-w-sm mx-auto aspect-square">
-                <Image
-                  src={imagePreview}
-                  alt="Pré-visualização"
-                  fill
-                  className="object-cover"
-                />
+                <img src={imagePreview} alt='Pré-visualização' className='w-full h-full object-cover' />
               </div>
               <Button
                 variant="destructive"
@@ -881,12 +875,7 @@ export function InstagramPanel() {
                         {/* Thumbnail */}
                         {post.imageUrl ? (
                           <div className="relative h-12 w-12 shrink-0 rounded-lg overflow-hidden bg-muted">
-                            <Image
-                              src={post.imageUrl}
-                              alt=""
-                              fill
-                              className="object-cover"
-                            />
+                          <img src={post.imageUrl} alt='' className='w-full h-full object-cover' />
                           </div>
                         ) : (
                           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -1151,12 +1140,7 @@ export function InstagramPanel() {
             {/* Current image preview */}
             {editingPost?.imageUrl && (
               <div className="relative w-full max-w-xs mx-auto aspect-square rounded-lg overflow-hidden bg-muted">
-                <Image
-                  src={editingPost.imageUrl}
-                  alt=""
-                  fill
-                  className="object-cover"
-                />
+                <img src={editingPost?.imageUrl} alt='' className='w-full h-full object-cover' />
               </div>
             )}
 
