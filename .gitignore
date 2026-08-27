@@ -64,6 +64,7 @@ server.log
 /scripts/*.jpg
 /scripts/*.jpeg
 /scripts/*.webp
+scripts/
 
 # Generated docs & screenshots
 /guia-configuracao-supabase.md
@@ -76,3 +77,31 @@ bun.lock
 crm-fix
 crm-pro
 tool-results/
+
+# Research & scraped data (dev-only)
+/article*.json
+/ref*.json
+/search*.json
+/research_*.json
+/vitta*.json
+/resend_search.json
+
+# Loose SQL (use prisma/migrations/)
+/supabase-migration-*.sql
+/supabase-setup.sql
+/supabase-security-migration.sql
+
+# AI memory (dev-only)
+.ai-memory/
+
+# Submodules (dev-only audits/refs)
+crm-pro-audit
+repo-source
+
+# Dev scripts
+/scripts/*.json
+/scripts/*.py
+/scripts/*.html
+/scripts/*.ts
+/scripts/*.js
+/scripts/*.mjs
