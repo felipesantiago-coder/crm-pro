@@ -1,29 +1,84 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 import { locales, defaultLocale, isValidLocale, type Locale } from './i18n/config';
 
 const LOCALE_COOKIE = 'locale';
+
+/**
+ * Gera hash curto do User-Agent para session binding (Edge-compatible).
+ */
+async function hashUserAgent(ua: string): Promise<string> {
+  const data = new TextEncoder().encode(ua);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+}
 
 /**
  * Edge Middleware — executa em TODAS as requisições antes de chegar
  * às páginas ou API routes.
  *
  * Responsabilidades:
- *  1. Roteamento de locale (/en/..., /es/...) para landing pages
- *  2. Impedir cache de HTML pelo navegador (evita código antigo após deploy)
- *  3. Impedir cache de dados da API (sempre dados frescos)
- *  4. Adicionar headers de segurança em páginas públicas
+ *  1. Session binding: invalida sessão se o User-Agent mudou
+ *  2. Roteamento de locale (/en/..., /es/...) para landing pages
+ *  3. Impedir cache de HTML pelo navegador (evita código antigo após deploy)
+ *  4. Impedir cache de dados da API (sempre dados frescos)
  */
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const response = NextResponse.next();
 
-  // ── 0. Locale routing for empreendimentos ───────
-  // Detect locale from URL: /en/empreendimentos/... or /es/empreendimentos/...
+  // ── 0. Session Binding para rotas autenticadas ───────
+  // Verifica se o JWT tem uaHash e se bate com o User-Agent atual.
+  // Se não bater, redireciona para login (invalida sessão no cliente).
+  // Rotas públicas (landing pages, portal, auth) são ignoradas.
+  const isAuthRoute = pathname.startsWith('/api/auth');
+  const isPublicApi =
+    pathname.startsWith('/api/track/') ||
+    pathname.startsWith('/api/enterprises/public') ||
+    pathname.startsWith('/api/enterprises/catalog/') ||
+    pathname.startsWith('/api/enterprises/list-public') ||
+    pathname.startsWith('/api/portal/') ||
+    pathname.startsWith('/api/webhooks/meta-leads/route');
+  const isLandingOrPublic =
+    pathname.startsWith('/empreendimentos/') ||
+    pathname.startsWith('/en/') ||
+    pathname.startsWith('/es/') ||
+    pathname === '/login' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password' ||
+    pathname.startsWith('/portal');
+
+  if (!isAuthRoute && !isPublicApi && !isLandingOrPublic && pathname.startsWith('/api/')) {
+    try {
+      const token = await getToken({
+        req: request,
+        secret: process.env.NEXTAUTH_SECRET!,
+      });
+      if (token?.uaHash) {
+        const currentUaHash = await hashUserAgent(request.headers.get('user-agent') || '');
+        if (token.uaHash !== currentUaHash) {
+          console.warn(`[MIDDLEWARE] Session binding mismatch — userId=${token.id}`);
+          // Deleta o cookie de sessão para forçar re-login
+          const res = NextResponse.json({ error: 'Sessão inválida. Faça login novamente.' }, { status: 401 });
+          const sessionCookie = request.cookies.get('next-auth.session-token') ||
+            request.cookies.get('__Secure-next-auth.session-token');
+          if (sessionCookie) {
+            res.cookies.delete(sessionCookie.name, { path: '/' });
+          }
+          return res;
+        }
+      }
+    } catch {
+      // Falha na verificação — não bloqueia (getToken pode falhar se cookie ausente)
+    }
+  }
+
+  // ── 1. Locale routing for empreendimentos ───────
   let detectedLocale: Locale | null = null;
   let cleanPath = pathname;
 
   for (const l of locales) {
-    if (l === defaultLocale) continue; // pt-BR has no prefix
+    if (l === defaultLocale) continue;
     const prefix = `/${l}/`;
     if (pathname === `/${l}` || pathname.startsWith(prefix)) {
       detectedLocale = l;
@@ -37,12 +92,7 @@ export function middleware(request: NextRequest) {
     cleanPath.startsWith('/empreendimentos/');
 
   if (isEmpreendimentosPath) {
-    // Determine effective locale:
-    // 1. URL prefix (if present)
-    // 2. Cookie
-    // 3. Default (pt-BR)
     let effectiveLocale: Locale = defaultLocale;
-
     if (detectedLocale) {
       effectiveLocale = detectedLocale;
     } else {
@@ -51,11 +101,8 @@ export function middleware(request: NextRequest) {
         effectiveLocale = cookieLocale;
       }
     }
-
-    // Set locale header for server components
     response.headers.set('x-locale', effectiveLocale);
 
-    // If locale was detected from URL, rewrite to strip the prefix
     if (detectedLocale) {
       const url = request.nextUrl.clone();
       url.pathname = cleanPath + (url.search || '');
@@ -68,17 +115,15 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // ── 1. Landing pages HTML: stale-while-revalidate ──────
+  // ── 2. Landing pages HTML: stale-while-revalidate ──────
   const isLandingPage = /^\/empreendimentos\/[^/]+(\/?$|\/cadastro-sucesso)/.test(pathname);
 
   if (isLandingPage) {
-    // stale-while-revalidate: serve cached HTML immediately while revalidating in background.
-    // 60s matches the ISR revalidate interval on [slug]/page.tsx.
     response.headers.set('Cache-Control', 'public, max-age=0, stale-while-revalidate=60');
     return response;
   }
 
-  // ── 2. Other HTML pages: never cache (admin, login, etc) ──
+  // ── 3. Other HTML pages: never cache ──
   const isOtherHtmlPage =
     pathname === '/' ||
     pathname === '/login' ||
@@ -94,7 +139,7 @@ export function middleware(request: NextRequest) {
     response.headers.set('Surrogate-Control', 'no-store');
   }
 
-  // ── 3. API routes: não cachear respostas ───────────────────
+  // ── 4. API routes: não cachear respostas ───────────────────
   const isApi = pathname.startsWith('/api/');
   if (isApi && !pathname.includes('/track/pixel.gif')) {
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
@@ -104,7 +149,6 @@ export function middleware(request: NextRequest) {
   return response;
 }
 
-// Matcher: intercepta tudo EXCETO arquivos estáticos com hash
 export const config = {
   matcher: [
     '/',

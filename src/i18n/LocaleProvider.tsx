@@ -82,7 +82,7 @@ export function LocaleProvider({ children, serverLocale }: {
     setLocaleState(newLocale);
     // Persist in cookie (7 days)
     const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString();
-    document.cookie = `locale=${newLocale};path=/;expires=${expires};SameSite=Lax`;
+    document.cookie = `locale=${newLocale};path=/;expires=${expires};SameSite=Lax;Secure`;
     // Update URL without full page reload
     const pathname = window.location.pathname;
     const currentPrefix = pathname.startsWith('/en/') ? '/en' : pathname.startsWith('/es/') ? '/es' : '';
