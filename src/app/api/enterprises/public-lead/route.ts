@@ -116,15 +116,16 @@ export async function POST(request: NextRequest) {
         console.error('[Public Lead] Falha na atribuição de fila (lead existente):', err);
       }
 
-      // Send Telegram notification for repeat lead
-      // FIX: include assignedUserName so the agent knows it's their turn
+      // Send Telegram notification for repeat lead (awaited — serverless-safe)
       if (assignedUser?.assigned && assignedUser.userId && assignedUser.message !== 'already_assigned') {
-        db.user.findUnique({
-          where: { id: assignedUser.userId },
-          select: { telegramChatId: true },
-        }).then((notifyUser) => {
+        try {
+          const notifyUser = await db.user.findUnique({
+            where: { id: assignedUser.userId },
+            select: { telegramChatId: true, name: true },
+          });
           if (notifyUser?.telegramChatId) {
-            notifyNewLead(notifyUser.telegramChatId, {
+            console.log(`[Public Lead] Enviando notificação Telegram para agente "${notifyUser.name}" (lead existente ${existingClient.id})`);
+            await notifyNewLead(notifyUser.telegramChatId, {
               leadName: existingClient.name,
               leadPhone: existingClient.phone || '',
               leadEmail: existingClient.email || '',
@@ -134,17 +135,19 @@ export async function POST(request: NextRequest) {
               slug: slug || undefined,
               assignedUserName: assignedUser.userName,
               customAnswers: undefined,
-            }).catch((err) => console.warn('[Public Lead] Falha na notificação (lead existente):', err));
+            });
+            console.log(`[Public Lead] ✅ Notificação Telegram enviada ao agente "${notifyUser.name}"`);
           } else {
-            console.warn(`[Public Lead] Usuário ${assignedUser.userName} (${assignedUser.userId}) atribuído mas sem Telegram configurado. Lead ${existingClient.id} sem notificação.`);
+            console.warn(`[Public Lead] Usuário ${notifyUser?.name || assignedUser.userId} atribuído mas sem Telegram configurado. Lead ${existingClient.id} sem notificação.`);
           }
-        }).catch(() => { /* non-critical: DB lookup failed, lead is still saved */ });
+        } catch (notifyErr) {
+          console.warn('[Public Lead] Falha na notificação (lead existente):', notifyErr);
+        }
 
-        // ── Notify admin about queue rotation (fire-and-forget) ──
-        (async () => {
-          try {
-            const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
-            if (!admin?.telegramChatId) return;
+        // Notify admin about queue rotation (awaited — serverless-safe)
+        try {
+          const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+          if (admin?.telegramChatId) {
             const nextUser = await peekNextUser({ queueId: assignedUser.queueId });
             await notifyQueueUpdate(admin.telegramChatId, {
               source: slug ? `landing_form:${slug}` : 'landing_form',
@@ -154,12 +157,11 @@ export async function POST(request: NextRequest) {
               leadPhone: existingClient.phone,
               enterpriseName,
             });
-          } catch (err) {
-            console.warn('[Public Lead] Admin queue notification failed (existing):', err instanceof Error ? err.message : err);
           }
-        })();
+        } catch (err) {
+          console.warn('[Public Lead] Admin queue notification failed (existing):', err instanceof Error ? err.message : err);
+        }
       } else {
-        // FIX: Log when no queue was available — admin should know leads are coming without notification
         console.warn(`[Public Lead] Lead existente ${existingClient.id} sem fila disponível. Nenhuma notificação enviada.`);
       }
 
@@ -208,20 +210,23 @@ export async function POST(request: NextRequest) {
       }).catch((err) => console.warn('[Public Lead] Meta CAPI fire-and-forget failed:', err?.message));
     };
 
-    // ── Helper: send Telegram notification (fire-and-forget) ──
-    const sendNotification = (userId: string, leadData: Parameters<typeof notifyNewLead>[1], clientName: string) => {
-      db.user.findUnique({
-        where: { id: userId },
-        select: { telegramChatId: true, name: true },
-      }).then((user) => {
+    // ── Helper: send Telegram notification to assigned agent (awaited) ──
+    const sendNotification = async (userId: string, leadData: Parameters<typeof notifyNewLead>[1], clientName: string) => {
+      try {
+        const user = await db.user.findUnique({
+          where: { id: userId },
+          select: { telegramChatId: true, name: true },
+        });
         if (user?.telegramChatId) {
-          notifyNewLead(user.telegramChatId, leadData).catch((err) =>
-            console.warn(`[Public Lead] Falha na notificação Telegram para ${user.name}:`, err)
-          );
+          console.log(`[Public Lead] Enviando notificação Telegram para agente "${user.name}" (lead ${clientName})`);
+          await notifyNewLead(user.telegramChatId, leadData);
+          console.log(`[Public Lead] ✅ Notificação Telegram enviada ao agente "${user.name}"`);
         } else {
           console.warn(`[Public Lead] Usuário ${user?.name || userId} sem Telegram configurado. Lead ${clientName} sem notificação push.`);
         }
-      }).catch(() => { /* non-critical */ });
+      } catch (err) {
+        console.warn(`[Public Lead] Falha na notificação Telegram para ${clientName}:`, err);
+      }
     };
 
     // ── Build custom answers text ──
@@ -401,9 +406,9 @@ export async function POST(request: NextRequest) {
       console.error(`[Public Lead] Falha na atribuição de fila (${isNew ? 'lead novo' : 'lead existente'}):`, err);
     }
 
-    // ── Send Telegram notification to assigned agent ──
+    // ── Send Telegram notification to assigned agent (awaited — serverless-safe) ──
     if (assignedUser?.assigned && assignedUser.userId && assignedUser.message !== 'already_assigned') {
-      sendNotification(assignedUser.userId, {
+      await sendNotification(assignedUser.userId, {
         leadName: client.name,
         leadPhone: client.phone || '',
         leadEmail: client.email || '',
@@ -419,11 +424,10 @@ export async function POST(request: NextRequest) {
           : undefined,
       }, client.name);
 
-      // ── Notify admin about queue rotation (fire-and-forget) ──
-      (async () => {
-        try {
-          const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
-          if (!admin?.telegramChatId) return;
+      // Notify admin about queue rotation (awaited — serverless-safe)
+      try {
+        const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+        if (admin?.telegramChatId) {
           const nextUser = await peekNextUser({ queueId: assignedUser.queueId });
           await notifyQueueUpdate(admin.telegramChatId, {
             source: slug ? `landing_form:${slug}` : 'landing_form',
@@ -433,10 +437,10 @@ export async function POST(request: NextRequest) {
             leadPhone: client.phone,
             enterpriseName,
           });
-        } catch (err) {
-          console.warn('[Public Lead] Admin queue notification failed (new):', err instanceof Error ? err.message : err);
         }
-      })();
+      } catch (err) {
+        console.warn('[Public Lead] Admin queue notification failed (new):', err instanceof Error ? err.message : err);
+      }
     } else {
       console.warn(`[Public Lead] Lead ${client.id} (${client.name}) sem fila disponível. Nenhuma notificação enviada.`);
     }
