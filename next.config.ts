@@ -45,7 +45,7 @@ const nextConfig: NextConfig = {
           `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://connect.facebook.net`,
           `style-src 'self' 'unsafe-inline'`,
           `img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://*.fbcdn.net`,
-          `connect-src 'self' https://*.supabase.co https://api.telegram.org https://generativelanguage.googleapis.com https://graph.facebook.com https://api.instagram.com https://*.meta.gg https://wa.me`,
+          `connect-src 'self' wss://*.supabase.co https://*.supabase.co https://api.telegram.org https://generativelanguage.googleapis.com https://graph.facebook.com https://api.instagram.com https://*.meta.gg https://wa.me`,
           `frame-src https://calendar.google.com`,
           `font-src 'self' data:`,
           `object-src 'none'`,
