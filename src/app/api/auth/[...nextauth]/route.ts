@@ -8,23 +8,43 @@ function hashUserAgent(ua: string): string {
   return crypto.createHash('sha256').update(ua).digest('hex').slice(0, 32);
 }
 
-// Wraps NextAuth to inject User-Agent hash into the JWT on sign-in.
-// NextAuth's CredentialsProvider authorize() doesn't have access to
-// the raw request, so we patch the user object here before JWT creation.
-const handler = async (req: NextRequest) => {
+/**
+ * Handler do NextAuth com injeção de User-Agent no JWT.
+ *
+ * Cria uma cópia local de authOptions com o callback jwt sobrescrito
+ * para injetar o uaHash no token durante o sign-in, sem mutar o
+ * authOptions compartilhado entre requisições.
+ *
+ * IMPORTANTE: ambos os argumentos (req E context) devem ser passados
+ * ao NextAuth. Sem o context, ele não consegue determinar a ação
+ * (session, signin, etc.) e retorna 500.
+ */
+async function handler(
+  req: NextRequest,
+  context: { params: { nextauth: string[] } },
+) {
   const ua = req.headers.get('user-agent') || '';
+  const uaHash = hashUserAgent(ua);
 
-  // Monkey-patch jwt callback to inject uaHash on first sign-in
+  // Cria cópia local com jwt callback que injeta uaHash no sign-in
   const originalJwt = authOptions.callbacks!.jwt!;
-  authOptions.callbacks!.jwt = async (args) => {
-    // On sign-in (user exists), inject UA hash into token
-    if (args.user) {
-      args.token.uaHash = hashUserAgent(ua);
-    }
-    return originalJwt(args);
+  const localOptions = {
+    ...authOptions,
+    callbacks: {
+      ...authOptions.callbacks,
+      jwt: async (args: any) => {
+        // No sign-in (user existe), injeta o hash do User-Agent
+        if (args.user) {
+          args.token.uaHash = uaHash;
+        }
+        // Delega para o callback original (role, mustChangePassword, etc.)
+        return originalJwt(args);
+      },
+    },
   };
 
-  return NextAuth(authOptions)(req);
-};
+  // Passa req E context — sem o context o NextAuth retorna 500
+  return NextAuth(localOptions)(req, context);
+}
 
 export { handler as GET, handler as POST };
