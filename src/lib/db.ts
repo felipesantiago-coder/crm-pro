@@ -3,14 +3,13 @@ import { PrismaClient } from '@prisma/client'
 //
 // INFRAESTRUTURA DO BANCO DE DADOS
 // ================================
-// Em produção (Vercel), DATABASE_URL aponta para o Neon PostgreSQL.
-// Todas as 14 tabelas do CRM (clients, users, enterprises, tracking, etc.)
-// residem no Neon. O Prisma ORM é a única camada de acesso aos dados.
+// Em produção (Vercel), DATABASE_URL aponta para o Supabase PostgreSQL.
+// O Supabase free tier (Session pooler) limita a 15 conexões simultâneas.
+// Por isso, connection_limit=1 para não estourar o limite no serverless.
 //
-// O Supabase NÃO é usado como banco de dados neste projeto.
-// Ele fornece apenas: Object Storage (imagens) e Realtime (toasts na UI).
+// O Supabase também fornece: Object Storage (imagens) e Realtime (toasts na UI).
 //
-// Em desenvolvimento local, DATABASE_URL=file:./db/custom.db (SQLite).
+// Em desenvolvimento local, DATABASE_URL pode ser SQLite ou outra URL.
 //
 
 const globalForPrisma = globalThis as unknown as {
@@ -25,6 +24,12 @@ function createPrismaClient() {
         url: process.env.DATABASE_URL,
       },
     },
+    // Supabase Session pooler: max 15 concurrent connections.
+    // Each Vercel serverless function instance gets its own PrismaClient.
+    // Limit to 1 connection per instance to avoid exhausting the pool.
+    ...(process.env.NODE_ENV === 'production'
+      ? { connection_limit: 1 }
+      : {}),
   })
 }
 
