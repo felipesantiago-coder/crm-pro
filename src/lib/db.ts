@@ -27,12 +27,7 @@ function createPrismaClient() {
         url: process.env.DATABASE_URL,
       },
     },
-    // Transaction pooler: connections are multiplexed, so we can use
-    // a higher limit. Each Vercel serverless function instance gets
-    // its own PrismaClient (via the globalForPrisma singleton).
-    ...(process.env.NODE_ENV === 'production'
-      ? { connection_limit: 5 }
-      : {}),
+  // PgBouncer (Transaction pooler, porta 6543) multiplexa conexões automaticamente.
   })
 }
 
