@@ -119,88 +119,99 @@ export async function assignLeadToUser(opts: {
     return { assigned: false, message: 'Nenhuma fila ativa encontrada' };
   }
 
-  // Retry logic for Serializable transaction failures
-  const MAX_RETRIES = 3;
+  // Optimistic concurrency with CAS (Compare-And-Swap) on currentIdx.
+  // Compatible with PgBouncer Transaction pooler (no interactive transactions).
+  //
+  // Strategy:
+  // 1. Read currentIdx (no lock)
+  // 2. Compute next member
+  // 3. Atomic UPDATE ... SET currentIdx = X WHERE id = Q AND currentIdx = old_value
+  // 4. If UPDATE affects 0 rows → someone else advanced → retry
+  // 5. On success → create assignment
+  const MAX_RETRIES = 5;
   let lastError: unknown;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const result = await db.$transaction(async (tx) => {
-        const freshQueue = await tx.leadQueue.findUnique({
-          where: { id: queue.id },
-          select: { currentIdx: true, isActive: true },
-        });
-
-        // Queue was deleted or deactivated between our initial fetch and the transaction
-        if (!freshQueue || !freshQueue.isActive) {
-          return null;
-        }
-
-        const activeMembers = await tx.leadQueueMember.findMany({
-          where: { queueId: queue.id, isActive: true },
-          include: { user: { select: { id: true, name: true, phone: true } } },
-          orderBy: { order: 'asc' },
-        });
-
-        if (activeMembers.length === 0) {
-          return null;
-        }
-
-        // Try each member starting from currentIdx, skip members with null user
-        // This handles data integrity issues gracefully instead of losing leads
-        let assigned = false;
-        let tries = 0;
-        const maxTries = activeMembers.length;
-        let pickedMember: typeof activeMembers[0] | null = null;
-        let idx = freshQueue.currentIdx % activeMembers.length;
-
-        while (!assigned && tries < maxTries) {
-          const candidate = activeMembers[idx];
-          if (candidate.user) {
-            pickedMember = candidate;
-            assigned = true;
-          } else {
-            console.error(`[Lead Queue] Member ${candidate.id} has no user — data integrity issue, skipping`);
-          }
-          idx = (idx + 1) % activeMembers.length;
-          tries++;
-        }
-
-        if (!pickedMember) {
-          // All members have null user — no one to assign to
-          console.error('[Lead Queue] All members have null user — cannot assign lead');
-          return null;
-        }
-
-        // Increment by the number of positions we advanced (including skipped)
-        await tx.leadQueue.update({
-          where: { id: queue.id },
-          data: { currentIdx: { increment: tries } },
-        });
-
-        await tx.leadQueueAssignment.create({
-          data: {
-            queueId: queue.id,
-            userId: pickedMember.userId,
-            leadId: leadId || null,
-            source: (source || 'api').slice(0, 200),
-          },
-        });
-
-        return {
-          userId: pickedMember.userId,
-          userName: pickedMember.user.name,
-          userPhone: pickedMember.user.phone,
-          queueId: queue.id,
-        };
-      }, {
-        isolationLevel: 'Serializable',
-        timeout: 10000,
+      // Step 1: Read current state (no transaction needed)
+      const freshQueue = await db.leadQueue.findUnique({
+        where: { id: queue.id },
+        select: { currentIdx: true, isActive: true },
       });
 
-      if (!result) {
+      if (!freshQueue || !freshQueue.isActive) {
         return { assigned: false, message: 'Nenhum membro ativo na fila' };
       }
+
+      const activeMembers = await db.leadQueueMember.findMany({
+        where: { queueId: queue.id, isActive: true },
+        include: { user: { select: { id: true, name: true, phone: true } } },
+        orderBy: { order: 'asc' },
+      });
+
+      if (activeMembers.length === 0) {
+        return { assigned: false, message: 'Nenhum membro ativo na fila' };
+      }
+
+      // Step 2: Pick next member
+      let assigned = false;
+      let tries = 0;
+      const maxTries = activeMembers.length;
+      let pickedMember: typeof activeMembers[0] | null = null;
+      let idx = freshQueue.currentIdx % activeMembers.length;
+
+      while (!assigned && tries < maxTries) {
+        const candidate = activeMembers[idx];
+        if (candidate.user) {
+          pickedMember = candidate;
+          assigned = true;
+        } else {
+          console.error(`[Lead Queue] Member ${candidate.id} has no user — data integrity issue, skipping`);
+        }
+        idx = (idx + 1) % activeMembers.length;
+        tries++;
+      }
+
+      if (!pickedMember) {
+        console.error('[Lead Queue] All members have null user — cannot assign lead');
+        return { assigned: false, message: 'Nenhum membro ativo na fila' };
+      }
+
+      // Step 3: Atomic CAS on currentIdx
+      const newIdx = freshQueue.currentIdx + tries;
+      const updateResult = await db.leadQueue.updateMany({
+        where: { id: queue.id, currentIdx: freshQueue.currentIdx },
+        data: { currentIdx: newIdx },
+      });
+
+      if (updateResult.count === 0) {
+        // Someone else changed currentIdx — retry
+        if (attempt < MAX_RETRIES - 1) {
+          await new Promise((r) => setTimeout(r, 30 * (attempt + 1)));
+          continue;
+        }
+        console.error('[Lead Queue] CAS failed after all retries');
+        return { assigned: false, message: 'Erro interno na atribuição' };
+      }
+
+      // Step 4: Create assignment (fire-and-forget safety: if this fails,
+      // the queue still advanced correctly — next attempt won't double-assign
+      // thanks to the idempotency cache and DB dedup)
+      await db.leadQueueAssignment.create({
+        data: {
+          queueId: queue.id,
+          userId: pickedMember.userId,
+          leadId: leadId || null,
+          source: (source || 'api').slice(0, 200),
+        },
+      });
+
+      const result = {
+        userId: pickedMember.userId,
+        userName: pickedMember.user.name,
+        userPhone: pickedMember.user.phone,
+        queueId: queue.id,
+      };
 
       // Cache successful assignment for idempotency
       if (leadId) {
@@ -214,19 +225,12 @@ export async function assignLeadToUser(opts: {
       return { assigned: true, ...result };
     } catch (error) {
       lastError = error;
-      // Retry on serialization failures (Postgres error code 40001)
-      // or record-not-found (queue deleted between fetch and transaction)
-      const isRetryableError =
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        (error.code === 'P2028' || error.code === 'P2025');
-      if (isRetryableError && attempt < MAX_RETRIES - 1) {
-        // Small delay before retry (exponential backoff)
-        await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
-        continue;
-      }
-      // If the queue was deleted entirely, return gracefully instead of 500
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
         return { assigned: false, message: 'Fila não encontrada ou desativada' };
+      }
+      if (attempt < MAX_RETRIES - 1) {
+        await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
+        continue;
       }
       throw error;
     }

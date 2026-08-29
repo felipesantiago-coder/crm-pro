@@ -49,12 +49,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Nome muito longo (máx. 200 caracteres)' }, { status: 400 });
     }
 
-    // FIX: wrap isDefault swap + create in transaction to prevent race condition
-    const queue = await db.$transaction(async (tx) => {
-      if (isDefault) {
-        await tx.leadQueue.updateMany({ where: { isDefault: true }, data: { isDefault: false } });
-      }
-      return tx.leadQueue.create({
+    // Batch transaction: unset isDefault on all queues, then create new one.
+    // Uses batch $transaction (array form) — compatible with PgBouncer.
+    const operations: Prisma.PrismaPromise<unknown>[] = [];
+    if (isDefault) {
+      operations.push(
+        db.leadQueue.updateMany({ where: { isDefault: true }, data: { isDefault: false } }),
+      );
+    }
+    operations.push(
+      db.leadQueue.create({
         data: {
           name: name.trim(),
           description: description?.trim()?.slice(0, 500) || null,
@@ -67,8 +71,10 @@ export async function POST(request: Request) {
           },
           _count: { select: { assignments: true } },
         },
-      });
-    });
+      }),
+    );
+    const results = await db.$transaction(operations);
+    const queue = results[results.length - 1] as Awaited<ReturnType<typeof db.leadQueue.create>>;
 
     return NextResponse.json(queue, { status: 201 });
   } catch (error) {

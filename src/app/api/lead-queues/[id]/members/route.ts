@@ -54,20 +54,24 @@ export async function POST(
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 400 });
     }
 
-    // FIX: wrap maxOrder read + create in transaction to prevent race condition
-    const member = await db.$transaction(async (tx) => {
-      const maxOrder = await tx.leadQueueMember.aggregate({
-        where: { queueId: id },
-        _max: { order: true },
-      });
-      return tx.leadQueueMember.create({
-        data: {
-          queueId: id,
-          userId,
-          order: (maxOrder._max.order ?? -1) + 1,
-        },
-        include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
-      });
+    // Atomic INSERT with subquery for max order — single statement,
+    // compatible with PgBouncer Transaction pooler.
+    // Uses raw SQL because Prisma batch $transaction doesn't allow
+    // using results of earlier queries in later ones.
+    const newMember = await db.$queryRaw<Array<{ id: string; queueId: string; userId: string; order: number; isActive: boolean; createdAt: Date }>>`
+      INSERT INTO "lead_queue_members" ("id", "queueId", "userId", "order", "isActive", "createdAt")
+      SELECT gen_random_uuid(), ${id}, ${userId}, COALESCE(MAX("order"), -1) + 1, true, NOW()
+      FROM "lead_queue_members" WHERE "queueId" = ${id}
+      RETURNING "id", "queueId", "userId", "order", "isActive", "createdAt"
+    `;
+
+    if (!newMember.length) {
+      return NextResponse.json({ error: 'Erro ao adicionar membro' }, { status: 500 });
+    }
+
+    const member = await db.leadQueueMember.findUnique({
+      where: { id: newMember[0].id },
+      include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
     });
 
     return NextResponse.json(member, { status: 201 });

@@ -13,17 +13,16 @@ export async function DELETE() {
     const { error } = await requireAdmin();
     if (error) return error;
 
-    const result = await db.$transaction(async (tx) => {
-      const deletedVisitors = await tx.trackingVisitor.deleteMany();
+    const [deletedVisitors, deletedEvents] = await db.$transaction([
+      db.trackingVisitor.deleteMany(),
       // Events are cascade-deleted, but delete explicitly for safety
-      const deletedEvents = await tx.trackingEvent.deleteMany();
-      return { visitors: deletedVisitors.count, events: deletedEvents.count };
-    });
+      db.trackingEvent.deleteMany(),
+    ]);
 
     return NextResponse.json({
       status: 'ok',
-      deletedVisitors: result.visitors,
-      deletedEvents: result.events,
+      deletedVisitors: deletedVisitors.count,
+      deletedEvents: deletedEvents.count,
     });
   } catch (err) {
     console.error('[Tracking Reset] Error:', err);

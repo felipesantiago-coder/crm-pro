@@ -3,9 +3,12 @@ import { PrismaClient } from '@prisma/client'
 //
 // INFRAESTRUTURA DO BANCO DE DADOS
 // ================================
-// Em produção (Vercel), DATABASE_URL aponta para o Supabase PostgreSQL.
-// O Supabase free tier (Session pooler) limita a 15 conexões simultâneas.
-// Por isso, connection_limit=1 para não estourar o limite no serverless.
+// Em produção (Vercel), DATABASE_URL aponta para o Supabase Transaction pooler
+// (porta 6543, ?pgbouncer=true). O Transaction pooler multiplexa conexões,
+// suportando centenas de clientes simultâneos com poucas conexões reais.
+//
+// IMPORTANTE: Não use transações interativas (db.$transaction(async tx => ...))
+// com PgBouncer. Use batch transactions (db.$transaction([op1, op2])).
 //
 // O Supabase também fornece: Object Storage (imagens) e Realtime (toasts na UI).
 //
@@ -24,11 +27,11 @@ function createPrismaClient() {
         url: process.env.DATABASE_URL,
       },
     },
-    // Supabase Session pooler: max 15 concurrent connections.
-    // Each Vercel serverless function instance gets its own PrismaClient.
-    // Limit to 1 connection per instance to avoid exhausting the pool.
+    // Transaction pooler: connections are multiplexed, so we can use
+    // a higher limit. Each Vercel serverless function instance gets
+    // its own PrismaClient (via the globalForPrisma singleton).
     ...(process.env.NODE_ENV === 'production'
-      ? { connection_limit: 1 }
+      ? { connection_limit: 5 }
       : {}),
   })
 }

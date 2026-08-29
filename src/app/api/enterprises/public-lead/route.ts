@@ -242,8 +242,14 @@ export async function POST(request: NextRequest) {
     }
 
     // ════════════════════════════════════════════════════════════
-    // CRITICAL FIX: Wrap dedup check + client creation in a
-    // Serializable transaction to prevent race-condition duplicates.
+    // Dedup + client creation using upsert pattern.
+    // Compatible with PgBouncer Transaction pooler (no interactive tx).
+    //
+    // Strategy:
+    // 1. Check for existing client (email OR phone) — plain query
+    // 2. If found, update and return
+    // 3. If not, try create. On P2002 (unique constraint), find + return.
+    //    DB-level unique constraints (email, metaLeadgenId) prevent duplicates.
     // ════════════════════════════════════════════════════════════
     interface ClientResult {
       id: string; name: string; phone: string | null; email: string | null;
@@ -251,120 +257,68 @@ export async function POST(request: NextRequest) {
     interface ClientOutcome { client: ClientResult; isNew: boolean }
 
     const getClientOrCreate = async (): Promise<ClientOutcome> => {
-      const MAX_RETRIES = 3;
-      let lastError: unknown;
+      // Step 1: Check for existing client (email OR phone)
+      const existing = await db.client.findFirst({
+        where: { OR: [{ email: cleanEmail }, ...(cleanPhone.length >= 10 ? [{ phone: cleanPhone }] : [])] },
+        select: { id: true, name: true, phone: true, email: true },
+      });
 
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        try {
-          return await db.$transaction(async (tx) => {
-            // Check for existing client (email OR phone)
-            const existingWhere: Prisma.ClientWhereInput[] = [{ email: cleanEmail }];
-            if (cleanPhone.length >= 10) {
-              existingWhere.push({ phone: cleanPhone });
-            }
-
-            const existing = await tx.client.findFirst({
-              where: { OR: existingWhere },
-              select: { id: true, name: true, phone: true, email: true },
-            });
-
-            if (existing) {
-              // ── UPDATE: sync newest phone/email if provided ──
-              const updates: Prisma.ClientUpdateManyMutationInput = {
-                lastInteractionAt: new Date(),
-              };
-              // Update phone if new one provided and different
-              if (cleanPhone.length >= 10 && existing.phone !== cleanPhone) {
-                updates.phone = cleanPhone;
-              }
-              // Email matched — no update needed for email
-
-              await tx.client.update({
-                where: { id: existing.id },
-                data: updates,
-              });
-
-              return {
-                client: existing,
-                isNew: false,
-              };
-            }
-
-            // ── NEW CLIENT: find a user for createdBy (required FK) ──
-            const firstUser = await tx.user.findFirst({
-              select: { id: true },
-              orderBy: { createdAt: 'asc' },
-            });
-            if (!firstUser) {
-              throw new Error('NO_USER');
-            }
-
-            // Create client
-            const newClient = await tx.client.create({
-              data: {
-                name: name.trim(),
-                phone: cleanPhone.length >= 10 ? cleanPhone : null,
-                email: cleanEmail || null,
-                region: enterpriseRegion,
-                enterprise: enterpriseName || undefined,
-                enterpriseId: enterpriseId || undefined,
-                stage: 'LEAD',
-                createdBy: firstUser.id,
-                utmSource: typeof utmSource === 'string' ? utmSource.slice(0, 200) : undefined,
-                utmMedium: typeof utmMedium === 'string' ? utmMedium.slice(0, 100) : undefined,
-                utmCampaign: typeof utmCampaign === 'string' ? utmCampaign.slice(0, 200) : undefined,
-                utmContent: typeof utmContent === 'string' ? utmContent.slice(0, 200) : undefined,
-                utmTerm: typeof utmTerm === 'string' ? utmTerm.slice(0, 200) : undefined,
-                notes: `[Landing Page] Cadastro realizado via formulário${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? `\nSlug: ${slug}` : ''}${utmCampaign ? `\nCampanha: ${utmCampaign}` : ''}${customAnswersText}`,
-              },
-            });
-
-            return {
-              client: { id: newClient.id, name: newClient.name, phone: newClient.phone, email: newClient.email },
-              isNew: true,
-            };
-          }, {
-            isolationLevel: 'Serializable',
-            timeout: 15000,
-          });
-        } catch (error) {
-          lastError = error;
-          if (error instanceof Prisma.PrismaClientKnownRequestError) {
-            // P2002 = unique constraint violation (email already exists)
-            if (error.code === 'P2002') {
-              // Retry — on next iteration, findFirst will find the existing client
-              if (attempt < MAX_RETRIES - 1) {
-                await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
-                continue;
-              }
-              // Last attempt: do a plain findFirst outside transaction
-              const existing = await db.client.findFirst({
-                where: { email: cleanEmail },
-                select: { id: true, name: true, phone: true, email: true },
-              });
-              if (existing) {
-                return { client: existing, isNew: false };
-              }
-            }
-          }
-          // Custom error: no user in system
-          if (error instanceof Error && error.message === 'NO_USER') {
-            throw error;
-          }
-          // Serialization failure — retry
-          const isSerializationError =
-            error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028';
-          if (isSerializationError && attempt < MAX_RETRIES - 1) {
-            await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
-            continue;
-          }
-          throw error;
+      if (existing) {
+        // Update lastInteractionAt (and phone if different)
+        const updates: Prisma.ClientUpdateManyMutationInput = { lastInteractionAt: new Date() };
+        if (cleanPhone.length >= 10 && existing.phone !== cleanPhone) {
+          updates.phone = cleanPhone;
         }
+        await db.client.update({ where: { id: existing.id }, data: updates });
+        return { client: existing, isNew: false };
       }
-      throw lastError;
+
+      // Step 2: No existing client found — try to create
+      const firstUser = await db.user.findFirst({
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (!firstUser) {
+        throw new Error('NO_USER');
+      }
+
+      try {
+        const newClient = await db.client.create({
+          data: {
+            name: name.trim(),
+            phone: cleanPhone.length >= 10 ? cleanPhone : null,
+            email: cleanEmail || null,
+            region: enterpriseRegion,
+            enterprise: enterpriseName || undefined,
+            enterpriseId: enterpriseId || undefined,
+            stage: 'LEAD',
+            createdBy: firstUser.id,
+            utmSource: typeof utmSource === 'string' ? utmSource.slice(0, 200) : undefined,
+            utmMedium: typeof utmMedium === 'string' ? utmMedium.slice(0, 100) : undefined,
+            utmCampaign: typeof utmCampaign === 'string' ? utmCampaign.slice(0, 200) : undefined,
+            utmContent: typeof utmContent === 'string' ? utmContent.slice(0, 200) : undefined,
+            utmTerm: typeof utmTerm === 'string' ? utmTerm.slice(0, 200) : undefined,
+            notes: `[Landing Page] Cadastro realizado via formulário${enterpriseName ? ` — ${enterpriseName}` : ''}${slug ? `\nSlug: ${slug}` : ''}${utmCampaign ? `\nCampanha: ${utmCampaign}` : ''}${customAnswersText}`,
+          },
+        });
+        return {
+          client: { id: newClient.id, name: newClient.name, phone: newClient.phone, email: newClient.email },
+          isNew: true,
+        };
+      } catch (createError) {
+        // P2002 = unique constraint (another request created the client between our check and create)
+        if (createError instanceof Prisma.PrismaClientKnownRequestError && createError.code === 'P2002') {
+          const retryExisting = await db.client.findFirst({
+            where: { OR: [{ email: cleanEmail }, ...(cleanPhone.length >= 10 ? [{ phone: cleanPhone }] : [])] },
+            select: { id: true, name: true, phone: true, email: true },
+          });
+          if (retryExisting) return { client: retryExisting, isNew: false };
+        }
+        throw createError;
+      }
     };
 
-    // ── Execute atomic client lookup/creation ──
+    // ── Execute client lookup/creation ──
     let clientResult: Awaited<ReturnType<typeof getClientOrCreate>>;
     try {
       clientResult = await getClientOrCreate();

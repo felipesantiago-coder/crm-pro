@@ -69,15 +69,19 @@ export async function PUT(
       }
     }
 
-    // FIX: wrap isDefault swap + update in transaction
-    const queue = await db.$transaction(async (tx) => {
-      if (isDefault) {
-        await tx.leadQueue.updateMany({
+    // Batch transaction: unset isDefault on others, then update queue.
+    // Uses batch $transaction (array form) — compatible with PgBouncer.
+    const operations: Prisma.PrismaPromise<unknown>[] = [];
+    if (isDefault) {
+      operations.push(
+        db.leadQueue.updateMany({
           where: { isDefault: true, NOT: { id } },
           data: { isDefault: false },
-        });
-      }
-      return tx.leadQueue.update({
+        }),
+      );
+    }
+    operations.push(
+      db.leadQueue.update({
         where: { id },
         data: {
           ...(name !== undefined ? { name: String(name).trim().slice(0, 200) } : {}),
@@ -92,8 +96,10 @@ export async function PUT(
           },
           _count: { select: { assignments: true } },
         },
-      });
-    });
+      }),
+    );
+    const results = await db.$transaction(operations);
+    const queue = results[results.length - 1] as Awaited<ReturnType<typeof db.leadQueue.update>>;
 
     return NextResponse.json(queue);
   } catch (error) {
