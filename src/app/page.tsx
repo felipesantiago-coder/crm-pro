@@ -40,9 +40,6 @@ const EnterprisePanel = lazy(() =>
 const MetaAdsPanel = lazy(() =>
   import('@/components/crm/meta-ads-panel').then((m) => ({ default: m.MetaAdsPanel }))
 );
-const InstagramPanel = lazy(() =>
-  import('@/components/crm/instagram-panel').then((m) => ({ default: m.InstagramPanel }))
-);
 const ReportsView = lazy(() =>
   import('@/components/crm/reports-view').then((m) => ({ default: m.ReportsView }))
 );
@@ -116,8 +113,6 @@ function CRMApp() {
         return <AdminPanel />;
       case 'meta-ads':
         return <MetaAdsPanel />;
-      case 'instagram':
-        return <InstagramPanel />;
       case 'reports':
         return <ReportsView />;
       default:

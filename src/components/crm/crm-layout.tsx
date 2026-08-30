@@ -18,7 +18,6 @@ import {
   Trophy,
   Building2,
   BarChart3,
-  Instagram,
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
@@ -56,7 +55,6 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
     { view: 'reminders', label: 'Lembretes', icon: <Bell className="h-5 w-5" /> },
     { view: 'reports', label: 'Relatórios', icon: <BarChart3 className="h-5 w-5" /> },
     { view: 'meta-ads', label: 'Anúncios Meta', icon: <Megaphone className="h-5 w-5" />, adminOnly: true },
-    { view: 'instagram', label: 'Instagram', icon: <Instagram className="h-5 w-5" />, adminOnly: true },
     { view: 'admin', label: 'Administração', icon: <ShieldCheck className="h-5 w-5" />, adminOnly: true },
     { view: 'settings', label: 'Configurações', icon: <Settings className="h-5 w-5" /> },
   ];
