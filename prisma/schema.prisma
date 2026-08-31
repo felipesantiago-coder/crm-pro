@@ -115,6 +115,7 @@ model Reminder {
 model Enterprise {
   id                String   @id @default(cuid()) @map("id")
   name              String   @map("name")
+  type              String   @default("LANCAMENTO") @map("type")  // LANCAMENTO | REVENDA
   slug              String?  @unique @map("slug")
   region            String?  @map("region")
   imageUrl          String?  @map("imageUrl")

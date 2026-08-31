@@ -62,6 +62,7 @@ type I18nString = Record<string, string> | null;
 interface Enterprise {
   id: string;
   name: string;
+  type: string;
   slug: string | null;
   region: string | null;
   imageUrl: string | null;
@@ -94,6 +95,7 @@ export function EnterprisePanel() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeRegion, setActiveRegion] = useState<string | null>(null);
+  const [activeType, setActiveType] = useState<'LANCAMENTO' | 'REVENDA'>('LANCAMENTO');
   const [selectedEnterprise, setSelectedEnterprise] = useState<Enterprise | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
@@ -112,7 +114,8 @@ export function EnterprisePanel() {
   const filteredEnterprises = (data?.enterprises ?? []).filter((e) => {
     const matchesSearch = !search || e.name.toLowerCase().includes(search.toLowerCase());
     const matchesRegion = !activeRegion || e.region === activeRegion;
-    return matchesSearch && matchesRegion;
+    const matchesType = e.type === activeType;
+    return matchesSearch && matchesRegion && matchesType;
   });
 
   const [galleryEnterprise, setGalleryEnterprise] = useState<{ id: string; name: string; imageUrl: string | null } | null>(null);
@@ -167,6 +170,34 @@ export function EnterprisePanel() {
         )}
       </div>
 
+      {/* Type tabs */}
+      <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+        <button
+          onClick={() => { setActiveType('LANCAMENTO'); setSearch(''); setActiveRegion(null); }}
+          className={cn(
+            'px-4 py-2 text-sm font-medium rounded-md transition-colors',
+            activeType === 'LANCAMENTO'
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Sparkles className="h-4 w-4 inline mr-1.5 -mt-0.5" />
+          Lançamentos
+        </button>
+        <button
+          onClick={() => { setActiveType('REVENDA'); setSearch(''); setActiveRegion(null); }}
+          className={cn(
+            'px-4 py-2 text-sm font-medium rounded-md transition-colors',
+            activeType === 'REVENDA'
+              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Building2 className="h-4 w-4 inline mr-1.5 -mt-0.5" />
+          Revenda
+        </button>
+      </div>
+
       {/* Search + Filters */}
       <Card>
         <CardContent className="p-3 sm:p-4">
@@ -181,7 +212,7 @@ export function EnterprisePanel() {
               <button onClick={() => setViewMode('list')} className={cn('p-2 rounded-md transition-colors', viewMode === 'list' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'text-muted-foreground hover:text-foreground')}><List className="h-4 w-4" /></button>
             </div>
           </div>
-          {data && data.regions.length > 0 && (
+          {data && data.regions.filter(r => (data.enterprises.filter(e => e.type === activeType).some(e => e.region === r))).length > 0 && (
             <>
               {/* Mobile dropdown */}
               <div className="sm:hidden mt-3">
@@ -197,7 +228,7 @@ export function EnterprisePanel() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">Todas as regiões</SelectItem>
-                    {data.regions.map((r) => (
+                    {data.regions.filter(r => (data.enterprises.filter(e => e.type === activeType).some(e => e.region === r))).map((r) => (
                       <SelectItem key={r} value={r}>{r}</SelectItem>
                     ))}
                   </SelectContent>
@@ -207,7 +238,7 @@ export function EnterprisePanel() {
               <div className="hidden sm:flex items-center gap-2 mt-3 flex-wrap">
                 <Filter className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                 <button onClick={() => setActiveRegion(null)} className={cn('text-xs px-3 py-1.5 rounded-full transition-colors font-medium', !activeRegion ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-muted text-muted-foreground hover:text-foreground')}>Todas</button>
-                {data.regions.map((r) => (
+                {data.regions.filter(r => (data.enterprises.filter(e => e.type === activeType).some(e => e.region === r))).map((r) => (
                   <button key={r} onClick={() => setActiveRegion(activeRegion === r ? null : r)} className={cn('text-xs px-3 py-1.5 rounded-full transition-colors font-medium', activeRegion === r ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-muted text-muted-foreground hover:text-foreground')}>{r}</button>
                 ))}
               </div>

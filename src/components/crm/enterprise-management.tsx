@@ -21,6 +21,7 @@ import {
   Ban,
   Download,
   FileText,
+  Sparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,10 +54,12 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Image from 'next/image';
 import { MapCoordsFields } from './map-coords-fields';
+import { cn } from '@/lib/utils';
 
 interface EnterpriseItem {
   id: string;
   name: string;
+  type: string;
   region: string | null;
   imageUrl: string | null;
   pdfContent: string | null;
@@ -68,6 +71,7 @@ interface EnterpriseItem {
 interface EnterpriseFormData {
   name: string;
   region: string;
+  type: 'LANCAMENTO' | 'REVENDA';
 }
 
 export function EnterpriseManagement() {
@@ -80,6 +84,7 @@ export function EnterpriseManagement() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createRegion, setCreateRegion] = useState('');
+  const [createType, setCreateType] = useState<'LANCAMENTO' | 'REVENDA'>('LANCAMENTO');
   const [creating, setCreating] = useState(false);
 
   // Edit dialog
@@ -104,6 +109,7 @@ export function EnterpriseManagement() {
 
   // Batch import
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [adminActiveType, setAdminActiveType] = useState<'LANCAMENTO' | 'REVENDA' | 'ALL'>('ALL');
   const [batchFile, setBatchFile] = useState<File | null>(null);
   const [batchImporting, setBatchImporting] = useState(false);
   const [batchResults, setBatchResults] = useState<{
@@ -135,9 +141,13 @@ export function EnterpriseManagement() {
   }, [fetchEnterprises]);
 
   const filteredEnterprises = enterprises.filter(
-    (e) =>
-      e.name.toLowerCase().includes(search.toLowerCase()) ||
-      (e.region && e.region.toLowerCase().includes(search.toLowerCase()))
+    (e) => {
+      const matchesSearch =
+        e.name.toLowerCase().includes(search.toLowerCase()) ||
+        (e.region && e.region.toLowerCase().includes(search.toLowerCase()));
+      const matchesType = adminActiveType === 'ALL' || e.type === adminActiveType;
+      return matchesSearch && matchesType;
+    }
   );
 
   async function handleCreate() {
@@ -154,6 +164,7 @@ export function EnterpriseManagement() {
         body: JSON.stringify({
           name: createName.trim(),
           region: createRegion.trim() || null,
+          type: createType,
         }),
       });
 
@@ -167,6 +178,7 @@ export function EnterpriseManagement() {
       setCreateOpen(false);
       setCreateName('');
       setCreateRegion('');
+      setCreateType('LANCAMENTO');
       fetchEnterprises();
     } catch {
       toast.error('Erro ao criar empreendimento');
@@ -405,6 +417,37 @@ export function EnterpriseManagement() {
 
   return (
     <div className="space-y-6">
+      {/* Type filter tabs */}
+      <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+        <button
+          onClick={() => setAdminActiveType('ALL')}
+          className={cn(
+            'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+            adminActiveType === 'ALL'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >Todos</button>
+        <button
+          onClick={() => setAdminActiveType('LANCAMENTO')}
+          className={cn(
+            'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+            adminActiveType === 'LANCAMENTO'
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >Lançamentos</button>
+        <button
+          onClick={() => setAdminActiveType('REVENDA')}
+          className={cn(
+            'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+            adminActiveType === 'REVENDA'
+              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >Revenda</button>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -636,6 +679,39 @@ export function EnterpriseManagement() {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
+                <Label>Tipo *</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCreateType('LANCAMENTO')}
+                    disabled={creating}
+                    className={cn(
+                      'px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors text-center',
+                      createType === 'LANCAMENTO'
+                        ? 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
+                        : 'border-muted hover:border-amber-300 text-muted-foreground'
+                    )}
+                  >
+                    <Sparkles className="h-4 w-4 mx-auto mb-1" />
+                    Lançamento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreateType('REVENDA')}
+                    disabled={creating}
+                    className={cn(
+                      'px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors text-center',
+                      createType === 'REVENDA'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
+                        : 'border-muted hover:border-emerald-300 text-muted-foreground'
+                    )}
+                  >
+                    <Building2 className="h-4 w-4 mx-auto mb-1" />
+                    Revenda
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="create-name">Nome *</Label>
                 <Input
                   id="create-name"
@@ -761,6 +837,17 @@ export function EnterpriseManagement() {
             >
               {/* Image Area */}
               <div className="relative h-32 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center overflow-hidden">
+                {/* Type badge */}
+                <Badge
+                  className={cn(
+                    'absolute top-2 left-2 z-10 text-[11px] font-semibold border-0 backdrop-blur-sm',
+                    enterprise.type === 'REVENDA'
+                      ? 'bg-emerald-500/80 text-white'
+                      : 'bg-amber-500/80 text-white'
+                  )}
+                >
+                  {enterprise.type === 'REVENDA' ? 'Revenda' : 'Lançamento'}
+                </Badge>
                 {enterprise.imageUrl ? (
                   <>
                     <Image

@@ -33,16 +33,21 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, region } = body;
+    const { name, region, type } = body;
 
     if (!name || name.trim() === '') {
       return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 });
+    }
+
+    if (type && type !== 'LANCAMENTO' && type !== 'REVENDA') {
+      return NextResponse.json({ error: 'Tipo inválido. Use LANCAMENTO ou REVENDA.' }, { status: 400 });
     }
 
     const enterprise = await db.enterprise.create({
       data: {
         name: name.trim(),
         region: region?.trim() || null,
+        type: type === 'REVENDA' ? 'REVENDA' : 'LANCAMENTO',
       },
       include: {
         _count: { select: { clients: true } },
