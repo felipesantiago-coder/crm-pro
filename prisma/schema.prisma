@@ -134,6 +134,7 @@ model Enterprise {
   images      EnterpriseImage[]
   floorPlans  EnterpriseFloorPlan[]
   formFields  LandingFormField[]
+  resaleProperties ResaleProperty[]
 
   @@map("enterprises")
 }
@@ -483,5 +484,48 @@ model LeadFormMapping {
   @@index([capiConfigId])
   @@index([campaignName])
   @@map("lead_form_mappings")
+}
+
+// ============================================================
+// RESALE PROPERTY — Imóveis de revenda extraídos de PDF
+// Vinculados a um Enterprise do tipo REVENDA
+// ============================================================
+model ResaleProperty {
+  id            String   @id @default(cuid()) @map("id")
+  enterpriseId  String   @map("enterpriseId")
+  code          String   @map("code")                 // ex: RQB0777
+  sortOrder     Int      @default(0) @map("sortOrder") // ordem original no PDF
+  name          String?  @map("name")
+  region        String?  @map("region")
+  category      String   @default("Outro") @map("category") // Apartamento|Casa|Comercial|Flat|Lote|Outro
+  typology      String?  @map("typology")             // ex: "2 QUARTOS"
+  bedrooms      Int?     @map("bedrooms")
+  area          Float?   @map("area")                 // m²
+  address       String?  @map("address")
+  captor        String?  @map("captor")
+  appointment   String?  @map("appointment")
+  phone         String?  @map("phone")
+  phoneDigits   String?  @map("phoneDigits")
+  price         Float?   @map("price")                // BRL
+  condo         Float?   @map("condo")
+  iptu          Float?   @map("iptu")
+  notes         String?  @map("notes")
+  acceptsFinancing Boolean @default(false) @map("acceptsFinancing")
+  acceptsFgts   Boolean  @default(false) @map("acceptsFgts")
+  url           String?  @map("url")
+  dataNote      String?  @map("dataNote")             // avisos de extração
+  sourcePage    Int?     @map("sourcePage")
+  createdAt     DateTime @default(now()) @map("createdAt")
+  updatedAt     DateTime @updatedAt @map("updatedAt")
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@unique([enterpriseId, code])
+  @@index([enterpriseId])
+  @@index([region])
+  @@index([category])
+  @@index([price])
+  @@index([bedrooms])
+  @@map("resale_properties")
 }
 

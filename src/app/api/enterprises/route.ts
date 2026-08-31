@@ -13,12 +13,19 @@ export async function GET() {
 
     const enterprises = await db.enterprise.findMany({
       include: {
-        _count: { select: { clients: true } },
+        _count: { select: { clients: true, resaleProperties: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json(enterprises);
+    // Map resaleProperties count to a flat field
+    const mapped = enterprises.map(e => ({
+      ...e,
+      resalePropertyCount: e._count.resaleProperties,
+      _count: { clients: e._count.clients },
+    }));
+
+    return NextResponse.json(mapped);
   } catch (error) {
     console.error('Erro ao listar empreendimentos:', error);
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });

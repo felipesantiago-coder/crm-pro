@@ -54,6 +54,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Image from 'next/image';
 import { MapCoordsFields } from './map-coords-fields';
+import { ResalePdfImport } from './resale-pdf-import';
 import { cn } from '@/lib/utils';
 
 interface EnterpriseItem {
@@ -65,6 +66,7 @@ interface EnterpriseItem {
   pdfContent: string | null;
   createdAt: string;
   updatedAt: string;
+  resalePropertyCount?: number;
   _count: { clients: number };
 }
 
@@ -904,8 +906,8 @@ export function EnterpriseManagement() {
               </div>
 
               <CardContent className="p-3">
-                {/* PDF indicator */}
-                {enterprise.pdfContent && (
+                {/* PDF indicator - only for LANCAMENTO */}
+                {enterprise.type !== 'REVENDA' && enterprise.pdfContent && (
                   <div className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 mb-2 px-2 py-1.5 bg-blue-50 dark:bg-blue-950/30 rounded-md">
                     <FileText className="h-3 w-3 flex-shrink-0" />
                     <span className="truncate font-medium">Base de dados vinculada</span>
@@ -913,6 +915,16 @@ export function EnterpriseManagement() {
                       {(enterprise.pdfContent.length / 1024).toFixed(0)} KB
                     </span>
                   </div>
+                )}
+
+                {/* Resale PDF import - only for REVENDA */}
+                {enterprise.type === 'REVENDA' && (
+                  <ResalePdfImport
+                    enterpriseId={enterprise.id}
+                    enterpriseName={enterprise.name}
+                    propertyCount={enterprise.resalePropertyCount ?? 0}
+                    onImportComplete={fetchEnterprises}
+                  />
                 )}
 
                 {/* Info */}

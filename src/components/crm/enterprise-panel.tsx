@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner';
 import { GalleryManager } from './gallery-manager';
 import { FloorPlanManager } from './floor-plan-manager';
+import { ResalePropertiesView } from './resale-properties-view';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -122,6 +123,17 @@ export function EnterprisePanel() {
   const [floorPlanEnterprise, setFloorPlanEnterprise] = useState<{ id: string; name: string } | null>(null);
 
   if (selectedEnterprise) {
+    // REVENDA enterprises show the property catalog viewer
+    if (selectedEnterprise.type === 'REVENDA') {
+      return (
+        <ResalePropertiesView
+          enterpriseId={selectedEnterprise.id}
+          enterpriseName={selectedEnterprise.name}
+          onBack={() => setSelectedEnterprise(null)}
+        />
+      );
+    }
+    // LANCAMENTO enterprises show the original detail view
     return (
       <>
         <EnterpriseDetail
