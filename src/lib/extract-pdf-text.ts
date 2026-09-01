@@ -2,17 +2,14 @@
 // Works in Vercel serverless — no canvas/native dependency.
 
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import path from 'path';
-import fs from 'fs';
 
 // Suppress worker warning — we use fake worker (inline)
 GlobalWorkerOptions.workerSrc = '';
 
-// Set standard font data path so pdfjs-dist can load fonts in serverless
-const stdFontPath = path.resolve(path.dirname(require.resolve('pdfjs-dist/package.json')), 'standard_fonts');
-if (fs.existsSync(stdFontPath)) {
-  GlobalWorkerOptions.standardFontDataUrl = `file://${stdFontPath}/`;
-}
+// NOTE: We do NOT set standardFontDataUrl here because:
+// 1. require.resolve returns Turbopack numeric module IDs at build time, not real paths
+// 2. Standard fonts are only needed for PDF rendering, not text extraction
+// 3. In Vercel serverless, the node_modules layer may be read-only anyway
 
 /**
  * Extract all text from a PDF buffer, page by page.
