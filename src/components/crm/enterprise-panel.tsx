@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { GalleryManager } from './gallery-manager';
 import { FloorPlanManager } from './floor-plan-manager';
 import { ResalePropertiesView } from './resale-properties-view';
+import { RevendaView } from './revenda-view';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -121,6 +122,49 @@ export function EnterprisePanel() {
 
   const [galleryEnterprise, setGalleryEnterprise] = useState<{ id: string; name: string; imageUrl: string | null } | null>(null);
   const [floorPlanEnterprise, setFloorPlanEnterprise] = useState<{ id: string; name: string } | null>(null);
+
+  // When REVENDA tab is active, show the direct property catalog with tabs visible
+  if (activeType === 'REVENDA' && !selectedEnterprise) {
+    return (
+      <div className="space-y-4 sm:space-y-6 max-w-full">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 sm:gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-3">
+              <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg flex-shrink-0">
+                <Building2 className="h-5 w-5 text-white" />
+              </div>
+              <span className="truncate">Empreendimentos</span>
+            </h1>
+            <p className="text-muted-foreground mt-1 text-sm">Explore os empreendimentos com informações detalhadas e galeria</p>
+          </div>
+        </div>
+        {/* Type tabs */}
+        <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+          <button
+            onClick={() => { setActiveType('LANCAMENTO'); setSearch(''); setActiveRegion(null); }}
+            className={cn(
+              'px-4 py-2 text-sm font-medium rounded-md transition-colors',
+              'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <Sparkles className="h-4 w-4 inline mr-1.5 -mt-0.5" />
+            Lançamentos
+          </button>
+          <button
+            className={cn(
+              'px-4 py-2 text-sm font-medium rounded-md transition-colors',
+              'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 shadow-sm'
+            )}
+          >
+            <Building2 className="h-4 w-4 inline mr-1.5 -mt-0.5" />
+            Revenda
+          </button>
+        </div>
+        <RevendaView />
+      </div>
+    );
+  }
 
   if (selectedEnterprise) {
     // REVENDA enterprises show the property catalog viewer

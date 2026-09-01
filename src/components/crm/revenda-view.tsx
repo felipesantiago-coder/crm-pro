@@ -58,14 +58,14 @@ function fmtCurrency(v: number | null): string {
   return v != null ? brl.format(v) : 'Valor sob consulta';
 }
 function fmtArea(v: number | null): string {
-  return v != null ? `${dec.format(v)} m\u00b2` : '\u00c1rea n\u00e3o informada';
+  return v != null ? `${dec.format(v)} m²` : 'Área não informada';
 }
 function fmtPriceSqm(price: number | null, area: number | null): string {
-  if (!price || !area || price <= 0 || area <= 0) return '\u2014';
+  if (!price || !area || price <= 0 || area <= 0) return '—';
   return brl.format(price / area);
 }
 function fmtOpt(v: number | null): string {
-  return v != null ? brl.format(v) : 'N\u00e3o informado';
+  return v != null ? brl.format(v) : 'Não informado';
 }
 
 // ============================================================
@@ -150,13 +150,13 @@ export function RevendaView() {
 
     // Text search (NFD-normalized, searches code, name, region, address, captor)
     if (search) {
-      const s = search.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const s = search.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
       result = result.filter(p =>
-        (p.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(s) ||
+        (p.name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(s) ||
         p.code.toLowerCase().includes(s) ||
-        (p.region || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(s) ||
-        (p.address || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(s) ||
-        (p.captor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(s)
+        (p.region || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(s) ||
+        (p.address || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(s) ||
+        (p.captor || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(s)
       );
     }
     if (filterRegion !== '__all__') result = result.filter(p => p.region === filterRegion);
@@ -237,24 +237,19 @@ export function RevendaView() {
 
   return (
     <div className="space-y-4 max-w-full">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-3">
-            <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg flex-shrink-0">
-              <Store className="h-5 w-5 text-white" />
-            </div>
-            <span className="truncate">Carteira de Revendas</span>
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">Im\u00f3veis de revenda dispon\u00edveis</p>
-        </div>
-        {properties.length > 0 && (
+      {/* Total badge */}
+      {properties.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            {filtered.length} imóve{filtered.length !== 1 ? 'is' : 'l'} encontrado{filtered.length !== 1 ? 's' : ''}
+            {filtered.length !== properties.length && ` de ${properties.length}`}
+          </p>
           <Badge variant="secondary" className="text-xs w-fit flex-shrink-0">
             <Store className="h-3 w-3 mr-1" />
-            {properties.length} im\u00f3ve{properties.length !== 1 ? 'is' : 'l'}
+            {properties.length} imóve{properties.length !== 1 ? 'is' : 'l'} no total
           </Badge>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Filters */}
       <Card>
@@ -264,7 +259,7 @@ export function RevendaView() {
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="C\u00f3digo, nome, endere\u00e7o..."
+                placeholder="Código, nome, endereço..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-9"
@@ -278,11 +273,11 @@ export function RevendaView() {
             <Select value={sortBy} onValueChange={v => setSortBy(v as SortOption)}>
               <SelectTrigger className="w-full sm:w-52"><SelectValue placeholder="Ordenar" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="item-asc">N\u00famero do Item</SelectItem>
-                <SelectItem value="price-asc">Pre\u00e7o (menor primeiro)</SelectItem>
-                <SelectItem value="price-desc">Pre\u00e7o (maior primeiro)</SelectItem>
-                <SelectItem value="area-desc">\u00c1rea (maior primeiro)</SelectItem>
-                <SelectItem value="price-per-sqm">Pre\u00e7o por m\u00b2 (menor primeiro)</SelectItem>
+                <SelectItem value="item-asc">Número do Item</SelectItem>
+                <SelectItem value="price-asc">Preço (menor primeiro)</SelectItem>
+                <SelectItem value="price-desc">Preço (maior primeiro)</SelectItem>
+                <SelectItem value="area-desc">Área (maior primeiro)</SelectItem>
+                <SelectItem value="price-per-sqm">Preço por m² (menor primeiro)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -291,7 +286,7 @@ export function RevendaView() {
           <div className="flex flex-wrap gap-2">
             {regions.length > 0 && (
               <Select value={filterRegion} onValueChange={setFilterRegion}>
-                <SelectTrigger className="w-[160px]"><Filter className="h-3.5 w-3.5 mr-1" /><SelectValue placeholder="Regi\u00e3o" /></SelectTrigger>
+                <SelectTrigger className="w-[160px]"><Filter className="h-3.5 w-3.5 mr-1" /><SelectValue placeholder="Região" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">Todas</SelectItem>
                   {regions.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
@@ -342,28 +337,28 @@ export function RevendaView() {
           {showMoreFilters && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
               <div>
-                <label className="text-[11px] text-muted-foreground mb-1 block">Pre\u00e7o m\u00ednimo</label>
+                <label className="text-[11px] text-muted-foreground mb-1 block">Preço mínimo</label>
                 <Input
                   type="number" placeholder="0" value={minPrice}
                   onChange={e => setMinPrice(e.target.value)}
                 />
               </div>
               <div>
-                <label className="text-[11px] text-muted-foreground mb-1 block">Pre\u00e7o m\u00e1ximo</label>
+                <label className="text-[11px] text-muted-foreground mb-1 block">Preço máximo</label>
                 <Input
                   type="number" placeholder="Ilimitado" value={maxPrice}
                   onChange={e => setMaxPrice(e.target.value)}
                 />
               </div>
               <div>
-                <label className="text-[11px] text-muted-foreground mb-1 block">\u00c1rea m\u00ednima (m\u00b2)</label>
+                <label className="text-[11px] text-muted-foreground mb-1 block">Área mínima (m²)</label>
                 <Input
                   type="number" placeholder="0" value={minArea}
                   onChange={e => setMinArea(e.target.value)}
                 />
               </div>
               <div>
-                <label className="text-[11px] text-muted-foreground mb-1 block">\u00c1rea m\u00e1xima (m\u00b2)</label>
+                <label className="text-[11px] text-muted-foreground mb-1 block">Área máxima (m²)</label>
                 <Input
                   type="number" placeholder="Ilimitada" value={maxArea}
                   onChange={e => setMaxArea(e.target.value)}
@@ -406,14 +401,6 @@ export function RevendaView() {
         </CardContent>
       </Card>
 
-      {/* Results count */}
-      {!loading && (
-        <p className="text-sm text-muted-foreground">
-          {filtered.length} im\u00f3ve{filtered.length !== 1 ? 'is' : 'l'} encontrado{filtered.length !== 1 ? 's' : ''}
-          {filtered.length !== properties.length && ` de ${properties.length}`}
-        </p>
-      )}
-
       {/* Grid */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -425,9 +412,9 @@ export function RevendaView() {
         <Card>
           <CardContent className="py-16 text-center">
             <Store className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-            <h3 className="font-semibold text-lg mb-1">{properties.length ? 'Nenhum resultado' : 'Nenhum im\u00f3vel cadastrado'}</h3>
+            <h3 className="font-semibold text-lg mb-1">{properties.length ? 'Nenhum resultado' : 'Nenhum imóvel cadastrado'}</h3>
             <p className="text-sm text-muted-foreground">
-              {properties.length ? 'Tente ajustar os filtros.' : 'O administrador ainda n\u00e3o importou im\u00f3veis via PDF.'}
+              {properties.length ? 'Tente ajustar os filtros.' : 'O administrador ainda não importou imóveis via PDF.'}
             </p>
             {hasFilters && (
               <Button variant="outline" size="sm" className="mt-4" onClick={clearFilters}>
@@ -479,10 +466,10 @@ function ResaleCard({ property: p, isFavorite, onToggleFavorite, onViewDetails }
       <CardContent className="p-3 flex-1 flex flex-col">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
           <MapPin className="h-3 w-3 flex-shrink-0" />
-          {p.region || 'Regi\u00e3o n\u00e3o informada'}
+          {p.region || 'Região não informada'}
         </div>
         <p className="text-xs text-muted-foreground/60 font-mono mb-1">{p.code}</p>
-        <h3 className="font-semibold text-sm leading-tight mb-1.5 line-clamp-2 min-h-[2.5rem]">{p.name || 'Im\u00f3vel sem nome'}</h3>
+        <h3 className="font-semibold text-sm leading-tight mb-1.5 line-clamp-2 min-h-[2.5rem]">{p.name || 'Imóvel sem nome'}</h3>
         <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{p.address || ''}</p>
         <p className="text-lg font-bold text-foreground mb-1.5">{fmtCurrency(p.price)}</p>
         <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
@@ -523,7 +510,7 @@ function PropertyDetailModal({ property: p, isFavorite, onToggleFavorite, onClos
 }) {
   const catStyle = getCategoryStyle(p.category);
   const handleShare = async () => {
-    const text = `${p.name || p.code} (${p.code}) \u2014 ${p.typology?.toLowerCase() || ''}, ${fmtArea(p.area)}, ${fmtCurrency(p.price)}, em ${p.region || ''}.`;
+    const text = `${p.name || p.code} (${p.code}) — ${p.typology?.toLowerCase() || ''}, ${fmtArea(p.area)}, ${fmtCurrency(p.price)}, em ${p.region || ''}.`;
     if (navigator.share) {
       try { await navigator.share({ title: p.name || p.code, text, url: p.url || window.location.href }); } catch {}
     } else {
@@ -542,8 +529,8 @@ function PropertyDetailModal({ property: p, isFavorite, onToggleFavorite, onClos
                 {catStyle.icon}
                 {p.category}
               </div>
-              <h2 className="text-xl font-bold truncate">{p.name || 'Im\u00f3vel sem nome'}</h2>
-              <p className="text-sm opacity-80 mt-0.5">{p.code} &middot; {p.region || 'Regi\u00e3o n\u00e3o informada'}</p>
+              <h2 className="text-xl font-bold truncate">{p.name || 'Imóvel sem nome'}</h2>
+              <p className="text-sm opacity-80 mt-0.5">{p.code} &middot; {p.region || 'Região não informada'}</p>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <button onClick={onToggleFavorite} className="p-2 rounded-md hover:bg-white/10 transition-colors">
@@ -560,23 +547,23 @@ function PropertyDetailModal({ property: p, isFavorite, onToggleFavorite, onClos
           {/* Price */}
           <div>
             <p className="text-2xl font-bold">{fmtCurrency(p.price)}</p>
-            <p className="text-sm text-muted-foreground">Valor por m\u00b2: {fmtPriceSqm(p.price, p.area)}</p>
+            <p className="text-sm text-muted-foreground">Valor por m²: {fmtPriceSqm(p.price, p.area)}</p>
           </div>
 
           {/* Details grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 rounded-lg bg-muted/50">
-            <div><p className="text-xs text-muted-foreground mb-0.5">\u00c1rea privativa</p><p className="text-sm font-semibold">{fmtArea(p.area)}</p></div>
-            <div><p className="text-xs text-muted-foreground mb-0.5">Tipologia</p><p className="text-sm font-semibold">{p.typology || 'N\u00e3o informada'}</p></div>
+            <div><p className="text-xs text-muted-foreground mb-0.5">Área privativa</p><p className="text-sm font-semibold">{fmtArea(p.area)}</p></div>
+            <div><p className="text-xs text-muted-foreground mb-0.5">Tipologia</p><p className="text-sm font-semibold">{p.typology || 'Não informada'}</p></div>
             {p.bedrooms != null && <div><p className="text-xs text-muted-foreground mb-0.5">Quartos</p><p className="text-sm font-semibold">{p.bedrooms}</p></div>}
-            <div><p className="text-xs text-muted-foreground mb-0.5">Condom\u00ednio</p><p className="text-sm font-semibold">{fmtOpt(p.condo)}</p></div>
+            <div><p className="text-xs text-muted-foreground mb-0.5">Condomínio</p><p className="text-sm font-semibold">{fmtOpt(p.condo)}</p></div>
             <div><p className="text-xs text-muted-foreground mb-0.5">IPTU</p><p className="text-sm font-semibold">{fmtOpt(p.iptu)}</p></div>
           </div>
 
-          {p.address && <div><h3 className="text-sm font-semibold mb-1">Endere\u00e7o</h3><p className="text-sm text-muted-foreground">{p.address}</p></div>}
+          {p.address && <div><h3 className="text-sm font-semibold mb-1">Endereço</h3><p className="text-sm text-muted-foreground">{p.address}</p></div>}
 
           {(p.acceptsFinancing || p.acceptsFgts) && (
             <div>
-              <h3 className="text-sm font-semibold mb-1.5">Condi\u00e7\u00f5es</h3>
+              <h3 className="text-sm font-semibold mb-1.5">Condições</h3>
               <div className="flex flex-wrap gap-1.5">
                 {p.acceptsFinancing && <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">Aceita financiamento</Badge>}
                 {p.acceptsFgts && <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">Aceita FGTS</Badge>}
@@ -584,7 +571,7 @@ function PropertyDetailModal({ property: p, isFavorite, onToggleFavorite, onClos
             </div>
           )}
 
-          {p.notes && <div><h3 className="text-sm font-semibold mb-1">Observa\u00e7\u00f5es</h3><p className="text-sm text-muted-foreground">{p.notes}</p></div>}
+          {p.notes && <div><h3 className="text-sm font-semibold mb-1">Observações</h3><p className="text-sm text-muted-foreground">{p.notes}</p></div>}
           {p.dataNote && (
             <div className="rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/20 p-2.5">
               <p className="text-xs text-amber-700 dark:text-amber-400"><span className="font-semibold">Nota:</span> {p.dataNote}</p>
@@ -593,7 +580,7 @@ function PropertyDetailModal({ property: p, isFavorite, onToggleFavorite, onClos
 
           <div>
             <h3 className="text-sm font-semibold mb-1">Captador / Equipe</h3>
-            <p className="text-sm text-muted-foreground">{p.captor || 'N\u00e3o informado'}</p>
+            <p className="text-sm text-muted-foreground">{p.captor || 'Não informado'}</p>
             {p.appointment && <p className="text-sm text-muted-foreground mt-0.5">{p.appointment}</p>}
           </div>
 
@@ -607,7 +594,7 @@ function PropertyDetailModal({ property: p, isFavorite, onToggleFavorite, onClos
               </a>
             )}
             {p.phoneDigits && (
-              <a href={`https://wa.me/${p.phoneDigits}?text=${encodeURIComponent(`Ol\u00e1! Gostaria de informa\u00e7\u00f5es sobre o im\u00f3vel ${p.name || p.code}, c\u00f3digo ${p.code}.`)}`} target="_blank" rel="noreferrer">
+              <a href={`https://wa.me/${p.phoneDigits}?text=${encodeURIComponent(`Olá! Gostaria de informações sobre o imóvel ${p.name || p.code}, código ${p.code}.`)}`} target="_blank" rel="noreferrer">
                 <Button className="bg-green-600 hover:bg-green-700 text-white">
                   <MessageCircle className="h-4 w-4 mr-2" />WhatsApp
                 </Button>
@@ -615,7 +602,7 @@ function PropertyDetailModal({ property: p, isFavorite, onToggleFavorite, onClos
             )}
             {p.url && (
               <a href={p.url} target="_blank" rel="noreferrer">
-                <Button variant="outline"><ExternalLink className="h-4 w-4 mr-2" />An\u00fancio</Button>
+                <Button variant="outline"><ExternalLink className="h-4 w-4 mr-2" />Anúncio</Button>
               </a>
             )}
             <Button variant="outline" onClick={handleShare}>

@@ -37,9 +37,6 @@ const ClosedDealsView = lazy(() =>
 const EnterprisePanel = lazy(() =>
   import('@/components/crm/enterprise-panel').then((m) => ({ default: m.EnterprisePanel }))
 );
-const RevendaView = lazy(() =>
-  import('@/components/crm/revenda-view').then((m) => ({ default: m.RevendaView }))
-);
 const MetaAdsPanel = lazy(() =>
   import('@/components/crm/meta-ads-panel').then((m) => ({ default: m.MetaAdsPanel }))
 );
@@ -102,8 +99,6 @@ function CRMApp() {
         return <DashboardView />;
       case 'enterprises':
         return <EnterprisePanel />;
-      case 'revenda':
-        return <RevendaView />;
       case 'clients':
         return <ClientsView />;
       case 'closed-deals':
