@@ -65,13 +65,14 @@ export async function POST(req: NextRequest) {
 
     let properties: any[];
     let pageCount = 0;
+    let textPreview = '';
     try {
       const { extractPropertiesFromPdf } = await import('@/lib/parse-resale-pdf');
       console.log('[resale-import] parse-resale-pdf module loaded');
       const result = await extractPropertiesFromPdf(buffer);
       properties = result.properties;
       pageCount = result.pageCount;
-      const textPreview = result.textPreview || '';
+      textPreview = result.textPreview || '';
       console.log('[resale-import] Extracted', properties.length, 'properties from', pageCount, 'pages');
       console.log('[resale-import] Text preview:', textPreview.slice(0, 1000));
     } catch (extractErr) {
