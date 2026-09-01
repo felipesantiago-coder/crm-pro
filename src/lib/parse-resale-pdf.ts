@@ -44,7 +44,7 @@ export async function extractPropertiesFromPdf(buffer: Buffer): Promise<{
     const parser = new PDFParse({ data: new Uint8Array(buffer) });
     const pdfData = await parser.getText();
     text = (pdfData.text || '').trim();
-    pageCount = pdfData.numpages || 1;
+    pageCount = (pdfData as any).numpages || 1;
   } catch (err) {
     // fallback: try require
     try {
