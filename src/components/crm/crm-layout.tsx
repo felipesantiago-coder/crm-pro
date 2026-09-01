@@ -18,6 +18,7 @@ import {
   Trophy,
   Building2,
   BarChart3,
+  Store,
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
@@ -49,6 +50,7 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
   const navItems: { view: CRMView; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
     { view: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
     { view: 'enterprises', label: 'Empreendimentos', icon: <Building2 className="h-5 w-5" /> },
+    { view: 'revenda', label: 'Revenda', icon: <Store className="h-5 w-5" /> },
     { view: 'clients', label: 'Clientes', icon: <Users className="h-5 w-5" /> },
     { view: 'closed-deals', label: 'Negócios Finalizados', icon: <Trophy className="h-5 w-5" /> },
     { view: 'tags', label: 'Tags', icon: <Tags className="h-5 w-5" /> },
