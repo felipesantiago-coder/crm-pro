@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { db } from '@/lib/db';
-import { extractPropertiesFromPdf } from '@/lib/parse-resale-pdf';
 import { authOptions } from '@/lib/auth-options';
 
 /**
@@ -10,12 +9,15 @@ import { authOptions } from '@/lib/auth-options';
  * No enterprise name/region needed — everything comes from the PDF.
  */
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || (session.user as { role?: string }).role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Acesso restrito' }, { status: 403 });
-  }
-
   try {
+    console.log('[resale-import] Handler started');
+
+    const session = await getServerSession(authOptions);
+    if (!session?.user || (session.user as { role?: string }).role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Acesso restrito' }, { status: 403 });
+    }
+    console.log('[resale-import] Auth passed');
+
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     if (!file) return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 });
@@ -25,6 +27,7 @@ export async function POST(req: NextRequest) {
     if (file.size > 20 * 1024 * 1024) {
       return NextResponse.json({ error: 'Arquivo muito grande. Maximo 20MB.' }, { status: 400 });
     }
+    console.log('[resale-import] File received:', file.name, 'size:', file.size);
 
     // 1. Extract enterprise name from filename (remove .pdf extension)
     const enterpriseName = file.name.replace(/\.pdf$/i, '').trim();
@@ -39,13 +42,11 @@ export async function POST(req: NextRequest) {
     let isNew = false;
 
     if (existing) {
-      // Reuse existing enterprise (update type to REVENDA if needed)
       enterpriseId = existing.id;
       if (existing.type !== 'REVENDA') {
         await db.enterprise.update({ where: { id: existing.id }, data: { type: 'REVENDA' } });
       }
     } else {
-      // Auto-create the enterprise
       const created = await db.enterprise.create({
         data: {
           name: enterpriseName,
@@ -56,13 +57,29 @@ export async function POST(req: NextRequest) {
       enterpriseId = created.id;
       isNew = true;
     }
+    console.log('[resale-import] Enterprise resolved:', enterpriseId, 'name:', enterpriseName, 'isNew:', isNew);
 
-    // 3. Extract properties from PDF
+    // 3. Extract properties from PDF (dynamic import to isolate failures)
     const buffer = Buffer.from(await file.arrayBuffer());
-    const { properties, pageCount } = await extractPropertiesFromPdf(buffer);
+    console.log('[resale-import] Buffer created, size:', buffer.length);
+
+    let properties: any[];
+    let pageCount = 0;
+    try {
+      const { extractPropertiesFromPdf } = await import('@/lib/parse-resale-pdf');
+      console.log('[resale-import] parse-resale-pdf module loaded');
+      const result = await extractPropertiesFromPdf(buffer);
+      properties = result.properties;
+      pageCount = result.pageCount;
+      console.log('[resale-import] Extracted', properties.length, 'properties from', pageCount, 'pages');
+    } catch (extractErr) {
+      console.error('[resale-import] PDF extraction failed:', extractErr);
+      const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
+      return NextResponse.json({ error: 'Erro ao processar o PDF: ' + msg }, { status: 500 });
+    }
 
     // 4. Upsert all properties
-    let created = 0;
+    let upserted = 0;
     const errors: string[] = [];
     for (const prop of properties) {
       try {
@@ -94,7 +111,7 @@ export async function POST(req: NextRequest) {
             dataNote: prop.dataNote || null, sourcePage: prop.sourcePage,
           },
         });
-        created++;
+        upserted++;
       } catch (e) {
         errors.push(prop.code + ': ' + (e as Error).message);
       }
@@ -103,17 +120,19 @@ export async function POST(req: NextRequest) {
     const totalProperties = await db.resaleProperty.count({ where: { enterpriseId } });
 
     // 5. Extract regions from the imported properties for the enterprise region field
-    const regions = [...new Set(properties.map(p => p.region).filter(Boolean))];
+    const regions = [...new Set(properties.map((p: any) => p.region).filter(Boolean))];
     if (regions.length > 0) {
       await db.enterprise.update({
         where: { id: enterpriseId },
-        data: { region: regions.length === 1 ? regions[0] : `${regions.length} regiões` },
+        data: { region: regions.length === 1 ? regions[0] : `${regions.length} regioes` },
       });
     }
 
+    console.log('[resale-import] Done. upserted:', upserted, 'errors:', errors.length);
+
     return NextResponse.json({
       extracted: properties.length,
-      created,
+      created: upserted,
       updated: 0,
       errors,
       pageCount,
@@ -123,7 +142,7 @@ export async function POST(req: NextRequest) {
       isNew,
     });
   } catch (error) {
-    console.error('Error in one-shot resale import:', error);
+    console.error('[resale-import] UNHANDLED:', error);
     const message = error instanceof Error ? error.message : 'Erro ao processar o PDF';
     return NextResponse.json({ error: message }, { status: 500 });
   }
