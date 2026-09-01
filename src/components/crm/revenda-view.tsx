@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   MapPin, Search, X, Phone, ExternalLink, Share2, MessageCircle,
-  Building2, BedDouble, Filter, Store, User,
-  Home, Layers, LandPlot, CircleDot, Heart, Maximize2,
+  Building2, BedDouble, SlidersHorizontal, Store, User,
+  Home, Layers, LandPlot, CircleDot, Heart, Maximize2, ChevronDown,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -108,7 +108,7 @@ export function RevendaView() {
   const [filterFinancing, setFilterFinancing] = useState(false);
   const [filterFgts, setFilterFgts] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('item-asc');
-  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Favorites
   const [favorites, setFavorites] = useState<Set<string>>(() => {
@@ -217,9 +217,18 @@ export function RevendaView() {
     setFilterFinancing(false); setFilterFgts(false);
   };
 
-  const hasFilters = search || filterRegion !== '__all__' || filterCategory !== '__all__' ||
+  const hasFilters = filterRegion !== '__all__' || filterCategory !== '__all__' ||
     filterBedrooms !== '__all__' || filterCaptor !== '__all__' ||
     minPrice || maxPrice || minArea || maxArea || filterFinancing || filterFgts;
+
+  const activeFilterCount = [
+    filterRegion !== '__all__',
+    filterCategory !== '__all__',
+    filterBedrooms !== '__all__',
+    filterCaptor !== '__all__',
+    !!minPrice, !!maxPrice, !!minArea, !!maxArea,
+    filterFinancing, filterFgts,
+  ].filter(Boolean).length;
 
   const favCount = filtered.filter(p => favorites.has(p.code)).length;
 
@@ -237,169 +246,334 @@ export function RevendaView() {
 
   return (
     <div className="space-y-4 max-w-full">
-      {/* Total badge */}
-      {properties.length > 0 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            {filtered.length} imóve{filtered.length !== 1 ? 'is' : 'l'} encontrado{filtered.length !== 1 ? 's' : ''}
-            {filtered.length !== properties.length && ` de ${properties.length}`}
-          </p>
-          <Badge variant="secondary" className="text-xs w-fit flex-shrink-0">
-            <Store className="h-3 w-3 mr-1" />
-            {properties.length} imóve{properties.length !== 1 ? 'is' : 'l'} no total
+      {/* Top bar: search + filter toggle + sort + results count */}
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+        {/* Search */}
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por código, nome, endereço ou captador..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9 pr-8"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Filter dropdown toggle */}
+        <button
+          onClick={() => setFiltersOpen(!filtersOpen)}
+          className={cn(
+            'inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all whitespace-nowrap',
+            filtersOpen
+              ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/20'
+              : activeFilterCount > 0
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-700'
+                : 'bg-background text-foreground border-border hover:bg-muted'
+          )}
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          <span>Filtros</span>
+          {activeFilterCount > 0 && !filtersOpen && (
+            <span className={cn(
+              'inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full text-[11px] font-bold',
+              'bg-emerald-600 text-white'
+            )}>
+              {activeFilterCount}
+            </span>
+          )}
+          <ChevronDown className={cn('h-4 w-4 transition-transform duration-200', filtersOpen && 'rotate-180')} />
+        </button>
+
+        {/* Sort */}
+        <Select value={sortBy} onValueChange={v => setSortBy(v as SortOption)}>
+          <SelectTrigger className="w-full sm:w-56">
+            <SelectValue placeholder="Ordenar resultados por..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="item-asc">Ordem original (número do item)</SelectItem>
+            <SelectItem value="price-asc">Menor preço primeiro</SelectItem>
+            <SelectItem value="price-desc">Maior preço primeiro</SelectItem>
+            <SelectItem value="area-desc">Maior área primeiro</SelectItem>
+            <SelectItem value="price-per-sqm">Menor valor por m²</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Results count badge */}
+        {properties.length > 0 && (
+          <Badge variant="secondary" className="text-xs w-fit flex-shrink-0 hidden sm:flex">
+            {filtered.length} de {properties.length} imóve{properties.length !== 1 ? 'is' : 'l'}
           </Badge>
+        )}
+      </div>
+
+      {/* Mobile results count */}
+      {properties.length > 0 && (
+        <p className="text-sm text-muted-foreground sm:hidden">
+          {filtered.length} imóve{filtered.length !== 1 ? 'is' : 'l'} encontrado{filtered.length !== 1 ? 's' : ''}
+          {filtered.length !== properties.length && ` de ${properties.length}`}
+        </p>
+      )}
+
+      {/* Collapsible Filters Panel */}
+      <div className={cn(
+        'overflow-hidden transition-all duration-300 ease-in-out',
+        filtersOpen ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
+      )}>
+        <Card className="border-emerald-200 dark:border-emerald-800/50 shadow-sm">
+          <CardContent className="p-4 space-y-5">
+            {/* Section: Location & Type */}
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Localização e tipo do imóvel</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {regions.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                      Região
+                    </label>
+                    <Select value={filterRegion} onValueChange={setFilterRegion}>
+                      <SelectTrigger><SelectValue placeholder="Todas as regiões" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">Todas as regiões</SelectItem>
+                        {regions.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {categories.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      Tipo de imóvel
+                    </label>
+                    <Select value={filterCategory} onValueChange={setFilterCategory}>
+                      <SelectTrigger><SelectValue placeholder="Todos os tipos" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">Todos os tipos</SelectItem>
+                        {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <BedDouble className="h-3.5 w-3.5 text-muted-foreground" />
+                    Quantidade de quartos
+                  </label>
+                  <Select value={filterBedrooms} onValueChange={setFilterBedrooms}>
+                    <SelectTrigger><SelectValue placeholder="Qualquer quantidade" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Qualquer quantidade</SelectItem>
+                      <SelectItem value="1">1 quarto</SelectItem>
+                      <SelectItem value="2">2 quartos</SelectItem>
+                      <SelectItem value="3">3 quartos</SelectItem>
+                      <SelectItem value="4">4 quartos</SelectItem>
+                      <SelectItem value="5">5 quartos ou mais</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {captors.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      Captador do imóvel
+                    </label>
+                    <Select value={filterCaptor} onValueChange={setFilterCaptor}>
+                      <SelectTrigger><SelectValue placeholder="Todos os captadores" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">Todos os captadores</SelectItem>
+                        {captors.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t" />
+
+            {/* Section: Price Range */}
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Faixa de preço</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">
+                    Preço mínimo (R$)
+                  </label>
+                  <Input
+                    type="number"
+                    placeholder="Ex: 300000"
+                    value={minPrice}
+                    onChange={e => setMinPrice(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Deixe vazio para sem limite mínimo</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">
+                    Preço máximo (R$)
+                  </label>
+                  <Input
+                    type="number"
+                    placeholder="Ex: 1000000"
+                    value={maxPrice}
+                    onChange={e => setMaxPrice(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Deixe vazio para sem limite máximo</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t" />
+
+            {/* Section: Area Range */}
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Área do imóvel</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">
+                    Área mínima (m²)
+                  </label>
+                  <Input
+                    type="number"
+                    placeholder="Ex: 50"
+                    value={minArea}
+                    onChange={e => setMinArea(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Tamanho mínimo da área privativa</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">
+                    Área máxima (m²)
+                  </label>
+                  <Input
+                    type="number"
+                    placeholder="Ex: 200"
+                    value={maxArea}
+                    onChange={e => setMaxArea(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Tamanho máximo da área privativa</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t" />
+
+            {/* Section: Conditions */}
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Condições comerciais</h4>
+              <div className="flex flex-wrap gap-3">
+                <label className={cn(
+                  'flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg border cursor-pointer transition-all select-none',
+                  filterFinancing
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 shadow-sm'
+                    : 'text-muted-foreground border-border hover:bg-muted'
+                )}>
+                  <input type="checkbox" checked={filterFinancing} onChange={e => setFilterFinancing(e.target.checked)} className="sr-only" />
+                  <span className={cn(
+                    'inline-block w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+                    filterFinancing
+                      ? 'bg-emerald-600 border-emerald-600'
+                      : 'border-muted-foreground/40'
+                  )}>
+                    {filterFinancing && <span className="text-white text-[10px] font-bold leading-none">✓</span>}
+                  </span>
+                  Aceita financiamento
+                </label>
+                <label className={cn(
+                  'flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg border cursor-pointer transition-all select-none',
+                  filterFgts
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-300 dark:border-blue-700 shadow-sm'
+                    : 'text-muted-foreground border-border hover:bg-muted'
+                )}>
+                  <input type="checkbox" checked={filterFgts} onChange={e => setFilterFgts(e.target.checked)} className="sr-only" />
+                  <span className={cn(
+                    'inline-block w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+                    filterFgts
+                      ? 'bg-blue-600 border-blue-600'
+                      : 'border-muted-foreground/40'
+                  )}>
+                    {filterFgts && <span className="text-white text-[10px] font-bold leading-none">✓</span>}
+                  </span>
+                  Aceita FGTS
+                </label>
+              </div>
+            </div>
+
+            {/* Footer: clear button */}
+            {hasFilters && (
+              <div className="flex justify-end pt-1">
+                <button
+                  onClick={clearFilters}
+                  className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Limpar todos os filtros
+                </button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Active filter pills (shown when filters are closed) */}
+      {!filtersOpen && hasFilters && (
+        <div className="flex flex-wrap items-center gap-2">
+          {filterRegion !== '__all__' && (
+            <FilterPill icon={<MapPin className="h-3 w-3" />} label={filterRegion} onRemove={() => setFilterRegion('__all__')} />
+          )}
+          {filterCategory !== '__all__' && (
+            <FilterPill icon={<Building2 className="h-3 w-3" />} label={filterCategory} onRemove={() => setFilterCategory('__all__')} />
+          )}
+          {filterBedrooms !== '__all__' && (
+            <FilterPill icon={<BedDouble className="h-3 w-3" />} label={`${filterBedrooms} quarto${filterBedrooms !== '1' ? 's' : ''}`} onRemove={() => setFilterBedrooms('__all__')} />
+          )}
+          {filterCaptor !== '__all__' && (
+            <FilterPill icon={<User className="h-3 w-3" />} label={filterCaptor} onRemove={() => setFilterCaptor('__all__')} />
+          )}
+          {minPrice && (
+            <FilterPill label={`A partir de R$ ${Number(minPrice).toLocaleString('pt-BR')}`} onRemove={() => setMinPrice('')} />
+          )}
+          {maxPrice && (
+            <FilterPill label={`Até R$ ${Number(maxPrice).toLocaleString('pt-BR')}`} onRemove={() => setMaxPrice('')} />
+          )}
+          {minArea && (
+            <FilterPill label={`Área mín. ${minArea} m²`} onRemove={() => setMinArea('')} />
+          )}
+          {maxArea && (
+            <FilterPill label={`Área máx. ${maxArea} m²`} onRemove={() => setMaxArea('')} />
+          )}
+          {filterFinancing && (
+            <FilterPill label="Financiamento" onRemove={() => setFilterFinancing(false)} />
+          )}
+          {filterFgts && (
+            <FilterPill label="FGTS" onRemove={() => setFilterFgts(false)} />
+          )}
+          <button
+            onClick={clearFilters}
+            className="text-xs text-muted-foreground hover:text-foreground underline ml-1"
+          >
+            Limpar tudo
+          </button>
         </div>
       )}
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-3 sm:p-4 space-y-3">
-          {/* Row 1: Search + Sort */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Código, nome, endereço..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="pl-9"
-              />
-              {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-            <Select value={sortBy} onValueChange={v => setSortBy(v as SortOption)}>
-              <SelectTrigger className="w-full sm:w-52"><SelectValue placeholder="Ordenar" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="item-asc">Número do Item</SelectItem>
-                <SelectItem value="price-asc">Preço (menor primeiro)</SelectItem>
-                <SelectItem value="price-desc">Preço (maior primeiro)</SelectItem>
-                <SelectItem value="area-desc">Área (maior primeiro)</SelectItem>
-                <SelectItem value="price-per-sqm">Preço por m² (menor primeiro)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Row 2: Dropdown filters */}
-          <div className="flex flex-wrap gap-2">
-            {regions.length > 0 && (
-              <Select value={filterRegion} onValueChange={setFilterRegion}>
-                <SelectTrigger className="w-[160px]"><Filter className="h-3.5 w-3.5 mr-1" /><SelectValue placeholder="Região" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todas</SelectItem>
-                  {regions.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-            {categories.length > 0 && (
-              <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger className="w-[160px]"><SelectValue placeholder="Categoria" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todas</SelectItem>
-                  {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-            <Select value={filterBedrooms} onValueChange={setFilterBedrooms}>
-              <SelectTrigger className="w-[140px]"><BedDouble className="h-3.5 w-3.5 mr-1" /><SelectValue placeholder="Quartos" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">Qualquer</SelectItem>
-                <SelectItem value="1">1 quarto</SelectItem>
-                <SelectItem value="2">2 quartos</SelectItem>
-                <SelectItem value="3">3 quartos</SelectItem>
-                <SelectItem value="4">4 quartos</SelectItem>
-                <SelectItem value="5">5 quartos</SelectItem>
-              </SelectContent>
-            </Select>
-            {captors.length > 0 && (
-              <Select value={filterCaptor} onValueChange={setFilterCaptor}>
-                <SelectTrigger className="w-[160px]"><User className="h-3.5 w-3.5 mr-1" /><SelectValue placeholder="Captador" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todos</SelectItem>
-                  {captors.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-
-          {/* Row 3: Price & Area range (collapsible) */}
-          <div>
-            <button
-              onClick={() => setShowMoreFilters(!showMoreFilters)}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Filter className="h-3.5 w-3.5" />
-              {showMoreFilters ? 'Menos filtros' : 'Mais filtros'}
-            </button>
-          </div>
-          {showMoreFilters && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-              <div>
-                <label className="text-[11px] text-muted-foreground mb-1 block">Preço mínimo</label>
-                <Input
-                  type="number" placeholder="0" value={minPrice}
-                  onChange={e => setMinPrice(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground mb-1 block">Preço máximo</label>
-                <Input
-                  type="number" placeholder="Ilimitado" value={maxPrice}
-                  onChange={e => setMaxPrice(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground mb-1 block">Área mínima (m²)</label>
-                <Input
-                  type="number" placeholder="0" value={minArea}
-                  onChange={e => setMinArea(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground mb-1 block">Área máxima (m²)</label>
-                <Input
-                  type="number" placeholder="Ilimitada" value={maxArea}
-                  onChange={e => setMaxArea(e.target.value)}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Row 4: Toggles + Clear */}
-          <div className="flex flex-wrap gap-2">
-            <label className={cn(
-              'flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-md border cursor-pointer transition-colors',
-              filterFinancing ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700' : 'text-muted-foreground border-border'
-            )}>
-              <input type="checkbox" checked={filterFinancing} onChange={e => setFilterFinancing(e.target.checked)} className="sr-only" />
-              Apenas Financiamento
-            </label>
-            <label className={cn(
-              'flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-md border cursor-pointer transition-colors',
-              filterFgts ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-300 dark:border-blue-700' : 'text-muted-foreground border-border'
-            )}>
-              <input type="checkbox" checked={filterFgts} onChange={e => setFilterFgts(e.target.checked)} className="sr-only" />
-              Apenas FGTS
-            </label>
-            {favorites.size > 0 && (
-              <label className={cn(
-                'flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-md border cursor-pointer transition-colors',
-                'text-muted-foreground border-border'
-              )}>
-                <Heart className="h-3.5 w-3.5 text-rose-500" />
-                Favoritos ({favorites.size})
-              </label>
-            )}
-            {hasFilters && (
-              <button onClick={clearFilters} className="text-xs text-muted-foreground hover:text-foreground underline ml-auto">
-                Limpar filtros
-              </button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Favorites row (always visible) */}
+      {favorites.size > 0 && (
+        <div className="flex items-center gap-2">
+          <Heart className="h-4 w-4 text-rose-500" />
+          <span className="text-sm text-muted-foreground">
+            {favCount} favorito{favCount !== 1 ? 's' : ''} selecionado{favCount !== 1 ? 's' : ''}
+          </span>
+        </div>
+      )}
 
       {/* Grid */}
       {loading ? (
@@ -437,6 +611,25 @@ export function RevendaView() {
         </div>
       )}
     </div>
+  );
+}
+
+// ============================================================
+// Filter Pill (active filter chip shown when panel is closed)
+// ============================================================
+function FilterPill({ icon, label, onRemove }: { icon?: React.ReactNode; label: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 text-xs font-medium">
+      {icon}
+      {label}
+      <button
+        onClick={onRemove}
+        className="ml-0.5 p-0.5 rounded-full hover:bg-emerald-200 dark:hover:bg-emerald-800/60 transition-colors"
+        aria-label={`Remover filtro: ${label}`}
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </span>
   );
 }
 
