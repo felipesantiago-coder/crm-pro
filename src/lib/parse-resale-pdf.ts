@@ -47,18 +47,21 @@ export async function extractPropertiesFromPdf(buffer: Buffer): Promise<{
     const result = await extractTextFromPdf(buffer);
     text = result.text;
     pageCount = result.pageCount;
+    console.log('[parse-resale-pdf] Text extracted:', text.length, 'chars,', pageCount, 'pages');
+    console.log('[parse-resale-pdf] First 500 chars:', text.slice(0, 500));
   } catch (err) {
-    console.error('pdfjs-dist extraction failed:', err);
-    throw new Error('Erro ao processar o PDF. O arquivo pode estar corrompido ou ser escaneado/imagem.');
+    console.error('[parse-resale-pdf] pdfjs-dist extraction failed:', err);
+    throw new Error('Erro ao extrair texto do PDF: ' + (err instanceof Error ? err.message : String(err)));
   }
 
-  if (!text) {
-    throw new Error('O PDF nao contem texto extraivel. Pode ser um arquivo escaneado/imagem.');
+  if (!text || text.length < 10) {
+    throw new Error('O PDF nao contem texto extraivel (' + text.length + ' chars). Pode ser um arquivo escaneado/imagem.');
   }
 
   const properties = parseTextToProperties(text);
   if (properties.length === 0) {
-    throw new Error('Nenhum imovel foi extraido do PDF.');
+    const preview = text.slice(0, 300).replace(/\n/g, ' | ');
+    throw new Error('Nenhum imovel foi extraido do PDF. Preview do texto: ' + preview);
   }
 
   return { properties, pageCount, textLength: text.length };
