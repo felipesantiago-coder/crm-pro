@@ -1291,12 +1291,6 @@ export function EnterpriseManagement() {
       <ResalePdfImportDialog
         open={resalePdfDialogOpen}
         onOpenChange={setResalePdfDialogOpen}
-        revendaEnterprises={enterprises.filter(e => e.type === 'REVENDA').map(e => ({
-          id: e.id,
-          name: e.name,
-          region: e.region,
-          resalePropertyCount: e.resalePropertyCount ?? 0,
-        }))}
         onImportComplete={fetchEnterprises}
       />
     </div>
