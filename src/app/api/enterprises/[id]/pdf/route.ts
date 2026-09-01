@@ -5,6 +5,7 @@ import { isAdmin } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { extractAndCache } from '../../extract-info/route';
+import { extractTextFromPdf } from '@/lib/extract-pdf-text';
 
 // POST /api/enterprises/[id]/pdf — Upload de base de dados (PDF, Markdown ou TXT)
 const ACCEPTED_TYPES = [
@@ -63,12 +64,10 @@ export async function POST(
     let extractedText: string;
 
     if (ext === '.pdf') {
-      // Extrair texto do PDF
+      // Extrair texto do PDF (pdfjs-dist — funciona no Vercel serverless)
       try {
-        const { PDFParse } = await import('pdf-parse');
-        const parser = new PDFParse({ data: new Uint8Array(buffer) });
-        const pdfData = await parser.getText();
-        extractedText = (pdfData.text || '').trim();
+        const result = await extractTextFromPdf(buffer);
+        extractedText = result.text;
 
         if (!extractedText || extractedText.length < 20) {
           return NextResponse.json(

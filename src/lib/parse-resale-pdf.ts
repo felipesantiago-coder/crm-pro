@@ -1,5 +1,7 @@
 // Server-side PDF text extraction & property parsing for resale listings.
-// Uses pdf-parse to extract text, then applies deterministic parsing.
+// Uses pdfjs-dist directly (no canvas dependency, works in Vercel serverless).
+
+import { extractTextFromPdf } from './extract-pdf-text';
 
 export interface ParsedProperty {
   sortOrder: number;
@@ -37,32 +39,28 @@ export async function extractPropertiesFromPdf(buffer: Buffer): Promise<{
   if (buffer.length > 20 * 1024 * 1024) {
     throw new Error('Arquivo muito grande. Maximo 20 MB.');
   }
+
   let text = '';
-  let pageCount = 1;
+  let pageCount = 0;
+
   try {
-    const { PDFParse } = await import('pdf-parse');
-    const parser = new PDFParse({ data: new Uint8Array(buffer) });
-    const pdfData = await parser.getText();
-    text = (pdfData.text || '').trim();
-    pageCount = (pdfData as any).numpages || 1;
+    const result = await extractTextFromPdf(buffer);
+    text = result.text;
+    pageCount = result.pageCount;
   } catch (err) {
-    // fallback: try require
-    try {
-      const pdfParse = require('pdf-parse');
-      const data = await pdfParse(buffer);
-      text = (data.text || '').trim();
-      pageCount = data.numpages || 1;
-    } catch {
-      throw new Error('Erro ao processar o PDF. O arquivo pode estar corrompido ou ser escaneado/imagem.');
-    }
+    console.error('pdfjs-dist extraction failed:', err);
+    throw new Error('Erro ao processar o PDF. O arquivo pode estar corrompido ou ser escaneado/imagem.');
   }
+
   if (!text) {
     throw new Error('O PDF nao contem texto extraivel. Pode ser um arquivo escaneado/imagem.');
   }
+
   const properties = parseTextToProperties(text);
   if (properties.length === 0) {
     throw new Error('Nenhum imovel foi extraido do PDF.');
   }
+
   return { properties, pageCount, textLength: text.length };
 }
 
