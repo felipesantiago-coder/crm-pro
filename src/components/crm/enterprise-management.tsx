@@ -55,6 +55,7 @@ import { ptBR } from 'date-fns/locale';
 import Image from 'next/image';
 import { MapCoordsFields } from './map-coords-fields';
 import { ResalePdfImport } from './resale-pdf-import';
+import { ResalePdfImportDialog } from './resale-pdf-import-dialog';
 import { cn } from '@/lib/utils';
 
 interface EnterpriseItem {
@@ -108,6 +109,9 @@ export function EnterpriseManagement() {
   // PDF upload
   const [pdfUploadingId, setPdfUploadingId] = useState<string | null>(null);
   const pdfInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // Resale PDF import dialog
+  const [resalePdfDialogOpen, setResalePdfDialogOpen] = useState(false);
 
   // Batch import
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
@@ -462,6 +466,17 @@ export function EnterpriseManagement() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Resale PDF Import - only visible when REVENDA tab is active */}
+          {adminActiveType === 'REVENDA' && (
+            <Button
+              variant="outline"
+              className="font-semibold border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              onClick={() => setResalePdfDialogOpen(true)}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Importar PDF de Revenda
+            </Button>
+          )}
           <Dialog open={batchDialogOpen} onOpenChange={(open) => { if (!open) resetBatchDialog(); setBatchDialogOpen(open); }}>
             <DialogTrigger asChild>
               <Button variant="outline" className="font-semibold">
@@ -823,7 +838,18 @@ export function EnterpriseManagement() {
           <p className="text-muted-foreground">
             {search ? 'Nenhum empreendimento encontrado.' : 'Nenhum empreendimento cadastrado ainda.'}
           </p>
-          {!search && (
+          {!search && adminActiveType === 'REVENDA' && (
+            <div className="mt-4 space-y-3">
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold" onClick={() => setResalePdfDialogOpen(true)}>
+                <FileText className="h-4 w-4 mr-2" />
+                Importar PDF de Revenda
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Importe um PDF com imóveis para criar automaticamente um empreendimento de revenda.
+              </p>
+            </div>
+          )}
+          {!search && adminActiveType !== 'REVENDA' && (
             <Button className="mt-4" onClick={() => setCreateOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Cadastrar Primeiro
@@ -1260,6 +1286,19 @@ export function EnterpriseManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Resale PDF Import Dialog - top-level for REVENDA tab */}
+      <ResalePdfImportDialog
+        open={resalePdfDialogOpen}
+        onOpenChange={setResalePdfDialogOpen}
+        revendaEnterprises={enterprises.filter(e => e.type === 'REVENDA').map(e => ({
+          id: e.id,
+          name: e.name,
+          region: e.region,
+          resalePropertyCount: e.resalePropertyCount ?? 0,
+        }))}
+        onImportComplete={fetchEnterprises}
+      />
     </div>
   );
 }
