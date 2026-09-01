@@ -11,6 +11,26 @@ export async function GET() {
       return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
     }
 
+    // One-time auto-fix: repair GALPÃ truncation bug from old parser
+    // This runs on every request but only updates affected rows (idempotent)
+    try {
+      await db.resaleProperty.updateMany({
+        where: { typology: 'GALPÃ' },
+        data: { typology: 'GALPÃO' },
+      });
+      await db.resaleProperty.updateMany({
+        where: { name: 'GALPÃ' },
+        data: { name: 'GALPÃO' },
+      });
+      await db.resaleProperty.updateMany({
+        where: {
+          typology: { contains: 'GALP' },
+          category: 'Outro',
+        },
+        data: { category: 'Comercial' },
+      });
+    } catch {}
+
     const properties = await db.resaleProperty.findMany({
       where: { enterprise: { type: 'REVENDA' } },
       orderBy: { sortOrder: 'asc' },

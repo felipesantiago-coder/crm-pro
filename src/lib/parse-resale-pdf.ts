@@ -47,7 +47,7 @@ const REGION_KEYWORDS = [
 // Patterns that indicate a field boundary in concatenated text
 const TYPOLOGY_PATTERNS = [
   /^(\d+)\s*(?:QUARTO|QUARTOS|SU[IÍ]TES?)/i,
-  /^(SALA(?:\s+COMERCIAL)?|LOJA(?:\s+COMERCIAL)?|GALP[AÃO]|LOTE\s*H[ií]BRIDO|LOTE|STUDIO|KITNET|FLAT|CASA)/i,
+  /^(SALA(?:\s+COMERCIAL)?|LOJA(?:\s+COMERCIAL)?|GALP[ÃA]O|GALPAO|LOTE\s*H[ií]BRIDO|LOTE|STUDIO|KITNET|FLAT|CASA)/i,
 ];
 
 const AREA_PATTERN = /^([\d.,]+)\s*m[²2]/;
@@ -323,7 +323,7 @@ class PropertyRecord {
     }
 
     // Try splitting at non-digit typology (SALA, LOJA, CASA, etc.)
-    const typoSplit = text.match(/^(.+?)(SALA(?:\s+COMERCIAL)?|LOJA(?:\s+COMERCIAL)?|GALP[AÃO]|LOTE\s*H[ií]BRIDO|LOTE|STUDIO|KITNET|FLAT|CASA)(.*)/i);
+    const typoSplit = text.match(/^(.+?)(SALA(?:\s+COMERCIAL)?|LOJA(?:\s+COMERCIAL)?|GALP[ÃA]O|GALPAO|LOTE\s*H[ií]BRIDO|LOTE|STUDIO|KITNET|FLAT|CASA)(.*)/i);
     if (typoSplit) {
       const namePart = typoSplit[1].trim();
       // Allow names with numbers (e.g. "Office 300", "Edificio Central Park 3")
@@ -351,7 +351,7 @@ class PropertyRecord {
     }
 
     // Try: starts with typology only (no name), e.g. "GALPÃO", "GALPÃO-1200 m²..."
-    const typoOnly = text.match(/^(GALP[AÃO]|LOTE|SALA|LOJA|STUDIO|KITNET|FLAT)(.*)/i);
+    const typoOnly = text.match(/^(GALP[ÃA]O|GALPAO|LOTE|SALA|LOJA|STUDIO|KITNET|FLAT)(.*)/i);
     if (typoOnly && !this._nameFound) {
       this.name = typoOnly[1].trim();
       this.typology = typoOnly[1].toUpperCase().trim();
@@ -491,7 +491,7 @@ class PropertyRecord {
         return;
       }
       // Non-digit: "SALA", "LOJA", etc.
-      const typoNoDigit = trimmed.match(/^(SALA(?:\s+COMERCIAL)?|LOJA(?:\s+COMERCIAL)?|GALP[AÃO]|LOTE\s*H[ií]BRIDO|LOTE|STUDIO|KITNET|FLAT|CASA)/i);
+      const typoNoDigit = trimmed.match(/^(SALA(?:\s+COMERCIAL)?|LOJA(?:\s+COMERCIAL)?|GALP[ÃA]O|GALPAO|LOTE\s*H[ií]BRIDO|LOTE|STUDIO|KITNET|FLAT|CASA)/i);
       if (typoNoDigit) {
         this.typology = typoNoDigit[1].toUpperCase().trim();
         this._typologyFound = true;
@@ -690,7 +690,7 @@ function categorize(typology: string, name: string, url: string): string {
   const nu = name.toUpperCase();
   const ul = url.toLowerCase();
   if (tu.includes('LOTE') || tu.includes('TERRENO') || ul.includes('/lote')) return 'Lote';
-  if (tu.includes('SALA') || tu.includes('LOJA') || tu.includes('COMERCIAL') || tu.includes('GALPAO')) return 'Comercial';
+  if (tu.includes('SALA') || tu.includes('LOJA') || tu.includes('COMERCIAL') || tu.includes('GALP')) return 'Comercial';
   if (nu.includes('HOTEL-FLAT') || nu.includes('APART-HOTEL') || nu.includes('FLAT') || ul.includes('flat')) return 'Flat';
   if (tu.includes('CASA') || tu.includes('SOBRADO') || tu.includes('RESIDENCIA') || nu.includes('CASA')) return 'Casa';
   if (tu.includes('APARTAMENTO') || tu.includes('STUDIO') || tu.includes('KITNET') ||
