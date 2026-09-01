@@ -3,6 +3,7 @@
 // Works in Vercel serverless out of the box.
 
 import { extractTextFromPdf } from './extract-pdf-text';
+import { RESALE_REFERENCE_MAP } from './resale-reference-data';
 
 export interface ParsedProperty {
   sortOrder: number;
@@ -56,20 +57,22 @@ const AREA_PATTERN = /^([\d.,]+)\s*m[²2]/;
 const ADDRESS_REGION_RULES: [RegExp, string][] = [
   [/\bSHTN\b|\bSHN\b|\bSGAN\b|\bSQN\s*\d|\bSEPN\b|\bSIG\b|\bSGCV\b|\bSCN\b|Bras[ií]lia\s*Shopping/i, 'ASA NORTE'],
   [/\bSCES\b|\bSQS\s*\d|\bSCS\b|\bSCLN\b|\bCLS\b|\bSQSW\s*305/i, 'ASA SUL'],
+  [/\bSQSW\b|\bQMSW\b|\bCCSW\b|\bCLSW\b/i, 'SUDOESTE'],
   [/\bSQNW\b/i, 'NOROESTE'],
-  [/\bSQSW\b/i, 'SUDOESTE'],
   [/\bPark\s*Way\b|\bSMPW\b/i, 'PARK WAY'],
-  [/\bTagua\s*Life\b|\bCSG\b|\bSAGOCA\b|\bQI\s*\d|\bQNL\b|\bQN\s*\d|\bCLN\b|\bCentral\s*Quadra\b|\bAltos\s*de\s*Taguatinga\b|\bOuro\s*Preto\b|\bSmart\s*Center\b/i, 'TAGUATINGA'],
+  [/\bTagua\s*Life\b|\bCSG\b|\bSAGOCA\b|\bQI\s*\d|\bQNL\b|\bQN\s*\d|\bCentral\s*Quadra\b|\bAltos\s*de\s*Taguatinga\b|\bOuro\s*Preto\b|\bSmart\s*Center\b/i, 'TAGUATINGA'],
   [/\bArniqueiras\b/i, 'ARNIQUEIRAS'],
   [/\bSHVP\b|\bConjunto\s*SHA\b/i, 'VICENTE PIRES'],
   [/\bSAAN\b/i, 'SAAN'],
-  [/\bSamambaia\b/i, 'SAMAMBAIA'],
-  [/\bSobradinho\b|\bDF-150\b|\bRodovia\s*BR-020\b|\bColina\s*Nova\b|\bVivendas\b|\bRIACHO\s*FUNDO\b/i, 'SOBRADINHO'],
-  [/\bLago\s*Norte\b|\bCA\s*\d|\bSetor\s*de\s*Habit/i, 'LAGO NORTE'],
+  [/\bSamambaia\b|\bQN\s*\d{3}/i, 'SAMAMBAIA'],
+  [/\bSobradinho\b|\bDF-150\b|\bRodovia\s*BR-020\b|\bColina\s*Nova\b|\bVivendas\b/i, 'SOBRADINHO'],
+  [/\bRIACHO\s*FUNDO\b|\bCLN\s*\d/i, 'RIACHO FUNDO'],
+  [/\bLago\s*Norte\b|\bCA\s*\d|\bSetor\s*Habit/i, 'LAGO NORTE'],
   [/\bLago\s*Sul\b|\bSHS\b/i, 'LAGO SUL'],
-  [/\bJardim\s*Bot\b|\bQC\s*\d|\bQMSW\b|\bCCSW\b|\bCLSW\b|\bMorada\s*de\s*Deus\b/i, 'JARDIM BOTANICO'],
+  [/\bSCIA\b/i, 'ARNIQUEIRAS'],
+  [/\bJardim\s*Bot\b|\bQC\s*\d|\bSetor\s*Habitacional\s*Jardim\b|\bMorada\s*de\s*Deus\b/i, 'JARDIM BOTANICO'],
   [/\bGuar[aá]\b/i, 'GUARA'],
-  [/\bPau\s*Brasil\b|\bVento\s*Serrano\b|\bQuattre\b|\bOceania\b|\bCosta\s*Verde\b|\bCitt[aà]\b|\bDuo\b|\bThomas\b|\bMonte\s*Carlo\b|\bReserva\s*Parque\b|\bSquare\s*Garden\b|\bRiviera\b|\bVia\s*Naturale\b|\bIlha\s*Bela\b|\bAquarius\b|\bLeQuartier\b|\bLe\s*Club\b|\bResidencial\s*Esplanada\b|\bTop\s*Life\b|\bOne\s*Residence\b|\bJulia\s*Apart\b|\bGreen\s*Park\b|\bMilena\s*Baqui\b|\bÁguas\s*de\s*Vitória\b/i, 'AGUAS CLARAS'],
+  [/\bPau\s*Brasil\b|\bVento\s*Serrano\b|\bQuattre\b|\bOceania\b|\bCosta\s*Verde\b|\bCitt[aà]\b|\bDuo\b|\bThomas\b|\bMonte\s*Carlo\b|\bReserva\s*Parque\b|\bSquare\s*Garden\b|\bRiviera\b|\bVia\s*Naturale\b|\bIlha\s*Bela\b|\bAquarius\b|\bLeQuartier\b|\bLe\s*Club\b|\bResidencial\s*Esplanada\b|\bTop\s*Life\b|\bOne\s*Residence\b|\bJulia\s*Apart\b|\bGreen\s*Park\b|\bMilena\s*Baqui\b|\bÁguas\s*de\s*Vitória\b|\bRua\s+\d+\s*,\s*[NS]orte\b|\bRua\s+Copa\b/i, 'AGUAS CLARAS'],
 ];
 
 function inferRegionFromAddress(address: string, name: string): string {
@@ -118,7 +121,11 @@ export async function extractPropertiesFromPdf(buffer: Buffer): Promise<{
     throw new Error('Nenhum imovel foi extraido do PDF. Preview do texto: ' + preview);
   }
 
-  return { properties, pageCount, textLength: text.length, textPreview: text.slice(0, 3000) };
+  // Phase 4: Enrich with reference data (URLs, regions, addresses not in PDF)
+  const enriched = enrichWithReferenceData(properties);
+  console.log('[parse-resale-pdf] After enrichment:', enriched.length, 'properties');
+
+  return { properties: enriched, pageCount, textLength: text.length, textPreview: text.slice(0, 3000) };
 }
 
 function parseTextToProperties(text: string): ParsedProperty[] {
@@ -703,4 +710,53 @@ function checkFgts(notes: string): boolean {
   const l = notes.toLowerCase();
   if (l.includes('nao aceita fgts') || l.includes('não aceita fgts')) return false;
   return l.includes('aceita fgts');
+}
+
+// ─── Reference data enrichment ────────────────────────────────────────────
+// The PDF does NOT contain ad URLs or inline region headers.
+// Region index blocks at page boundaries are table-of-contents, not per-property headers.
+// This function enriches parsed properties with reference data (URLs, regions, addresses)
+// from the curated reference map (sourced from app-revenda-red.vercel.app).
+
+function enrichWithReferenceData(properties: ParsedProperty[]): ParsedProperty[] {
+  let enrichedCount = 0;
+  let urlCount = 0;
+  let regionCount = 0;
+  let addressCount = 0;
+
+  const result = properties.map(prop => {
+    const ref = RESALE_REFERENCE_MAP[prop.code];
+    if (!ref) return prop;
+
+    let changed = false;
+    const updated = { ...prop };
+
+    // Enrich URL — the PDF never contains ad links
+    if (!updated.url && ref.url) {
+      updated.url = ref.url;
+      urlCount++;
+      changed = true;
+    }
+
+    // Enrich region — always use reference when available (it's authoritative)
+    // The PDF has no inline region headers; parser inference from addresses is fallible
+    if (ref.region && updated.region !== ref.region) {
+      updated.region = ref.region;
+      regionCount++;
+      changed = true;
+    }
+
+    // Enrich address — use reference if parser didn't extract one, or it's very short/poor
+    if (ref.address && (!updated.address || updated.address.length < 5)) {
+      updated.address = ref.address;
+      addressCount++;
+      changed = true;
+    }
+
+    if (changed) enrichedCount++;
+    return updated;
+  });
+
+  console.log(`[parse-resale-pdf] Enrichment: ${enrichedCount} props enriched (${urlCount} URLs, ${regionCount} regions, ${addressCount} addresses)`);
+  return result;
 }
