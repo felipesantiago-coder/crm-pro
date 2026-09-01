@@ -32,6 +32,7 @@ export async function extractPropertiesFromPdf(buffer: Buffer): Promise<{
   properties: ParsedProperty[];
   pageCount: number;
   textLength: number;
+  textPreview: string;
 }> {
   if (buffer[0] !== 0x25 || buffer[1] !== 0x50 || buffer[2] !== 0x44 || buffer[3] !== 0x46) {
     throw new Error('Arquivo invalido: nao e um PDF valido');
@@ -64,7 +65,7 @@ export async function extractPropertiesFromPdf(buffer: Buffer): Promise<{
     throw new Error('Nenhum imovel foi extraido do PDF. Preview do texto: ' + preview);
   }
 
-  return { properties, pageCount, textLength: text.length };
+  return { properties, pageCount, textLength: text.length, textPreview: text.slice(0, 3000) };
 }
 
 function parseTextToProperties(text: string): ParsedProperty[] {

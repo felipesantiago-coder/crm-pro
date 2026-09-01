@@ -71,7 +71,9 @@ export async function POST(req: NextRequest) {
       const result = await extractPropertiesFromPdf(buffer);
       properties = result.properties;
       pageCount = result.pageCount;
+      const textPreview = result.textPreview || '';
       console.log('[resale-import] Extracted', properties.length, 'properties from', pageCount, 'pages');
+      console.log('[resale-import] Text preview:', textPreview.slice(0, 1000));
     } catch (extractErr) {
       console.error('[resale-import] PDF extraction failed:', extractErr);
       const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
@@ -140,6 +142,7 @@ export async function POST(req: NextRequest) {
       enterpriseId,
       enterpriseName,
       isNew,
+      textPreview,
     });
   } catch (error) {
     console.error('[resale-import] UNHANDLED:', error);

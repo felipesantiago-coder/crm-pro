@@ -29,6 +29,7 @@ interface ImportResult {
   enterpriseId: string;
   enterpriseName: string;
   isNew: boolean;
+  textPreview?: string;
 }
 
 type Step = 'upload' | 'result';
@@ -265,6 +266,16 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
                     ))}
                   </div>
                 </div>
+              )}
+
+              {/* Text preview for debugging */}
+              {result.textPreview && (
+                <details className="rounded-lg border border-slate-200 dark:border-slate-700">
+                  <summary className="px-3 py-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
+                    Texto extraido do PDF (debug)
+                  </summary>
+                  <pre className="px-3 pb-3 text-[10px] text-slate-600 dark:text-slate-400 whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto">{result.textPreview}</pre>
+                </details>
               )}
             </div>
 
