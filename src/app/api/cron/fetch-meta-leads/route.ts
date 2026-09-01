@@ -177,7 +177,19 @@ async function importSingleLead(lead: MetaLead, creatorId: string): Promise<{ le
     try {
       const u = await db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } });
       if (u?.telegramChatId) {
-        await notifyNewLead(u.telegramChatId, { leadName: newClient.name, leadPhone: newClient.phone || '', leadEmail: newClient.email || '', enterpriseName: undefined, utmCampaign: campaignName || null, utmSource: 'meta_ads', slug: undefined, assignedUserName, customAnswers });
+        // Try to find enterprise by ad name (adName usually matches enterprise name, e.g. "Vitta")
+        let entName: string | undefined;
+        let entImageUrl: string | undefined;
+        if (adName && adName !== 'Meta Ads') {
+          try {
+            const ent = await db.enterprise.findFirst({
+              where: { name: { contains: adName, mode: 'insensitive' } },
+              select: { name: true, imageUrl: true },
+            });
+            if (ent) { entName = ent.name; entImageUrl = ent.imageUrl || undefined; }
+          } catch {}
+        }
+        await notifyNewLead(u.telegramChatId, { leadName: newClient.name, leadPhone: newClient.phone || '', leadEmail: newClient.email || '', enterpriseName: entName, enterpriseImageUrl: entImageUrl, utmCampaign: campaignName || null, utmSource: 'meta_ads', slug: undefined, assignedUserName, customAnswers });
       }
     } catch (e) { console.warn('[Meta Polling] Falha notificação agente:', e); }
   }

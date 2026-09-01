@@ -26,7 +26,51 @@ interface TelegramMessageResponse {
   description?: string;
 }
 
-// ── Core send function ───────────────────────────────────────
+// ── Core send functions ──────────────────────────────────────
+
+/**
+ * Sends a photo with caption via Telegram's sendPhoto API.
+ * Falls back to sendMessage if the photo URL is invalid or the request fails.
+ */
+async function sendTelegramPhoto(
+  chatId: string,
+  photoUrl: string,
+  caption: string,
+): Promise<boolean> {
+  if (!BOT_TOKEN || !chatId) return false;
+
+  const finalCaption = caption.length > 1024
+    ? caption.slice(0, 1000) + '...'
+    : caption;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const res = await fetch(`${TELEGRAM_API}/sendPhoto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        chat_id: chatId,
+        photo: photoUrl,
+        caption: finalCaption,
+        parse_mode: 'HTML',
+      }),
+    });
+
+    clearTimeout(timeoutId);
+    const data = await res.json();
+    if (data.ok) return true;
+
+    // Fallback to text message if sendPhoto fails
+    console.warn(`[Telegram] sendPhoto failed (chatId=${chatId}): ${data.description} — falling back to sendMessage`);
+    return sendTelegramMessage(chatId, caption);
+  } catch (error) {
+    console.warn('[Telegram] sendPhoto error, falling back to sendMessage:', error);
+    return sendTelegramMessage(chatId, caption);
+  }
+}
 
 async function sendTelegramMessage(
   chatId: string,
@@ -92,6 +136,7 @@ export interface LeadNotificationData {
   leadPhone: string;
   leadEmail: string;
   enterpriseName?: string | null;
+  enterpriseImageUrl?: string | null;
   utmCampaign?: string | null;
   utmSource?: string | null;
   slug?: string;
@@ -139,6 +184,7 @@ export async function notifyNewLead(
     }
   }
 
+  // Build caption text
   const text =
     `🚨 <b>Novo Lead Recebido!</b>${assignedLine}\n\n` +
     `👤 <b>Nome:</b> ${escapeHtml(data.leadName)}\n` +
@@ -149,6 +195,11 @@ export async function notifyNewLead(
     campaignLine +
     answersBlock +
     `\n\n⏰ ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`;
+
+  // If enterprise image is available, send as photo with caption
+  if (data.enterpriseImageUrl) {
+    return sendTelegramPhoto(telegramChatId, data.enterpriseImageUrl, text);
+  }
 
   return sendTelegramMessage(telegramChatId, text);
 }

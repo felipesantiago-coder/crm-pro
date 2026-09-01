@@ -141,6 +141,20 @@ async function findExistingClient(phone: string | null, email: string | null) {
   });
 }
 
+/**
+ * Tenta encontrar o empreendimento associado ao anúncio pelo nome.
+ * O adName do Meta geralmente coincide com o nome do empreendimento (ex: "Vitta").
+ */
+async function findEnterpriseByAdName(adName: string): Promise<{ name: string; imageUrl: string | null } | null> {
+  if (!adName || adName === 'Anúncio Meta Ads') return null;
+  try {
+    return await db.enterprise.findFirst({
+      where: { name: { contains: adName, mode: 'insensitive' } },
+      select: { name: true, imageUrl: true },
+    });
+  } catch { return null; }
+}
+
 // ============================================================
 // GET — Verificação do Webhook (hub.challenge)
 // O Meta envia esta requisição quando você configura o webhook
@@ -474,12 +488,14 @@ export async function POST(request: NextRequest) {
               try {
                 const agentUser = await db.user.findUnique({ where: { id: assignResult.userId }, select: { telegramChatId: true, name: true } });
                 if (agentUser?.telegramChatId) {
+                  const ent = await findEnterpriseByAdName(adName);
                   console.log(`[Meta Webhook][${reqId}] Enviando notificação Telegram para agente "${agentUser.name}" (lead existente ${existing.id})`);
                   await notifyNewLead(agentUser.telegramChatId, {
                     leadName: existing.name,
                     leadPhone: phone || existing.phone || '',
                     leadEmail: email || existing.email || '',
-                    enterpriseName: undefined,
+                    enterpriseName: ent?.name,
+                    enterpriseImageUrl: ent?.imageUrl || undefined,
                     utmCampaign: campaignName || null,
                     utmSource: 'meta_ads',
                     slug: undefined,
@@ -631,12 +647,14 @@ export async function POST(request: NextRequest) {
             try {
               const agentUser = await db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } });
               if (agentUser?.telegramChatId) {
+                const ent = await findEnterpriseByAdName(adName);
                 console.log(`[Meta Webhook][${reqId}] Enviando notificação Telegram para agente "${agentUser.name}" (client ${newClient.id})`);
                 await notifyNewLead(agentUser.telegramChatId, {
                   leadName: newClient.name,
                   leadPhone: newClient.phone || '',
                   leadEmail: newClient.email || '',
-                  enterpriseName: undefined,
+                  enterpriseName: ent?.name,
+                  enterpriseImageUrl: ent?.imageUrl || undefined,
                   utmCampaign: campaignName || null,
                   utmSource: 'meta_ads',
                   slug: undefined,
