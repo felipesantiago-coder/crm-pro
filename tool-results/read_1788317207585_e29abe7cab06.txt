@@ -1,0 +1,907 @@
+     1→'use client';
+     2→
+     3→import React, { useEffect, useState } from 'react';
+     4→import { Moon, Sun, CheckCircle2, Circle, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle, Bell, Smartphone, Check, RefreshCw, Plus, X, Clock, AlertTriangle } from 'lucide-react';
+     5→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+     6→import { Button } from '@/components/ui/button';
+     7→import { Input } from '@/components/ui/input';
+     8→import { Label } from '@/components/ui/label';
+     9→import { Switch } from '@/components/ui/switch';
+    10→import { Separator } from '@/components/ui/separator';
+    11→import { Badge } from '@/components/ui/badge';
+    12→import { useTheme } from 'next-themes';
+    13→import { useSession } from 'next-auth/react';
+    14→import { toast } from 'sonner';
+    15→
+    16→export function SettingsView() {
+    17→  const { theme, setTheme } = useTheme();
+    18→  const { data: session, update: updateSession } = useSession();
+    19→  const userRole = (session?.user as { role?: string })?.role;
+    20→  const isAdmin = userRole === 'ADMIN';
+    21→
+    22→  // Perfil do usuário
+    23→  const [userName, setUserName] = useState('');
+    24→  const [userEmail, setUserEmail] = useState('');
+    25→  const [userPhone, setUserPhone] = useState('');
+    26→  const [savingProfile, setSavingProfile] = useState(false);
+    27→
+    28→  // Google Calendar
+    29→  const [gcConnected, setGcConnected] = useState(false);
+    30→  const [gcLoading, setGcLoading] = useState(true);
+    31→  const [gcConnecting, setGcConnecting] = useState(false);
+    32→  const [gcDisconnecting, setGcDisconnecting] = useState(false);
+    33→
+    34→  // Notificações (Telegram)
+    35→  const [notifLoading, setNotifLoading] = useState(true);
+    36→  const [tgConfigured, setTgConfigured] = useState(false);
+    37→  const [tgConnected, setTgConnected] = useState(false);
+    38→  const [tgChatId, setTgChatId] = useState('');
+    39→  const [tgTesting, setTgTesting] = useState(false);
+    40→  const [tgSaving, setTgSaving] = useState(false);
+    41→
+    42→  // Polling automático Meta Leads
+    43→  const [pollLoading, setPollLoading] = useState(true);
+    44→  const [pollEnabled, setPollEnabled] = useState(false);
+    45→  const [pollFormIds, setPollFormIds] = useState<string[]>(['']);
+    46→  const [pollSavedEnabled, setPollSavedEnabled] = useState(false); // o que está no banco
+    47→  const [pollSaving, setPollSaving] = useState(false);
+    48→  const [pollTriggering, setPollTriggering] = useState(false);
+    49→  const [pollLastRun, setPollLastRun] = useState<string | null>(null);
+    50→  const [pollLastResult, setPollLastResult] = useState<any>(null);
+    51→
+    52→  useEffect(() => {
+    53→    // Verificar status da conexão Google Calendar
+    54→    fetch('/api/google-calendar/status')
+    55→      .then((r) => r.json())
+    56→      .then((data) => setGcConnected(data.connected === true))
+    57→      .catch(() => {})
+    58→      .finally(() => setGcLoading(false));
+    59→
+    60→    // Verificar status das notificações (Telegram)
+    61→    fetch('/api/settings/telegram')
+    62→      .then((r) => r.json())
+    63→      .then((tgData) => {
+    64→        setTgConfigured(tgData.botConfigured === true);
+    65→        setTgConnected(tgData.configured === true);
+    66→        setTgChatId(tgData.telegramChatId || '');
+    67→      })
+    68→      .catch(() => {})
+    69→      .finally(() => setNotifLoading(false));
+    70→
+    71→    // Carregar configuração do polling Meta Leads (admin only)
+    72→    if (isAdmin) {
+    73→      fetch('/api/cron/fetch-meta-leads/config')
+    74→        .then((r) => {
+    75→          if (r.status === 403) return null;
+    76→          return r.json();
+    77→        })
+    78→        .then((data) => {
+    79→          if (data) {
+    80→            setPollEnabled(data.enabled === true);
+    81→            setPollSavedEnabled(data.enabled === true);
+    82→            setPollFormIds(data.formIds?.length ? data.formIds : ['']);
+    83→            setPollLastRun(data.lastRun || null);
+    84→            setPollLastResult(data.lastResult || null);
+    85→          }
+    86→        })
+    87→        .catch(() => {})
+    88→        .finally(() => setPollLoading(false));
+    89→    } else {
+    90→      setPollLoading(false);
+    91→    }
+    92→
+    93→    // Verificar feedback de conexão via URL params
+    94→    const params = new URLSearchParams(window.location.search);
+    95→    if (params.get('google_calendar') === 'connected') {
+    96→ setGcConnected(true);
+    97→      toast.success('Google Calendar conectado com sucesso!');
+    98→      window.history.replaceState({}, '', window.location.pathname);
+    99→    }
+   100→    if (params.get('google_calendar_error')) {
+   101→      const errorMsg = params.get('google_calendar_error');
+   102→      toast.error(`Erro ao conectar Google Calendar: ${errorMsg}`);
+   103→      window.history.replaceState({}, '', window.location.pathname);
+   104→    }
+   105→  }, []);
+   106→
+   107→  useEffect(() => {
+   108→    // Carregar perfil do usuário logado
+   109→    if (session?.user) {
+   110→      setUserName(session.user.name || '');
+   111→      setUserEmail(session.user.email || '');
+   112→      // Carregar phone da API (não fica na sessão)
+   113→      fetch('/api/profile')
+   114→        .then((r) => r.json())
+   115→        .then((data) => { if (data.phone) setUserPhone(data.phone); })
+   116→        .catch(() => {});
+   117→    }
+   118→  }, [session]);
+   119→
+   120→  // Salvar perfil do usuário
+   121→  async function saveProfile() {
+   122→    if (!userName.trim()) {
+   123→      toast.error('Nome é obrigatório');
+   124→      return;
+   125→    }
+   126→
+   127→    setSavingProfile(true);
+   128→    try {
+   129→      const res = await fetch('/api/profile', {
+   130→        method: 'PUT',
+   131→        headers: { 'Content-Type': 'application/json' },
+   132→        body: JSON.stringify({ name: userName.trim(), phone: userPhone }),
+   133→      });
+   134→
+   135→      if (res.ok) {
+   136→        toast.success('Perfil atualizado com sucesso!');
+   137→        // Atualizar a sessão para refletir o novo nome na sidebar
+   138→        await updateSession({ name: userName.trim() });
+   139→      } else {
+   140→        const data = await res.json();
+   141→        throw new Error(data.error || 'Erro ao salvar');
+   142→      }
+   143→    } catch {
+   144→      toast.error('Erro ao atualizar perfil');
+   145→    } finally {
+   146→      setSavingProfile(false);
+   147→    }
+   148→  }
+   149→
+   150→  function copyToClipboard(text: string, label: string) {
+   151→    navigator.clipboard.writeText(text);
+   152→    toast.success(`${label} copiado!`);
+   153→  }
+   154→
+   155→  async function connectGoogleCalendar() {
+   156→    setGcConnecting(true);
+   157→    try {
+   158→      window.location.href = '/api/google-calendar/auth';
+   159→    } catch {
+   160→      toast.error('Erro ao iniciar conexão com Google Calendar');
+   161→      setGcConnecting(false);
+   162→    }
+   163→  }
+   164→
+   165→  async function disconnectGoogleCalendar() {
+   166→    setGcDisconnecting(true);
+   167→    try {
+   168→      const res = await fetch('/api/google-calendar/disconnect', { method: 'POST' });
+   169→      if (res.ok) {
+   170→        setGcConnected(false);
+   171→        toast.success('Google Calendar desconectado');
+   172→      } else {
+   173→        throw new Error();
+   174→      }
+   175→    } catch {
+   176→      toast.error('Erro ao desconectar Google Calendar');
+   177→    } finally {
+   178→      setGcDisconnecting(false);
+   179→    }
+   180→  }
+   181→
+   182→  async function saveTelegramChatId() {
+   183→    if (!tgChatId.trim()) {
+   184→      toast.error('Insira o Chat ID');
+   185→      return;
+   186→    }
+   187→    setTgSaving(true);
+   188→    try {
+   189→      const res = await fetch('/api/settings/telegram', {
+   190→        method: 'PUT',
+   191→        headers: { 'Content-Type': 'application/json' },
+   192→        body: JSON.stringify({ action: 'connect', chatId: tgChatId.trim() }),
+   193→      });
+   194→      const data = await res.json();
+   195→      if (res.ok) {
+   196→        setTgConnected(true);
+   197→        toast.success('Telegram vinculado com sucesso!');
+   198→      } else {
+   199→        toast.error(data.error || 'Erro ao vincular Telegram');
+   200→      }
+   201→    } catch {
+   202→      toast.error('Erro ao vincular Telegram');
+   203→    } finally {
+   204→      setTgSaving(false);
+   205→    }
+   206→  }
+   207→
+   208→  async function disconnectTelegram() {
+   209→    setTgSaving(true);
+   210→    try {
+   211→      const res = await fetch('/api/settings/telegram', {
+   212→        method: 'PUT',
+   213→        headers: { 'Content-Type': 'application/json' },
+   214→        body: JSON.stringify({ action: 'disconnect' }),
+   215→      });
+   216→      if (res.ok) {
+   217→        setTgConnected(false);
+   218→        setTgChatId('');
+   219→        toast.success('Notificações desativadas');
+   220→      }
+   221→    } catch {
+   222→      toast.error('Erro ao desvincular Telegram');
+   223→    } finally {
+   224→      setTgSaving(false);
+   225→    }
+   226→  }
+   227→
+   228→  async function testTelegram() {
+   229→    setTgTesting(true);
+   230→    try {
+   231→      const res = await fetch('/api/telegram/test', { method: 'POST' });
+   232→      const data = await res.json();
+   233→      if (res.ok) {
+   234→        toast.success(data.message || 'Notificação enviada!');
+   235→      } else {
+   236→        toast.error(data.error || 'Erro ao enviar teste');
+   237→      }
+   238→    } catch {
+   239→      toast.error('Erro ao enviar notificação de teste');
+   240→    } finally {
+   241→      setTgTesting(false);
+   242→    }
+   243→  }
+   244→
+   245→  // ── Polling Meta Leads ──
+   246→  const pollingEndpointUrl = (typeof window !== 'undefined' ? window.location.origin : '') + '/api/cron/fetch-meta-leads';
+   247→
+   248→  function addPollFormId() {
+   249→    setPollFormIds([...pollFormIds, '']);
+   250→  }
+   251→
+   252→  function removePollFormId(index: number) {
+   253→    setPollFormIds(pollFormIds.filter((_, i) => i !== index));
+   254→  }
+   255→
+   256→  function updatePollFormId(index: number, value: string) {
+   257→    const updated = [...pollFormIds];
+   258→    updated[index] = value.replace(/\D/g, ''); // apenas dígitos
+   259→    setPollFormIds(updated);
+   260→  }
+   261→
+   262→  async function savePollConfig() {
+   263→    setPollSaving(true);
+   264→    try {
+   265→      const validIds = pollFormIds.filter((id) => id.length > 0);
+   266→      const res = await fetch('/api/cron/fetch-meta-leads/config', {
+   267→        method: 'PUT',
+   268→        headers: { 'Content-Type': 'application/json' },
+   269→        body: JSON.stringify({ enabled: pollEnabled, formIds: validIds }),
+   270→      });
+   271→      const data = await res.json();
+   272→      if (res.ok) {
+   273→        toast.success(pollEnabled ? 'Polling ativado! Leads serão importados a cada 5 minutos.' : 'Polling desativado.');
+   274→        setPollFormIds(validIds.length ? validIds : ['']);
+   275→        setPollSavedEnabled(pollEnabled); // sincronizar estado salvo
+   276→      } else {
+   277→        toast.error(data.error || 'Erro ao salvar configuração');
+   278→      }
+   279→    } catch {
+   280→      toast.error('Erro ao salvar configuração do polling');
+   281→    } finally {
+   282→      setPollSaving(false);
+   283→    }
+   284→  }
+   285→
+   286→  async function triggerPollNow() {
+   287→    // Se há mudanças não salvas (enabled ou formIds divergem do banco), salvar primeiro
+   288→    const hasUnsaved = pollEnabled !== pollSavedEnabled;
+   289→    if (hasUnsaved) {
+   290→      toast.info('Salvando configuração antes de executar...');
+   291→      const validIds = pollFormIds.filter((id) => id.length > 0);
+   292→      try {
+   293→        const saveRes = await fetch('/api/cron/fetch-meta-leads/config', {
+   294→          method: 'PUT',
+   295→          headers: { 'Content-Type': 'application/json' },
+   296→          body: JSON.stringify({ enabled: pollEnabled, formIds: validIds }),
+   297→        });
+   298→        if (saveRes.ok) {
+   299→          setPollSavedEnabled(pollEnabled);
+   300→          setPollFormIds(validIds.length ? validIds : ['']);
+   301→        } else {
+   302→          const saveData = await saveRes.json();
+   303→          toast.error(`Erro ao salvar: ${saveData.error || 'desconhecido'}`);
+   304→          return;
+   305→        }
+   306→      } catch {
+   307→        toast.error('Erro ao salvar configuração');
+   308→        return;
+   309→      }
+   310→    }
+   311→
+   312→    setPollTriggering(true);
+   313→    try {
+   314→      const res = await fetch('/api/cron/fetch-meta-leads');
+   315→      const data = await res.json();
+   316→      if (res.status === 401) {
+   317→        toast.error('Sessão expirada. Faça login novamente.');
+   318→      } else if (res.ok) {
+   319→        if (data.status === 'disabled') {
+   320→          toast.warning('Polling está desativado. Ative primeiro e salve.');
+   321→        } else if (data.status === 'idle') {
+   322→          toast.info('Nenhum form ID configurado. Adicione ao menos um form ID.');
+   323→        } else {
+   324→          toast.success(`Polling executado: ${data.totalFetched} encontrados, ${data.totalImported} importados (${data.elapsed}).`);
+   325→          // Atualizar resultado exibido
+   326→          setPollLastResult(data);
+   327→          setPollLastRun(new Date().toISOString());
+   328→        }
+   329→      } else {
+   330→        toast.error(data.error || 'Erro ao executar polling');
+   331→      }
+   332→    } catch {
+   333→      toast.error('Erro ao executar polling manual');
+   334→    } finally {
+   335→      setPollTriggering(false);
+   336→    }
+   337→  }
+   338→
+   339→  return (
+   340→    <div className="space-y-6">
+   341→      <div>
+   342→        <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
+   343→        <p className="text-muted-foreground mt-1">
+   344→          {isAdmin ? 'Gerencie as configurações do sistema e seu perfil' : 'Gerencie seu perfil e preferências'}
+   345→        </p>
+   346→      </div>
+   347→
+   348→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   349→        {/* ==================== PERFIL DO USUÁRIO ==================== */}
+   350→        <Card className="hover:shadow-md transition-shadow duration-200">
+   351→          <CardHeader className="pb-3">
+   352→            <CardTitle className="text-base font-semibold flex items-center gap-2">
+   353→              <User className="h-4 w-4 text-emerald-500" />
+   354→              Meu Perfil
+   355→            </CardTitle>
+   356→            <CardDescription>
+   357→              Altere o nome exibido na barra lateral
+   358→            </CardDescription>
+   359→          </CardHeader>
+   360→          <CardContent className="space-y-4">
+   361→            <div className="space-y-2">
+   362→              <Label htmlFor="user-name">Nome</Label>
+   363→              <Input
+   364→                id="user-name"
+   365→                placeholder="Seu nome"
+   366→                value={userName}
+   367→                onChange={(e) => setUserName(e.target.value)}
+   368→              />
+   369→            </div>
+   370→            <div className="space-y-2">
+   371→              <Label htmlFor="user-email">Email</Label>
+   372→              <Input
+   373→                id="user-email"
+   374→                value={userEmail}
+   375→                disabled
+   376→                className="bg-muted/50"
+   377→              />
+   378→              <p className="text-xs text-muted-foreground">O email não pode ser alterado</p>
+   379→            </div>
+   380→            <div className="space-y-2">
+   381→              <Label htmlFor="user-phone" className="flex items-center gap-1.5">
+   382→                <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+   383→                Telefone
+   384→              </Label>
+   385→              <Input
+   386→                id="user-phone"
+   387→                placeholder="(11) 99999-9999"
+   388→                value={userPhone}
+   389→                onChange={(e) => setUserPhone(e.target.value)}
+   390→                maxLength={20}
+   391→              />
+   392→              <p className="text-xs text-muted-foreground">Seu número de contato para a equipe</p>
+   393→            </div>
+   394→            <Button onClick={saveProfile} disabled={savingProfile}>
+   395→              {savingProfile ? (
+   396→                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
+   397→              ) : (
+   398→                <><Save className="h-4 w-4 mr-2" /> Salvar Perfil</>
+   399→              )}
+   400→            </Button>
+   401→          </CardContent>
+   402→        </Card>
+   403→
+   404→        {/* ==================== TEMA ==================== */}
+   405→        <Card className="hover:shadow-md transition-shadow duration-200">
+   406→          <CardHeader className="pb-3">
+   407→            <CardTitle className="text-base font-semibold flex items-center gap-2">
+   408→              <Sun className="h-4 w-4 text-emerald-500" />
+   409→              Tema
+   410→            </CardTitle>
+   411→            <CardDescription>
+   412→              Escolha entre tema claro ou escuro
+   413→            </CardDescription>
+   414→          </CardHeader>
+   415→          <CardContent className="space-y-4">
+   416→            <div className="flex items-center gap-3">
+   417→              <Button
+   418→                variant={theme === 'light' ? 'default' : 'outline'}
+   419→                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+   420→                onClick={() => setTheme('light')}
+   421→              >
+   422→                <Sun className="h-4 w-4 mr-2" />
+   423→                Claro
+   424→              </Button>
+   425→              <Button
+   426→                variant={theme === 'dark' ? 'default' : 'outline'}
+   427→                className="flex-1"
+   428→                onClick={() => setTheme('dark')}
+   429→              >
+   430→                <Moon className="h-4 w-4 mr-2" />
+   431→                Escuro
+   432→              </Button>
+   433→            </div>
+   434→            <div className="flex items-center gap-3">
+   435→              <Switch
+   436→                id="system-theme"
+   437→                checked={theme === 'system'}
+   438→                onCheckedChange={(checked) => setTheme(checked ? 'system' : 'light')}
+   439→              />
+   440→              <Label htmlFor="system-theme" className="text-sm cursor-pointer">
+   441→                Usar tema do sistema
+   442→              </Label>
+   443→            </div>
+   444→          </CardContent>
+   445→        </Card>
+   446→
+   447→        {/* ==================== GOOGLE CALENDAR ==================== */}
+   448→        <Card className={`hover:shadow-md transition-shadow duration-200 ${
+   449→          gcConnected
+   450→            ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-950/20'
+   451→            : ''
+   452→        }`}>
+   453→          <CardHeader className="pb-3">
+   454→            <CardTitle className="text-base font-semibold flex items-center gap-2">
+   455→              <CalendarDays className="h-4 w-4 text-emerald-500" />
+   456→              Google Calendar
+   457→            </CardTitle>
+   458→            <CardDescription>
+   459→              Sincronize agendamentos de visita com seu Google Calendar
+   460→            </CardDescription>
+   461→          </CardHeader>
+   462→          <CardContent className="space-y-4">
+   463→            {gcLoading ? (
+   464→              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+   465→                <Loader2 className="h-4 w-4 animate-spin" />
+   466→                Verificando conexão...
+   467→              </div>
+   468→            ) : gcConnected ? (
+   469→              <>
+   470→                <div className="flex items-center gap-3">
+   471→                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1">
+   472→                    <Link2 className="h-3 w-3" />
+   473→                    Conectado
+   474→                  </Badge>
+   475→                </div>
+   476→                <div className="space-y-2">
+   477→                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   478→                    Funcionalidades ativas
+   479→                  </h4>
+   480→                  <ul className="text-xs text-muted-foreground space-y-2">
+   481→                    <li className="flex items-start gap-2">
+   482→                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   483→                      <span><strong>Criação automática</strong> — Novos agendamentos criam eventos no seu Calendar</span>
+   484→                    </li>
+   485→                    <li className="flex items-start gap-2">
+   486→                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   487→                      <span><strong>Lembretes duplos</strong> — Notificação 24 horas e 2 horas antes (popup + e-mail)</span>
+   488→                    </li>
+   489→                    <li className="flex items-start gap-2">
+   490→                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   491→                      <span><strong>Atualização de status</strong> — Cancelar ou concluir visita atualiza o evento no Calendar</span>
+   492→                    </li>
+   493→                    <li className="flex items-start gap-2">
+   494→                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   495→                      <span><strong>Exclusão sincronizada</strong> — Excluir agendamento remove o evento do Calendar</span>
+   496→                    </li>
+   497→                  </ul>
+   498→                </div>
+   499→                <Separator />
+   500→                <Button
+   501→                  variant="outline"
+   502→                  size="sm"
+   503→                  onClick={disconnectGoogleCalendar}
+   504→                  disabled={gcDisconnecting}
+   505→                  className="text-destructive hover:text-destructive"
+   506→                >
+   507→                  {gcDisconnecting ? (
+   508→                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Desconectando...</>
+   509→                  ) : (
+   510→                    <><Unlink className="h-4 w-4 mr-2" /> Desconectar Google Calendar</>
+   511→                  )}
+   512→                </Button>
+   513→              </>
+   514→            ) : (
+   515→              <>
+   516→                <div className="flex items-center gap-3">
+   517→                  <Badge className="bg-muted text-muted-foreground gap-1">
+   518→                    <Unlink className="h-3 w-3" />
+   519→                    Não conectado
+   520→                  </Badge>
+   521→                </div>
+   522→                <p className="text-xs text-muted-foreground">
+   523→                  Conecte sua conta Google para que os agendamentos de visita sejam automaticamente
+   524→                  criados no seu Google Calendar com lembretes configurados.
+   525→                </p>
+   526→                <Button
+   527→                  onClick={connectGoogleCalendar}
+   528→                  disabled={gcConnecting}
+   529→                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   530→                >
+   531→                  {gcConnecting ? (
+   532→                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Conectando...</>
+   533→                  ) : (
+   534→                    <><Link2 className="h-4 w-4 mr-2" /> Conectar Google Calendar</>
+   535→                  )}
+   536→                </Button>
+   537→                {!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && (
+   538→                  <div className="p-3 rounded-lg bg-amber-100/50 dark:bg-amber-900/20">
+   539→                    <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+   540→                      As variáveis de ambiente do Google Calendar não estão configuradas.
+   541→                      Consulte o tutorial para configurar as credenciais OAuth 2.0.
+   542→                    </p>
+   543→                  </div>
+   544→                )}
+   545→              </>
+   546→            )}
+   547→          </CardContent>
+   548→        </Card>
+   549→
+   550→        {/* ==================== NOTIFICAÇÕES DE LEADS ==================== */}
+   551→        <Card className={`hover:shadow-md transition-shadow duration-200 col-span-1 lg:col-span-2 ${
+   552→          tgConnected
+   553→            ? 'border-blue-200 dark:border-blue-800/50 bg-blue-50/30 dark:bg-blue-950/10'
+   554→            : ''
+   555→        }`}>
+   556→          <CardHeader className="pb-3">
+   557→            <div className="flex items-center justify-between">
+   558→              <div>
+   559→                <CardTitle className="text-base font-semibold flex items-center gap-2">
+   560→                  <Bell className="h-4 w-4 text-orange-500" />
+   561→                  Notificações de Leads
+   562→                </CardTitle>
+   563→                <CardDescription className="mt-1">
+   564→                  Receba alertas instantâneos no Telegram quando novos leads chegarem
+   565→                </CardDescription>
+   566→              </div>
+   567→              {tgConnected && (
+   568→                <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 gap-1">
+   569→                  <CheckCircle2 className="h-3 w-3" />
+   570→                  Ativo
+   571→                </Badge>
+   572→              )}
+   573→            </div>
+   574→          </CardHeader>
+   575→          <CardContent className="space-y-5">
+   576→            {notifLoading ? (
+   577→              <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
+   578→                <Loader2 className="h-4 w-4 animate-spin" />
+   579→                Verificando...
+   580→              </div>
+   581→            ) : !tgConfigured ? (
+   582→              <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
+   583→                <div className="flex items-center gap-2 mb-2">
+   584→                  <div className="w-7 h-7 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
+   585→                    <Circle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+   586→                  </div>
+   587→                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Bot não configurado</p>
+   588→                </div>
+   589→                <p className="text-xs text-amber-600 dark:text-amber-400">
+   590→                  O bot do Telegram não está disponível no momento. Solicite ao administrador que configure o TELEGRAM_BOT_TOKEN.
+   591→                </p>
+   592→              </div>
+   593→            ) : tgConnected ? (
+   594→              <div className="space-y-5">
+   595→                <div className="flex items-center justify-between">
+   596→                  <div className="flex items-center gap-2">
+   597→                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+   598→                      <Check className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+   599→                    </div>
+   600→                    <div>
+   601→                      <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Telegram conectado</p>
+   602→                      <p className="text-[10px] text-muted-foreground">Chat ID: <code className="font-mono">{tgChatId}</code></p>
+   603→                    </div>
+   604→                  </div>
+   605→                  <div className="flex items-center gap-2">
+   606→                    <Button
+   607→                      variant="outline"
+   608→                      size="sm"
+   609→                      onClick={testTelegram}
+   610→                      disabled={tgTesting}
+   611→                      className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800/50 dark:hover:bg-blue-950/30"
+   612→                    >
+   613→                      {tgTesting ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Enviando...</> : <><Send className="h-4 w-4 mr-1.5" /> Testar</>}
+   614→                    </Button>
+   615→                    <Button
+   616→                      variant="outline"
+   617→                      size="sm"
+   618→                      onClick={disconnectTelegram}
+   619→                      disabled={tgSaving}
+   620→                      className="text-destructive hover:text-destructive"
+   621→                    >
+   622→                      {tgSaving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Desativando...</> : <><Unlink className="h-4 w-4 mr-1.5" /> Desativar</>}
+   623→                    </Button>
+   624→                  </div>
+   625→                </div>
+   626→                <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/20">
+   627→                  <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-3">O que voce recebera</p>
+   628→                  <div className="grid grid-cols-2 gap-2">
+   629→                    {['Nome e telefone do lead', 'E-mail do lead', 'Nome do empreendimento', 'Campanha Meta Ads', 'Respostas do formulario'].map((item) => (
+   630→                      <div key={item} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   631→                        <CheckCircle2 className="h-3 w-3 text-blue-500 flex-shrink-0" />
+   632→                        <span>{item}</span>
+   633→                      </div>
+   634→                    ))}
+   635→                  </div>
+   636→                </div>
+   637→              </div>
+   638→            ) : (
+   639→              <div className="space-y-4">
+   640→                <div className="space-y-2">
+   641→                  <Label htmlFor="tg-chat-id" className="text-sm font-medium">Seu Chat ID</Label>
+   642→                  <div className="flex gap-2">
+   643→                    <Input
+   644→                      id="tg-chat-id"
+   645→                      placeholder="Ex: 123456789"
+   646→                      value={tgChatId}
+   647→                      onChange={(e) => setTgChatId(e.target.value)}
+   648→                      className="font-mono text-sm"
+   649→                    />
+   650→                    <Button
+   651→                      onClick={saveTelegramChatId}
+   652→                      disabled={tgSaving || !tgChatId.trim()}
+   653→                      className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
+   654→                    >
+   655→                      {tgSaving ? <><Loader2 className="h-4 w-4 animate-spin" /></> : <><Link2 className="h-4 w-4 mr-1.5" /> Vincular</>}
+   656→                    </Button>
+   657→                  </div>
+   658→                </div>
+   659→                <Separator />
+   660→                <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
+   661→                  <p className="text-sm font-semibold mb-4 flex items-center gap-2">
+   662→                    <Smartphone className="h-4 w-4 text-blue-500" />
+   663→                    Passo a passo para configurar
+   664→                  </p>
+   665→                  <div className="space-y-4">
+   666→                    <div className="flex gap-3">
+   667→                      <div className="flex flex-col items-center">
+   668→                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">1</div>
+   669→                        <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
+   670→                      </div>
+   671→                      <div className="pb-4">
+   672→                        <p className="text-sm font-medium">Abra o Telegram e busque por <strong>@userinfobot</strong></p>
+   673→                        <p className="text-xs text-muted-foreground mt-0.5">Ele e um bot oficial que diz qual e o seu Chat ID</p>
+   674→                      </div>
+   675→                    </div>
+   676→                    <div className="flex gap-3">
+   677→                      <div className="flex flex-col items-center">
+   678→                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">2</div>
+   679→                        <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
+   680→                      </div>
+   681→                      <div className="pb-4">
+   682→                        <p className="text-sm font-medium">Envie qualquer mensagem para ele</p>
+   683→                        <p className="text-xs text-muted-foreground mt-0.5">Pode ser um “oi” — ele respondera automaticamente</p>
+   684→                      </div>
+   685→                    </div>
+   686→                    <div className="flex gap-3">
+   687→                      <div className="flex flex-col items-center">
+   688→                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">3</div>
+   689→                        <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
+   690→                      </div>
+   691→                      <div className="pb-4">
+   692→                        <p className="text-sm font-medium">Copie o <strong>Chat ID</strong> que ele respondeu</p>
+   693→                        <p className="text-xs text-muted-foreground mt-0.5">Sera um numero, por exemplo: <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-[11px]">7123456789</code></p>
+   694→                      </div>
+   695→                    </div>
+   696→                    <div className="flex gap-3">
+   697→                      <div className="flex flex-col items-center">
+   698→                        <div className="w-8 h-8 rounded-full bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+   699→                          <Check className="h-4 w-4" />
+   700→                        </div>
+   701→                      </div>
+   702→                      <div>
+   703→                        <p className="text-sm font-medium">Cole o numero acima e clique em <strong>Vincular</strong></p>
+   704→                        <p className="text-xs text-muted-foreground mt-0.5">Pronto! Voce recebera todas as notificacoes por aqui</p>
+   705→                      </div>
+   706→                    </div>
+   707→                  </div>
+   708→                </div>
+   709→              </div>
+   710→            )}
+   711→          </CardContent>
+   712→        </Card>
+   713→
+   714→        {/* ==================== POLLING AUTOMÁTICO META LEADS (Admin) ==================== */}
+   715→        {isAdmin && (
+   716→          <Card className={`hover:shadow-md transition-shadow duration-200 col-span-1 lg:col-span-2 ${
+   717→            pollEnabled
+   718→              ? 'border-violet-200 dark:border-violet-800/50 bg-violet-50/30 dark:bg-violet-950/10'
+   719→              : ''
+   720→          }`}>
+   721→            <CardHeader className="pb-3">
+   722→              <div className="flex items-center justify-between">
+   723→                <div>
+   724→                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+   725→                    <RefreshCw className={`h-4 w-4 ${pollEnabled ? 'text-violet-500 animate-spin' : 'text-muted-foreground'}`} style={pollEnabled ? { animationDuration: '3s' } : undefined} />
+   726→                    Importação Automática de Leads
+   727→                  </CardTitle>
+   728→                  <CardDescription className="mt-1">
+   729→                    Polling da Meta Graph API a cada 5 minutos como alternativa ao webhook
+   730→                  </CardDescription>
+   731→                </div>
+   732→                <div className="flex items-center gap-2">
+   733→                  {pollEnabled && (
+   734→                    <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 gap-1">
+   735→                      <CheckCircle2 className="h-3 w-3" />
+   736→                      Ativo
+   737→                    </Badge>
+   738→                  )}
+   739→                  <Switch
+   740→                    checked={pollEnabled}
+   741→                    onCheckedChange={setPollEnabled}
+   742→                    aria-label="Ativar polling automático"
+   743→                  />
+   744→                </div>
+   745→              </div>
+   746→            </CardHeader>
+   747→            <CardContent className="space-y-5">
+   748→              {pollLoading ? (
+   749→                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
+   750→                  <Loader2 className="h-4 w-4 animate-spin" />
+   751→                  Carregando configuração...
+   752→                </div>
+   753→              ) : (
+   754→                <>
+   755→                  {/* Explicação */}
+   756→                  <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
+   757→                    <p className="text-xs text-muted-foreground leading-relaxed">
+   758→                      Busca automaticamente novos leads nos formulários configurados via Meta Graph API.
+   759→                      Os leads são importados com o pipeline completo: criação de cliente, atribuição à fila e notificação Telegram.
+   760→                    </p>
+   761→                  </div>
+   762→
+   763→                  {/* Instruções cron-job.org */}
+   764→                  {pollEnabled && (
+   765→                    <div className="p-4 rounded-xl bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800/30 space-y-3">
+   766→                      <div className="flex items-center gap-1.5">
+   767→                        <Clock className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+   768→                        <span className="text-sm font-semibold text-violet-700 dark:text-violet-300">Configurar execução automática (a cada 5 min)</span>
+   769→                      </div>
+   770→                      <p className="text-xs text-muted-foreground leading-relaxed">
+   771→                        O plano Hobby da Vercel não permite cron com intervalo menor que 1 dia.
+   772→                        Use o <strong>cron-job.org</strong> (gratuito) para chamar o endpoint automaticamente:
+   773→                      </p>
+   774→                      <ol className="text-xs text-muted-foreground space-y-2 list-decimal list-inside">
+   775→                        <li>Acesse <strong>cron-job.org</strong> e crie uma conta gratuita</li>
+   776→                        <li>Clique em <strong>"Create cronjob"</strong></li>
+   777→                        <li>
+   778→                          No campo <strong>URL</strong>, cole:
+   779→                          <code
+   780→                            className="ml-1.5 bg-white dark:bg-zinc-800 px-2 py-0.5 rounded font-mono text-[10px] text-violet-600 dark:text-violet-400 select-all cursor-pointer"
+   781→                            onClick={() => copyToClipboard(pollingEndpointUrl + '?secret=SEU_CRON_SECRET', 'Endpoint URL')}
+   782→                            title="Clique para copiar"
+   783→                          >
+   784→                            {pollingEndpointUrl}<span className="text-amber-600 dark:text-amber-400">?secret=SEU_CRON_SECRET</span>
+   785→                          </code>
+   786→                        </li>
+   787→                        <li>Em <strong>Schedule</strong>, selecione <strong>"Every 5 minutes"</strong></li>
+   788→                        <li>Salve. O endpoint será chamado automaticamente a cada 5 minutos.</li>
+   789→                      </ol>
+   790→                      <p className="text-[10px] text-muted-foreground">
+   791→                        Substitua <code className="font-mono">SEU_CRON_SECRET</code> pelo valor da env var <code className="font-mono">CRON_SECRET</code> configurada na Vercel.
+   792→                        Ou use o botão "Executar Agora" abaixo (não precisa de CRON_SECRET, usa sua sessão).
+   793→                      </p>
+   794→                    </div>
+   795→                  )}
+   796→
+   797→                  {/* Form IDs */}
+   798→                  <div className="space-y-3">
+   799→                    <div className="flex items-center justify-between">
+   800→                      <Label className="text-sm font-medium">IDs dos Formulários Meta</Label>
+   801→                      <Button
+   802→                        variant="ghost"
+   803→                        size="sm"
+   804→                        onClick={addPollFormId}
+   805→                        className="text-violet-600 hover:text-violet-700 h-7 px-2"
+   806→                      >
+   807→                        <Plus className="h-3.5 w-3.5 mr-1" />
+   808→                        Adicionar
+   809→                      </Button>
+   810→                    </div>
+   811→                    <p className="text-xs text-muted-foreground">
+   812→                      Cole os Form IDs dos formulários de lead do Facebook. Encontre em Meta Business Suite &gt; Formulários de Leads &gt; Configurações.
+   813→                    </p>
+   814→                    <div className="space-y-2">
+   815→                      {pollFormIds.map((formId, index) => (
+   816→                        <div key={index} className="flex gap-2 items-center">
+   817→                          <Input
+   818→                            placeholder="Ex: 123456789012345"
+   819→                            value={formId}
+   820→                            onChange={(e) => updatePollFormId(index, e.target.value)}
+   821→                            className="font-mono text-sm"
+   822→                            disabled={pollSaving}
+   823→                            inputMode="numeric"
+   824→                            maxLength={30}
+   825→                          />
+   826→                          {pollFormIds.length > 1 && (
+   827→                            <Button
+   828→                              variant="ghost"
+   829→                              size="icon"
+   830→                              onClick={() => removePollFormId(index)}
+   831→                              disabled={pollSaving}
+   832→                              className="text-destructive hover:text-destructive h-9 w-9 flex-shrink-0"
+   833→                            >
+   834→                              <X className="h-4 w-4" />
+   835→                            </Button>
+   836→                          )}
+   837→                        </div>
+   838→                      ))}
+   839→                    </div>
+   840→                  </div>
+   841→
+   842→                  {/* Última execução */}
+   843→                  {pollLastRun && (
+   844→                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   845→                      <Clock className="h-3.5 w-3.5" />
+   846→                      Última execução: {new Date(pollLastRun).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+   847→                      {pollLastResult && (
+   848→                        <span className="ml-2">
+   849→                          ({pollLastResult.totalFetched ?? 0} encontrados, {pollLastResult.totalImported ?? 0} importados{pollLastResult.errorCount ? `, ${pollLastResult.errorCount} erros` : ''}, {pollLastResult.elapsed ?? '?'})
+   850→                        </span>
+   851→                      )}
+   852→                    </div>
+   853→                  )}
+   854→
+   855→                  {/* Erros na última execução */}
+   856→                  {(pollLastResult?.errorCount ?? 0) > 0 && (
+   857→                    <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
+   858→                      <div className="flex items-center gap-1.5">
+   859→                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+   860→                        <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+   861→                          {pollLastResult.errorCount} erro{(pollLastResult.errorCount ?? 0) > 1 ? 's' : ''} na última execução
+   862→                        </span>
+   863→                      </div>
+   864→                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+   865→                        Verifique os logs do servidor (Vercel Dashboard &gt; Logs) para detalhes.
+   866→                      </p>
+   867→                    </div>
+   868→                  )}
+   869→
+   870→                  <Separator />
+   871→
+   872→                  {/* Ações */}
+   873→                  <div className="flex items-center gap-3">
+   874→                    <Button
+   875→                      onClick={savePollConfig}
+   876→                      disabled={pollSaving}
+   877→                      className="bg-violet-600 hover:bg-violet-700 text-white"
+   878→                    >
+   879→                      {pollSaving ? (
+   880→                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
+   881→                      ) : (
+   882→                        <><Save className="h-4 w-4 mr-2" /> Salvar Configuração</>
+   883→                      )}
+   884→                    </Button>
+   885→                    <Button
+   886→                      variant="outline"
+   887→                      onClick={triggerPollNow}
+   888→                      disabled={pollTriggering || !pollEnabled}
+   889→                    >
+   890→                      {pollTriggering ? (
+   891→                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Executando...</>
+   892→                      ) : (
+   893→                        <><RefreshCw className="h-4 w-4 mr-2" /> Executar Agora</>
+   894→                      )}
+   895→                    </Button>
+   896→                  </div>
+   897→                </>
+   898→              )}
+   899→            </CardContent>
+   900→          </Card>
+   901→        )}
+   902→
+   903→      </div>
+   904→    </div>
+   905→  );
+   906→}
+   907→

@@ -1,0 +1,2002 @@
+     1→'use client';
+     2→
+     3→import React, { useEffect, useState, useCallback } from 'react';
+     4→import {
+     5→  Megaphone, Eye, EyeOff, RefreshCw, Zap, CheckCircle2, Circle,
+     6→  Copy, ExternalLink, Loader2, Save, Users, TrendingUp, Target,
+     7→  ArrowUpRight, ArrowDownRight, Search, BarChart3,
+     8→  ChevronDown, ChevronUp, Phone, Mail, MapPin, Calendar,
+     9→  AlertTriangle, Download, ChevronLeft, ChevronRight,
+    10→  UserPlus, Activity, PieChart, Crosshair, Globe, UsersRound,
+    11→  HeartHandshake, Building2,
+    12→} from 'lucide-react';
+    13→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    14→import { Button } from '@/components/ui/button';
+    15→import { Input } from '@/components/ui/input';
+    16→import { Label } from '@/components/ui/label';
+    17→import { Switch } from '@/components/ui/switch';
+    18→import { Separator } from '@/components/ui/separator';
+    19→import { Badge } from '@/components/ui/badge';
+    20→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    21→import {
+    22→  Select,
+    23→  SelectContent,
+    24→  SelectItem,
+    25→  SelectTrigger,
+    26→  SelectValue,
+    27→} from '@/components/ui/select';
+    28→import { toast } from 'sonner';
+    29→import { format, parseISO } from 'date-fns';
+    30→import { TrackingTab } from './tracking-tab';
+    31→import { LandingPagesTab } from './landing-pages-tab';
+    32→import { QueuesTab } from './queues-tab';
+    33→import { LostLeadsTab } from './lost-leads-view';
+    34→import { ptBR } from 'date-fns/locale';
+    35→
+    36→// ============================================================
+    37→// Types
+    38→// ============================================================
+    39→interface Metrics {
+    40→  totalLeads: number;
+    41→  periodLeads: number;
+    42→  convertedLeads: number;
+    43→  conversionRate: number;
+    44→  byStage: Record<string, number>;
+    45→}
+    46→
+    47→interface LeadItem {
+    48→  id: string;
+    49→  name: string | null;
+    50→  phone: string | null;
+    51→  email: string | null;
+    52→  region: string | null;
+    53→  stage: string | null;
+    54→  notes: string | null;
+    55→  createdAt: string;
+    56→  lastInteractionAt: string | null;
+    57→  enterprise: string | null;
+    58→  adName: string | null;
+    59→  campaignName: string | null;
+    60→  formName: string | null;
+    61→  leadId: string | null;
+    62→  leadSource: 'meta_webhook' | 'landing_form' | 'whatsapp_click';
+    63→  slug: string | null;
+    64→  whatsappSource: string | null;
+    65→  _count: { interactions: number };
+    66→}
+    67→
+    68→interface SourceCounts {
+    69→  meta_webhook: number;
+    70→  landing_form: number;
+    71→  whatsapp_click: number;
+    72→}
+    73→
+    74→interface ChartPoint {
+    75→  date: string;
+    76→  count: number;
+    77→}
+    78→
+    79→interface CampaignStat {
+    80→  name: string;
+    81→  count: number;
+    82→}
+    83→
+    84→interface RegionStat {
+    85→  region: string;
+    86→  count: number;
+    87→}
+    88→
+    89→// ============================================================
+    90→// Stage config
+    91→// ============================================================
+    92→const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+    93→  LEAD: { label: 'Lead', color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900/30' },
+    94→  PROSPECT: { label: 'Prospect', color: 'text-cyan-700 dark:text-cyan-400', bg: 'bg-cyan-100 dark:bg-cyan-900/30' },
+    95→  VISITA: { label: 'Visita', color: 'text-purple-700 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900/30' },
+    96→  NEGOCIACAO: { label: 'Negociação', color: 'text-amber-700 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+    97→  PROPOSTA: { label: 'Proposta', color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
+    98→  FECHADO: { label: 'Fechado', color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+    99→  PERDIDO: { label: 'Perdido', color: 'text-red-700 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-900/30' },
+   100→};
+   101→
+   102→function StageBadge({ stage }: { stage: string }) {
+   103→  const config = STAGE_CONFIG[stage] || { label: stage, color: 'text-gray-600', bg: 'bg-gray-100 dark:bg-gray-800' };
+   104→  return (
+   105→    <Badge className={`${config.bg} ${config.color} text-[11px] font-semibold px-2 py-0.5 border-0`}>
+   106→      {config.label}
+   107→    </Badge>
+   108→  );
+   109→}
+   110→
+   111→// ============================================================
+   112→// Mini bar chart (CSS-only, no chart library needed)
+   113→// ============================================================
+   114→function MiniBarChart({ data, height = 80 }: { data: ChartPoint[]; height?: number }) {
+   115→  const maxCount = Math.max(...data.map((d) => d.count), 1);
+   116→
+   117→  return (
+   118→    <div className="flex items-end gap-[3px] w-full" style={{ height }}>
+   119→      {data.map((d, i) => {
+   120→        const barH = (d.count / maxCount) * 100;
+   121→        const isToday = d.date === new Date().toISOString().split('T')[0];
+   122→        return (
+   123→          <div
+   124→            key={d.date}
+   125→            className="flex-1 min-w-0 flex flex-col items-center gap-1 group relative"
+   126→          >
+   127→            {/* Tooltip */}
+   128→            <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:flex items-center justify-center bg-popover text-popover-foreground text-[10px] px-1.5 py-0.5 rounded shadow-md border whitespace-nowrap z-10 pointer-events-none">
+   129→              {format(parseISO(d.date), "dd MMM", { locale: ptBR })}: {d.count} lead{d.count !== 1 ? 's' : ''}
+   130→            </div>
+   131→            <div
+   132→              className={`w-full rounded-sm transition-all duration-300 ${
+   133→                isToday
+   134→                  ? 'bg-emerald-500'
+   135→                  : d.count > 0
+   136→                    ? 'bg-blue-400/70 dark:bg-blue-500/60'
+   137→                    : 'bg-muted'
+   138→              }`}
+   139→              style={{ height: `${Math.max(barH, 2)}%` }}
+   140→            />
+   141→          </div>
+   142→        );
+   143→      })}
+   144→    </div>
+   145→  );
+   146→}
+   147→
+   148→// ============================================================
+   149→// Funnel Visualization
+   150→// ============================================================
+   151→function FunnelVisualization({ byStage }: { byStage: Record<string, number> }) {
+   152→  const funnelStages = ['LEAD', 'PROSPECT', 'VISITA', 'NEGOCIACAO', 'PROPOSTA', 'FECHADO'];
+   153→  const data = funnelStages
+   154→    .map((s) => ({ stage: s, count: byStage[s] || 0 }))
+   155→    .filter((d) => d.count > 0);
+   156→
+   157→  const maxCount = Math.max(...data.map((d) => d.count), 1);
+   158→
+   159→  if (data.length === 0) {
+   160→    return (
+   161→      <div className="text-center py-8 text-muted-foreground text-sm">
+   162→        Nenhum dado de funil disponível
+   163→      </div>
+   164→    );
+   165→  }
+   166→
+   167→  return (
+   168→    <div className="space-y-2">
+   169→      {data.map((d, i) => {
+   170→        const widthPct = Math.max((d.count / maxCount) * 100, 15);
+   171→        const config = STAGE_CONFIG[d.stage] || { label: d.stage, color: 'text-gray-600', bg: 'bg-gray-100 dark:bg-gray-800' };
+   172→        const prevCount = i > 0 ? data[i - 1].count : d.count;
+   173→        const dropRate = prevCount > 0 ? (((prevCount - d.count) / prevCount) * 100).toFixed(0) : '0';
+   174→
+   175→        return (
+   176→          <div key={d.stage} className="flex items-center gap-3">
+   177→            <div className="w-24 text-right text-[11px] font-medium text-muted-foreground flex-shrink-0">
+   178→              {config.label}
+   179→            </div>
+   180→            <div className="flex-1 relative">
+   181→              <div
+   182→                className={`${config.bg} rounded-sm h-7 flex items-center px-2 transition-all duration-500`}
+   183→                style={{ width: `${widthPct}%` }}
+   184→              >
+   185→                <span className={`text-[11px] font-bold ${config.color}`}>{d.count}</span>
+   186→              </div>
+   187→            </div>
+   188→            {i > 0 && d.count < prevCount && (
+   189→              <div className="w-16 text-right flex-shrink-0">
+   190→                <span className="text-[10px] text-red-500 font-medium">-{dropRate}%</span>
+   191→              </div>
+   192→            )}
+   193→          </div>
+   194→        );
+   195→      })}
+   196→    </div>
+   197→  );
+   198→}
+   199→
+   200→// ============================================================
+   201→// Tab: Visão Geral
+   202→// ============================================================
+   203→function OverviewTab({ metrics, chartData, topCampaigns, topRegions, onRefresh }: {
+   204→  metrics: Metrics | null;
+   205→  chartData: ChartPoint[];
+   206→  topCampaigns: CampaignStat[];
+   207→  topRegions: RegionStat[];
+   208→  onRefresh: () => void;
+   209→}) {
+   210→  if (!metrics) {
+   211→    return (
+   212→      <div className="flex items-center justify-center py-16">
+   213→        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+   214→      </div>
+   215→    );
+   216→  }
+   217→
+   218→  const totalLeads = metrics.totalLeads;
+   219→  const stageOrder = ['LEAD', 'PROSPECT', 'VISITA', 'NEGOCIACAO', 'PROPOSTA', 'FECHADO', 'PERDIDO'];
+   220→
+   221→  return (
+   222→    <div className="space-y-6">
+   223→      {/* Header com refresh */}
+   224→      <div className="flex items-center justify-between">
+   225→        <div>
+   226→          <h2 className="text-lg font-semibold">Visão Geral</h2>
+   227→          <p className="text-sm text-muted-foreground">Métricas e desempenho dos seus anúncios Meta</p>
+   228→        </div>
+   229→        <Button variant="outline" size="sm" onClick={onRefresh}>
+   230→          <RefreshCw className="h-4 w-4 mr-1" />
+   231→          Atualizar
+   232→        </Button>
+   233→      </div>
+   234→
+   235→      {/* KPI Cards */}
+   236→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+   237→        <KpiCard
+   238→          title="Total de Leads"
+   239→          value={totalLeads}
+   240→          icon={<Users className="h-4 w-4" />}
+   241→          iconBg="bg-blue-100 dark:bg-blue-900/30"
+   242→          iconColor="text-blue-600 dark:text-blue-400"
+   243→          subtitle="Desde o início"
+   244→        />
+   245→        <KpiCard
+   246→          title="Leads no Período"
+   247→          value={metrics.periodLeads}
+   248→          icon={<UserPlus className="h-4 w-4" />}
+   249→          iconBg="bg-emerald-100 dark:bg-emerald-900/30"
+   250→          iconColor="text-emerald-600 dark:text-emerald-400"
+   251→          subtitle="Últimos 30 dias"
+   252→          trend={metrics.periodLeads > 0 ? 'up' : 'neutral'}
+   253→        />
+   254→        <KpiCard
+   255→          title="Convertidos"
+   256→          value={metrics.convertedLeads}
+   257→          icon={<Target className="h-4 w-4" />}
+   258→          iconBg="bg-purple-100 dark:bg-purple-900/30"
+   259→          iconColor="text-purple-600 dark:text-purple-400"
+   260→          subtitle="Negociação + Proposta + Fechado"
+   261→        />
+   262→        <KpiCard
+   263→          title="Taxa de Conversão"
+   264→          value={`${metrics.conversionRate}%`}
+   265→          icon={<TrendingUp className="h-4 w-4" />}
+   266→          iconBg="bg-amber-100 dark:bg-amber-900/30"
+   267→          iconColor="text-amber-600 dark:text-amber-400"
+   268→          subtitle="Leads → Avançados"
+   269→          trend={metrics.conversionRate >= 10 ? 'up' : metrics.conversionRate >= 5 ? 'neutral' : 'down'}
+   270→        />
+   271→      </div>
+   272→
+   273→      {/* Gráfico + Funil */}
+   274→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   275→        {/* Gráfico de leads por dia */}
+   276→        <Card>
+   277→          <CardHeader className="pb-2">
+   278→            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   279→              <BarChart3 className="h-4 w-4 text-blue-500" />
+   280→              Leads por Dia
+   281→            </CardTitle>
+   282→          </CardHeader>
+   283→          <CardContent>
+   284→            {chartData.length > 0 ? (
+   285→              <>
+   286→                <MiniBarChart data={chartData} height={120} />
+   287→                <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+   288→                  <span>{format(parseISO(chartData[0].date), "dd MMM", { locale: ptBR })}</span>
+   289→                  <span>{format(parseISO(chartData[chartData.length - 1].date), "dd MMM yyyy", { locale: ptBR })}</span>
+   290→                </div>
+   291→              </>
+   292→            ) : (
+   293→              <div className="text-center py-8 text-sm text-muted-foreground">
+   294→                Nenhum lead no período selecionado
+   295→              </div>
+   296→            )}
+   297→          </CardContent>
+   298→        </Card>
+   299→
+   300→        {/* Funil de conversão */}
+   301→        <Card>
+   302→          <CardHeader className="pb-2">
+   303→            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   304→              <PieChart className="h-4 w-4 text-purple-500" />
+   305→              Funil de Conversão
+   306→            </CardTitle>
+   307→          </CardHeader>
+   308→          <CardContent>
+   309→            <FunnelVisualization byStage={metrics.byStage} />
+   310→          </CardContent>
+   311→        </Card>
+   312→      </div>
+   313→
+   314→      {/* Campanhas + Regiões */}
+   315→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   316→        {/* Top Campanhas */}
+   317→        <Card>
+   318→          <CardHeader className="pb-2">
+   319→            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   320→              <Megaphone className="h-4 w-4 text-blue-500" />
+   321→              Top Campanhas
+   322→            </CardTitle>
+   323→          </CardHeader>
+   324→          <CardContent>
+   325→            {topCampaigns.length > 0 ? (
+   326→              <div className="space-y-2">
+   327→                {topCampaigns.map((c, i) => {
+   328→                  const maxCount = topCampaigns[0].count;
+   329→                  const widthPct = Math.max((c.count / maxCount) * 100, 10);
+   330→                  return (
+   331→                    <div key={c.name} className="space-y-1">
+   332→                      <div className="flex items-center justify-between">
+   333→                        <span className="text-xs font-medium truncate max-w-[200px]">{c.name}</span>
+   334→                        <span className="text-xs text-muted-foreground font-mono">{c.count}</span>
+   335→                      </div>
+   336→                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+   337→                        <div
+   338→                          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-500"
+   339→                          style={{ width: `${widthPct}%` }}
+   340→                        />
+   341→                      </div>
+   342→                    </div>
+   343→                  );
+   344→                })}
+   345→              </div>
+   346→            ) : (
+   347→              <div className="text-center py-6 text-sm text-muted-foreground">
+   348→                Nenhuma campanha identificada nos leads
+   349→              </div>
+   350→            )}
+   351→          </CardContent>
+   352→        </Card>
+   353→
+   354→        {/* Top Regiões */}
+   355→        <Card>
+   356→          <CardHeader className="pb-2">
+   357→            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   358→              <MapPin className="h-4 w-4 text-emerald-500" />
+   359→              Top Regiões
+   360→            </CardTitle>
+   361→          </CardHeader>
+   362→          <CardContent>
+   363→            {topRegions.length > 0 ? (
+   364→              <div className="space-y-2">
+   365→                {topRegions.map((r, i) => {
+   366→                  const maxCount = topRegions[0].count;
+   367→                  const widthPct = Math.max((r.count / maxCount) * 100, 10);
+   368→                  return (
+   369→                    <div key={r.region} className="space-y-1">
+   370→                      <div className="flex items-center justify-between">
+   371→                        <span className="text-xs font-medium truncate max-w-[200px]">{r.region}</span>
+   372→                        <span className="text-xs text-muted-foreground font-mono">{r.count}</span>
+   373→                      </div>
+   374→                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+   375→                        <div
+   376→                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
+   377→                          style={{ width: `${widthPct}%` }}
+   378→                        />
+   379→                      </div>
+   380→                    </div>
+   381→                  );
+   382→                })}
+   383→              </div>
+   384→            ) : (
+   385→              <div className="text-center py-6 text-sm text-muted-foreground">
+   386→                Nenhuma região identificada nos leads
+   387→              </div>
+   388→            )}
+   389→          </CardContent>
+   390→        </Card>
+   391→      </div>
+   392→
+   393→      {/* Distribuição por estágio (cards inline) */}
+   394→      <Card>
+   395→        <CardHeader className="pb-2">
+   396→          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   397→            <Activity className="h-4 w-4 text-amber-500" />
+   398→            Distribuição por Etapa
+   399→          </CardTitle>
+   400→        </CardHeader>
+   401→        <CardContent>
+   402→          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+   403→            {stageOrder
+   404→              .filter((s) => metrics.byStage[s] > 0)
+   405→              .map((s) => {
+   406→                const config = STAGE_CONFIG[s];
+   407→                const count = metrics.byStage[s];
+   408→                const pct = ((count / totalLeads) * 100).toFixed(0);
+   409→                return (
+   410→                  <div
+   411→                    key={s}
+   412→                    className={`rounded-lg border p-3 ${config.bg} border-transparent hover:border-border transition-colors`}
+   413→                  >
+   414→                    <div className={`text-lg font-bold ${config.color}`}>{count}</div>
+   415→                    <div className="text-[11px] text-muted-foreground">{config.label}</div>
+   416→                    <div className={`text-[10px] font-medium ${config.color} mt-0.5`}>{pct}% do total</div>
+   417→                  </div>
+   418→                );
+   419→              })}
+   420→          </div>
+   421→        </CardContent>
+   422→      </Card>
+   423→    </div>
+   424→  );
+   425→}
+   426→
+   427→// ============================================================
+   428→// KPI Card Component
+   429→// ============================================================
+   430→function KpiCard({ title, value, icon, iconBg, iconColor, subtitle, trend }: {
+   431→  title: string;
+   432→  value: number | string;
+   433→  icon: React.ReactNode;
+   434→  iconBg: string;
+   435→  iconColor: string;
+   436→  subtitle: string;
+   437→  trend?: 'up' | 'down' | 'neutral';
+   438→}) {
+   439→  return (
+   440→    <Card className="hover:shadow-md transition-shadow duration-200">
+   441→      <CardContent className="p-4">
+   442→        <div className="flex items-start justify-between">
+   443→          <div className="space-y-1">
+   444→            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
+   445→            <p className="text-2xl font-bold tracking-tight">{value}</p>
+   446→            <div className="flex items-center gap-1.5">
+   447→              {trend === 'up' && <ArrowUpRight className="h-3 w-3 text-emerald-500" />}
+   448→              {trend === 'down' && <ArrowDownRight className="h-3 w-3 text-red-500" />}
+   449→              <p className="text-[11px] text-muted-foreground">{subtitle}</p>
+   450→            </div>
+   451→          </div>
+   452→          <div className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+   453→            <span className={iconColor}>{icon}</span>
+   454→          </div>
+   455→        </div>
+   456→      </CardContent>
+   457→    </Card>
+   458→  );
+   459→}
+   460→
+   461→// ============================================================
+   462→// Tab: Leads
+   463→// ============================================================
+   464→const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+   465→  meta_webhook: {
+   466→    label: 'Meta Ads',
+   467→    color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+   468→    icon: <Megaphone className="h-3 w-3" />,
+   469→  },
+   470→  landing_form: {
+   471→    label: 'Landing Page',
+   472→    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+   473→    icon: <Globe className="h-3 w-3" />,
+   474→  },
+   475→  whatsapp_click: {
+   476→    label: 'WhatsApp',
+   477→    color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+   478→    icon: <Phone className="h-3 w-3" />,
+   479→  },
+   480→};
+   481→
+   482→const WHATSAPP_SOURCE_LABELS: Record<string, string> = {
+   483→  hero: 'Botão principal',
+   484→  form_section: 'Seção do formulário',
+   485→  faq_cta: 'FAQ',
+   486→  footer: 'Rodapé',
+   487→  floating_bar: 'Barra flutuante',
+   488→};
+   489→
+   490→function SourceBadge({ source }: { source: string }) {
+   491→  const cfg = SOURCE_CONFIG[source];
+   492→  if (!cfg) return null;
+   493→  return (
+   494→    <Badge className={`text-[10px] h-5 px-1.5 ${cfg.color}`}>
+   495→      {cfg.icon}
+   496→      <span className="ml-0.5">{cfg.label}</span>
+   497→    </Badge>
+   498→  );
+   499→}
+   500→
+   501→function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
+   502→  const [leads, setLeads] = useState<LeadItem[]>([]);
+   503→  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+   504→  const [loading, setLoading] = useState(true);
+   505→  const [search, setSearch] = useState('');
+   506→  const [stageFilter, setStageFilter] = useState('all');
+   507→  const [period, setPeriod] = useState('30');
+   508→  const [sourceFilter, setSourceFilter] = useState('all');
+   509→  const [sourceCounts, setSourceCounts] = useState<SourceCounts | null>(null);
+   510→  const [expandedId, setExpandedId] = useState<string | null>(null);
+   511→
+   512→  const fetchLeads = useCallback(async (p = 1) => {
+   513→    setLoading(true);
+   514→    try {
+   515→      const params = new URLSearchParams({
+   516→        page: String(p),
+   517→        limit: '20',
+   518→        period,
+   519→      });
+   520→      if (search) params.set('search', search);
+   521→      if (stageFilter && stageFilter !== 'all') params.set('stage', stageFilter);
+   522→      if (sourceFilter && sourceFilter !== 'all') params.set('source', sourceFilter);
+   523→
+   524→      const res = await fetch(`/api/meta-ads/leads?${params}`);
+   525→      if (res.ok) {
+   526→        const data = await res.json();
+   527→        setLeads(data.leads);
+   528→        setPagination(data.pagination);
+   529→        if (data.sourceCounts) setSourceCounts(data.sourceCounts);
+   530→      } else {
+   531→        toast.error('Erro ao buscar leads');
+   532→      }
+   533→    } catch {
+   534→      toast.error('Falha de conexão');
+   535→    } finally {
+   536→      setLoading(false);
+   537→    }
+   538→  }, [search, stageFilter, period, sourceFilter]);
+   539→
+   540→  useEffect(() => {
+   541→    onLeadsNeeded();
+   542→  }, [onLeadsNeeded]);
+   543→
+   544→  useEffect(() => {
+   545→    fetchLeads(1);
+   546→  }, [fetchLeads]);
+   547→
+   548→  const totalPages = pagination.totalPages;
+   549→
+   550→  return (
+   551→    <div className="space-y-4">
+   552→      {/* Source count pills + Header */}
+   553→      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   554→        <div>
+   555→          <h2 className="text-lg font-semibold">Leads</h2>
+   556→          <p className="text-sm text-muted-foreground">
+   557→            {pagination.total} resultado{pagination.total !== 1 ? 's' : ''}
+   558→            {sourceFilter === 'all' ? ' de todas as origens' : ` — ${SOURCE_CONFIG[sourceFilter]?.label || sourceFilter}`}
+   559→          </p>
+   560→        </div>
+   561→        {sourceCounts && sourceFilter === 'all' && (
+   562→          <div className="flex items-center gap-1.5 flex-wrap">
+   563→            <button
+   564→              onClick={() => setSourceFilter('all')}
+   565→              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'all' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+   566→            >
+   567→              Todos ({sourceCounts.meta_webhook + sourceCounts.landing_form + sourceCounts.whatsapp_click})
+   568→            </button>
+   569→            <button
+   570→              onClick={() => setSourceFilter('meta_webhook')}
+   571→              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'meta_webhook' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:opacity-80'}`}
+   572→            >
+   573→              <Megaphone className="h-2.5 w-2.5" /> {sourceCounts.meta_webhook}
+   574→            </button>
+   575→            <button
+   576→              onClick={() => setSourceFilter('landing_form')}
+   577→              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'landing_form' ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:opacity-80'}`}
+   578→            >
+   579→              <Globe className="h-2.5 w-2.5" /> {sourceCounts.landing_form}
+   580→            </button>
+   581→            <button
+   582→              onClick={() => setSourceFilter('whatsapp_click')}
+   583→              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'whatsapp_click' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:opacity-80'}`}
+   584→            >
+   585→              <Phone className="h-2.5 w-2.5" /> {sourceCounts.whatsapp_click}
+   586→            </button>
+   587→          </div>
+   588→        )}
+   589→        {sourceFilter !== 'all' && (
+   590→          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSourceFilter('all')}>
+   591→            Limpar filtro de origem
+   592→          </Button>
+   593→        )}
+   594→      </div>
+   595→
+   596→      {/* Filtros */}
+   597→      <div className="flex flex-col sm:flex-row gap-2">
+   598→        <div className="relative flex-1">
+   599→          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   600→          <Input
+   601→            placeholder={sourceFilter === 'whatsapp_click' ? 'Buscar por campanha ou slug...' : 'Buscar por nome, email ou telefone...'}
+   602→            value={search}
+   603→            onChange={(e) => setSearch(e.target.value)}
+   604→            className="pl-9 h-9 text-sm"
+   605→          />
+   606→        </div>
+   607→        {sourceFilter !== 'whatsapp_click' && (
+   608→          <Select value={stageFilter} onValueChange={(v) => setStageFilter(v)}>
+   609→            <SelectTrigger className="w-full sm:w-[160px] h-9 text-sm">
+   610→              <SelectValue placeholder="Etapa" />
+   611→            </SelectTrigger>
+   612→            <SelectContent>
+   613→              <SelectItem value="all">Todas as etapas</SelectItem>
+   614→              {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
+   615→                <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+   616→              ))}
+   617→            </SelectContent>
+   618→          </Select>
+   619→        )}
+   620→        <Select value={period} onValueChange={(v) => setPeriod(v)}>
+   621→          <SelectTrigger className="w-full sm:w-[140px] h-9 text-sm">
+   622→            <SelectValue />
+   623→          </SelectTrigger>
+   624→          <SelectContent>
+   625→            <SelectItem value="7">Últimos 7 dias</SelectItem>
+   626→            <SelectItem value="30">Últimos 30 dias</SelectItem>
+   627→            <SelectItem value="60">Últimos 60 dias</SelectItem>
+   628→            <SelectItem value="90">Últimos 90 dias</SelectItem>
+   629→            <SelectItem value="365">Último ano</SelectItem>
+   630→          </SelectContent>
+   631→        </Select>
+   632→      </div>
+   633→
+   634→      {/* Lista de leads */}
+   635→      <div className="space-y-2">
+   636→        {loading ? (
+   637→          <div className="space-y-3">
+   638→            {[1, 2, 3, 4].map((i) => (
+   639→              <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />
+   640→            ))}
+   641→          </div>
+   642→        ) : leads.length === 0 ? (
+   643→          <Card>
+   644→            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+   645→              <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center mb-3">
+   646→                <Users className="h-6 w-6 text-muted-foreground" />
+   647→              </div>
+   648→              <p className="text-sm font-medium text-muted-foreground">Nenhum lead encontrado</p>
+   649→              <p className="text-xs text-muted-foreground mt-1">
+   650→                {search || stageFilter !== 'all' || sourceFilter !== 'all'
+   651→                  ? 'Tente ajustar os filtros'
+   652→                  : 'Os leads aparecerão aqui quando houver cadastros ou cliques'}
+   653→              </p>
+   654→            </CardContent>
+   655→          </Card>
+   656→        ) : (
+   657→          leads.map((lead) => {
+   658→            const isWhatsApp = lead.leadSource === 'whatsapp_click';
+   659→            const displayName = lead.name || (isWhatsApp ? 'Clique WhatsApp' : 'Sem nome');
+   660→            const initials = lead.name
+   661→              ? lead.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
+   662→              : '?';
+   663→            const avatarBg = lead.leadSource === 'meta_webhook'
+   664→              ? 'bg-blue-100 dark:bg-blue-900/30'
+   665→              : lead.leadSource === 'landing_form'
+   666→                ? 'bg-emerald-100 dark:bg-emerald-900/30'
+   667→                : 'bg-green-100 dark:bg-green-900/30';
+   668→            const avatarColor = lead.leadSource === 'meta_webhook'
+   669→              ? 'text-blue-600 dark:text-blue-400'
+   670→              : lead.leadSource === 'landing_form'
+   671→                ? 'text-emerald-600 dark:text-emerald-400'
+   672→                : 'text-green-600 dark:text-green-400';
+   673→
+   674→            return (
+   675→              <Card
+   676→                key={lead.id}
+   677→                className="hover:shadow-md transition-shadow duration-200 cursor-pointer"
+   678→                onClick={() => setExpandedId(expandedId === lead.id ? null : lead.id)}
+   679→              >
+   680→                <CardContent className="p-4">
+   681→                  <div className="flex items-start gap-3">
+   682→                    {/* Avatar */}
+   683→                    <div className={`h-10 w-10 rounded-lg ${avatarBg} flex items-center justify-center flex-shrink-0`}>
+   684→                      {isWhatsApp ? (
+   685→                        <Phone className={`h-5 w-5 ${avatarColor}`} />
+   686→                      ) : (
+   687→                        <span className={`${avatarColor} text-sm font-bold`}>{initials}</span>
+   688→                      )}
+   689→                    </div>
+   690→
+   691→                    {/* Info */}
+   692→                    <div className="flex-1 min-w-0">
+   693→                      <div className="flex items-center gap-2 flex-wrap">
+   694→                        <span className="text-sm font-semibold truncate">{displayName}</span>
+   695→                        <SourceBadge source={lead.leadSource} />
+   696→                        {lead.stage && <StageBadge stage={lead.stage} />}
+   697→                        {isWhatsApp && lead.whatsappSource && (
+   698→                          <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+   699→                            {WHATSAPP_SOURCE_LABELS[lead.whatsappSource] || lead.whatsappSource}
+   700→                          </Badge>
+   701→                        )}
+   702→                      </div>
+   703→                      <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
+   704→                        {lead.phone && (
+   705→                          <span className="flex items-center gap-1">
+   706→                            <Phone className="h-3 w-3" /> {lead.phone}
+   707→                          </span>
+   708→                        )}
+   709→                        {lead.email && (
+   710→                          <span className="flex items-center gap-1">
+   711→                            <Mail className="h-3 w-3" /> {lead.email}
+   712→                          </span>
+   713→                        )}
+   714→                        {lead.enterprise && (
+   715→                          <span className="flex items-center gap-1">
+   716→                            <Building2 className="h-3 w-3" /> {lead.enterprise}
+   717→                          </span>
+   718→                        )}
+   719→                        {lead.region && (
+   720→                          <span className="flex items-center gap-1">
+   721→                            <MapPin className="h-3 w-3" /> {lead.region}
+   722→                          </span>
+   723→                        )}
+   724→                        <span className="flex items-center gap-1">
+   725→                          <Calendar className="h-3 w-3" />
+   726→                          {format(parseISO(lead.createdAt), "dd/MM/yyyy HH:mm")}
+   727→                        </span>
+   728→                      </div>
+   729→
+   730→                      {/* Expanded details */}
+   731→                      {expandedId === lead.id && (
+   732→                        <div className="mt-3 pt-3 border-t space-y-2">
+   733→                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+   734→                            {lead.adName && (
+   735→                              <div>
+   736→                                <span className="text-muted-foreground">Anúncio: </span>
+   737→                                <span className="font-medium">{lead.adName}</span>
+   738→                              </div>
+   739→                            )}
+   740→                            {lead.campaignName && (
+   741→                              <div>
+   742→                                <span className="text-muted-foreground">Campanha: </span>
+   743→                                <span className="font-medium">{lead.campaignName}</span>
+   744→                              </div>
+   745→                            )}
+   746→                            {lead.formName && (
+   747→                              <div>
+   748→                                <span className="text-muted-foreground">Formulário: </span>
+   749→                                <span className="font-medium">{lead.formName}</span>
+   750→                              </div>
+   751→                            )}
+   752→                            {lead.leadId && (
+   753→                              <div>
+   754→                                <span className="text-muted-foreground">Lead ID: </span>
+   755→                                <span className="font-mono">{lead.leadId}</span>
+   756→                              </div>
+   757→                            )}
+   758→                            {lead.slug && (
+   759→                              <div>
+   760→                                <span className="text-muted-foreground">Slug: </span>
+   761→                                <span className="font-mono">{lead.slug}</span>
+   762→                              </div>
+   763→                            )}
+   764→                            {isWhatsApp && lead.whatsappSource && (
+   765→                              <div>
+   766→                                <span className="text-muted-foreground">Local do clique: </span>
+   767→                                <span className="font-medium">{WHATSAPP_SOURCE_LABELS[lead.whatsappSource] || lead.whatsappSource}</span>
+   768→                              </div>
+   769→                            )}
+   770→                            {!isWhatsApp && (
+   771→                              <div>
+   772→                                <span className="text-muted-foreground">Interações: </span>
+   773→                                <span className="font-medium">{lead._count.interactions}</span>
+   774→                              </div>
+   775→                            )}
+   776→                            {!isWhatsApp && (
+   777→                              <div>
+   778→                                <span className="text-muted-foreground">Última interação: </span>
+   779→                                <span className="font-medium">
+   780→                                  {lead.lastInteractionAt
+   781→                                    ? format(parseISO(lead.lastInteractionAt), "dd/MM/yyyy HH:mm")
+   782→                                    : 'Nenhuma'}
+   783→                                </span>
+   784→                              </div>
+   785→                            )}
+   786→                          </div>
+   787→                        </div>
+   788→                      )}
+   789→                    </div>
+   790→
+   791→                    {/* Expand icon */}
+   792→                    <div className="flex-shrink-0 text-muted-foreground">
+   793→                      {expandedId === lead.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+   794→                    </div>
+   795→                  </div>
+   796→                </CardContent>
+   797→              </Card>
+   798→            );
+   799→          })
+   800→        )}
+   801→      </div>
+   802→
+   803→      {/* Paginação */}
+   804→      {totalPages > 1 && (
+   805→        <div className="flex items-center justify-center gap-2 pt-2">
+   806→          <Button
+   807→            variant="outline"
+   808→            size="sm"
+   809→            onClick={() => fetchLeads(pagination.page - 1)}
+   810→            disabled={pagination.page <= 1}
+   811→            className="h-8"
+   812→          >
+   813→            <ChevronLeft className="h-4 w-4" />
+   814→          </Button>
+   815→          <span className="text-xs text-muted-foreground px-2">
+   816→            {pagination.page} de {totalPages}
+   817→          </span>
+   818→          <Button
+   819→            variant="outline"
+   820→            size="sm"
+   821→            onClick={() => fetchLeads(pagination.page + 1)}
+   822→            disabled={pagination.page >= totalPages}
+   823→            className="h-8"
+   824→          >
+   825→            <ChevronRight className="h-4 w-4" />
+   826→          </Button>
+   827→        </div>
+   828→      )}
+   829→    </div>
+   830→  );
+   831→}
+   832→
+   833→// ============================================================
+   834→// Tab: Configuração (migrado do painel original)
+   835→// ============================================================
+   836→function ConfigTab() {
+   837→  const [enabled, setEnabled] = useState(false);
+   838→  const [verifyToken, setVerifyToken] = useState('');
+   839→  const [appSecret, setAppSecret] = useState('');
+   840→  const [showAppSecret, setShowAppSecret] = useState(false);
+   841→  const [pageAccessToken, setPageAccessToken] = useState('');
+   842→  const [showPageToken, setShowPageToken] = useState(false);
+   843→  const [loading, setLoading] = useState(true);
+   844→  const [saving, setSaving] = useState(false);
+   845→  const [webhookStatus, setWebhookStatus] = useState<any>(null);
+   846→  const [leadCount, setLeadCount] = useState(0);
+   847→  const [hasVerifyToken, setHasVerifyToken] = useState(false);
+   848→  const [hasAppSecret, setHasAppSecret] = useState(false);
+   849→  const [hasPageAccessToken, setHasPageAccessToken] = useState(false);
+   850→  const [diagnosing, setDiagnosing] = useState(false);
+   851→  const [diagnosis, setDiagnosis] = useState<any>(null);
+   852→
+   853→  // CAPI Multi-config states
+   854→  const [capiConfigs, setCapiConfigs] = useState<any[]>([]);
+   855→  const [loadingCapi, setLoadingCapi] = useState(false);
+   856→  const [showCapiDialog, setShowCapiDialog] = useState(false);
+   857→  const [editingCapi, setEditingCapi] = useState<any>(null);
+   858→  const [capiForm, setCapiForm] = useState({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true });
+   859→  const [savingCapi, setSavingCapi] = useState(false);
+   860→  const [testingCapId, setTestingCapId] = useState<string | null>(null);
+   861→  const [showCapiTokenDialog, setShowCapiTokenDialog] = useState(false);
+   862→
+   863→  // Form Mappings states
+   864→  const [formMappings, setFormMappings] = useState<any[]>([]);
+   865→  const [loadingMappings, setLoadingMappings] = useState(false);
+   866→  const [showImportDialog, setShowImportDialog] = useState(false);
+   867→  const [importForm, setImportForm] = useState({ accessToken: '', adAccountId: '', capiConfigId: '' });
+   868→  const [importing, setImporting] = useState(false);
+   869→  const [importResult, setImportResult] = useState<any>(null);
+   870→
+   871→  // Manual lead import states
+   872→  const [showManualImportDialog, setShowManualImportDialog] = useState(false);
+   873→  const [manualImportIds, setManualImportIds] = useState('');
+   874→  const [manualImporting, setManualImporting] = useState(false);
+   875→  const [manualImportResult, setManualImportResult] = useState<any>(null);
+   876→
+   877→  // Import by form + period states
+   878→  const [importByFormTab, setImportByFormTab] = useState<'by-id' | 'by-form'>('by-form');
+   879→  const [importByFormFormId, setImportByFormFormId] = useState('');
+   880→  const [importByFormManualId, setImportByFormManualId] = useState('');
+   881→  const [importByFormFromDate, setImportByFormFromDate] = useState('');
+   882→  const [importByFormToDate, setImportByFormToDate] = useState('');
+   883→  const [importByFormLoading, setImportByFormLoading] = useState(false);
+   884→  const [importByFormResult, setImportByFormResult] = useState<any>(null);
+   885→
+   886→  const webhookUrl = typeof window !== 'undefined'
+   887→    ? `${window.location.origin}/api/webhooks/meta-leads`
+   888→    : '';
+   889→
+   890→  useEffect(() => { loadConfig(); }, []);
+   891→
+   892→  async function loadConfig() {
+   893→    setLoading(true);
+   894→    try {
+   895→      const res = await fetch('/api/webhooks/meta-leads/config');
+   896→      if (res.ok) {
+   897→        const data = await res.json();
+   898→        setEnabled(data.enabled);
+   899→        setLeadCount(data.leadCount);
+   900→        setHasVerifyToken(data.hasVerifyToken);
+   901→        setHasAppSecret(data.hasAppSecret);
+   902→        setHasPageAccessToken(data.hasPageAccessToken);
+   903→      }
+   904→    } catch {
+   905→      // Silencioso
+   906→    } finally {
+   907→      setLoading(false);
+   908→    }
+   909→    loadCapiConfigs();
+   910→    loadFormMappings();
+   911→  }
+   912→
+   913→  async function checkWebhookStatus() {
+   914→    try {
+   915→      const res = await fetch('/api/webhooks/meta-leads/config');
+   916→      if (res.ok) {
+   917→        const data = await res.json();
+   918→        setWebhookStatus(data);
+   919→        setEnabled(data.enabled);
+   920→        setLeadCount(data.leadCount);
+   921→        setHasVerifyToken(data.hasVerifyToken);
+   922→        setHasAppSecret(data.hasAppSecret);
+   923→        setHasPageAccessToken(data.hasPageAccessToken);
+   924→        if (data.enabled && data.hasVerifyToken && data.hasAppSecret && data.hasPageAccessToken) {
+   925→          toast.success('Webhook ativo e pronto para receber leads');
+   926→        } else if (data.enabled) {
+   927→          toast.warning('Webhook ativado, mas falta configurar campos obrigatórios');
+   928→        } else {
+   929→          toast.info('Webhook configurado mas desativado — ative o switch para receber leads');
+   930→        }
+   931→      }
+   932→    } catch {
+   933→      toast.error('Erro ao verificar status do webhook');
+   934→    }
+   935→  }
+   936→
+   937→  async function runDiagnosis() {
+   938→    setDiagnosing(true);
+   939→    setDiagnosis(null);
+   940→    try {
+   941→      const res = await fetch('/api/webhooks/meta-leads/diagnose');
+   942→      if (res.ok) {
+   943→        const data = await res.json();
+   944→        setDiagnosis(data);
+   945→        const errCount = data.summary?.errors ?? 0;
+   946→        const warnCount = data.summary?.warnings ?? 0;
+   947→        if (errCount > 0) {
+   948→          toast.error(`Diagnóstico: ${errCount} erro(s) encontrado(s)`);
+   949→        } else if (warnCount > 0) {
+   950→          toast.warning(`Diagnóstico: funcionando com ${warnCount} aviso(s)`);
+   951→        } else {
+   952→          toast.success('Diagnóstico: tudo OK!');
+   953→        }
+   954→      } else {
+   955→        toast.error('Erro ao executar diagnóstico');
+   956→      }
+   957→    } catch {
+   958→      toast.error('Falha de conexão ao executar diagnóstico');
+   959→    } finally {
+   960→      setDiagnosing(false);
+   961→    }
+   962→  }
+   963→
+   964→  async function saveConfig() {
+   965→    setSaving(true);
+   966→    try {
+   967→      const res = await fetch('/api/webhooks/meta-leads/config', {
+   968→        method: 'PUT',
+   969→        headers: { 'Content-Type': 'application/json' },
+   970→        body: JSON.stringify({
+   971→          verifyToken: verifyToken || null,
+   972→          appSecret: appSecret || null,
+   973→          pageAccessToken: pageAccessToken || null,
+   974→          enabled,
+   975→        }),
+   976→      });
+   977→
+   978→      if (res.ok) {
+   979→        toast.success('Configurações do Meta Ads salvas com sucesso');
+   980→        setVerifyToken('');
+   981→        setAppSecret('');
+   982→        setPageAccessToken('');
+   983→        loadConfig();
+   984→      } else {
+   985→        const data = await res.json();
+   986→        throw new Error(data.error || 'Erro ao salvar');
+   987→      }
+   988→    } catch (err: any) {
+   989→      toast.error(err.message || 'Erro ao salvar configurações');
+   990→    } finally {
+   991→      setSaving(false);
+   992→    }
+   993→  }
+   994→
+   995→  async function copyToClipboard(text: string, label: string) {
+   996→    try {
+   997→      await navigator.clipboard.writeText(text);
+   998→      toast.success(`${label} copiado!`);
+   999→    } catch {
+  1000→      toast.error('Falha ao copiar');
+  1001→    }
+  1002→  }
+  1003→
+  1004→  // ═══ CAPI Multi-config functions ═══
+  1005→  async function loadCapiConfigs() {
+  1006→    setLoadingCapi(true);
+  1007→    try {
+  1008→      const res = await fetch('/api/meta-capi-configs');
+  1009→      if (res.ok) setCapiConfigs(await res.json());
+  1010→    } catch { /* silent */ }
+  1011→    finally { setLoadingCapi(false); }
+  1012→  }
+  1013→
+  1014→  function openNewCapiDialog() {
+  1015→    setEditingCapi(null);
+  1016→    setCapiForm({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true });
+  1017→    setShowCapiDialog(true);
+  1018→  }
+  1019→
+  1020→  async function openEditCapiDialog(config: any) {
+  1021→    setEditingCapi(config);
+  1022→    // Fetch full config to get the unmasked token
+  1023→    try {
+  1024→      const res = await fetch(`/api/meta-capi-configs/${config.id}`);
+  1025→      if (res.ok) {
+  1026→        const full = await res.json();
+  1027→        setCapiForm({
+  1028→          name: full.name,
+  1029→          accessToken: full.accessToken,
+  1030→          datasetId: full.datasetId,
+  1031→          isDefault: full.isDefault,
+  1032→          formIds: full.formIds ? JSON.parse(full.formIds).join(', ') : '',
+  1033→          enabled: full.enabled,
+  1034→        });
+  1035→      }
+  1036→    } catch {
+  1037→      setCapiForm({
+  1038→        name: config.name,
+  1039→        accessToken: '',
+  1040→        datasetId: config.datasetId,
+  1041→        isDefault: config.isDefault,
+  1042→        formIds: '',
+  1043→        enabled: config.enabled,
+  1044→      });
+  1045→    }
+  1046→    setShowCapiDialog(true);
+  1047→  }
+  1048→
+  1049→  async function saveCapiConfig() {
+  1050→    if (!capiForm.name || !capiForm.datasetId) {
+  1051→      toast.error('Nome e Dataset ID são obrigatórios');
+  1052→      return;
+  1053→    }
+  1054→    if (!editingCapi && !capiForm.accessToken) {
+  1055→      toast.error('Access Token é obrigatório para novos configs');
+  1056→      return;
+  1057→    }
+  1058→    setSavingCapi(true);
+  1059→    try {
+  1060→      const body: any = {
+  1061→        name: capiForm.name,
+  1062→        datasetId: capiForm.datasetId,
+  1063→        isDefault: capiForm.isDefault,
+  1064→        enabled: capiForm.enabled,
+  1065→        formIds: capiForm.formIds ? capiForm.formIds.split(/[,\s]+/).filter(Boolean) : [],
+  1066→      };
+  1067→      if (capiForm.accessToken) body.accessToken = capiForm.accessToken;
+  1068→
+  1069→      const url = editingCapi ? `/api/meta-capi-configs/${editingCapi.id}` : '/api/meta-capi-configs';
+  1070→      const method = editingCapi ? 'PATCH' : 'POST';
+  1071→      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  1072→      if (res.ok) {
+  1073→        toast.success(editingCapi ? 'Configuração CAPI atualizada' : 'Configuração CAPI criada');
+  1074→        setShowCapiDialog(false);
+  1075→        loadCapiConfigs();
+  1076→      } else {
+  1077→        const data = await res.json();
+  1078→        throw new Error(data.error || 'Erro ao salvar');
+  1079→      }
+  1080→    } catch (err: any) {
+  1081→      toast.error(err.message || 'Erro ao salvar configuração CAPI');
+  1082→    } finally {
+  1083→      setSavingCapi(false);
+  1084→    }
+  1085→  }
+  1086→
+  1087→  async function deleteCapiConfig(id: string) {
+  1088→    if (!confirm('Excluir esta configuração CAPI? Leads vinculados perderão a associação.')) return;
+  1089→    try {
+  1090→      const res = await fetch(`/api/meta-capi-configs/${id}`, { method: 'DELETE' });
+  1091→      if (res.ok) {
+  1092→        toast.success('Configuração CAPI excluída');
+  1093→        loadCapiConfigs();
+  1094→      }
+  1095→    } catch {
+  1096→      toast.error('Erro ao excluir configuração CAPI');
+  1097→    }
+  1098→  }
+  1099→
+  1100→  async function testCapiConfig(configId: string) {
+  1101→    setTestingCapId(configId);
+  1102→    try {
+  1103→      const res = await fetch(`/api/meta-capi-configs/${configId}`);
+  1104→      if (!res.ok) { toast.error('Erro ao buscar config'); return; }
+  1105→      const config = await res.json();
+  1106→      const testRes = await fetch('/api/webhooks/meta-leads/capi-test', {
+  1107→        method: 'POST',
+  1108→        headers: { 'Content-Type': 'application/json' },
+  1109→        body: JSON.stringify({ accessToken: config.accessToken, datasetId: config.datasetId }),
+  1110→      });
+  1111→      if (testRes.ok) {
+  1112→        const data = await testRes.json();
+  1113→        toast[data.success ? 'success' : 'error'](data.message);
+  1114→      }
+  1115→    } catch {
+  1116→      toast.error('Falha ao testar CAPI');
+  1117→    } finally {
+  1118→      setTestingCapId(null);
+  1119→    }
+  1120→  }
+  1121→
+  1122→  // ═══ Form Mappings functions ═══
+  1123→  async function loadFormMappings() {
+  1124→    setLoadingMappings(true);
+  1125→    try {
+  1126→      const res = await fetch('/api/meta-capi-configs/form-mappings?grouped=true');
+  1127→      if (res.ok) setFormMappings(await res.json());
+  1128→    } catch { /* silent */ }
+  1129→    finally { setLoadingMappings(false); }
+  1130→  }
+  1131→
+  1132→  async function linkFormToConfig(formId: string, capiConfigId: string | null) {
+  1133→    try {
+  1134→      const res = await fetch('/api/meta-capi-configs/form-mappings', {
+  1135→        method: 'PATCH',
+  1136→        headers: { 'Content-Type': 'application/json' },
+  1137→        body: JSON.stringify({ formId, capiConfigId }),
+  1138→      });
+  1139→      if (res.ok) {
+  1140→        const data = await res.json();
+  1141→        toast.success(capiConfigId ? `${data.updated} mapeamento(s) vinculado(s)` : 'Vinculação removida');
+  1142→        loadFormMappings();
+  1143→        loadCapiConfigs();
+  1144→      }
+  1145→    } catch {
+  1146→      toast.error('Erro ao vincular formulário');
+  1147→    }
+  1148→  }
+  1149→
+  1150→  async function importFormIds() {
+  1151→    if (!importForm.accessToken || !importForm.adAccountId) {
+  1152→      toast.error('Access Token e ID da conta de anúncios são obrigatórios');
+  1153→      return;
+  1154→    }
+  1155→    setImporting(true);
+  1156→    setImportResult(null);
+  1157→    try {
+  1158→      const body: any = {
+  1159→        accessToken: importForm.accessToken,
+  1160→        adAccountId: importForm.adAccountId,
+  1161→      };
+  1162→      if (importForm.capiConfigId) body.capiConfigId = importForm.capiConfigId;
+  1163→
+  1164→      const res = await fetch('/api/meta-capi-configs/form-mappings', {
+  1165→        method: 'POST',
+  1166→        headers: { 'Content-Type': 'application/json' },
+  1167→        body: JSON.stringify(body),
+  1168→      });
+  1169→      const data = await res.json();
+  1170→      if (res.ok) {
+  1171→        toast.success(data.message || 'Formulários importados com sucesso');
+  1172→        setImportResult(data);
+  1173→        loadFormMappings();
+  1174→        loadCapiConfigs();
+  1175→      } else {
+  1176→        const detail = data.metaErrorCode
+  1177→          ? `${data.error} (código ${data.metaErrorCode})`
+  1178→          : data.error || 'Erro ao importar';
+  1179→        toast.error(detail, { duration: 8000 });
+  1180→      }
+  1181→    } catch (err: any) {
+  1182→      toast.error(err.message || 'Erro ao importar formulários');
+  1183→    } finally {
+  1184→      setImporting(false);
+  1185→    }
+  1186→  }
+  1187→
+  1188→  async function importManualLeads() {
+  1189→    const ids = manualImportIds.split(/[\s,\n]+/).map(s => s.trim()).filter(Boolean);
+  1190→    if (ids.length === 0) {
+  1191→      toast.error('Cole ao menos um leadgen_id');
+  1192→      return;
+  1193→    }
+  1194→    setManualImporting(true);
+  1195→    setManualImportResult(null);
+  1196→    try {
+  1197→      const res = await fetch('/api/webhooks/meta-leads/import-manual', {
+  1198→        method: 'POST',
+  1199→        headers: { 'Content-Type': 'application/json' },
+  1200→        body: JSON.stringify({ leadgenIds: ids }),
+  1201→      });
+  1202→      const data = await res.json();
+  1203→      if (res.ok) {
+  1204→        setManualImportResult(data);
+  1205→        toast.success(data.message);
+  1206→      } else {
+  1207→        toast.error(data.error || 'Erro na importação', { duration: 8000 });
+  1208→      }
+  1209→    } catch {
+  1210→      toast.error('Falha na importação manual');
+  1211→    } finally {
+  1212→      setManualImporting(false);
+  1213→    }
+  1214→  }
+  1215→
+  1216→  async function importLeadsByForm() {
+  1217→    const formId = importByFormTab === 'by-form' ? importByFormFormId : importByFormManualId.trim();
+  1218→    if (!formId) {
+  1219→      toast.error('Selecione ou digite um Form ID');
+  1220→      return;
+  1221→    }
+  1222→    if (!importByFormFromDate) {
+  1223→      toast.error('Selecione a data inicial');
+  1224→      return;
+  1225→    }
+  1226→    setImportByFormLoading(true);
+  1227→    setImportByFormResult(null);
+  1228→    try {
+  1229→      const body: any = { formId, fromDate: importByFormFromDate };
+  1230→      if (importByFormToDate) body.toDate = importByFormToDate;
+  1231→      const res = await fetch('/api/webhooks/meta-leads/import-by-form', {
+  1232→        method: 'POST',
+  1233→        headers: { 'Content-Type': 'application/json' },
+  1234→        body: JSON.stringify(body),
+  1235→      });
+  1236→      const data = await res.json();
+  1237→      if (res.ok) {
+  1238→        setImportByFormResult(data);
+  1239→        if (data.imported > 0) {
+  1240→          toast.success(data.message);
+  1241→        } else {
+  1242→          toast.info(data.message || 'Nenhum lead novo encontrado no período');
+  1243→        }
+  1244→      } else {
+  1245→        toast.error(data.error || 'Erro ao buscar leads do formulário', { duration: 8000 });
+  1246→      }
+  1247→    } catch {
+  1248→      toast.error('Falha na importação por formulário');
+  1249→    } finally {
+  1250→      setImportByFormLoading(false);
+  1251→    }
+  1252→  }
+  1253→
+  1254→  if (loading) {
+  1255→    return (
+  1256→      <div className="flex items-center justify-center py-16">
+  1257→        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+  1258→      </div>
+  1259→    );
+  1260→  }
+  1261→
+  1262→  return (
+  1263→    <div className="space-y-4 max-w-3xl">
+  1264→      <div>
+  1265→        <h2 className="text-lg font-semibold">Configuração do Webhook</h2>
+  1266→        <p className="text-sm text-muted-foreground">
+  1267→          Configure a integração com o Meta Ads para receber leads automaticamente
+  1268→        </p>
+  1269→      </div>
+  1270→
+  1271→      <Card className={enabled ? 'border-blue-200 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-950/20' : ''}>
+  1272→        <CardHeader className="pb-3">
+  1273→          <div className="flex items-center justify-between">
+  1274→            <div>
+  1275→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+  1276→                Meta Ads — Lead Ads
+  1277→              </CardTitle>
+  1278→              <CardDescription className="mt-1">
+  1279→                Configuração do webhook para receber leads automaticamente
+  1280→              </CardDescription>
+  1281→            </div>
+  1282→            <div className="flex items-center gap-2 flex-shrink-0">
+  1283→              {enabled ? (
+  1284→                <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 gap-1">
+  1285→                  <Zap className="h-3 w-3" />
+  1286→                  Ativo
+  1287→                </Badge>
+  1288→              ) : (
+  1289→                <Badge className="bg-muted text-muted-foreground gap-1">
+  1290→                  <Circle className="h-3 w-3" />
+  1291→                  Inativo
+  1292→                </Badge>
+  1293→              )}
+  1294→              {leadCount > 0 && (
+  1295→                <span className="text-xs text-muted-foreground">
+  1296→                  {leadCount} lead{leadCount !== 1 ? 's' : ''}
+  1297→                </span>
+  1298→              )}
+  1299→            </div>
+  1300→          </div>
+  1301→        </CardHeader>
+  1302→        <CardContent className="space-y-4">
+  1303→          {/* Toggle */}
+  1304→          <div className="flex items-center justify-between">
+  1305→            <Label htmlFor="meta-enabled" className="text-sm cursor-pointer">
+  1306→              {enabled ? 'Integração ativada' : 'Ativar integração'}
+  1307→            </Label>
+  1308→            <Switch id="meta-enabled" checked={enabled} onCheckedChange={setEnabled} />
+  1309→          </div>
+  1310→
+  1311→          <Separator />
+  1312→
+  1313→          {/* Webhook URL */}
+  1314→          <div className="space-y-2">
+  1315→            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+  1316→              URL do Webhook
+  1317→            </Label>
+  1318→            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border">
+  1319→              <code className="flex-1 text-xs font-mono truncate text-foreground">
+  1320→                {webhookUrl}
+  1321→              </code>
+  1322→              <Button
+  1323→                variant="ghost"
+  1324→                size="sm"
+  1325→                className="h-7 w-7 p-0 flex-shrink-0"
+  1326→                onClick={() => copyToClipboard(webhookUrl, 'URL do Webhook')}
+  1327→              >
+  1328→                <Copy className="h-3.5 w-3.5" />
+  1329→              </Button>
+  1330→            </div>
+  1331→            <p className="text-[11px] text-muted-foreground">
+  1332→              Cole esta URL no campo &quot;Callback URL&quot; ao configurar o webhook no Meta for Developers ou Ads Manager
+  1333→            </p>
+  1334→          </div>
+  1335→
+  1336→          {/* Verify Token */}
+  1337→          <div className="space-y-2">
+  1338→            <div className="flex items-center gap-2">
+  1339→              <Label htmlFor="meta-verify-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+  1340→                Token de Verificação
+  1341→              </Label>
+  1342→              {hasVerifyToken && (
+  1343→                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+  1344→                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+  1345→                  Configurado
+  1346→                </Badge>
+  1347→              )}
+  1348→            </div>
+  1349→            <Input
+  1350→              id="meta-verify-token"
+  1351→              placeholder={hasVerifyToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Ex: meu_token_secreto_123'}
+  1352→              value={verifyToken}
+  1353→              onChange={(e) => setVerifyToken(e.target.value)}
+  1354→              type="text"
+  1355→              className="font-mono text-sm"
+  1356→            />
+  1357→            <p className="text-[11px] text-muted-foreground">
+  1358→              Crie uma string aleatória segura (ex: <code className="bg-muted px-1 rounded">openssl rand -hex 16</code>).
+  1359→              Use o mesmo valor no campo &quot;Verify Token&quot; do Meta.
+  1360→            </p>
+  1361→          </div>
+  1362→
+  1363→          {/* App Secret */}
+  1364→          <div className="space-y-2">
+  1365→            <div className="flex items-center gap-2">
+  1366→              <Label htmlFor="meta-app-secret" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+  1367→                App Secret (segurança)
+  1368→              </Label>
+  1369→              {hasAppSecret && (
+  1370→                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+  1371→                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+  1372→                  Configurado
+  1373→                </Badge>
+  1374→              )}
+  1375→            </div>
+  1376→            <div className="relative">
+  1377→              <Input
+  1378→                id="meta-app-secret"
+  1379→                placeholder={hasAppSecret ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Ex: a1b2c3d4e5f6...'}
+  1380→                value={appSecret}
+  1381→                onChange={(e) => setAppSecret(e.target.value)}
+  1382→                type={showAppSecret ? 'text' : 'password'}
+  1383→                className="font-mono text-sm pr-10"
+  1384→              />
+  1385→              <Button
+  1386→                type="button"
+  1387→                variant="ghost"
+  1388→                size="sm"
+  1389→                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+  1390→                onClick={() => setShowAppSecret(!showAppSecret)}
+  1391→              >
+  1392→                {showAppSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+  1393→              </Button>
+  1394→            </div>
+  1395→            <p className="text-[11px] text-muted-foreground">
+  1396→              Encontrado em Meta for Developers → Seu App → Settings → Basic → App Secret.
+  1397→              Obrigatório para validar que os leads vieram realmente do Meta (HMAC-SHA256).
+  1398→            </p>
+  1399→          </div>
+  1400→
+  1401→          {/* Page Access Token */}
+  1402→          <div className="space-y-2">
+  1403→            <div className="flex items-center gap-2">
+  1404→              <Label htmlFor="meta-page-token" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+  1405→                Page Access Token (obrigatório)
+  1406→              </Label>
+  1407→              {hasPageAccessToken && (
+  1408→                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+  1409→                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+  1410→                  Configurado
+  1411→                </Badge>
+  1412→              )}
+  1413→            </div>
+  1414→            <div className="relative">
+  1415→              <Input
+  1416→                id="meta-page-token"
+  1417→                placeholder={hasPageAccessToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'EAAxxxxxxxxxxxxxxxxx...'}
+  1418→                value={pageAccessToken}
+  1419→                onChange={(e) => setPageAccessToken(e.target.value)}
+  1420→                type={showPageToken ? 'text' : 'password'}
+  1421→                className="font-mono text-sm pr-10"
+  1422→              />
+  1423→              <Button
+  1424→                type="button"
+  1425→                variant="ghost"
+  1426→                size="sm"
+  1427→                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+  1428→                onClick={() => setShowPageToken(!showPageToken)}
+  1429→              >
+  1430→                {showPageToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+  1431→              </Button>
+  1432→            </div>
+  1433→            <p className="text-[11px] text-muted-foreground">
+  1434→              Necessário para buscar dados do lead (o Meta envia apenas o ID no webhook).
+  1435→              Para obter: acesse o{' '}
+  1436→              <span
+  1437→                className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer"
+  1438→                onClick={() => window.open('https://developers.facebook.com/tools/explorer/', '_blank')}
+  1439→              >
+  1440→                Graph API Explorer
+  1441→              </span>
+  1442→              , selecione sua Página como Token User, marque a permissão{' '}
+  1443→              <code className="bg-muted px-1 rounded">pages_read_engagement</code> e copie o token gerado.
+  1444→            </p>
+  1445→          </div>
+  1446→
+  1447→          <Separator />
+  1448→
+  1449→          {/* Actions */}
+  1450→          <div className="flex flex-wrap items-center gap-2">
+  1451→            <Button
+  1452→              onClick={saveConfig}
+  1453→              disabled={saving}
+  1454→              className="bg-blue-600 hover:bg-blue-700 text-white"
+  1455→            >
+  1456→              {saving ? (
+  1457→                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</>
+  1458→              ) : (
+  1459→                <><Save className="h-4 w-4 mr-2" /> Salvar Configurações</>
+  1460→              )}
+  1461→            </Button>
+  1462→            <Button
+  1463→              variant="outline"
+  1464→              size="sm"
+  1465→              onClick={checkWebhookStatus}
+  1466→            >
+  1467→              <RefreshCw className="h-4 w-4 mr-1" />
+  1468→              Testar
+  1469→            </Button>
+  1470→            <Button
+  1471→              variant="outline"
+  1472→              size="sm"
+  1473→              onClick={runDiagnosis}
+  1474→              disabled={diagnosing}
+  1475→              className="border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+  1476→            >
+  1477→              {diagnosing ? (
+  1478→                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Aguarde...</>
+  1479→              ) : (
+  1480→                <><Zap className="h-4 w-4 mr-1" /> Diagnosticar</>
+  1481→              )}
+  1482→            </Button>
+  1483→            <Button
+  1484→              variant="outline"
+  1485→              size="sm"
+  1486→              onClick={() => { setShowManualImportDialog(true); setManualImportResult(null); setManualImportIds(''); setImportByFormResult(null); setImportByFormFormId(''); setImportByFormFromDate(''); setImportByFormToDate(''); setImportByFormTab('by-form'); }}
+  1487→              className="border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
+  1488→            >
+  1489→              <UserPlus className="h-4 w-4 mr-1" />
+  1490→              Importar Leads Perdidos
+  1491→            </Button>
+  1492→          </div>
+  1493→
+  1494→          {/* Diagnosis Panel */}
+  1495→          {diagnosis && (
+  1496→            <div className="space-y-2">
+  1497→              <div className="flex items-center gap-2">
+  1498→                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Diagnóstico</span>
+  1499→                {diagnosis.status === 'healthy' && <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Tudo OK</Badge>}
+  1500→                {diagnosis.status === 'degraded' && <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Atenção</Badge>}
+  1501→                {diagnosis.status === 'broken' && <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Problemas</Badge>}
+  1502→              </div>
+  1503→              <div className="rounded-lg border space-y-1.5 p-3 bg-muted/30">
+  1504→                {diagnosis.checks.map((check: any, i: number) => (
+  1505→                  <div key={i} className="flex items-start gap-2 text-xs">
+  1506→                    {check.status === 'ok' && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mt-0.5 flex-shrink-0" />}
+  1507→                    {check.status === 'warn' && <Zap className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />}
+  1508→                    {check.status === 'error' && <Circle className="h-3.5 w-3.5 text-red-500 mt-0.5 flex-shrink-0" />}
+  1509→                    {check.status === 'skip' && <Circle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
+  1510→                    <div className="min-w-0">
+  1511→                      <span className="font-medium">{check.name}: </span>
+  1512→                      <span className={check.status === 'error' ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}>
+  1513→                        {check.details}
+  1514→                      </span>
+  1515→                      {check.fix && (
+  1516→                        <p className="text-amber-600 dark:text-amber-400 mt-0.5">Solução: {check.fix}</p>
+  1517→                      )}
+  1518→                    </div>
+  1519→                  </div>
+  1520→                ))}
+  1521→              </div>
+  1522→            </div>
+  1523→          )}
+  1524→
+  1525→          {/* Tutorial */}
+  1526→          <details className="group">
+  1527→            <summary className="text-xs font-medium text-blue-600 dark:text-blue-400 cursor-pointer hover:underline flex items-center gap-1">
+  1528→              Como configurar no Meta Ads
+  1529→            </summary>
+  1530→            <ol className="mt-2 text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
+  1531→              <li>
+  1532→                Acesse o{' '}
+  1533→                <span
+  1534→                  className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer inline-flex items-center gap-0.5"
+  1535→                  onClick={() => window.open('https://developers.facebook.com/apps/', '_blank')}
+  1536→                >
+  1537→                  Meta for Developers <ExternalLink className="h-2.5 w-2.5" />
+  1538→                </span>
+  1539→                {' '}e crie/abra seu App
+  1540→              </li>
+  1541→              <li>Vá em <strong>Settings → Basic</strong> e copie o <strong>App Secret</strong></li>
+  1542→              <li>No menu lateral, vá em <strong>Webhooks → Adicionar</strong></li>
+  1543→              <li>Cole a <strong>URL do Webhook</strong> (acima) no campo Callback URL</li>
+  1544→              <li>Cole o <strong>Token de Verificação</strong> no campo Verify Token</li>
+  1545→              <li>Em &quot;Subscribe to&quot;, selecione <strong>leadgen</strong> (Lead Ads)</li>
+  1546→              <li>No <strong>Ads Manager</strong>, crie um formulário de Lead Ads</li>
+  1547→              <li>Ao publicar o anúncio, os leads serão criados automaticamente no CRM com stage <strong>LEAD</strong></li>
+  1548→            </ol>
+  1549→          </details>
+  1550→        </CardContent>
+  1551→      </Card>
+  1552→
+  1553→      {/* ═══ CAPI — Multi-client Conversions API ═══ */}
+  1554→      <Card className={capiConfigs.some((c: any) => c.enabled) ? 'border-purple-200 dark:border-purple-800/50 bg-purple-50/50 dark:bg-purple-950/20' : ''}>
+  1555→        <CardHeader className="pb-3">
+  1556→          <div className="flex items-center justify-between">
+  1557→            <div>
+  1558→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+  1559→                <ArrowUpRight className="h-4 w-4 text-purple-600" />
+  1560→                API de Conversões (Multi-cliente)
+  1561→              </CardTitle>
+  1562→              <CardDescription className="mt-1">
+  1563→                Configure múltiplos datasets para enviar eventos de conversão por cliente/campanha
+  1564→              </CardDescription>
+  1565→            </div>
+  1566→            <div className="flex items-center gap-2">
+  1567→              <Badge className={capiConfigs.some((c: any) => c.enabled) ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-muted text-muted-foreground'}>
+  1568→                {capiConfigs.filter((c: any) => c.enabled).length} ativo{capiConfigs.filter((c: any) => c.enabled).length !== 1 ? 's' : ''}
+  1569→              </Badge>
+  1570→              <Button size="sm" variant="outline" className="border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400" onClick={openNewCapiDialog}>
+  1571→                <Save className="h-3.5 w-3.5 mr-1" /> Adicionar
+  1572→              </Button>
+  1573→            </div>
+  1574→          </div>
+  1575→        </CardHeader>
+  1576→        <CardContent className="space-y-4">
+  1577→          {loadingCapi ? (
+  1578→            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+  1579→          ) : capiConfigs.length === 0 ? (
+  1580→            <div className="text-center py-8 space-y-2">
+  1581→              <p className="text-sm text-muted-foreground">Nenhuma configuração CAPI criada</p>
+  1582→              <p className="text-xs text-muted-foreground">
+  1583→                Adicione um dataset para cada conta de anúncios (sua ou de clientes)
+  1584→              </p>
+  1585→            </div>
+  1586→          ) : (
+  1587→            <div className="space-y-2">
+  1588→              {capiConfigs.map((config: any) => (
+  1589→                <div key={config.id} className={
+  1590→                  `rounded-lg border p-3 transition-colors ${config.enabled
+  1591→                    ? 'border-purple-200 dark:border-purple-800/50 bg-white dark:bg-gray-900/50'
+  1592→                    : 'border-muted bg-muted/30 opacity-60'}`
+  1593→                }>
+  1594→                  <div className="flex items-center justify-between gap-2">
+  1595→                    <div className="min-w-0 flex-1">
+  1596→                      <div className="flex items-center gap-2 flex-wrap">
+  1597→                        <span className="font-medium text-sm truncate">{config.name}</span>
+  1598→                        {config.isDefault && (
+  1599→                          <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[10px] px-1.5 py-0">Padrão</Badge>
+  1600→                        )}
+  1601→                        {!config.enabled && (
+  1602→                          <Badge className="bg-muted text-muted-foreground text-[10px] px-1.5 py-0">Inativo</Badge>
+  1603→                        )}
+  1604→                      </div>
+  1605→                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+  1606→                        <span className="font-mono">ID: {config.datasetId}</span>
+  1607→                        {config._count?.clients > 0 && (
+  1608→                          <span>{config._count.clients} lead{config._count.clients !== 1 ? 's' : ''}</span>
+  1609→                        )}
+  1610→                      </div>
+  1611→                    </div>
+  1612→                    <div className="flex items-center gap-1 flex-shrink-0">
+  1613→                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => testCapiConfig(config.id)} disabled={testingCapId === config.id}>
+  1614→                        {testingCapId === config.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+  1615→                      </Button>
+  1616→                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditCapiDialog(config)}>
+  1617→                        <Save className="h-3.5 w-3.5" />
+  1618→                      </Button>
+  1619→                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700" onClick={() => deleteCapiConfig(config.id)}>
+  1620→                        <Circle className="h-3.5 w-3.5" />
+  1621→                      </Button>
+  1622→                    </div>
+  1623→                  </div>
+  1624→                </div>
+  1625→              ))}
+  1626→            </div>
+  1627→          )}
+  1628→
+  1629→          {/* CAPI Info */}
+  1630→          <div className="rounded-lg bg-muted/50 border p-3 space-y-2">
+  1631→            <p className="text-xs font-medium text-muted-foreground">Como funciona (multi-cliente)</p>
+  1632→            <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
+  1633→              <li>Cada config tem seu próprio <strong>Access Token</strong> e <strong>Dataset ID</strong> — um por conta de anúncios</li>
+  1634→              <li>Quando um lead chega via webhook, o CRM busca o config pelo <strong>Form ID</strong> (auto-atribuição)</li>
+  1635→              <li>Se nenhum form_id corresponder, é usado o config <strong>Padrão</strong></li>
+  1636→              <li>Na mudança de stage, o evento é enviado para o dataset correto do lead</li>
+  1637→              <li>Dados PII (email, telefone, nome) são hashados (SHA256) antes do envio</li>
+  1638→            </ul>
+  1639→          </div>
+  1640→
+  1641→          {/* ═══ Form ID Mappings ═══ */}
+  1642→          <div className="rounded-lg border p-4 space-y-3">
+  1643→            <div className="flex items-center justify-between">
+  1644→              <div className="flex items-center gap-2">
+  1645→                <span className="text-sm font-semibold">Formulários Detectados</span>
+  1646→                {formMappings.length > 0 && (
+  1647→                  <Badge variant="secondary" className="text-[10px]">
+  1648→                    {formMappings.reduce((acc: number, m: any) => acc + (m.totalLeads || m.leadCount || 0), 0)} leads
+  1649→                  </Badge>
+  1650→                )}
+  1651→              </div>
+  1652→              <div className="flex items-center gap-1.5">
+  1653→                <Button
+  1654→                  size="sm"
+  1655→                  variant="outline"
+  1656→                  className="h-7 text-xs border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400"
+  1657→                  onClick={() => setShowImportDialog(true)}
+  1658→                >
+  1659→                  <Download className="h-3 w-3 mr-1" /> Importar
+  1660→                </Button>
+  1661→                <Button
+  1662→                  size="sm"
+  1663→                  variant="ghost"
+  1664→                  className="h-7 text-xs"
+  1665→                  onClick={loadFormMappings}
+  1666→                  disabled={loadingMappings}
+  1667→                >
+  1668→                  {loadingMappings ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+  1669→                </Button>
+  1670→              </div>
+  1671→            </div>
+  1672→
+  1673→            {loadingMappings ? (
+  1674→              <div className="flex items-center justify-center py-6">
+  1675→                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+  1676→              </div>
+  1677→            ) : formMappings.length === 0 ? (
+  1678→              <div className="text-center py-6 space-y-1.5">
+  1679→                <p className="text-xs text-muted-foreground">
+  1680→                  Nenhum formulário detectado ainda. Os Form IDs aparecem automaticamente quando chegam leads via webhook.
+  1681→                </p>
+  1682→                <p className="text-[11px] text-muted-foreground">
+  1683→                  Ou use o botão <strong>Importar</strong> para buscar formulários diretamente da conta de anúncios do cliente.
+  1684→                </p>
+  1685→              </div>
+  1686→            ) : (
+  1687→              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+  1688→                {formMappings.map((mapping: any) => {
+  1689→                  const campaigns = mapping.campaigns || [];
+  1690→                  const linkedConfig = mapping.capiConfig;
+  1691→                  const isMapped = !!mapping.capiConfigId;
+  1692→                  return (
+  1693→                    <div
+  1694→                      key={mapping.formId}
+  1695→                      className={`rounded-md border p-2.5 text-xs transition-colors ${isMapped
+  1696→                        ? 'border-green-200 dark:border-green-800/50 bg-green-50/50 dark:bg-green-950/20'
+  1697→                        : 'border-amber-200 dark:border-amber-800/50 bg-amber-50/30 dark:bg-amber-950/10'}`}
+  1698→                    >
+  1699→                      <div className="flex items-center justify-between gap-2">
+  1700→                        <div className="min-w-0 flex-1">
+  1701→                          <div className="flex items-center gap-1.5 flex-wrap">
+  1702→                            <span className="font-mono font-medium text-[11px]">{mapping.formId}</span>
+  1703→                            {isMapped ? (
+  1704→                              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[9px] px-1.5 py-0">
+  1705→                                {linkedConfig?.name || 'Vinculado'}
+  1706→                              </Badge>
+  1707→                            ) : (
+  1708→                              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] px-1.5 py-0">
+  1709→                                Sem CAPI
+  1710→                              </Badge>
+  1711→                            )}
+  1712→                          </div>
+  1713→                          {mapping.formName && (
+  1714→                            <p className="text-muted-foreground mt-0.5 truncate">{mapping.formName}</p>
+  1715→                          )}
+  1716→                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
+  1717→                            <span>{mapping.totalLeads || mapping.leadCount || 0} lead{(mapping.totalLeads || mapping.leadCount || 0) !== 1 ? 's' : ''}</span>
+  1718→                            {campaigns.length > 0 && campaigns[0].campaignName && (
+  1719→                              <span className="truncate">· {campaigns[0].campaignName}</span>
+  1720→                            )}
+  1721→                            {campaigns.length > 1 && (
+  1722→                              <span>+{campaigns.length - 1} campanha{campaigns.length - 1 > 1 ? 's' : ''}</span>
+  1723→                            )}
+  1724→                          </div>
+  1725→                        </div>
+  1726→                        <Select
+  1727→                          value={mapping.capiConfigId || '__none__'}
+  1728→                          onValueChange={(val) => linkFormToConfig(mapping.formId, val === '__none__' ? null : val)}
+  1729→                        >
+  1730→                          <SelectTrigger className="h-7 w-[130px] text-[11px]">
+  1731→                            <SelectValue placeholder="Vincular CAPI" />
+  1732→                          </SelectTrigger>
+  1733→                          <SelectContent>
+  1734→                            <SelectItem value="__none__">Nenhum</SelectItem>
+  1735→                            {capiConfigs.filter((c: any) => c.enabled).map((cfg: any) => (
+  1736→                              <SelectItem key={cfg.id} value={cfg.id}>{cfg.name}</SelectItem>
+  1737→                            ))}
+  1738→                          </SelectContent>
+  1739→                        </Select>
+  1740→                      </div>
+  1741→                    </div>
+  1742→                  );
+  1743→                })}
+  1744→              </div>
+  1745→            )}
+  1746→
+  1747→            <p className="text-[10px] text-muted-foreground">
+  1748→              Form IDs detectados automaticamente via webhook. Vincule cada formulário a um config CAPI para rotear os eventos de conversão corretamente.
+  1749→            </p>
+  1750→          </div>
+  1751→
+  1752→          {/* Tutorial CAPI Multi-cliente */}
+  1753→          <details className="group">
+  1754→            <summary className="text-xs font-medium text-purple-600 dark:text-purple-400 cursor-pointer hover:underline flex items-center gap-1">
+  1755→              Como configurar para múltiplos clientes
+  1756→            </summary>
+  1757→            <ol className="mt-2 text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
+  1758→              <li><strong>Sua conta:</strong> Crie um config com seu token e pixel. Marque como &quot;Padrão&quot;</li>
+  1759→              <li><strong>Cliente:</strong> Peça ao cliente para criar um System User no Business Settings dele</li>
+  1760→              <li>O cliente gera um token com permissões <code className="bg-muted px-1 rounded">business_management</code> + <code className="bg-muted px-1 rounded">ads_management</code></li>
+  1761→              <li>Crie um novo config com o token e dataset ID do cliente</li>
+  1762→              <li>Opcional: preencha os <strong>Form IDs</strong> para auto-atribuir leads do formulário específico</li>
+  1763→              <li>Teste cada config com o botão de raio para confirmar o funcionamento</li>
+  1764→            </ol>
+  1765→          </details>
+  1766→        </CardContent>
+  1767→      </Card>
+  1768→
+  1769→      {/* ═══ CAPI Dialog ═══ */}
+  1770→      {showCapiDialog && (
+  1771→        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowCapiDialog(false)}>
+  1772→          <div className="bg-background rounded-lg border shadow-lg w-full max-w-lg mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+  1773→            <div>
+  1774→              <h3 className="text-lg font-semibold">{editingCapi ? 'Editar' : 'Nova'} Configuração CAPI</h3>
+  1775→              <p className="text-sm text-muted-foreground">
+  1776→                {editingCapi ? 'Altere os campos desejados. Deixe o token vazio para manter o atual.' : 'Configure o acesso a um dataset da Conversions API'}
+  1777→              </p>
+  1778→            </div>
+  1779→            <div className="space-y-3">
+  1780→              <div className="space-y-1">
+  1781→                <Label className="text-xs font-medium">Nome *</Label>
+  1782→                <Input placeholder='Ex: "Felipe - Pixel" ou "Cliente X - Offline"' value={capiForm.name} onChange={(e) => setCapiForm({ ...capiForm, name: e.target.value })} />
+  1783→              </div>
+  1784→              <div className="space-y-1">
+  1785→                <Label className="text-xs font-medium">Dataset ID *</Label>
+  1786→                <Input placeholder="Ex: 1482541132653965" value={capiForm.datasetId} onChange={(e) => setCapiForm({ ...capiForm, datasetId: e.target.value })} className="font-mono text-sm" />
+  1787→              </div>
+  1788→              <div className="space-y-1">
+  1789→                <Label className="text-xs font-medium">Access Token {editingCapi ? '(deixe vazio para manter)' : '*'}</Label>
+  1790→                <Input type="password" placeholder={editingCapi ? '••••••••••••• (manter atual)' : 'Cole o token gerado pelo Meta Business'} value={capiForm.accessToken} onChange={(e) => setCapiForm({ ...capiForm, accessToken: e.target.value })} className="font-mono text-sm" />
+  1791→              </div>
+  1792→              <div className="space-y-1">
+  1793→                <Label className="text-xs font-medium">Form IDs (opcional, separados por vírgula)</Label>
+  1794→                <Input placeholder="Ex: 123456789, 987654321" value={capiForm.formIds} onChange={(e) => setCapiForm({ ...capiForm, formIds: e.target.value })} className="font-mono text-sm" />
+  1795→                <p className="text-[10px] text-muted-foreground">IDs dos formulários Meta que devem usar este config. Encontrados no Ads Manager → Formulários de Lead. Ou use o botão <strong>Importar</strong> acima.</p>
+  1796→              </div>
+  1797→              <div className="flex items-center justify-between">
+  1798→                <Label className="text-xs font-medium cursor-pointer" onClick={() => setCapiForm({ ...capiForm, isDefault: !capiForm.isDefault })}>
+  1799→                  Configuração padrão (fallback)
+  1800→                </Label>
+  1801→                <Switch checked={capiForm.isDefault} onCheckedChange={(v) => setCapiForm({ ...capiForm, isDefault: v })} />
+  1802→              </div>
+  1803→              <div className="flex items-center justify-between">
+  1804→                <Label className="text-xs font-medium cursor-pointer" onClick={() => setCapiForm({ ...capiForm, enabled: !capiForm.enabled })}>
+  1805→                  Ativado
+  1806→                </Label>
+  1807→                <Switch checked={capiForm.enabled} onCheckedChange={(v) => setCapiForm({ ...capiForm, enabled: v })} />
+  1808→              </div>
+  1809→            </div>
+  1810→            <div className="flex justify-end gap-2 pt-2">
+  1811→              <Button variant="outline" onClick={() => setShowCapiDialog(false)}>Cancelar</Button>
+  1812→              <Button onClick={saveCapiConfig} disabled={savingCapi} className="bg-purple-600 hover:bg-purple-700 text-white">
+  1813→                {savingCapi ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Salvando...</> : <><Save className="h-4 w-4 mr-1" /> {editingCapi ? 'Atualizar' : 'Criar'}</>}
+  1814→              </Button>
+  1815→            </div>
+  1816→          </div>
+  1817→        </div>
+  1818→      )}
+  1819→
+  1820→      {/* ═══ Import Manual Leads Dialog ═══ */}
+  1821→      {showManualImportDialog && (
+  1822→        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowManualImportDialog(false)}>
+  1823→          <div className="bg-background rounded-lg border shadow-lg w-full max-w-xl mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+  1824→            <div>
+  1825→              <h3 className="text-lg font-semibold flex items-center gap-2">
+  1826→                <UserPlus className="h-5 w-5 text-red-600" />
+  1827→                Importar Leads Perdidos
+  1828→              </h3>
+  1829→              <p className="text-sm text-muted-foreground mt-1">
+  1830→                Recupere leads que foram capturados pelo anúncio mas não chegaram ao CRM.
+  1831→              </p>
+  1832→            </div>
+  1833→
+  1834→            {/* Tabs: Por Formulário / Por ID */}
+  1835→            <Tabs value={importByFormTab} onValueChange={(v) => { setImportByFormTab(v as 'by-id' | 'by-form'); setImportByFormResult(null); }}>
+  1836→              <TabsList className="w-full">
+  1837→                <TabsTrigger value="by-form" className="flex-1 gap-1.5">
+  1838→                  <Download className="h-3.5 w-3.5" />
+  1839→                  Por Formulário + Período
+  1840→                </TabsTrigger>
+  1841→                <TabsTrigger value="by-id" className="flex-1 gap-1.5">
+  1842→                  <UserPlus className="h-3.5 w-3.5" />
+  1843→                  Por Leadgen ID
+  1844→                </TabsTrigger>
+  1845→              </TabsList>
+  1846→
+  1847→              {/* ── Tab: Por Formulário + Período ── */}
+  1848→              <TabsContent value="by-form" className="space-y-3 mt-3">
+  1849→                <div className="space-y-1">
+  1850→                  <Label className="text-xs font-medium">Formulário</Label>
+  1851→                  {formMappings.length > 0 ? (
+  1852→                    <Select
+  1853→                      value={importByFormFormId || '__custom__'}
+  1854→                      onValueChange={(val) => setImportByFormFormId(val === '__custom__' ? '' : val)}
+  1855→                    >
+  1856→                      <SelectTrigger className="text-sm">
+  1857→                        <SelectValue placeholder="Selecione um formulário..." />
+  1858→                      </SelectTrigger>
+  1859→                      <SelectContent>
+  1860→                        {formMappings.map((fm: any) => (
+  1861→                          <SelectItem key={fm.formId} value={fm.formId}>
+  1862→                            {fm.formName || fm.formId}
+  1863→                            {fm.leadCount ? ` (${fm.leadCount} leads)` : ''}
+  1864→                          </SelectItem>
+  1865→                        ))}
+  1866→                        <SelectItem value="__custom__">Digitar outro Form ID...</SelectItem>
+  1867→                      </SelectContent>
+  1868→                    </Select>
+  1869→                  ) : null}
+  1870→                  {(formMappings.length === 0 || importByFormFormId === '__custom__' || !importByFormFormId) && (
+  1871→                    <Input
+  1872→                      placeholder={formMappings.length > 0 ? 'Ou digite um Form ID manualmente...' : 'Digite o Form ID (ex: 123456789012345)'}
+  1873→                      value={importByFormFormId === '__custom__' ? '' : importByFormFormId}
+  1874→                      onChange={(e) => setImportByFormFormId(e.target.value)}
+  1875→                      className="font-mono text-sm mt-1.5"
+  1876→                    />
+  1877→                  )}
+  1878→                  <p className="text-[10px] text-muted-foreground">
+  1879→                    Selecione um formulário já mapeado ou digite o Form ID manualmente.
+  1880→                  </p>
+  1881→                </div>
+  1882→
+  1883→                <div className="grid grid-cols-2 gap-3">
+  1884→                  <div className="space-y-1">
+  1885→                    <Label className="text-xs font-medium">Data inicial *</Label>
+  1886→                    <Input
+  1887→                      type="date"
+  1888→                      value={importByFormFromDate}
+  1889→                      onChange={(e) => setImportByFormFromDate(e.target.value)}
+  1890→                      max={importByFormToDate || new Date().toISOString().split('T')[0]}
+  1891→                    />
+  1892→                  </div>
+  1893→                  <div className="space-y-1">
+  1894→                    <Label className="text-xs font-medium">Data final (opcional)</Label>
+  1895→                    <Input
+  1896→                      type="date"
+  1897→                      value={importByFormToDate}
+  1898→                      onChange={(e) => setImportByFormToDate(e.target.value)}
+  1899→                      min={importByFormFromDate}
+  1900→                      max={new Date().toISOString().split('T')[0]}
+  1901→                    />
+  1902→                  </div>
+  1903→                </div>
+  1904→                <p className="text-[10px] text-muted-foreground">
+  1905→                  O sistema buscará todos os leads deste formulário no período selecionado e importará apenas os que ainda não existem no CRM.
+  1906→                </p>
+  1907→
+  1908→                {importByFormResult && (
+  1909→                  <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+  1910→                    <div className="flex items-center gap-2">
+  1911→                      <p className="text-xs font-medium">{importByFormResult.message}</p>
+  1912→                    </div>
+  1913→                    {importByFormResult.results && importByFormResult.results.length > 0 && (
+  1914→                      <div className="space-y-1 max-h-48 overflow-y-auto">
+  1915→                        {importByFormResult.results.map((r: any) => (
+  1916→                          <div key={r.leadgenId} className="flex items-center justify-between text-[11px]">
+  1917→                            <div className="flex items-center gap-1.5 min-w-0">
+  1918→                              {r.isNew ? (
+  1919→                                <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />
+  1920→                              ) : r.success ? (
+  1921→                                <Circle className="h-3 w-3 text-blue-400 flex-shrink-0" />
+  1922→                              ) : (
+  1923→                                <Circle className="h-3 w-3 text-red-500 flex-shrink-0" />
+  1924→                              )}
+  1925→                              <span className="font-mono truncate">{r.leadgenId}</span>
+  1926→                              {r.isNew && <Badge className="text-[9px] px-1 py-0 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex-shrink-0">novo</Badge>}
+  1927→                            </div>
+  1928→                            <span className="text-muted-foreground truncate max-w-[180px] flex-shrink-0">
+  1929→                              {r.clientName || r.reason}
+  1930→                              {r.assignedTo ? ` → ${r.assignedTo}` : ''}
+  1931→                            </span>
+  1932→                          </div>
+  1933→                        ))}
+  1934→                      </div>
+  1935→                    )}
+  1936→                  </div>
+  1937→                )}
+  1938→
+  1939→                <div className="flex justify-end gap-2">
+  1940→                  <Button
+  1941→                    onClick={importLeadsByForm}
+  1942→                    disabled={importByFormLoading || !importByFormFormId || importByFormFormId === '__custom__' || !importByFormFromDate}
+  1943→                    className="bg-red-600 hover:bg-red-700 text-white"
+  1944→                  >
+  1945→                    {importByFormLoading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Buscando e importando...</> : <><Download className="h-4 w-4 mr-1" /> Buscar e Importar</>}
+  1946→                  </Button>
+  1947→                </div>
+  1948→              </TabsContent>
+  1949→
+  1950→              {/* ── Tab: Por Leadgen ID ── */}
+  1951→              <TabsContent value="by-id" className="space-y-3 mt-3">
+  1952→                <div className="space-y-2">
+  1953→                  <Label className="text-xs font-medium">Leadgen IDs (um por linha ou separados por vírgula)</Label>
+  1954→                  <textarea
+  1955→                    className="w-full min-h-[120px] rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+  1956→                    placeholder={"Ex:\n123456789012345\n987654321098765\n555123456789012"}
+  1957→                    value={manualImportIds}
+  1958→                    onChange={(e) => setManualImportIds(e.target.value)}
+  1959→                  />
+  1960→                  <p className="text-[10px] text-muted-foreground">
+  1961→                    Encontre os IDs em: Meta Ads Manager → Gerenciar Leads → clique no lead → o ID aparece na URL (ex: /lead/123456789012345)
+  1962→                  </p>
+  1963→                </div>
+  1964→                {manualImportResult && (
+  1965→                  <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+  1966→                    <p className="text-xs font-medium">{manualImportResult.message}</p>
+  1967→                    <div className="space-y-1 max-h-40 overflow-y-auto">
+  1968→                      {manualImportResult.results?.map((r: any) => (
+  1969→                        <div key={r.leadgenId} className="flex items-center justify-between text-[11px]">
+  1970→                          <div className="flex items-center gap-1.5">
+  1971→                            {r.success ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Circle className="h-3 w-3 text-red-500" />}
+  1972→                            <span className="font-mono">{r.leadgenId}</span>
+  1973→                          </div>
+  1974→                          <span className="text-muted-foreground truncate max-w-[200px]">
+  1975→                            {r.clientName || r.reason}
+  1976→                            {r.assignedTo ? ` → ${r.assignedTo}` : ''}
+  1977→                          </span>
+  1978→                        </div>
+  1979→                      ))}
+  1980→                    </div>
+  1981→                  </div>
+  1982→                )}
+  1983→                <div className="flex justify-end gap-2">
+  1984→                  <Button
+  1985→                    onClick={importManualLeads}
+  1986→                    disabled={manualImporting || !manualImportIds.trim()}
+  1987→                    className="bg-red-600 hover:bg-red-700 text-white"
+  1988→                  >
+  1989→                    {manualImporting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Importando...</> : <><UserPlus className="h-4 w-4 mr-1" /> Importar Leads</>}
+  1990→                  </Button>
+  1991→                </div>
+  1992→              </TabsContent>
+  1993→            </Tabs>
+  1994→
+  1995→            <div className="flex justify-end pt-2 border-t">
+  1996→              <Button variant="outline" onClick={() => setShowManualImportDialog(false)}>Fechar</Button>
+  1997→            </div>
+  1998→          </div>
+  1999→        </div>
+  2000→      )}
+
+[showing lines 1-2000 of 2202; use offset=2001 with limit to continue reading]

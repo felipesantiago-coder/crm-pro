@@ -1,0 +1,502 @@
+  1566→            <div className="flex items-center gap-2">
+  1567→              <Badge className={capiConfigs.some((c: any) => c.enabled) ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-muted text-muted-foreground'}>
+  1568→                {capiConfigs.filter((c: any) => c.enabled).length} ativo{capiConfigs.filter((c: any) => c.enabled).length !== 1 ? 's' : ''}
+  1569→              </Badge>
+  1570→              <Button size="sm" variant="outline" className="border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400" onClick={openNewCapiDialog}>
+  1571→                <Save className="h-3.5 w-3.5 mr-1" /> Adicionar
+  1572→              </Button>
+  1573→            </div>
+  1574→          </div>
+  1575→        </CardHeader>
+  1576→        <CardContent className="space-y-4">
+  1577→          {loadingCapi ? (
+  1578→            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+  1579→          ) : capiConfigs.length === 0 ? (
+  1580→            <div className="text-center py-8 space-y-2">
+  1581→              <p className="text-sm text-muted-foreground">Nenhuma configuração CAPI criada</p>
+  1582→              <p className="text-xs text-muted-foreground">
+  1583→                Adicione um dataset para cada conta de anúncios (sua ou de clientes)
+  1584→              </p>
+  1585→            </div>
+  1586→          ) : (
+  1587→            <div className="space-y-2">
+  1588→              {capiConfigs.map((config: any) => (
+  1589→                <div key={config.id} className={
+  1590→                  `rounded-lg border p-3 transition-colors ${config.enabled
+  1591→                    ? 'border-purple-200 dark:border-purple-800/50 bg-white dark:bg-gray-900/50'
+  1592→                    : 'border-muted bg-muted/30 opacity-60'}`
+  1593→                }>
+  1594→                  <div className="flex items-center justify-between gap-2">
+  1595→                    <div className="min-w-0 flex-1">
+  1596→                      <div className="flex items-center gap-2 flex-wrap">
+  1597→                        <span className="font-medium text-sm truncate">{config.name}</span>
+  1598→                        {config.isDefault && (
+  1599→                          <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[10px] px-1.5 py-0">Padrão</Badge>
+  1600→                        )}
+  1601→                        {!config.enabled && (
+  1602→                          <Badge className="bg-muted text-muted-foreground text-[10px] px-1.5 py-0">Inativo</Badge>
+  1603→                        )}
+  1604→                      </div>
+  1605→                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+  1606→                        <span className="font-mono">ID: {config.datasetId}</span>
+  1607→                        {config._count?.clients > 0 && (
+  1608→                          <span>{config._count.clients} lead{config._count.clients !== 1 ? 's' : ''}</span>
+  1609→                        )}
+  1610→                      </div>
+  1611→                    </div>
+  1612→                    <div className="flex items-center gap-1 flex-shrink-0">
+  1613→                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => testCapiConfig(config.id)} disabled={testingCapId === config.id}>
+  1614→                        {testingCapId === config.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+  1615→                      </Button>
+  1616→                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditCapiDialog(config)}>
+  1617→                        <Save className="h-3.5 w-3.5" />
+  1618→                      </Button>
+  1619→                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700" onClick={() => deleteCapiConfig(config.id)}>
+  1620→                        <Circle className="h-3.5 w-3.5" />
+  1621→                      </Button>
+  1622→                    </div>
+  1623→                  </div>
+  1624→                </div>
+  1625→              ))}
+  1626→            </div>
+  1627→          )}
+  1628→
+  1629→          {/* CAPI Info */}
+  1630→          <div className="rounded-lg bg-muted/50 border p-3 space-y-2">
+  1631→            <p className="text-xs font-medium text-muted-foreground">Como funciona (multi-cliente)</p>
+  1632→            <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
+  1633→              <li>Cada config tem seu próprio <strong>Access Token</strong> e <strong>Dataset ID</strong> — um por conta de anúncios</li>
+  1634→              <li>Quando um lead chega via webhook, o CRM busca o config pelo <strong>Form ID</strong> (auto-atribuição)</li>
+  1635→              <li>Se nenhum form_id corresponder, é usado o config <strong>Padrão</strong></li>
+  1636→              <li>Na mudança de stage, o evento é enviado para o dataset correto do lead</li>
+  1637→              <li>Dados PII (email, telefone, nome) são hashados (SHA256) antes do envio</li>
+  1638→            </ul>
+  1639→          </div>
+  1640→
+  1641→          {/* ═══ Form ID Mappings ═══ */}
+  1642→          <div className="rounded-lg border p-4 space-y-3">
+  1643→            <div className="flex items-center justify-between">
+  1644→              <div className="flex items-center gap-2">
+  1645→                <span className="text-sm font-semibold">Formulários Detectados</span>
+  1646→                {formMappings.length > 0 && (
+  1647→                  <Badge variant="secondary" className="text-[10px]">
+  1648→                    {formMappings.reduce((acc: number, m: any) => acc + (m.totalLeads || m.leadCount || 0), 0)} leads
+  1649→                  </Badge>
+  1650→                )}
+  1651→              </div>
+  1652→              <div className="flex items-center gap-1.5">
+  1653→                <Button
+  1654→                  size="sm"
+  1655→                  variant="outline"
+  1656→                  className="h-7 text-xs border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400"
+  1657→                  onClick={() => setShowImportDialog(true)}
+  1658→                >
+  1659→                  <Download className="h-3 w-3 mr-1" /> Importar
+  1660→                </Button>
+  1661→                <Button
+  1662→                  size="sm"
+  1663→                  variant="ghost"
+  1664→                  className="h-7 text-xs"
+  1665→                  onClick={loadFormMappings}
+  1666→                  disabled={loadingMappings}
+  1667→                >
+  1668→                  {loadingMappings ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+  1669→                </Button>
+  1670→              </div>
+  1671→            </div>
+  1672→
+  1673→            {loadingMappings ? (
+  1674→              <div className="flex items-center justify-center py-6">
+  1675→                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+  1676→              </div>
+  1677→            ) : formMappings.length === 0 ? (
+  1678→              <div className="text-center py-6 space-y-1.5">
+  1679→                <p className="text-xs text-muted-foreground">
+  1680→                  Nenhum formulário detectado ainda. Os Form IDs aparecem automaticamente quando chegam leads via webhook.
+  1681→                </p>
+  1682→                <p className="text-[11px] text-muted-foreground">
+  1683→                  Ou use o botão <strong>Importar</strong> para buscar formulários diretamente da conta de anúncios do cliente.
+  1684→                </p>
+  1685→              </div>
+  1686→            ) : (
+  1687→              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+  1688→                {formMappings.map((mapping: any) => {
+  1689→                  const campaigns = mapping.campaigns || [];
+  1690→                  const linkedConfig = mapping.capiConfig;
+  1691→                  const isMapped = !!mapping.capiConfigId;
+  1692→                  return (
+  1693→                    <div
+  1694→                      key={mapping.formId}
+  1695→                      className={`rounded-md border p-2.5 text-xs transition-colors ${isMapped
+  1696→                        ? 'border-green-200 dark:border-green-800/50 bg-green-50/50 dark:bg-green-950/20'
+  1697→                        : 'border-amber-200 dark:border-amber-800/50 bg-amber-50/30 dark:bg-amber-950/10'}`}
+  1698→                    >
+  1699→                      <div className="flex items-center justify-between gap-2">
+  1700→                        <div className="min-w-0 flex-1">
+  1701→                          <div className="flex items-center gap-1.5 flex-wrap">
+  1702→                            <span className="font-mono font-medium text-[11px]">{mapping.formId}</span>
+  1703→                            {isMapped ? (
+  1704→                              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[9px] px-1.5 py-0">
+  1705→                                {linkedConfig?.name || 'Vinculado'}
+  1706→                              </Badge>
+  1707→                            ) : (
+  1708→                              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] px-1.5 py-0">
+  1709→                                Sem CAPI
+  1710→                              </Badge>
+  1711→                            )}
+  1712→                          </div>
+  1713→                          {mapping.formName && (
+  1714→                            <p className="text-muted-foreground mt-0.5 truncate">{mapping.formName}</p>
+  1715→                          )}
+  1716→                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
+  1717→                            <span>{mapping.totalLeads || mapping.leadCount || 0} lead{(mapping.totalLeads || mapping.leadCount || 0) !== 1 ? 's' : ''}</span>
+  1718→                            {campaigns.length > 0 && campaigns[0].campaignName && (
+  1719→                              <span className="truncate">· {campaigns[0].campaignName}</span>
+  1720→                            )}
+  1721→                            {campaigns.length > 1 && (
+  1722→                              <span>+{campaigns.length - 1} campanha{campaigns.length - 1 > 1 ? 's' : ''}</span>
+  1723→                            )}
+  1724→                          </div>
+  1725→                        </div>
+  1726→                        <Select
+  1727→                          value={mapping.capiConfigId || '__none__'}
+  1728→                          onValueChange={(val) => linkFormToConfig(mapping.formId, val === '__none__' ? null : val)}
+  1729→                        >
+  1730→                          <SelectTrigger className="h-7 w-[130px] text-[11px]">
+  1731→                            <SelectValue placeholder="Vincular CAPI" />
+  1732→                          </SelectTrigger>
+  1733→                          <SelectContent>
+  1734→                            <SelectItem value="__none__">Nenhum</SelectItem>
+  1735→                            {capiConfigs.filter((c: any) => c.enabled).map((cfg: any) => (
+  1736→                              <SelectItem key={cfg.id} value={cfg.id}>{cfg.name}</SelectItem>
+  1737→                            ))}
+  1738→                          </SelectContent>
+  1739→                        </Select>
+  1740→                      </div>
+  1741→                    </div>
+  1742→                  );
+  1743→                })}
+  1744→              </div>
+  1745→            )}
+  1746→
+  1747→            <p className="text-[10px] text-muted-foreground">
+  1748→              Form IDs detectados automaticamente via webhook. Vincule cada formulário a um config CAPI para rotear os eventos de conversão corretamente.
+  1749→            </p>
+  1750→          </div>
+  1751→
+  1752→          {/* Tutorial CAPI Multi-cliente */}
+  1753→          <details className="group">
+  1754→            <summary className="text-xs font-medium text-purple-600 dark:text-purple-400 cursor-pointer hover:underline flex items-center gap-1">
+  1755→              Como configurar para múltiplos clientes
+  1756→            </summary>
+  1757→            <ol className="mt-2 text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
+  1758→              <li><strong>Sua conta:</strong> Crie um config com seu token e pixel. Marque como &quot;Padrão&quot;</li>
+  1759→              <li><strong>Cliente:</strong> Peça ao cliente para criar um System User no Business Settings dele</li>
+  1760→              <li>O cliente gera um token com permissões <code className="bg-muted px-1 rounded">business_management</code> + <code className="bg-muted px-1 rounded">ads_management</code></li>
+  1761→              <li>Crie um novo config com o token e dataset ID do cliente</li>
+  1762→              <li>Opcional: preencha os <strong>Form IDs</strong> para auto-atribuir leads do formulário específico</li>
+  1763→              <li>Teste cada config com o botão de raio para confirmar o funcionamento</li>
+  1764→            </ol>
+  1765→          </details>
+  1766→        </CardContent>
+  1767→      </Card>
+  1768→
+  1769→      {/* ═══ CAPI Dialog ═══ */}
+  1770→      {showCapiDialog && (
+  1771→        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowCapiDialog(false)}>
+  1772→          <div className="bg-background rounded-lg border shadow-lg w-full max-w-lg mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+  1773→            <div>
+  1774→              <h3 className="text-lg font-semibold">{editingCapi ? 'Editar' : 'Nova'} Configuração CAPI</h3>
+  1775→              <p className="text-sm text-muted-foreground">
+  1776→                {editingCapi ? 'Altere os campos desejados. Deixe o token vazio para manter o atual.' : 'Configure o acesso a um dataset da Conversions API'}
+  1777→              </p>
+  1778→            </div>
+  1779→            <div className="space-y-3">
+  1780→              <div className="space-y-1">
+  1781→                <Label className="text-xs font-medium">Nome *</Label>
+  1782→                <Input placeholder='Ex: "Felipe - Pixel" ou "Cliente X - Offline"' value={capiForm.name} onChange={(e) => setCapiForm({ ...capiForm, name: e.target.value })} />
+  1783→              </div>
+  1784→              <div className="space-y-1">
+  1785→                <Label className="text-xs font-medium">Dataset ID *</Label>
+  1786→                <Input placeholder="Ex: 1482541132653965" value={capiForm.datasetId} onChange={(e) => setCapiForm({ ...capiForm, datasetId: e.target.value })} className="font-mono text-sm" />
+  1787→              </div>
+  1788→              <div className="space-y-1">
+  1789→                <Label className="text-xs font-medium">Access Token {editingCapi ? '(deixe vazio para manter)' : '*'}</Label>
+  1790→                <Input type="password" placeholder={editingCapi ? '••••••••••••• (manter atual)' : 'Cole o token gerado pelo Meta Business'} value={capiForm.accessToken} onChange={(e) => setCapiForm({ ...capiForm, accessToken: e.target.value })} className="font-mono text-sm" />
+  1791→              </div>
+  1792→              <div className="space-y-1">
+  1793→                <Label className="text-xs font-medium">Form IDs (opcional, separados por vírgula)</Label>
+  1794→                <Input placeholder="Ex: 123456789, 987654321" value={capiForm.formIds} onChange={(e) => setCapiForm({ ...capiForm, formIds: e.target.value })} className="font-mono text-sm" />
+  1795→                <p className="text-[10px] text-muted-foreground">IDs dos formulários Meta que devem usar este config. Encontrados no Ads Manager → Formulários de Lead. Ou use o botão <strong>Importar</strong> acima.</p>
+  1796→              </div>
+  1797→              <div className="flex items-center justify-between">
+  1798→                <Label className="text-xs font-medium cursor-pointer" onClick={() => setCapiForm({ ...capiForm, isDefault: !capiForm.isDefault })}>
+  1799→                  Configuração padrão (fallback)
+  1800→                </Label>
+  1801→                <Switch checked={capiForm.isDefault} onCheckedChange={(v) => setCapiForm({ ...capiForm, isDefault: v })} />
+  1802→              </div>
+  1803→              <div className="flex items-center justify-between">
+  1804→                <Label className="text-xs font-medium cursor-pointer" onClick={() => setCapiForm({ ...capiForm, enabled: !capiForm.enabled })}>
+  1805→                  Ativado
+  1806→                </Label>
+  1807→                <Switch checked={capiForm.enabled} onCheckedChange={(v) => setCapiForm({ ...capiForm, enabled: v })} />
+  1808→              </div>
+  1809→            </div>
+  1810→            <div className="flex justify-end gap-2 pt-2">
+  1811→              <Button variant="outline" onClick={() => setShowCapiDialog(false)}>Cancelar</Button>
+  1812→              <Button onClick={saveCapiConfig} disabled={savingCapi} className="bg-purple-600 hover:bg-purple-700 text-white">
+  1813→                {savingCapi ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Salvando...</> : <><Save className="h-4 w-4 mr-1" /> {editingCapi ? 'Atualizar' : 'Criar'}</>}
+  1814→              </Button>
+  1815→            </div>
+  1816→          </div>
+  1817→        </div>
+  1818→      )}
+  1819→
+  1820→      {/* ═══ Import Manual Leads Dialog ═══ */}
+  1821→      {showManualImportDialog && (
+  1822→        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowManualImportDialog(false)}>
+  1823→          <div className="bg-background rounded-lg border shadow-lg w-full max-w-xl mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+  1824→            <div>
+  1825→              <h3 className="text-lg font-semibold flex items-center gap-2">
+  1826→                <UserPlus className="h-5 w-5 text-red-600" />
+  1827→                Importar Leads Perdidos
+  1828→              </h3>
+  1829→              <p className="text-sm text-muted-foreground mt-1">
+  1830→                Recupere leads que foram capturados pelo anúncio mas não chegaram ao CRM.
+  1831→              </p>
+  1832→            </div>
+  1833→
+  1834→            {/* Tabs: Por Formulário / Por ID */}
+  1835→            <Tabs value={importByFormTab} onValueChange={(v) => { setImportByFormTab(v as 'by-id' | 'by-form'); setImportByFormResult(null); }}>
+  1836→              <TabsList className="w-full">
+  1837→                <TabsTrigger value="by-form" className="flex-1 gap-1.5">
+  1838→                  <Download className="h-3.5 w-3.5" />
+  1839→                  Por Formulário + Período
+  1840→                </TabsTrigger>
+  1841→                <TabsTrigger value="by-id" className="flex-1 gap-1.5">
+  1842→                  <UserPlus className="h-3.5 w-3.5" />
+  1843→                  Por Leadgen ID
+  1844→                </TabsTrigger>
+  1845→              </TabsList>
+  1846→
+  1847→              {/* ── Tab: Por Formulário + Período ── */}
+  1848→              <TabsContent value="by-form" className="space-y-3 mt-3">
+  1849→                <div className="space-y-1">
+  1850→                  <Label className="text-xs font-medium">Formulário</Label>
+  1851→                  {formMappings.length > 0 ? (
+  1852→                    <Select
+  1853→                      value={importByFormFormId || '__custom__'}
+  1854→                      onValueChange={(val) => setImportByFormFormId(val === '__custom__' ? '' : val)}
+  1855→                    >
+  1856→                      <SelectTrigger className="text-sm">
+  1857→                        <SelectValue placeholder="Selecione um formulário..." />
+  1858→                      </SelectTrigger>
+  1859→                      <SelectContent>
+  1860→                        {formMappings.map((fm: any) => (
+  1861→                          <SelectItem key={fm.formId} value={fm.formId}>
+  1862→                            {fm.formName || fm.formId}
+  1863→                            {fm.leadCount ? ` (${fm.leadCount} leads)` : ''}
+  1864→                          </SelectItem>
+  1865→                        ))}
+  1866→                        <SelectItem value="__custom__">Digitar outro Form ID...</SelectItem>
+  1867→                      </SelectContent>
+  1868→                    </Select>
+  1869→                  ) : null}
+  1870→                  {(formMappings.length === 0 || importByFormFormId === '__custom__' || !importByFormFormId) && (
+  1871→                    <Input
+  1872→                      placeholder={formMappings.length > 0 ? 'Ou digite um Form ID manualmente...' : 'Digite o Form ID (ex: 123456789012345)'}
+  1873→                      value={importByFormFormId === '__custom__' ? '' : importByFormFormId}
+  1874→                      onChange={(e) => setImportByFormFormId(e.target.value)}
+  1875→                      className="font-mono text-sm mt-1.5"
+  1876→                    />
+  1877→                  )}
+  1878→                  <p className="text-[10px] text-muted-foreground">
+  1879→                    Selecione um formulário já mapeado ou digite o Form ID manualmente.
+  1880→                  </p>
+  1881→                </div>
+  1882→
+  1883→                <div className="grid grid-cols-2 gap-3">
+  1884→                  <div className="space-y-1">
+  1885→                    <Label className="text-xs font-medium">Data inicial *</Label>
+  1886→                    <Input
+  1887→                      type="date"
+  1888→                      value={importByFormFromDate}
+  1889→                      onChange={(e) => setImportByFormFromDate(e.target.value)}
+  1890→                      max={importByFormToDate || new Date().toISOString().split('T')[0]}
+  1891→                    />
+  1892→                  </div>
+  1893→                  <div className="space-y-1">
+  1894→                    <Label className="text-xs font-medium">Data final (opcional)</Label>
+  1895→                    <Input
+  1896→                      type="date"
+  1897→                      value={importByFormToDate}
+  1898→                      onChange={(e) => setImportByFormToDate(e.target.value)}
+  1899→                      min={importByFormFromDate}
+  1900→                      max={new Date().toISOString().split('T')[0]}
+  1901→                    />
+  1902→                  </div>
+  1903→                </div>
+  1904→                <p className="text-[10px] text-muted-foreground">
+  1905→                  O sistema buscará todos os leads deste formulário no período selecionado e importará apenas os que ainda não existem no CRM.
+  1906→                </p>
+  1907→
+  1908→                {importByFormResult && (
+  1909→                  <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+  1910→                    <div className="flex items-center gap-2">
+  1911→                      <p className="text-xs font-medium">{importByFormResult.message}</p>
+  1912→                    </div>
+  1913→                    {importByFormResult.results && importByFormResult.results.length > 0 && (
+  1914→                      <div className="space-y-1 max-h-48 overflow-y-auto">
+  1915→                        {importByFormResult.results.map((r: any) => (
+  1916→                          <div key={r.leadgenId} className="flex items-center justify-between text-[11px]">
+  1917→                            <div className="flex items-center gap-1.5 min-w-0">
+  1918→                              {r.isNew ? (
+  1919→                                <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />
+  1920→                              ) : r.success ? (
+  1921→                                <Circle className="h-3 w-3 text-blue-400 flex-shrink-0" />
+  1922→                              ) : (
+  1923→                                <Circle className="h-3 w-3 text-red-500 flex-shrink-0" />
+  1924→                              )}
+  1925→                              <span className="font-mono truncate">{r.leadgenId}</span>
+  1926→                              {r.isNew && <Badge className="text-[9px] px-1 py-0 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex-shrink-0">novo</Badge>}
+  1927→                            </div>
+  1928→                            <span className="text-muted-foreground truncate max-w-[180px] flex-shrink-0">
+  1929→                              {r.clientName || r.reason}
+  1930→                              {r.assignedTo ? ` → ${r.assignedTo}` : ''}
+  1931→                            </span>
+  1932→                          </div>
+  1933→                        ))}
+  1934→                      </div>
+  1935→                    )}
+  1936→                  </div>
+  1937→                )}
+  1938→
+  1939→                <div className="flex justify-end gap-2">
+  1940→                  <Button
+  1941→                    onClick={importLeadsByForm}
+  1942→                    disabled={importByFormLoading || !importByFormFormId || importByFormFormId === '__custom__' || !importByFormFromDate}
+  1943→                    className="bg-red-600 hover:bg-red-700 text-white"
+  1944→                  >
+  1945→                    {importByFormLoading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Buscando e importando...</> : <><Download className="h-4 w-4 mr-1" /> Buscar e Importar</>}
+  1946→                  </Button>
+  1947→                </div>
+  1948→              </TabsContent>
+  1949→
+  1950→              {/* ── Tab: Por Leadgen ID ── */}
+  1951→              <TabsContent value="by-id" className="space-y-3 mt-3">
+  1952→                <div className="space-y-2">
+  1953→                  <Label className="text-xs font-medium">Leadgen IDs (um por linha ou separados por vírgula)</Label>
+  1954→                  <textarea
+  1955→                    className="w-full min-h-[120px] rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+  1956→                    placeholder={"Ex:\n123456789012345\n987654321098765\n555123456789012"}
+  1957→                    value={manualImportIds}
+  1958→                    onChange={(e) => setManualImportIds(e.target.value)}
+  1959→                  />
+  1960→                  <p className="text-[10px] text-muted-foreground">
+  1961→                    Encontre os IDs em: Meta Ads Manager → Gerenciar Leads → clique no lead → o ID aparece na URL (ex: /lead/123456789012345)
+  1962→                  </p>
+  1963→                </div>
+  1964→                {manualImportResult && (
+  1965→                  <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+  1966→                    <p className="text-xs font-medium">{manualImportResult.message}</p>
+  1967→                    <div className="space-y-1 max-h-40 overflow-y-auto">
+  1968→                      {manualImportResult.results?.map((r: any) => (
+  1969→                        <div key={r.leadgenId} className="flex items-center justify-between text-[11px]">
+  1970→                          <div className="flex items-center gap-1.5">
+  1971→                            {r.success ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Circle className="h-3 w-3 text-red-500" />}
+  1972→                            <span className="font-mono">{r.leadgenId}</span>
+  1973→                          </div>
+  1974→                          <span className="text-muted-foreground truncate max-w-[200px]">
+  1975→                            {r.clientName || r.reason}
+  1976→                            {r.assignedTo ? ` → ${r.assignedTo}` : ''}
+  1977→                          </span>
+  1978→                        </div>
+  1979→                      ))}
+  1980→                    </div>
+  1981→                  </div>
+  1982→                )}
+  1983→                <div className="flex justify-end gap-2">
+  1984→                  <Button
+  1985→                    onClick={importManualLeads}
+  1986→                    disabled={manualImporting || !manualImportIds.trim()}
+  1987→                    className="bg-red-600 hover:bg-red-700 text-white"
+  1988→                  >
+  1989→                    {manualImporting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Importando...</> : <><UserPlus className="h-4 w-4 mr-1" /> Importar Leads</>}
+  1990→                  </Button>
+  1991→                </div>
+  1992→              </TabsContent>
+  1993→            </Tabs>
+  1994→
+  1995→            <div className="flex justify-end pt-2 border-t">
+  1996→              <Button variant="outline" onClick={() => setShowManualImportDialog(false)}>Fechar</Button>
+  1997→            </div>
+  1998→          </div>
+  1999→        </div>
+  2000→      )}
+  2001→
+  2002→      {/* ═══ Import Form IDs Dialog ═══ */}
+  2003→      {showImportDialog && (
+  2004→        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowImportDialog(false); setImportResult(null); setImportForm({ accessToken: '', adAccountId: '', capiConfigId: '' }); }}>
+  2005→          <div className="bg-background rounded-lg border shadow-lg w-full max-w-lg mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+  2006→            <div>
+  2007→              <h3 className="text-lg font-semibold flex items-center gap-2">
+  2008→                <Download className="h-5 w-5 text-purple-600" />
+  2009→                Importar Form IDs do Meta
+  2010→              </h3>
+  2011→              <p className="text-sm text-muted-foreground mt-1">
+  2012→                Busca automaticamente os formulários de lead de uma conta de anúncios do cliente
+  2013→              </p>
+  2014→            </div>
+  2015→            <div className="space-y-3">
+  2016→              <div className="space-y-1">
+  2017→                <Label className="text-xs font-medium">ID da Conta de Anúncios *</Label>
+  2018→                <Input placeholder="Ex: act_1433936273727810 ou 1433936273727810" value={importForm.adAccountId} onChange={(e) => setImportForm({ ...importForm, adAccountId: e.target.value })} className="font-mono text-sm" />
+  2019→                <p className="text-[10px] text-muted-foreground">Encontrado no Ads Manager → Configurações da conta, ou na URL do Ads Manager</p>
+  2020→              </div>
+  2021→              <div className="space-y-1">
+  2022→                <Label className="text-xs font-medium">Access Token do Cliente *</Label>
+  2023→                <Input type="password" placeholder="Token com permissão leads_retrieval" value={importForm.accessToken} onChange={(e) => setImportForm({ ...importForm, accessToken: e.target.value })} className="font-mono text-sm" />
+  2024→                <p className="text-[10px] text-muted-foreground">O cliente gera este token no Business Settings dele (System User com{' '}<code className="bg-muted px-1 rounded">leads_retrieval</code>{' + '}&nbsp;<code className="bg-muted px-1 rounded">ads_read</code>)</p>
+  2025→              </div>
+  2026→              <div className="space-y-1">
+  2027→                <Label className="text-xs font-medium">Vincular automaticamente ao CAPI Config</Label>
+  2028→                <Select value={importForm.capiConfigId || '__none__'} onValueChange={(val) => setImportForm({ ...importForm, capiConfigId: val === '__none__' ? '' : val })}>
+  2029→                  <SelectTrigger className="text-sm"><SelectValue placeholder="Opcional — vincular após importar" /></SelectTrigger>
+  2030→                  <SelectContent>
+  2031→                    <SelectItem value="__none__">Não vincular</SelectItem>
+  2032→                    {capiConfigs.filter((c: any) => c.enabled).map((cfg: any) => (<SelectItem key={cfg.id} value={cfg.id}>{cfg.name}</SelectItem>))}
+  2033→                  </SelectContent>
+  2034→                </Select>
+  2035→              </div>
+  2036→            </div>
+  2037→            {importResult && (
+  2038→              <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+  2039→                <p className="text-xs font-medium">{importResult.imported} formulário(s) importado(s) de {importResult.total} encontrado(s)</p>
+  2040→                {importResult.forms?.length > 0 && (
+  2041→                  <div className="space-y-1 max-h-32 overflow-y-auto">
+  2042→                    {importResult.forms.map((f: any) => (
+  2043→                      <div key={f.id} className="flex items-center justify-between text-[11px]">
+  2044→                        <span className="font-mono">{f.id}</span>
+  2045→                        <span className="text-muted-foreground truncate ml-2">{f.name}</span>
+  2046→                      </div>
+  2047→                    ))}
+  2048→                  </div>
+  2049→                )}
+  2050→              </div>
+  2051→            )}
+  2052→            <div className="flex justify-end gap-2 pt-2">
+  2053→              <Button variant="outline" onClick={() => { setShowImportDialog(false); setImportResult(null); setImportForm({ accessToken: '', adAccountId: '', capiConfigId: '' }); }}>Cancelar</Button>
+  2054→              <Button onClick={importFormIds} disabled={importing} className="bg-purple-600 hover:bg-purple-700 text-white">
+  2055→                {importing ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Importando...</> : <><Download className="h-4 w-4 mr-1" /> Importar</>}
+  2056→              </Button>
+  2057→            </div>
+  2058→          </div>
+  2059→        </div>
+  2060→      )}
+  2061→    </div>
+  2062→  );
+  2063→}
+  2064→
+  2065→// ============================================================
+
+[showing lines 1566-2065 of 2202; use offset=2066 with limit to continue reading]
