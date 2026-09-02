@@ -1,7 +1,6 @@
 'use client';
 
 import React, { lazy, Suspense } from 'react';
-import { ThemeProvider } from 'next-themes';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -11,6 +10,7 @@ import { useCRMStore } from '@/store/crm-store';
 import { Toaster } from '@/components/ui/sonner';
 import { AIChatWidget } from '@/components/ai-assistant/ai-chat-widget'; // [AI ASSISTANT] — remova esta linha e o <AIChatWidget /> abaixo para desativar
 import { useSessionGuard } from '@/hooks/use-session-guard';
+import { BrandSymbol } from '@/components/brand';
 
 // Code splitting: carrega apenas a view ativa
 const DashboardView = lazy(() =>
@@ -80,9 +80,7 @@ function CRMApp() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center animate-pulse">
-            <span className="text-white font-bold text-xl">C</span>
-          </div>
+          <BrandSymbol size={48} priority />
           <p className="text-sm text-muted-foreground">Carregando...</p>
         </div>
       </div>
@@ -121,22 +119,15 @@ function CRMApp() {
   }
 
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange={false}
-    >
-      <SupabaseRealtimeProvider>
-        <CRMLayout>
-          <Suspense fallback={<ViewLoader />}>
-            {renderView()}
-          </Suspense>
-        </CRMLayout>
-      </SupabaseRealtimeProvider>
+    <SupabaseRealtimeProvider>
+      <CRMLayout>
+        <Suspense fallback={<ViewLoader />}>
+          {renderView()}
+        </Suspense>
+      </CRMLayout>
       <Toaster position="top-right" richColors />
       <AIChatWidget /> {/* [AI ASSISTANT] — remova esta linha para desativar */}
-    </ThemeProvider>
+    </SupabaseRealtimeProvider>
   );
 }
 

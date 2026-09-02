@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2, Lock, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
+import { BrandLogo, BrandSymbol } from '@/components/brand';
 
 function ResetPasswordForm() {
   const [newPassword, setNewPassword] = useState('');
@@ -83,26 +84,20 @@ function ResetPasswordForm() {
   }
 
   return (
-    <Card className="w-full max-w-md relative z-10 shadow-2xl border-0">
-      <CardHeader className="text-center space-y-4 pb-2">
-        <div className="mx-auto h-14 w-14 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
-          <span className="text-white font-bold text-2xl">C</span>
-        </div>
-        <div>
-          <CardTitle className="text-2xl font-bold tracking-tight">
-            <span className="text-emerald-600">CRM</span>{' '}
-            <span className="text-foreground">Pro</span>
-          </CardTitle>
-          <CardDescription className="text-muted-foreground mt-1">
-            {success ? 'Senha redefinida' : 'Nova senha'}
-          </CardDescription>
-        </div>
+    <Card className="w-full max-w-md shadow-md">
+      <CardHeader className="text-center space-y-1 pb-2">
+        <CardTitle className="text-2xl font-bold tracking-tight">
+          {success ? 'Senha redefinida' : 'Nova senha'}
+        </CardTitle>
+        <CardDescription className="text-muted-foreground mt-1">
+          {success ? 'Tudo pronto' : 'Defina sua nova senha'}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {success ? (
           <div className="text-center space-y-4">
-            <div className="mx-auto w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-              <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+            <div className="mx-auto w-16 h-16 rounded-full bg-success/10 flex items-center justify-center">
+              <CheckCircle2 className="h-8 w-8 text-success" />
             </div>
             <div>
               <p className="text-sm text-foreground font-medium">Senha alterada com sucesso!</p>
@@ -111,7 +106,7 @@ function ResetPasswordForm() {
               </p>
             </div>
             <Button
-              className="w-full mt-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+              className="w-full mt-4 font-semibold"
               onClick={() => router.push('/login')}
             >
               Ir para o login
@@ -169,7 +164,8 @@ function ResetPasswordForm() {
               <Button
                 type="submit"
                 disabled={loading || !token}
-                className="w-full h-11 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold transition-all duration-200"
+                aria-busy={loading}
+                className="w-full h-11 font-semibold"
               >
                 {loading ? (
                   <>
@@ -202,10 +198,10 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-500 to-teal-600 p-4">
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-white/10 blur-3xl" />
+    <div className="min-h-dvh flex flex-col items-center justify-center bg-background px-4 py-10">
+      <div className="mb-8 flex flex-col items-center gap-3">
+        <BrandSymbol size={44} priority />
+        <BrandLogo width={176} priority />
       </div>
       <Suspense>
         <ResetPasswordForm />

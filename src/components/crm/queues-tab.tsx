@@ -394,7 +394,7 @@ export function QueuesTab() {
                       onClick={() => toggleQueueActive(q)}
                       title={q.isActive ? 'Pausar' : 'Ativar'}
                     >
-                      {q.isActive ? <Eye className="h-3.5 w-3.5 text-emerald-500" /> : <EyeOff className="h-3.5 w-3.5" />}
+                      {q.isActive ? <Eye className="h-3.5 w-3.5 text-primary" /> : <EyeOff className="h-3.5 w-3.5" />}
                     </Button>
                     <Button
                       variant="ghost"
@@ -472,7 +472,7 @@ export function QueuesTab() {
                                   const activeMember = active[activeIdx];
                                   return activeMember && m.id === activeMember.id;
                                 })() && (
-                                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[9px] px-1.5 py-0 gap-0.5">
+                                  <Badge className="bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary text-[9px] px-1.5 py-0 gap-0.5">
                                     <Crown className="h-2.5 w-2.5" /> Vez
                                   </Badge>
                                 )}
@@ -511,7 +511,7 @@ export function QueuesTab() {
                                 title={m.isActive ? 'Pausar' : 'Ativar'}
                               >
                                 {m.isActive
-                                  ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                  ? <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
                                   : <XCircle className="h-3.5 w-3.5 text-muted-foreground" />}
                               </Button>
                               <Button

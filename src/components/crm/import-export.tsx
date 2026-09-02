@@ -88,7 +88,7 @@ export function ImportExport({ onImportComplete }: ImportExportProps) {
       <Card className="hover:shadow-md transition-shadow duration-200">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <Upload className="h-4 w-4 text-emerald-500" />
+            <Upload className="h-4 w-4 text-primary" />
             Importar Clientes
           </CardTitle>
         </CardHeader>
@@ -123,7 +123,7 @@ export function ImportExport({ onImportComplete }: ImportExportProps) {
             {importResult && (
               <div className="space-y-2 p-3 bg-muted rounded-lg">
                 <div className="flex items-center gap-2 text-sm">
-                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                  <CheckCircle className="h-4 w-4 text-success" />
                   <span className="font-medium">
                     {importResult.imported} clientes importados
                   </span>
@@ -155,7 +155,7 @@ export function ImportExport({ onImportComplete }: ImportExportProps) {
       <Card className="hover:shadow-md transition-shadow duration-200">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <Download className="h-4 w-4 text-emerald-500" />
+            <Download className="h-4 w-4 text-primary" />
             Exportar Clientes
           </CardTitle>
         </CardHeader>

@@ -166,7 +166,7 @@ export function LandingPagesTab() {
             <Building2 className="h-3 w-3" />
             {enterprises.length} empreendimento{enterprises.length !== 1 ? 's' : ''}
           </Badge>
-          <Badge className="text-xs gap-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+          <Badge className="text-xs gap-1.5 bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary">
             <Globe className="h-3 w-3" />
             {hasSlugCount} ativo{hasSlugCount !== 1 ? 's' : ''}
           </Badge>
@@ -238,7 +238,7 @@ export function LandingPagesTab() {
                 className={cn(
                   'overflow-hidden transition-all duration-200 hover:shadow-md',
                   isActive
-                    ? 'border-emerald-200 dark:border-emerald-800/50'
+                    ? 'border-primary/30 dark:border-primary/30'
                     : 'border-border/50 opacity-70'
                 )}
               >
@@ -256,7 +256,7 @@ export function LandingPagesTab() {
                   {/* Status badge */}
                   <div className="absolute top-2.5 right-2.5">
                     {isActive ? (
-                      <Badge className="bg-emerald-500/90 text-white text-[10px] gap-1 backdrop-blur-sm border-0">
+                      <Badge className="bg-primary/90 text-white text-[10px] gap-1 backdrop-blur-sm border-0">
                         <CheckCircle2 className="h-3 w-3" /> Ativa
                       </Badge>
                     ) : (
@@ -349,7 +349,7 @@ export function LandingPagesTab() {
                             title="Copiar link"
                           >
                             {copiedId === e.id ? (
-                              <Check className="h-3.5 w-3.5 text-emerald-500" />
+                              <Check className="h-3.5 w-3.5 text-success" />
                             ) : (
                               <Copy className="h-3.5 w-3.5 text-muted-foreground" />
                             )}

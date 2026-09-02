@@ -178,8 +178,8 @@ export function AIChatWidget() {
       <div className="flex flex-col h-full px-3 py-2 gap-3 overflow-y-auto">
         {/* Hero */}
         <div className="flex flex-col items-center text-center gap-2 pt-2 pb-1">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-600/20 flex items-center justify-center">
-            <Sparkles className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+          <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <Sparkles className="h-7 w-7 text-primary" />
           </div>
           <div>
             <p className="font-semibold text-sm">Assistente IA do CRM Pro</p>
@@ -212,7 +212,7 @@ export function AIChatWidget() {
           {SUGGESTION_CATEGORIES.map((cat) => (
             <div key={cat.title}>
               <div className="flex items-center gap-1.5 mb-1.5 px-1">
-                <span className="text-emerald-600 dark:text-emerald-400">{cat.icon}</span>
+                <span className="text-primary">{cat.icon}</span>
                 <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                   {cat.title}
                 </span>
@@ -224,7 +224,7 @@ export function AIChatWidget() {
                     onClick={() => sendMessage(item.text)}
                     className="flex items-center gap-2.5 text-left text-xs px-3 py-2 rounded-lg border bg-muted/40 hover:bg-muted transition-colors text-foreground group"
                   >
-                    <span className="flex-shrink-0 text-muted-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                    <span className="flex-shrink-0 text-muted-foreground group-hover:text-primary transition-colors">
                       {item.icon}
                     </span>
                     <span>{item.text}</span>
@@ -259,7 +259,7 @@ export function AIChatWidget() {
                 className={cn(
                   'max-w-[85%] rounded-2xl px-3.5 py-2.5',
                   msg.role === 'user'
-                    ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-br-md'
+                    ? 'bg-primary text-primary-foreground rounded-br-md'
                     : 'bg-muted rounded-bl-md'
                 )}
               >
@@ -281,7 +281,7 @@ export function AIChatWidget() {
             <div className="flex justify-start">
               <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-emerald-600 dark:text-emerald-400" />
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   <span className="text-xs text-muted-foreground">Pensando...</span>
                 </div>
               </div>
@@ -300,7 +300,7 @@ export function AIChatWidget() {
         onClick={() => setOpen(!open)}
         className={cn(
           'fixed bottom-5 right-5 z-50 h-14 w-14 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center',
-          'bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white',
+          'bg-primary text-primary-foreground hover:bg-primary/90',
           'hover:scale-110 active:scale-95',
           open && 'scale-0 opacity-0 pointer-events-none'
         )}
@@ -323,14 +323,14 @@ export function AIChatWidget() {
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-emerald-500 to-teal-600 text-white flex-shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-primary text-primary-foreground flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center">
               <Sparkles className="h-4.5 w-4.5" />
             </div>
             <div>
               <h3 className="font-semibold text-sm leading-tight">Assistente IA</h3>
-              <p className="text-[10px] text-emerald-100/80 leading-tight">
+              <p className="text-[10px] text-white/70 leading-tight">
                 {hasMessages ? `${messages.length} mensagens` : 'Clientes, agendamentos, lembretes e ajuda'}
               </p>
             </div>
@@ -401,7 +401,7 @@ export function AIChatWidget() {
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || loading}
               size="icon"
-              className="h-10 w-10 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 flex-shrink-0"
+              className="h-10 w-10 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 flex-shrink-0"
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

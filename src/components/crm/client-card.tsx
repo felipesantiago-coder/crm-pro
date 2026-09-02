@@ -63,7 +63,7 @@ const STAGE_BADGES: Record<string, { icon: typeof Target; color: string }> = {
   'LEAD': { icon: Target, color: 'bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300' },
   'PROSPECT': { icon: Eye, color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
   'VISITA_AGENDADA': { icon: CalendarDays, color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
-  'VISITA_REALIZADA': { icon: CalendarCheck, color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
+  'VISITA_REALIZADA': { icon: CalendarCheck, color: 'bg-success/10 text-success dark:bg-success/20 dark:text-success' },
   'CARTA_PROPOSTA': { icon: FileText, color: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300' },
   'CONTRATO_GERADO': { icon: Handshake, color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' },
   'FECHADO_GANHO': { icon: Trophy, color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' },
@@ -106,7 +106,7 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm truncate group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+            <h3 className="font-semibold text-sm truncate group-hover:text-primary dark:group-hover:text-primary transition-colors">
               {client.name}
             </h3>
           </div>

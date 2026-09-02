@@ -270,9 +270,9 @@ export function RevendaView() {
           className={cn(
             'inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all whitespace-nowrap',
             filtersOpen
-              ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/20'
+              ? 'bg-primary text-primary-foreground border-primary shadow-md shadow-primary/20'
               : activeFilterCount > 0
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-700'
+                ? 'bg-primary/10 text-primary border-primary/30 dark:bg-primary/20 dark:text-primary dark:border-primary/30'
                 : 'bg-background text-foreground border-border hover:bg-muted'
           )}
         >
@@ -281,7 +281,7 @@ export function RevendaView() {
           {activeFilterCount > 0 && !filtersOpen && (
             <span className={cn(
               'inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full text-[11px] font-bold',
-              'bg-emerald-600 text-white'
+              'bg-primary text-primary-foreground'
             )}>
               {activeFilterCount}
             </span>
@@ -324,7 +324,7 @@ export function RevendaView() {
         'overflow-hidden transition-all duration-300 ease-in-out',
         filtersOpen ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
       )}>
-        <Card className="border-emerald-200 dark:border-emerald-800/50 shadow-sm">
+        <Card className="border-primary/30 dark:border-primary/30 shadow-sm">
           <CardContent className="p-4 space-y-5">
             {/* Section: Location & Type */}
             <div>
@@ -473,14 +473,14 @@ export function RevendaView() {
                 <label className={cn(
                   'flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg border cursor-pointer transition-all select-none',
                   filterFinancing
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 shadow-sm'
+                    ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary border-primary/30 dark:border-primary/30 shadow-sm'
                     : 'text-muted-foreground border-border hover:bg-muted'
                 )}>
                   <input type="checkbox" checked={filterFinancing} onChange={e => setFilterFinancing(e.target.checked)} className="sr-only" />
                   <span className={cn(
                     'inline-block w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors',
                     filterFinancing
-                      ? 'bg-emerald-600 border-emerald-600'
+                      ? 'bg-primary border-primary'
                       : 'border-muted-foreground/40'
                   )}>
                     {filterFinancing && <span className="text-white text-[10px] font-bold leading-none">✓</span>}
@@ -619,12 +619,12 @@ export function RevendaView() {
 // ============================================================
 function FilterPill({ icon, label, onRemove }: { icon?: React.ReactNode; label: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 text-xs font-medium">
+    <span className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary border border-primary/30 dark:border-primary/30 text-xs font-medium">
       {icon}
       {label}
       <button
         onClick={onRemove}
-        className="ml-0.5 p-0.5 rounded-full hover:bg-emerald-200 dark:hover:bg-emerald-800/60 transition-colors"
+        className="ml-0.5 p-0.5 rounded-full hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors"
         aria-label={`Remover filtro: ${label}`}
       >
         <X className="h-3 w-3" />
@@ -641,7 +641,7 @@ function ResaleCard({ property: p, isFavorite, onToggleFavorite, onViewDetails }
 }) {
   const catStyle = getCategoryStyle(p.category);
   return (
-    <Card className="group overflow-hidden hover:shadow-lg transition-all duration-300 border-border/50 hover:border-emerald-200 dark:hover:border-emerald-800/50 flex flex-col">
+    <Card className="group overflow-hidden hover:shadow-lg transition-all duration-300 border-border/50 hover:border-primary/30 dark:hover:border-primary/30 flex flex-col">
       {/* Top color bar */}
       <div className={cn('px-3 py-2.5 flex items-center justify-between', catStyle.bg)}>
         <div className={cn('flex items-center gap-1.5 text-xs font-semibold uppercase', catStyle.color)}>
@@ -672,12 +672,12 @@ function ResaleCard({ property: p, isFavorite, onToggleFavorite, onViewDetails }
           )}
         </div>
         <div className="flex flex-wrap gap-1 mb-2">
-          {p.acceptsFinancing && <Badge variant="secondary" className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30">Financiamento</Badge>}
+          {p.acceptsFinancing && <Badge variant="secondary" className="text-[10px] bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary hover:bg-primary/20 dark:hover:bg-primary/30">Financiamento</Badge>}
           {p.acceptsFgts && <Badge variant="secondary" className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30">FGTS</Badge>}
         </div>
         {p.captor && <p className="text-xs text-muted-foreground mb-3"><span className="font-medium">Captador:</span> {p.captor}</p>}
         <div className="mt-auto flex gap-2">
-          <Button size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold" onClick={onViewDetails}>
+          <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold" onClick={onViewDetails}>
             Ver detalhes
           </Button>
           {p.url ? (
@@ -715,7 +715,7 @@ function PropertyDetailModal({ property: p, isFavorite, onToggleFavorite, onClos
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-background rounded-xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header gradient */}
-        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-5 py-4 text-white rounded-t-xl">
+        <div className="bg-primary text-primary-foreground px-5 py-4 rounded-t-xl">
           <div className="flex items-start justify-between">
             <div className="min-w-0">
               <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/20 text-[11px] font-semibold uppercase mb-2">
@@ -758,7 +758,7 @@ function PropertyDetailModal({ property: p, isFavorite, onToggleFavorite, onClos
             <div>
               <h3 className="text-sm font-semibold mb-1.5">Condições</h3>
               <div className="flex flex-wrap gap-1.5">
-                {p.acceptsFinancing && <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">Aceita financiamento</Badge>}
+                {p.acceptsFinancing && <Badge className="bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary">Aceita financiamento</Badge>}
                 {p.acceptsFgts && <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">Aceita FGTS</Badge>}
               </div>
             </div>
@@ -781,7 +781,7 @@ function PropertyDetailModal({ property: p, isFavorite, onToggleFavorite, onClos
           <div className="flex flex-wrap gap-2 pt-2">
             {p.phone && (
               <a href={`tel:+${p.phoneDigits || p.phone.replace(/\D/g, '')}`}>
-                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
                   <Phone className="h-4 w-4 mr-2" />Ligar
                 </Button>
               </a>

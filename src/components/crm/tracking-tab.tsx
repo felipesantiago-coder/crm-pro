@@ -201,11 +201,11 @@ const fmtDec = (n: number) => n.toFixed(1);
 
 const GOLD = '#C9A96E';
 const GOLD_LIGHT = 'rgba(201, 169, 110, 0.15)';
-const EMERALD = '#10B981';
-const EMERALD_LIGHT = 'rgba(16, 185, 129, 0.12)';
-const BLUE = '#3B82F6';
-const BLUE_LIGHT = 'rgba(59, 130, 246, 0.12)';
-const VIOLET = '#8B5CF6';
+const CHART_POSITIVE = 'var(--chart-1)';
+const CHART_POSITIVE_LIGHT = 'color-mix(in srgb, var(--chart-1) 12%, transparent)';
+const CHART_BLUE = 'var(--chart-6)';
+const CHART_BLUE_LIGHT = 'color-mix(in srgb, var(--chart-6) 12%, transparent)';
+const CHART_VIOLET = 'var(--chart-3)';
 const ROSE = '#F43F5E';
 const AMBER = '#F59E0B';
 
@@ -229,16 +229,16 @@ const FUNNEL_LABELS: Record<string, string> = {
 
 const FUNNEL_COLORS: Record<string, string> = {
   Pageview: GOLD,
-  Engagement: BLUE,
+  Engagement: CHART_BLUE,
   WhatsApp: WHATSAPP,
-  Lead: EMERALD,
+  Lead: CHART_POSITIVE,
 };
 
 const FUNNEL_BG: Record<string, string> = {
   Pageview: GOLD_LIGHT,
-  Engagement: BLUE_LIGHT,
+  Engagement: CHART_BLUE_LIGHT,
   WhatsApp: WHATSAPP_LIGHT,
-  Lead: EMERALD_LIGHT,
+  Lead: CHART_POSITIVE_LIGHT,
 };
 
 const DEVICE_ICONS: Record<string, React.ReactNode> = {
@@ -250,25 +250,25 @@ const DEVICE_ICONS: Record<string, React.ReactNode> = {
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
   pageview: GOLD,
-  engagement: BLUE,
-  form_submit: EMERALD,
+  engagement: CHART_BLUE,
+  form_submit: CHART_POSITIVE,
   lead: '#22D3EE',
-  click: VIOLET,
+  click: CHART_VIOLET,
   scroll: AMBER,
   whatsapp_click: WHATSAPP,
   exit_intent: ROSE,
-  scroll_depth: '#6366F1',
-  form_focus: '#3B82F6',
+  scroll_depth: 'var(--chart-1)',
+  form_focus: 'var(--chart-6)',
   form_blur: '#60A5FA',
   form_abandon: '#F43F5E',
   section_view: '#0EA5E9',
   cta_click: '#F97316',
   gallery_click: '#EC4899',
-  faq_open: '#8B5CF6',
-  engaged_time: '#10B981',
+  faq_open: 'var(--chart-3)',
+  engaged_time: 'var(--chart-1)',
   web_vital: '#06B6D4',
   js_error: '#EF4444',
-  form_view: '#3B82F6',
+  form_view: 'var(--chart-6)',
   form_submit_attempt: '#F59E0B',
   form_submit_error: '#EF4444',
 };
@@ -306,16 +306,16 @@ function getVitalHealth(metric: string, value: number): { label: string; color: 
     INP: [200, 500],
   };
   const [good, poor] = thresholds[metric] ?? [Infinity, Infinity];
-  if (value <= good) return { label: 'Bom', color: 'bg-emerald-500', bg: 'bg-emerald-500/10 text-emerald-600' };
+  if (value <= good) return { label: 'Bom', color: 'bg-success', bg: 'bg-success/10 text-success' };
   if (value <= poor) return { label: 'Precisa melhorar', color: 'bg-amber-500', bg: 'bg-amber-500/10 text-amber-600' };
   return { label: 'Ruim', color: 'bg-red-500', bg: 'bg-red-500/10 text-red-600' };
 }
 
 const FORM_FUNNEL_STAGES = [
-  { key: 'form_view', label: 'Visualização do Form', color: BLUE },
+  { key: 'form_view', label: 'Visualização do Form', color: CHART_BLUE },
   { key: 'form_focus', label: 'Foco no Campo', color: '#60A5FA' },
   { key: 'form_submit_attempt', label: 'Tentativa de Envio', color: AMBER },
-  { key: 'form_submit', label: 'Envio Concluído', color: EMERALD },
+  { key: 'form_submit', label: 'Envio Concluído', color: CHART_POSITIVE },
   { key: 'form_submit_error', label: 'Erro no Envio', color: ROSE },
 ];
 
@@ -437,7 +437,7 @@ function ConvBadge({ rate }: { rate: number }) {
   return (
     <Badge variant="secondary" className={cn(
       'h-5 px-1.5 text-[10px] font-bold tabular-nums',
-      rate >= 5 ? 'bg-emerald-500/10 text-emerald-600' :
+      rate >= 5 ? 'bg-success/10 text-success' :
       rate >= 2 ? 'bg-amber-500/10 text-amber-600' :
       rate > 0 ? 'bg-muted/50 text-muted-foreground' :
       'bg-muted/30 text-muted-foreground/50',
@@ -700,12 +700,12 @@ export function TrackingTab() {
     { label: 'Visitantes Únicos', value: fmt.format(m.totalVisitors), icon: <Users className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-[#C9A96E] to-[#A8894F]', subtitle: `${fmtDec(m.avgEventsPerVisitor)} eventos/visitante` },
     { label: 'Pageviews', value: fmt.format(m.totalPageviews), icon: <Eye className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-blue-500 to-blue-700', subtitle: `${fmtDec(m.pageviewsPerSession)} por sessão` },
     { label: 'Eventos Totais', value: fmt.format(m.totalEvents), icon: <Zap className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-amber-500 to-orange-600', subtitle: `${data.byEventType.length} tipos registrados` },
-    { label: 'Leads Rastreados', value: fmt.format(m.uniqueLeads), icon: <Target className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-emerald-500 to-teal-600', subtitle: 'visitantes vinculados ao CRM' },
+    { label: 'Leads Rastreados', value: fmt.format(m.uniqueLeads), icon: <Target className="h-5 w-5" />, iconBg: 'bg-primary text-primary-foreground', subtitle: 'visitantes vinculados ao CRM' },
     ...(m.whatsappClicks > 0 ? [{ label: 'Cliques WhatsApp', value: fmt.format(m.whatsappClicks), icon: <Wifi className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-[#25D366] to-[#128C7E]', subtitle: `${m.totalConversions} conversões no total` }] : []),
     { label: 'Conversão Real', value: fmtPct(m.realConversionRate ?? m.conversionRate), icon: <TrendingUp className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-violet-500 to-purple-700', subtitle: 'leads + WhatsApp' },
     { label: 'Rejeição', value: fmtPct(m.bounceRate), icon: <ArrowDownRight className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-rose-500 to-pink-700', subtitle: '1 pageview, sem interação' },
     { label: 'Sessões', value: fmt.format(m.uniqueSessions), icon: <CircleDot className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-cyan-500 to-cyan-700', subtitle: `${fmtDec(m.pageviewsPerSession)} pvs/sessão` },
-    { label: 'Duração Média', value: m.avgSessionDuration >= 60 ? `${Math.round(m.avgSessionDuration / 60)}m ${Math.round(m.avgSessionDuration % 60)}s` : `${Math.round(m.avgSessionDuration)}s`, icon: <Timer className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-teal-500 to-emerald-700', subtitle: 'tempo médio por sessão' },
+    { label: 'Duração Média', value: m.avgSessionDuration >= 60 ? `${Math.round(m.avgSessionDuration / 60)}m ${Math.round(m.avgSessionDuration % 60)}s` : `${Math.round(m.avgSessionDuration)}s`, icon: <Timer className="h-5 w-5" />, iconBg: 'bg-chart-2 text-brand-midnight', subtitle: 'tempo médio por sessão' },
     { label: 'Visitantes Recorrentes', value: fmtPct(m.returningRate), icon: <Repeat className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-purple-500 to-fuchsia-700', subtitle: `${fmt.format(m.returningVisitors)} de ${fmt.format(m.totalVisitors)}` },
     { label: 'Intenções de Saída', value: fmt.format(m.exitIntents), icon: <LogOut className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-red-400 to-red-600', subtitle: `${fmtPct(m.exitIntentRate)} dos visitantes` },
     { label: 'Novos Visitantes', value: fmt.format(m.newVisitors), icon: <UserCheck className="h-5 w-5 text-white" />, iconBg: 'bg-gradient-to-br from-sky-500 to-blue-700', subtitle: `${fmtPct(100 - m.returningRate)} do total` },
@@ -763,7 +763,7 @@ export function TrackingTab() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5 flex-1 min-w-0">
                   <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{kpi.label}</p>
-                  <p className="text-xl font-bold text-foreground tracking-tight">{kpi.value}</p>
+                  <p className="text-xl font-bold text-foreground tracking-tight tabular-nums">{kpi.value}</p>
                 </div>
                 <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center shrink-0', kpi.iconBg)}>
                   {kpi.icon}
@@ -814,7 +814,7 @@ export function TrackingTab() {
             })}
             <div className="pt-2 border-t border-border/50 flex items-center justify-between">
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Conversão Real (leads + WhatsApp)</span>
-              <span className="text-sm font-bold text-emerald-600 tabular-nums">{fmtPct(m.realConversionRate ?? m.conversionRate)}</span>
+              <span className="text-sm font-bold text-success tabular-nums">{fmtPct(m.realConversionRate ?? m.conversionRate)}</span>
             </div>
           </div>
         </Section>
@@ -824,7 +824,7 @@ export function TrackingTab() {
           <div>
             <div className="flex items-center gap-4 mb-3 text-[10px]">
               <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: GOLD }} /><span className="text-muted-foreground">Visitantes</span></span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: EMERALD }} /><span className="text-muted-foreground">Leads</span></span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: CHART_POSITIVE }} /><span className="text-muted-foreground">Leads</span></span>
             </div>
             {chartDays.length > 0 ? (
               <div className="flex items-end gap-1" style={{ height: '180px' }}>
@@ -839,7 +839,7 @@ export function TrackingTab() {
                           <div className="flex-1 flex flex-col items-center gap-0.5 min-w-0 cursor-default">
                             <div className="flex-1 w-full flex items-end justify-center gap-px">
                               <div className="w-[45%] max-w-[12px] rounded-t-sm transition-all duration-500" style={{ height: `${Math.max(vH, 1)}%`, background: `linear-gradient(to top, ${GOLD}, rgba(201,169,110,0.4))` }} />
-                              <div className="w-[45%] max-w-[12px] rounded-t-sm transition-all duration-500" style={{ height: `${Math.max(lH, 1)}%`, background: `linear-gradient(to top, ${EMERALD}, rgba(16,185,129,0.3))` }} />
+                              <div className="w-[45%] max-w-[12px] rounded-t-sm transition-all duration-500" style={{ height: `${Math.max(lH, 1)}%`, background: `linear-gradient(to top, ${CHART_POSITIVE}, color-mix(in srgb, var(--chart-1) 30%, transparent))` }} />
                             </div>
                             <span className="text-[8px] text-muted-foreground leading-none truncate w-full text-center">{dayLabel}</span>
                           </div>
@@ -901,7 +901,7 @@ export function TrackingTab() {
                       </div>
                     </div>
                     <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / (sortedSources[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: BLUE }} />
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / (sortedSources[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: CHART_BLUE }} />
                     </div>
                   </div>
                 ))}
@@ -922,7 +922,7 @@ export function TrackingTab() {
                       </div>
                     </div>
                     <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / (sortedContent[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: VIOLET }} />
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / (sortedContent[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: CHART_VIOLET }} />
                     </div>
                   </div>
                 ))}
@@ -948,7 +948,7 @@ export function TrackingTab() {
                       </div>
                     </div>
                     <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / ([...data.byMedium].sort((a, b) => b.visitors - a.visitors)[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: '#6366F1' }} />
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / ([...data.byMedium].sort((a, b) => b.visitors - a.visitors)[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: 'var(--chart-1)' }} />
                     </div>
                   </div>
                 ))}
@@ -956,7 +956,7 @@ export function TrackingTab() {
             </Section>
           )}
           {data.byTerm && data.byTerm.filter(t => t.term !== '(não definido)').length > 0 && (
-            <Section title="UTM Term" icon={<Hash className="h-4 w-4 text-teal-500" />} description="Termos de busca / palavras-chave">
+            <Section title="UTM Term" icon={<Hash className="h-4 w-4 text-primary" />} description="Termos de busca / palavras-chave">
               <div className="space-y-2.5">
                 {[...data.byTerm].filter(t => t.term !== '(não definido)').sort((a, b) => b.visitors - a.visitors).slice(0, 8).map(row => (
                   <div key={row.term}>
@@ -968,7 +968,7 @@ export function TrackingTab() {
                       </div>
                     </div>
                     <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / ([...data.byTerm].filter(t => t.term !== '(não definido)').sort((a, b) => b.visitors - a.visitors)[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: '#14B8A6' }} />
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / ([...data.byTerm].filter(t => t.term !== '(não definido)').sort((a, b) => b.visitors - a.visitors)[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: 'var(--chart-2)' }} />
                     </div>
                   </div>
                 ))}
@@ -997,7 +997,7 @@ export function TrackingTab() {
                     </TooltipProvider>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {row.leads > 0 && <Badge variant="secondary" className="h-4 px-1 text-[9px] font-medium bg-emerald-500/10 text-emerald-600">{row.leads} leads</Badge>}
+                    {row.leads > 0 && <Badge variant="secondary" className="h-4 px-1 text-[9px] font-medium bg-success/10 text-success">{row.leads} leads</Badge>}
                     <span className="text-[10px] font-medium text-foreground tabular-nums">{fmt.format(row.views)}</span>
                   </div>
                 </div>
@@ -1039,7 +1039,7 @@ export function TrackingTab() {
       {/* ═══ Geo + Device + Hourly ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {data.topCountries.length > 0 && (
-          <Section title="Países" icon={<Globe className="h-4 w-4 text-emerald-500" />} description="Visitantes por localização">
+          <Section title="Países" icon={<Globe className="h-4 w-4 text-primary" />} description="Visitantes por localização">
             <div className="space-y-2.5">
               {data.topCountries.slice(0, 8).map(row => (
                 <div key={row.country}>
@@ -1050,7 +1050,7 @@ export function TrackingTab() {
                     <span className="text-[11px] font-medium text-foreground tabular-nums shrink-0">{fmt.format(row.visitors)}</span>
                   </div>
                   <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / (data.topCountries[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: EMERALD }} />
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / (data.topCountries[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: CHART_POSITIVE }} />
                   </div>
                 </div>
               ))}
@@ -1138,7 +1138,7 @@ export function TrackingTab() {
                       </div>
                     </div>
                     <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / (data.referrerBreakdown[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: BLUE }} />
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / (data.referrerBreakdown[0]?.visitors || 1)) * 100, 1)}%`, backgroundColor: CHART_BLUE }} />
                     </div>
                   </div>
                 );
@@ -1214,12 +1214,12 @@ export function TrackingTab() {
                       <span className="text-[11px] font-medium text-foreground w-8">{dayLabel}</span>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <span className="text-[10px] text-muted-foreground tabular-nums">{fmt.format(row.visitors)} vis</span>
-                        {row.leads > 0 && <span className="text-[10px] text-emerald-600 tabular-nums">{row.leads} leads</span>}
+                        {row.leads > 0 && <span className="text-[10px] text-success tabular-nums">{row.leads} leads</span>}
                         <ConvBadge rate={row.conversionRate} />
                       </div>
                     </div>
                     <div className="h-1.5 bg-muted/30 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / maxDay) * 100, 2)}%`, backgroundColor: '#8B5CF6' }} />
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / maxDay) * 100, 2)}%`, backgroundColor: 'var(--chart-3)' }} />
                     </div>
                   </div>
                 );
@@ -1235,7 +1235,7 @@ export function TrackingTab() {
                 const totalScroll = data.scrollDepth.reduce((s, r) => s + r.count, 0);
                 const pct = totalScroll > 0 ? (row.count / totalScroll) * 100 : 0;
                 const depthPct = parseInt((row.depth ?? '0%').replace(/[^0-9]/g, ''), 10);
-                const barColor = depthPct >= 75 ? EMERALD : depthPct >= 50 ? BLUE : depthPct >= 25 ? AMBER : ROSE;
+                const barColor = depthPct >= 75 ? 'var(--success)' : depthPct >= 50 ? 'var(--info)' : depthPct >= 25 ? 'var(--warning)' : 'var(--destructive)';
                 return (
                   <div key={row.depth}>
                     <div className="flex items-center justify-between mb-1">
@@ -1299,7 +1299,7 @@ export function TrackingTab() {
 
       {/* ═══ Recent Leads ═══ */}
       {data.recentLeads.length > 0 && (
-        <Section title="Leads Recentes" icon={<UserCheck className="h-4 w-4 text-emerald-500" />} description={`${data.recentLeads.length} leads capturados recentemente via tracking`}>
+        <Section title="Leads Recentes" icon={<UserCheck className="h-4 w-4 text-primary" />} description={`${data.recentLeads.length} leads capturados recentemente via tracking`}>
           <div className="overflow-x-auto -mx-5 sm:mx-0">
             <table className="w-full text-xs">
               <thead>
@@ -1375,7 +1375,7 @@ export function TrackingTab() {
                 {data.engagedTime.map(row => {
                   const totalEngaged = data.engagedTime.reduce((s, r) => s + r.count, 0);
                   const pct = totalEngaged > 0 ? (row.count / totalEngaged) * 100 : 0;
-                  const barColor = row.seconds >= 180 ? EMERALD : row.seconds >= 60 ? BLUE : row.seconds >= 30 ? AMBER : ROSE;
+                  const barColor = row.seconds >= 180 ? 'var(--success)' : row.seconds >= 60 ? 'var(--info)' : row.seconds >= 30 ? 'var(--warning)' : 'var(--destructive)';
                   return (
                     <div key={row.seconds}>
                       <div className="flex items-center justify-between mb-1">
@@ -1507,7 +1507,7 @@ export function TrackingTab() {
                     </div>
                     <div className="flex items-center gap-2">
                       {idx > 0 && dropOff > 0 && <span className="text-[10px] text-rose-500 tabular-nums">-{fmtPct(dropOff)}</span>}
-                      {idx > 0 && <Badge variant="secondary" className="h-4 px-1 text-[9px] font-bold" style={{ backgroundColor: stage.color + '20', color: stage.color }}>{fmtPct(rate)}</Badge>}
+                      {idx > 0 && <Badge variant="secondary" className="h-4 px-1 text-[9px] font-bold" style={{ backgroundColor: `color-mix(in srgb, ${stage.color} 12%, transparent)`, color: stage.color }}>{fmtPct(rate)}</Badge>}
                       <span className="text-xs font-bold text-foreground tabular-nums">{fmt.format(count)}</span>
                     </div>
                   </div>
@@ -1540,7 +1540,7 @@ export function TrackingTab() {
                   <span className="text-[11px] font-bold text-foreground tabular-nums shrink-0">{fmt.format(row.count)}</span>
                 </div>
                 <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.count / (data.contentEngagement[0]?.count || 1)) * 100, 1)}%`, backgroundColor: row.eventType === 'gallery_click' ? '#EC4899' : '#8B5CF6' }} />
+                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.count / (data.contentEngagement[0]?.count || 1)) * 100, 1)}%`, backgroundColor: row.eventType === 'gallery_click' ? 'var(--chart-5)' : 'var(--chart-3)' }} />
                 </div>
               </div>
             ))}
@@ -1557,7 +1557,7 @@ export function TrackingTab() {
             return (
               <>
                 {languages.length > 0 && (
-                  <Section title="Idioma do Navegador" icon={<Globe className="h-4 w-4 text-teal-500" />} description="Distribuição por idioma">
+                  <Section title="Idioma do Navegador" icon={<Globe className="h-4 w-4 text-primary" />} description="Distribuição por idioma">
                     <div className="space-y-2.5">
                       {languages.slice(0, 8).map(row => {
                         const maxLang = languages[0]?.visitors || 1;
@@ -1568,7 +1568,7 @@ export function TrackingTab() {
                               <span className="text-[11px] font-medium text-foreground tabular-nums shrink-0">{fmt.format(row.visitors)}</span>
                             </div>
                             <div className="h-1 bg-muted/30 rounded-full overflow-hidden">
-                              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / maxLang) * 100, 1)}%`, backgroundColor: '#14B8A6' }} />
+                              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max((row.visitors / maxLang) * 100, 1)}%`, backgroundColor: 'var(--chart-2)' }} />
                             </div>
                           </div>
                         );
@@ -1581,7 +1581,7 @@ export function TrackingTab() {
                     <div className="space-y-2.5">
                       {connections.slice(0, 8).map(row => {
                         const maxConn = connections[0]?.visitors || 1;
-                        const connColor = row.contextValue === '4g' ? EMERALD : row.contextValue === '3g' ? AMBER : ROSE;
+                        const connColor = row.contextValue === '4g' ? 'var(--success)' : row.contextValue === '3g' ? 'var(--warning)' : 'var(--destructive)';
                         return (
                           <div key={row.contextValue}>
                             <div className="flex items-center justify-between mb-1">
@@ -1608,13 +1608,13 @@ export function TrackingTab() {
 
       {/* ═══ Meta Discrepancy ═══ */}
       <Card className={cn('border',
-        data.metaDiscrepancy.matchRate >= 80 ? 'border-emerald-500/20' :
+        data.metaDiscrepancy.matchRate >= 80 ? 'border-success/20' :
         data.metaDiscrepancy.matchRate >= 50 ? 'border-amber-500/20' :
         'border-rose-500/20',
       )}>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
-            {data.metaDiscrepancy.matchRate >= 80 ? <ShieldCheck className="h-4 w-4 text-emerald-600" /> :
+            {data.metaDiscrepancy.matchRate >= 80 ? <ShieldCheck className="h-4 w-4 text-success" /> :
              data.metaDiscrepancy.matchRate >= 50 ? <ShieldAlert className="h-4 w-4 text-amber-600" /> :
              <ShieldX className="h-4 w-4 text-rose-600" />}
             Discrepância Meta Pixel vs CRM
@@ -1633,18 +1633,18 @@ export function TrackingTab() {
               <p className="text-[9px] text-muted-foreground mt-0.5">Registrados no CRM</p>
             </div>
             <div className={cn('rounded-xl border p-4 text-center',
-              data.metaDiscrepancy.matchRate >= 80 ? 'bg-emerald-500/5 border-emerald-500/20' :
+              data.metaDiscrepancy.matchRate >= 80 ? 'bg-success/5 border-success/20' :
               data.metaDiscrepancy.matchRate >= 50 ? 'bg-amber-500/5 border-amber-500/20' :
               'bg-rose-500/5 border-rose-500/20',
             )}>
               <p className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Match Rate</p>
               <p className={cn('text-xl font-bold tabular-nums',
-                data.metaDiscrepancy.matchRate >= 80 ? 'text-emerald-600' :
+                data.metaDiscrepancy.matchRate >= 80 ? 'text-success' :
                 data.metaDiscrepancy.matchRate >= 50 ? 'text-amber-600' : 'text-rose-600',
               )}>{fmtPct(data.metaDiscrepancy.matchRate)}</p>
               <div className="mt-1.5 h-1.5 bg-muted/50 rounded-full overflow-hidden">
                 <div className={cn('h-full rounded-full transition-all duration-700',
-                  data.metaDiscrepancy.matchRate >= 80 ? 'bg-emerald-500' :
+                  data.metaDiscrepancy.matchRate >= 80 ? 'bg-success' :
                   data.metaDiscrepancy.matchRate >= 50 ? 'bg-amber-500' : 'bg-rose-500',
                 )} style={{ width: `${Math.max(data.metaDiscrepancy.matchRate, 2)}%` }} />
               </div>

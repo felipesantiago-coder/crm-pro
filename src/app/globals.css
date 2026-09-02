@@ -21,10 +21,18 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-chart-6: var(--chart-6);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -37,79 +45,134 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Tokens de marca CRM Pro v2.0 — Nexus Relacional */
+  --color-brand-midnight: var(--brand-midnight);
+  --color-brand-graphite: var(--brand-graphite);
+  --color-brand-indigo: var(--brand-indigo);
+  --color-brand-indigo-bright: var(--brand-indigo-bright);
+  --color-brand-cyan: var(--brand-cyan);
+  --color-brand-cyan-bright: var(--brand-cyan-bright);
+
+  /* Raios oficiais da identidade */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.125rem;
+  --radius-2xl: 1.5rem;
+
+  /* Sombras oficiais da identidade */
+  --shadow-xs: 0 1px 2px rgb(14 16 36 / 0.04);
+  --shadow-sm: 0 1px 3px rgb(14 16 36 / 0.07), 0 1px 2px rgb(14 16 36 / 0.04);
+  --shadow-md: 0 8px 24px rgb(14 16 36 / 0.08);
+  --shadow-lg: 0 18px 48px rgb(14 16 36 / 0.12);
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.96 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.48 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0.165 162); /* teal ring accent */
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.696 0.17 162.48); /* teal sidebar primary */
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  color-scheme: light;
+
+  /* Tokens de marca CRM Pro v2.0 — Nexus Relacional (imutáveis) */
+  --brand-midnight: #0E1024;
+  --brand-graphite: #1A1D33;
+  --brand-indigo: #6558F5;
+  --brand-indigo-bright: #9186FF;
+  --brand-cyan: #11B8D8;
+  --brand-cyan-bright: #3BDCF2;
+
+  --background: #F6F7FB;
+  --foreground: #0E1024;
+  --card: #FFFFFF;
+  --card-foreground: #0E1024;
+  --popover: #FFFFFF;
+  --popover-foreground: #0E1024;
+  --primary: #6558F5;
+  --primary-foreground: #FFFFFF;
+  --secondary: #ECEBFF;
+  --secondary-foreground: #2D286D;
+  --muted: #ECEEF5;
+  --muted-foreground: #667085;
+  --accent: #E6F8FC;
+  --accent-foreground: #0A6476;
+  --destructive: #D92D20;
+  --destructive-foreground: #FFFFFF;
+  --success: #079455;
+  --success-foreground: #FFFFFF;
+  --warning: #DC6803;
+  --warning-foreground: #FFFFFF;
+  --info: #1570EF;
+  --info-foreground: #FFFFFF;
+  --border: #DDE1EC;
+  --input: #CDD3E0;
+  --ring: #6558F5;
+
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #2C3047;
+  --sidebar-primary: #6558F5;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #EFEEFF;
+  --sidebar-accent-foreground: #5146D8;
+  --sidebar-border: #E2E5EF;
+  --sidebar-ring: #6558F5;
+
+  --chart-1: #6558F5;
+  --chart-2: #11B8D8;
+  --chart-3: #8B5CF6;
+  --chart-4: #F79009;
+  --chart-5: #E85AAD;
+  --chart-6: #2E90FA;
+
+  --radius: 0.875rem;
+
+  /* Larguras do shell (fonte única para aside e conteúdo) */
+  --sidebar-width: 272px;
+  --sidebar-width-collapsed: 76px;
+  --shell-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.22 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.26 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 15%);
-  --input: oklch(1 0 0 / 20%);
-  --ring: oklch(0.696 0.17 162.48); /* teal ring accent */
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.696 0.17 162.48); /* teal sidebar primary */
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 15%);
-  --sidebar-ring: oklch(0.556 0 0);
+  color-scheme: dark;
+
+  --background: #0E1024;
+  --foreground: #F8F9FF;
+  --card: #16192F;
+  --card-foreground: #F8F9FF;
+  --popover: #1A1D33;
+  --popover-foreground: #F8F9FF;
+  --primary: #9186FF;
+  --primary-foreground: #0E1024;
+  --secondary: #242844;
+  --secondary-foreground: #F0F1FF;
+  --muted: #20243D;
+  --muted-foreground: #B8C0D4;
+  --accent: #123542;
+  --accent-foreground: #D9FAFF;
+  --destructive: #F04438;
+  --destructive-foreground: #FFFFFF;
+  --success: #32D583;
+  --success-foreground: #071B12;
+  --warning: #FDB022;
+  --warning-foreground: #241A05;
+  --info: #53B1FD;
+  --info-foreground: #071321;
+  --border: rgb(255 255 255 / 0.12);
+  --input: rgb(255 255 255 / 0.16);
+  --ring: #9186FF;
+
+  --sidebar: #12152B;
+  --sidebar-foreground: #D6DAE8;
+  --sidebar-primary: #9186FF;
+  --sidebar-primary-foreground: #0E1024;
+  --sidebar-accent: rgb(101 88 245 / 0.18);
+  --sidebar-accent-foreground: #DCD8FF;
+  --sidebar-border: rgb(255 255 255 / 0.10);
+  --sidebar-ring: #9186FF;
+
+  --chart-1: #9186FF;
+  --chart-2: #3BDCF2;
+  --chart-3: #B692F6;
+  --chart-4: #FDB022;
+  --chart-5: #F670C7;
+  --chart-6: #84CAFF;
 }
 
 @layer base {
@@ -118,6 +181,21 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Alternância de ativos de marca por tema (sem leitura imperativa do tema) */
+@layer utilities {
+  /* Ativo claro: visível por padrão, oculto no tema escuro */
+  .dark .hidden-dark {
+    display: none;
+  }
+  /* Ativo escuro: oculto por padrão, visível no tema escuro */
+  .hidden-light {
+    display: none;
+  }
+  .dark .hidden-light {
+    display: block;
   }
 }
 
@@ -133,20 +211,20 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.7 0 0 / 30%);
+    background: rgb(102 112 133 / 0.35);
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.6 0 0 / 50%);
+    background: rgb(102 112 133 / 0.55);
   }
 
   .dark ::-webkit-scrollbar-thumb {
-    background: oklch(0.4 0 0 / 50%);
+    background: rgb(184 192 212 / 0.25);
   }
 
   .dark ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.5 0 0 / 60%);
+    background: rgb(184 192 212 / 0.4);
   }
 }
 
@@ -164,7 +242,38 @@
   input[type="radio"],
   input[type="range"] {
     transition-property: color, background-color, border-color, box-shadow, opacity;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
     transition-duration: 150ms;
   }
+}
+
+/* Movimento respeitoso: desativa animações não essenciais */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Seleção de texto coerente com a marca */
+::selection {
+  background: rgb(101 88 245 / 0.22);
+}
+
+.dark ::selection {
+  background: rgb(145 134 255 / 0.32);
+}
+
+/* Números tabulares para KPIs, valores financeiros e tabelas */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Barras fixas respeitam áreas seguras (notch/ios) */
+.safe-area-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }

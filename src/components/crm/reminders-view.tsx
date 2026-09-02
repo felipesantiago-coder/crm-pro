@@ -229,7 +229,7 @@ export function RemindersView() {
           <p className="text-muted-foreground mt-1">
             {reminders.length} lembrete{reminders.length !== 1 ? 's' : ''} no total
             {pendingCount > 0 && (
-              <span className="text-emerald-600 dark:text-emerald-400">
+              <span className="text-primary dark:text-primary">
                 {' '}
                 &bull; {pendingCount} pendente{pendingCount !== 1 ? 's' : ''}
               </span>
@@ -242,7 +242,7 @@ export function RemindersView() {
             )}
           </p>
         </div>
-        <Button size="sm" onClick={openCreateForm} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
+        <Button size="sm" onClick={openCreateForm} className="bg-primary text-primary-foreground hover:bg-primary/90">
           <Plus className="h-4 w-4 mr-2" />
           Novo Lembrete
         </Button>
@@ -264,7 +264,7 @@ export function RemindersView() {
               onClick={() => setFilter(f.value)}
               className={
                 filter === f.value
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
                   : ''
               }
             >
@@ -294,7 +294,7 @@ export function RemindersView() {
                 ? 'Todos os lembretes foram concluídos!'
                 : 'Nenhum lembrete concluído ainda.'}
           </p>
-          <Button className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white" onClick={openCreateForm}>
+          <Button className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90" onClick={openCreateForm}>
             <Plus className="h-4 w-4 mr-2" />
             Novo Lembrete
           </Button>
@@ -321,14 +321,14 @@ export function RemindersView() {
                         isOverdue
                           ? 'bg-rose-100 dark:bg-rose-900/30'
                           : reminder.notified
-                            ? 'bg-emerald-100 dark:bg-emerald-900/30'
+                            ? 'bg-success/10 dark:bg-success/20'
                             : 'bg-amber-100 dark:bg-amber-900/30'
                       }`}
                     >
                       {isOverdue ? (
                         <AlertTriangle className="h-5 w-5 text-rose-500" />
                       ) : reminder.notified ? (
-                        <Check className="h-5 w-5 text-emerald-500" />
+                        <Check className="h-5 w-5 text-success" />
                       ) : (
                         <Bell className="h-5 w-5 text-amber-500" />
                       )}
@@ -358,7 +358,7 @@ export function RemindersView() {
                             isOverdue
                               ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
                               : reminder.notified
-                                ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                ? 'bg-success/10 text-success dark:bg-success/20 dark:text-success'
                                 : 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
                           }`}
                         >
@@ -408,7 +408,7 @@ export function RemindersView() {
                               onClick={() => handleMarkDone(reminder)}
                               title="Marcar como concluído"
                             >
-                              <Check className="h-3.5 w-3.5 text-emerald-500" />
+                              <Check className="h-3.5 w-3.5 text-success" />
                             </Button>
                           )}
                           <Button
@@ -511,7 +511,7 @@ export function RemindersView() {
             <Button variant="outline" onClick={() => setFormOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleCreate} disabled={saving} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
+            <Button onClick={handleCreate} disabled={saving} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Criar Lembrete
             </Button>

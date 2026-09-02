@@ -224,7 +224,7 @@ export function SettingsView() {
         <Card className="hover:shadow-md transition-shadow duration-200">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <User className="h-4 w-4 text-emerald-500" />
+              <User className="h-4 w-4 text-primary" />
               Meu Perfil
             </CardTitle>
             <CardDescription>
@@ -279,7 +279,7 @@ export function SettingsView() {
         <Card className="hover:shadow-md transition-shadow duration-200">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Sun className="h-4 w-4 text-emerald-500" />
+              <Sun className="h-4 w-4 text-primary" />
               Tema
             </CardTitle>
             <CardDescription>
@@ -290,7 +290,7 @@ export function SettingsView() {
             <div className="flex items-center gap-3">
               <Button
                 variant={theme === 'light' ? 'default' : 'outline'}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
                 onClick={() => setTheme('light')}
               >
                 <Sun className="h-4 w-4 mr-2" />
@@ -321,12 +321,12 @@ export function SettingsView() {
         {/* ==================== GOOGLE CALENDAR ==================== */}
         <Card className={`hover:shadow-md transition-shadow duration-200 ${
           gcConnected
-            ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-950/20'
+            ? 'border-success/30 bg-success/10 dark:border-success/20 dark:bg-success/10'
             : ''
         }`}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-emerald-500" />
+              <CalendarDays className="h-4 w-4 text-primary" />
               Google Calendar
             </CardTitle>
             <CardDescription>
@@ -342,7 +342,7 @@ export function SettingsView() {
             ) : gcConnected ? (
               <>
                 <div className="flex items-center gap-3">
-                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1">
+                  <Badge className="bg-success/10 text-success dark:bg-success/20 dark:text-success gap-1">
                     <Link2 className="h-3 w-3" />
                     Conectado
                   </Badge>
@@ -353,19 +353,19 @@ export function SettingsView() {
                   </h4>
                   <ul className="text-xs text-muted-foreground space-y-2">
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success mt-0.5 flex-shrink-0" />
                       <span><strong>Criação automática</strong> — Novos agendamentos criam eventos no seu Calendar</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success mt-0.5 flex-shrink-0" />
                       <span><strong>Lembretes duplos</strong> — Notificação 24 horas e 2 horas antes (popup + e-mail)</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success mt-0.5 flex-shrink-0" />
                       <span><strong>Atualização de status</strong> — Cancelar ou concluir visita atualiza o evento no Calendar</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success mt-0.5 flex-shrink-0" />
                       <span><strong>Exclusão sincronizada</strong> — Excluir agendamento remove o evento do Calendar</span>
                     </li>
                   </ul>
@@ -400,7 +400,7 @@ export function SettingsView() {
                 <Button
                   onClick={connectGoogleCalendar}
                   disabled={gcConnecting}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
                 >
                   {gcConnecting ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Conectando...</>

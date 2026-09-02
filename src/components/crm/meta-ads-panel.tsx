@@ -102,7 +102,7 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }>
   VISITA: { label: 'Visita', color: 'text-purple-700 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900/30' },
   NEGOCIACAO: { label: 'Negociação', color: 'text-amber-700 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
   PROPOSTA: { label: 'Proposta', color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
-  FECHADO: { label: 'Fechado', color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+  FECHADO: { label: 'Fechado', color: 'text-success', bg: 'bg-success/10' },
   PERDIDO: { label: 'Perdido', color: 'text-red-700 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-900/30' },
 };
 
@@ -138,7 +138,7 @@ function MiniBarChart({ data, height = 80 }: { data: ChartPoint[]; height?: numb
             <div
               className={`w-full rounded-sm transition-all duration-300 ${
                 isToday
-                  ? 'bg-emerald-500'
+                  ? 'bg-chart-1'
                   : d.count > 0
                     ? 'bg-blue-400/70 dark:bg-blue-500/60'
                     : 'bg-muted'
@@ -253,8 +253,8 @@ function OverviewTab({ metrics, chartData, topCampaigns, topRegions, onRefresh }
           title="Leads no Período"
           value={metrics.periodLeads}
           icon={<UserPlus className="h-4 w-4" />}
-          iconBg="bg-emerald-100 dark:bg-emerald-900/30"
-          iconColor="text-emerald-600 dark:text-emerald-400"
+          iconBg="bg-primary/10"
+          iconColor="text-primary dark:text-primary"
           subtitle="Últimos 30 dias"
           trend={metrics.periodLeads > 0 ? 'up' : 'neutral'}
         />
@@ -362,7 +362,7 @@ function OverviewTab({ metrics, chartData, topCampaigns, topRegions, onRefresh }
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-emerald-500" />
+              <MapPin className="h-4 w-4 text-primary" />
               Top Regiões
             </CardTitle>
           </CardHeader>
@@ -380,7 +380,7 @@ function OverviewTab({ metrics, chartData, topCampaigns, topRegions, onRefresh }
                       </div>
                       <div className="h-2 rounded-full bg-muted overflow-hidden">
                         <div
-                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
+                          className="h-full rounded-full bg-chart-1 transition-all duration-500"
                           style={{ width: `${widthPct}%` }}
                         />
                       </div>
@@ -418,7 +418,7 @@ function OverviewTab({ metrics, chartData, topCampaigns, topRegions, onRefresh }
                     key={s}
                     className={`rounded-lg border p-3 ${config.bg} border-transparent hover:border-border transition-colors`}
                   >
-                    <div className={`text-lg font-bold ${config.color}`}>{count}</div>
+                    <div className={`text-lg font-bold tabular-nums ${config.color}`}>{count}</div>
                     <div className="text-[11px] text-muted-foreground">{config.label}</div>
                     <div className={`text-[10px] font-medium ${config.color} mt-0.5`}>{pct}% do total</div>
                   </div>
@@ -449,9 +449,9 @@ function KpiCard({ title, value, icon, iconBg, iconColor, subtitle, trend }: {
         <div className="flex items-start justify-between">
           <div className="space-y-1">
             <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
-            <p className="text-2xl font-bold tracking-tight">{value}</p>
+            <p className="text-2xl font-bold tracking-tight tabular-nums">{value}</p>
             <div className="flex items-center gap-1.5">
-              {trend === 'up' && <ArrowUpRight className="h-3 w-3 text-emerald-500" />}
+              {trend === 'up' && <ArrowUpRight className="h-3 w-3 text-success" />}
               {trend === 'down' && <ArrowDownRight className="h-3 w-3 text-red-500" />}
               <p className="text-[11px] text-muted-foreground">{subtitle}</p>
             </div>
@@ -476,7 +476,7 @@ const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: React.
   },
   landing_form: {
     label: 'Landing Page',
-    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    color: 'bg-primary/10 text-primary dark:text-primary',
     icon: <Globe className="h-3 w-3" />,
   },
   whatsapp_click: {
@@ -581,7 +581,7 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
             </button>
             <button
               onClick={() => setSourceFilter('landing_form')}
-              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'landing_form' ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:opacity-80'}`}
+              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'landing_form' ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary dark:text-primary hover:opacity-80'}`}
             >
               <Globe className="h-2.5 w-2.5" /> {sourceCounts.landing_form}
             </button>
@@ -670,12 +670,12 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
             const avatarBg = lead.leadSource === 'meta_webhook'
               ? 'bg-blue-100 dark:bg-blue-900/30'
               : lead.leadSource === 'landing_form'
-                ? 'bg-emerald-100 dark:bg-emerald-900/30'
+                ? 'bg-primary/10'
                 : 'bg-green-100 dark:bg-green-900/30';
             const avatarColor = lead.leadSource === 'meta_webhook'
               ? 'text-blue-600 dark:text-blue-400'
               : lead.leadSource === 'landing_form'
-                ? 'text-emerald-600 dark:text-emerald-400'
+                ? 'text-primary dark:text-primary'
                 : 'text-green-600 dark:text-green-400';
 
             return (
@@ -1429,8 +1429,8 @@ function ConfigTab() {
               </Badge>
             </div>
             <span className="text-muted-foreground">→</span>
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-950/30">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-success/30 bg-success/10">
+              <CheckCircle2 className="h-3.5 w-3.5 text-success" />
               <span className="font-medium">Leads no CRM</span>
             </div>
           </div>
@@ -1894,17 +1894,17 @@ function ConfigTab() {
         {/* ═══════════════════════════════════════════════════════
             SEÇÃO 4: Mapeamento de Formulários
             ═══════════════════════════════════════════════════════ */}
-        <AccordionItem value="form-mappings" className="border rounded-xl overflow-hidden data-[state=open]:border-emerald-200 dark:data-[state=open]:border-emerald-800/50 data-[state=open]:shadow-sm transition-all">
+        <AccordionItem value="form-mappings" className="border rounded-xl overflow-hidden data-[state=open]:border-success/30 data-[state=open]:shadow-sm transition-all">
           <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
             <div className="flex items-center gap-3 text-left">
-              <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${hasFormMappings ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-muted'}`}>
-                <Target className={`h-4 w-4 ${hasFormMappings ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`} />
+              <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${hasFormMappings ? 'bg-success/10' : 'bg-muted'}`}>
+                <Target className={`h-4 w-4 ${hasFormMappings ? 'text-success' : 'text-muted-foreground'}`} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-sm">Mapeamento de Formulários</span>
                   {hasFormMappings ? (
-                    <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px]">{formMappings.length} formulário{(formMappings.length !== 1 ? 's' : '')}</Badge>
+                    <Badge className="bg-success/10 text-success text-[10px]">{formMappings.length} formulário{(formMappings.length !== 1 ? 's' : '')}</Badge>
                   ) : (
                     <Badge className="bg-muted text-muted-foreground text-[10px]">Nenhum</Badge>
                   )}
@@ -1915,8 +1915,8 @@ function ConfigTab() {
           </AccordionTrigger>
           <AccordionContent className="px-4 pb-4 space-y-4">
             {/* O que faz */}
-            <div className="rounded-lg bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900/20 p-3 space-y-2">
-              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">O que esta seção faz</p>
+            <div className="rounded-lg bg-accent/40 dark:bg-accent/20 border border-accent p-3 space-y-2">
+              <p className="text-xs font-semibold text-accent-foreground">O que esta seção faz</p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 Toda vez que um lead chega via webhook, o sistema registra automaticamente o <strong>Form ID</strong>, nome do formulário, campanha e anúncio. Aqui você vê esse mapeamento e pode <strong>vincular cada formulário a um config CAPI</strong> específico.
               </p>

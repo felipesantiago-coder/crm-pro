@@ -24,6 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { BrandSymbol } from '@/components/brand';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,7 +73,7 @@ function getScheduleStatusLabel(status: string, dateStr: string): {
   color: string;
 } {
   const date = parseISO(dateStr);
-  if (status === 'COMPLETED') return { label: 'Concluída', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' };
+  if (status === 'COMPLETED') return { label: 'Concluída', color: 'bg-success/10 text-success dark:bg-success/20' };
   if (status === 'CANCELLED') return { label: 'Cancelada', color: 'bg-gray-100 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400' };
   if (isPast(date) && status === 'PENDING') return { label: 'Atrasada', color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400' };
   if (isToday(date)) return { label: 'Hoje', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' };
@@ -166,8 +167,8 @@ function PortalContent() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mx-auto mb-4 animate-pulse">
-            <Calendar className="h-7 w-7 text-white" />
+          <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <Calendar className="h-7 w-7 text-primary" />
           </div>
           <p className="text-sm text-muted-foreground">Carregando seu portal...</p>
         </div>
@@ -205,9 +206,7 @@ function PortalContent() {
       <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-sm">
-              <Calendar className="h-5 w-5 text-white" />
-            </div>
+            <BrandSymbol size={36} priority />
             <div>
               <h1 className="text-sm font-bold leading-tight">Meu Portal</h1>
               <p className="text-[10px] text-muted-foreground">Área do Cliente</p>
@@ -223,9 +222,9 @@ function PortalContent() {
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-5">
         {/* Client info card */}
         <Card className="overflow-hidden">
-          <div className="bg-gradient-to-r from-emerald-500 to-teal-600 px-5 py-4">
+          <div className="bg-primary text-primary-foreground px-5 py-4">
             <h2 className="text-lg font-bold text-white">Olá, {client.name}!</h2>
-            <p className="text-emerald-100 text-xs mt-0.5">
+            <p className="text-white/70 text-xs mt-0.5">
               {client.stage} {client.enterprise && `· ${client.enterprise}`}
             </p>
           </div>
@@ -390,7 +389,7 @@ function PortalContent() {
                     );
                     const statusIcon =
                       schedule.status === 'COMPLETED' ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                        <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                       ) : schedule.status === 'CANCELLED' ? (
                         <XCircle className="h-3.5 w-3.5 text-gray-400" />
                       ) : (
@@ -498,8 +497,8 @@ export default function PortalPage() {
       fallback={
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center">
           <div className="text-center">
-            <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mx-auto mb-4 animate-pulse">
-              <Calendar className="h-7 w-7 text-white" />
+            <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4 animate-pulse">
+              <Calendar className="h-7 w-7 text-primary" />
             </div>
             <p className="text-sm text-muted-foreground">Carregando...</p>
           </div>

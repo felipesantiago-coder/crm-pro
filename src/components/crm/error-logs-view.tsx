@@ -248,8 +248,8 @@ export function ErrorLogsTab() {
       {errors.length === 0 && !loading ? (
         <Card>
           <CardContent className="p-12 text-center">
-            <div className="h-12 w-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+            <div className="h-12 w-12 rounded-xl bg-success/10 flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 className="h-6 w-6 text-success" />
             </div>
             <p className="font-medium">Nenhum erro encontrado</p>
             <p className="text-sm text-muted-foreground mt-1">
@@ -294,7 +294,7 @@ export function ErrorLogsTab() {
                           </Badge>
                         )}
                         {error.resolved && (
-                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px] h-5 px-1.5">
+                          <Badge className="bg-success/10 text-success text-[10px] h-5 px-1.5">
                             Resolvido
                           </Badge>
                         )}

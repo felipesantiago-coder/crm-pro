@@ -184,7 +184,7 @@ export function ClientsView() {
             )}
             {showImportExport ? 'Fechar' : 'Importar/Exportar'}
           </Button>
-          <Button size="sm" onClick={handleNewClient} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
+          <Button size="sm" onClick={handleNewClient} className="bg-primary text-primary-foreground hover:bg-primary/90">
             <Plus className="h-4 w-4 mr-2" />
             Novo Cliente
           </Button>
@@ -430,7 +430,7 @@ export function ClientsView() {
               : 'Comece cadastrando seu primeiro cliente.'}
           </p>
           {!searchQuery && !filterRegion && filterTagIds.length === 0 && (
-            <Button className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white" onClick={handleNewClient}>
+            <Button className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90" onClick={handleNewClient}>
               <Plus className="h-4 w-4 mr-2" />
               Novo Cliente
             </Button>

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2, Lock, Eye, EyeOff, Check, X } from 'lucide-react';
+import { BrandLogo, BrandSymbol } from '@/components/brand';
 
 export default function ChangePasswordPage() {
   const { data: session, status } = useSession();
@@ -31,12 +32,10 @@ export default function ChangePasswordPage() {
   // Tela de carregamento
   if (status === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-500 to-teal-600 p-4">
+      <div className="min-h-dvh flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-white/20 flex items-center justify-center animate-pulse">
-            <Lock className="h-6 w-6 text-white" />
-          </div>
-          <p className="text-sm text-white/80">Carregando...</p>
+          <BrandSymbol size={48} priority />
+          <p className="text-sm text-muted-foreground">Carregando...</p>
         </div>
       </div>
     );
@@ -95,18 +94,14 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-500 to-teal-600 p-4">
-      {/* Background decoration */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-white/10 blur-3xl" />
+    <div className="min-h-dvh flex flex-col items-center justify-center bg-background px-4 py-10">
+      <div className="mb-8 flex flex-col items-center gap-3">
+        <BrandSymbol size={44} priority />
+        <BrandLogo width={176} priority />
       </div>
 
-      <Card className="w-full max-w-md relative z-10 shadow-2xl border-0">
-        <CardHeader className="text-center space-y-4 pb-2">
-          <div className="mx-auto h-14 w-14 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
-            <Lock className="h-7 w-7 text-white" />
-          </div>
+      <Card className="w-full max-w-md shadow-md">
+        <CardHeader className="text-center space-y-1 pb-2">
           <div>
             <CardTitle className="text-2xl font-bold tracking-tight">
               Alterar Senha
@@ -168,19 +163,19 @@ export default function ChangePasswordPage() {
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
                 {newPassword.length > 0 && (
                   <>
-                    <span className={minLengthMet ? 'text-emerald-600' : 'text-red-500'}>
+                    <span className={minLengthMet ? 'text-success' : 'text-destructive'}>
                       {minLengthMet ? <Check className="h-3.5 w-3.5 inline mr-1" /> : <X className="h-3.5 w-3.5 inline mr-1" />}
                       8+ caracteres ({newPassword.length}/8)
                     </span>
-                    <span className={hasUppercase ? 'text-emerald-600' : 'text-red-500'}>
+                    <span className={hasUppercase ? 'text-success' : 'text-destructive'}>
                       {hasUppercase ? <Check className="h-3.5 w-3.5 inline mr-1" /> : <X className="h-3.5 w-3.5 inline mr-1" />}
                       Maiúscula
                     </span>
-                    <span className={hasLowercase ? 'text-emerald-600' : 'text-red-500'}>
+                    <span className={hasLowercase ? 'text-success' : 'text-destructive'}>
                       {hasLowercase ? <Check className="h-3.5 w-3.5 inline mr-1" /> : <X className="h-3.5 w-3.5 inline mr-1" />}
                       Minúscula
                     </span>
-                    <span className={hasNumber ? 'text-emerald-600' : 'text-red-500'}>
+                    <span className={hasNumber ? 'text-success' : 'text-destructive'}>
                       {hasNumber ? <Check className="h-3.5 w-3.5 inline mr-1" /> : <X className="h-3.5 w-3.5 inline mr-1" />}
                       Número
                     </span>
@@ -212,7 +207,7 @@ export default function ChangePasswordPage() {
               </div>
               {confirmPassword.length > 0 && (
                 <div className="flex items-center gap-2 text-xs">
-                  <span className={passwordsMatch ? 'text-emerald-600' : 'text-red-500'}>
+                  <span className={passwordsMatch ? 'text-success' : 'text-destructive'}>
                     {passwordsMatch ? (
                       <Check className="h-3.5 w-3.5 inline mr-1" />
                     ) : (
@@ -226,7 +221,8 @@ export default function ChangePasswordPage() {
             <Button
               type="submit"
               disabled={loading || !passwordValid || !passwordsMatch}
-              className="w-full h-11 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold transition-all duration-200"
+              aria-busy={loading}
+              className="w-full h-11 font-semibold"
             >
               {loading ? (
                 <>
@@ -244,7 +240,7 @@ export default function ChangePasswordPage() {
             <button
               type="button"
               onClick={() => signOut({ callbackUrl: '/login' })}
-              className="w-full text-sm text-white/60 hover:text-white transition-colors py-1"
+              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
             >
               Sair e fazer login com outra conta
             </button>

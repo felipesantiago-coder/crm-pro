@@ -112,10 +112,10 @@ function getScheduleStatusConfig(status: string, scheduledDate: string) {
       return {
         label: 'Concluído',
         icon: <CheckCircle2 className="h-3.5 w-3.5" />,
-        bgClass: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-        borderClass: 'border-emerald-100 dark:border-emerald-800/30',
-        dotClass: 'bg-emerald-500',
-        rowBg: 'bg-emerald-50/30 dark:bg-emerald-950/5',
+        bgClass: 'bg-success/10 text-success',
+        borderClass: 'border-success/20',
+        dotClass: 'bg-success',
+        rowBg: 'bg-success/5',
       };
     case 'CANCELLED':
       return {
@@ -255,7 +255,6 @@ export function DashboardView() {
     future.sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
 
     return { pastSchedules: past.slice(0, 5), futureSchedules: future.slice(0, 10), todaySchedules: todayList };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allSchedules]);
 
   const pendingSchedulesCount = allSchedules.filter((s) => s.status === 'PENDING' && !isPast(new Date(s.scheduledDate))).length;
@@ -495,7 +494,7 @@ export function DashboardView() {
             <Button
               size="sm"
               variant="outline"
-              className="text-[10px] h-7 px-2 border-emerald-200 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+              className="text-[10px] h-7 px-2 border-success/30 text-success hover:bg-success/10"
               disabled={isLoading}
               onClick={(e) => {
                 e.stopPropagation();
@@ -523,7 +522,7 @@ export function DashboardView() {
             <DropdownMenuContent align="end" className="w-44">
               {isPending && (
                 <DropdownMenuItem
-                  className="text-emerald-600 dark:text-emerald-400"
+                  className="text-success"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleScheduleAction(schedule, 'complete');
@@ -594,19 +593,19 @@ export function DashboardView() {
       title: 'Total de Clientes',
       value: totalClients,
       icon: <Users className="h-5 w-5" />,
-      accent: 'from-emerald-500 to-teal-600',
+      accent: 'bg-primary text-primary-foreground',
     },
     {
       title: 'Clientes este Mês',
       value: clientsThisMonth,
       icon: <UserPlus className="h-5 w-5" />,
-      accent: 'from-teal-500 to-cyan-600',
+      accent: 'bg-chart-2 text-brand-midnight',
     },
     {
       title: 'Visitas Agendadas',
       value: pendingSchedulesCount,
       icon: <CalendarDays className="h-5 w-5" />,
-      accent: pendingSchedulesCount > 0 ? 'from-blue-500 to-indigo-600' : 'from-emerald-500 to-teal-600',
+      accent: pendingSchedulesCount > 0 ? 'bg-info text-info-foreground' : 'bg-success text-success-foreground',
       subtitle: overdueSchedulesCount > 0 ? `${overdueSchedulesCount} atrasada${overdueSchedulesCount > 1 ? 's' : ''}` : undefined,
       highlight: overdueSchedulesCount > 0,
     },
@@ -614,7 +613,7 @@ export function DashboardView() {
       title: 'Precisam de Atualização',
       value: needsUpdateClients.length,
       icon: <AlertTriangle className="h-5 w-5" />,
-      accent: needsUpdateClients.length > 0 ? 'from-rose-500 to-pink-600' : 'from-emerald-500 to-teal-600',
+      accent: needsUpdateClients.length > 0 ? 'bg-destructive text-destructive-foreground' : 'bg-success text-success-foreground',
       highlight: needsUpdateClients.length > 0,
     },
   ];
@@ -693,16 +692,16 @@ export function DashboardView() {
                   <p className="text-sm font-medium text-muted-foreground">
                     {kpi.title}
                   </p>
-                  <p className="text-3xl font-bold mt-2">{kpi.value}</p>
+                  <p className="text-3xl font-bold mt-2 tabular-nums">{kpi.value}</p>
                 </div>
                 <div
-                  className={`h-12 w-12 rounded-xl bg-gradient-to-br ${kpi.accent} flex items-center justify-center shadow-lg`}
+                  className={`h-12 w-12 rounded-xl ${kpi.accent} flex items-center justify-center`}
                 >
-                  <span className="text-white">{kpi.icon}</span>
+                  <span>{kpi.icon}</span>
                 </div>
               </div>
               <div className="flex items-center mt-3 text-xs text-muted-foreground">
-                <TrendingUp className="h-3 w-3 mr-1 text-emerald-500" />
+                <TrendingUp className="h-3 w-3 mr-1 text-success" />
                 <span>
                   {kpi.subtitle || `Atualizado às ${format(new Date(), 'HH:mm')}`}
                 </span>
@@ -811,7 +810,7 @@ export function DashboardView() {
       <Card className={`hover:shadow-md transition-shadow duration-200 ${needsUpdateClients.length > 0 ? 'border-rose-200 dark:border-rose-800/50' : ''}`}>
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <AlertTriangle className={`h-4 w-4 ${needsUpdateClients.length > 0 ? 'text-rose-500' : 'text-emerald-500'}`} />
+            <AlertTriangle className={`h-4 w-4 ${needsUpdateClients.length > 0 ? 'text-rose-500' : 'text-success'}`} />
             <span className="flex-1">Clientes que Precisam de Atualização</span>
             {needsUpdateClients.length > 0 && (
               <Badge className="bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
@@ -823,10 +822,10 @@ export function DashboardView() {
         <CardContent className="px-6 pb-6">
           {needsUpdateClients.length === 0 ? (
             <div className="text-center py-6">
-              <div className="h-12 w-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center mx-auto mb-3">
-                <Clock className="h-6 w-6 text-emerald-500" />
+              <div className="h-12 w-12 rounded-xl bg-success/10 flex items-center justify-center mx-auto mb-3">
+                <Clock className="h-6 w-6 text-success" />
               </div>
-              <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+              <p className="text-sm font-medium text-success">
                 Todos os clientes estão em dia!
               </p>
               <p className="text-xs text-muted-foreground mt-1">
@@ -978,7 +977,7 @@ export function DashboardView() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Users className="h-4 w-4 text-emerald-500" />
+                <Users className="h-4 w-4 text-primary" />
                 Clientes Recentes
               </CardTitle>
               <Button
@@ -1032,7 +1031,7 @@ export function DashboardView() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-emerald-500" />
+                <Calendar className="h-4 w-4 text-primary" />
                 Próximos Lembretes
               </CardTitle>
               <Button
@@ -1063,7 +1062,7 @@ export function DashboardView() {
                         className={`h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 ${
                           isOverdue
                             ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
-                            : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : 'bg-primary/10 text-primary dark:text-primary'
                         }`}
                       >
                         <Bell className="h-4 w-4" />

@@ -243,7 +243,7 @@ export function AdminPanel() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Shield className="h-6 w-6 text-emerald-600" />
+            <Shield className="h-6 w-6 text-primary" />
             Painel de Administração
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -274,7 +274,7 @@ export function AdminPanel() {
             <h2 className="text-lg font-semibold">Gerenciamento de Usuários</h2>
             <Dialog open={newUserOpen} onOpenChange={setNewUserOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold">
+                <Button className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold">
                   <UserPlus className="h-4 w-4 mr-2" />
                   Novo Usuário
                 </Button>
@@ -333,16 +333,16 @@ export function AdminPanel() {
                       Mínimo 8 caracteres com:
                     </p>
                     <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-                      <span className={newPassword.length >= 8 ? 'text-emerald-600' : 'text-muted-foreground'}>
+                      <span className={newPassword.length >= 8 ? 'text-success' : 'text-muted-foreground'}>
                         {newPassword.length >= 8 ? <Check className="h-3 w-3 inline mr-0.5" /> : <X className="h-3 w-3 inline mr-0.5" />}8+ caracteres
                       </span>
-                      <span className={/[A-Z]/.test(newPassword) ? 'text-emerald-600' : 'text-muted-foreground'}>
+                      <span className={/[A-Z]/.test(newPassword) ? 'text-success' : 'text-muted-foreground'}>
                         {/[A-Z]/.test(newPassword) ? <Check className="h-3 w-3 inline mr-0.5" /> : <X className="h-3 w-3 inline mr-0.5" />}Maiúscula
                       </span>
-                      <span className={/[a-z]/.test(newPassword) ? 'text-emerald-600' : 'text-muted-foreground'}>
+                      <span className={/[a-z]/.test(newPassword) ? 'text-success' : 'text-muted-foreground'}>
                         {/[a-z]/.test(newPassword) ? <Check className="h-3 w-3 inline mr-0.5" /> : <X className="h-3 w-3 inline mr-0.5" />}Minúscula
                       </span>
-                      <span className={/[0-9]/.test(newPassword) ? 'text-emerald-600' : 'text-muted-foreground'}>
+                      <span className={/[0-9]/.test(newPassword) ? 'text-success' : 'text-muted-foreground'}>
                         {/[0-9]/.test(newPassword) ? <Check className="h-3 w-3 inline mr-0.5" /> : <X className="h-3 w-3 inline mr-0.5" />}Número
                       </span>
                     </div>
@@ -371,7 +371,7 @@ export function AdminPanel() {
                   <Button
                     onClick={handleCreateUser}
                     disabled={creating || !newName || !newEmail || !newPassword || newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)}
-                    className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
                   >
                     {creating ? (
                       <>
@@ -391,23 +391,23 @@ export function AdminPanel() {
           <div className="grid gap-4 sm:grid-cols-3">
             <Card>
               <CardContent className="p-4 flex items-center gap-4">
-                <div className="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                  <Users className="h-5 w-5 text-emerald-600" />
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-primary dark:text-primary" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Total de Usuários</p>
-                  <p className="text-2xl font-bold">{users.length}</p>
+                  <p className="text-2xl font-bold tabular-nums">{users.length}</p>
                 </div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 flex items-center gap-4">
-                <div className="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                  <Shield className="h-5 w-5 text-emerald-600" />
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Shield className="h-5 w-5 text-primary dark:text-primary" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Administradores</p>
-                  <p className="text-2xl font-bold">
+                  <p className="text-2xl font-bold tabular-nums">
                     {users.filter((u) => u.role === 'ADMIN').length}
                   </p>
                 </div>
@@ -420,7 +420,7 @@ export function AdminPanel() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Senha Pendente</p>
-                  <p className="text-2xl font-bold">
+                  <p className="text-2xl font-bold tabular-nums">
                     {users.filter((u) => u.mustChangePassword).length}
                   </p>
                 </div>
@@ -447,7 +447,7 @@ export function AdminPanel() {
             <CardContent className="p-0">
               {loading ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : filteredUsers.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
@@ -463,7 +463,7 @@ export function AdminPanel() {
                         className="flex items-center gap-4 px-6 py-4 hover:bg-muted/50 transition-colors"
                       >
                         <Avatar className="h-10 w-10">
-                          <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white text-sm font-semibold">
+                          <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
                             {getInitials(user.name)}
                           </AvatarFallback>
                         </Avatar>
@@ -504,7 +504,7 @@ export function AdminPanel() {
                                   <span
                                     className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                                       ns.googleCalendarConnected
-                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                        ? 'bg-success/10 text-success'
                                         : 'bg-muted text-muted-foreground/60'
                                     }`}
                                     title={ns.googleCalendarConnected ? 'Google Calendar conectado' : 'Google Calendar não conectado'}

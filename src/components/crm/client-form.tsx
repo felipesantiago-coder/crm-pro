@@ -269,7 +269,7 @@ export function ClientForm({ open, onOpenChange, client, onSuccess }: ClientForm
                         }}
                         className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all duration-200 ${
                           selectedEnterpriseId === ent.id
-                            ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            ? 'border-primary bg-primary/10 text-primary dark:text-primary'
                             : 'border-border hover:bg-muted'
                         }`}
                       >
@@ -278,8 +278,8 @@ export function ClientForm({ open, onOpenChange, client, onSuccess }: ClientForm
                             <img src={ent.imageUrl} alt={ent.name} className="h-full w-full object-cover" />
                           </div>
                         ) : (
-                          <div className="h-8 w-8 rounded-md bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-                            <Building2 className="h-4 w-4 text-emerald-500" />
+                          <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            <Building2 className="h-4 w-4 text-primary" />
                           </div>
                         )}
                         <div className="min-w-0">
@@ -335,7 +335,7 @@ export function ClientForm({ open, onOpenChange, client, onSuccess }: ClientForm
                   onClick={() => setSelectedPeriod(option.value)}
                   className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all duration-200 ${
                     selectedPeriod === option.value
-                      ? 'bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400'
+                      ? 'bg-primary/10 border-primary text-primary dark:text-primary'
                       : 'border-border hover:bg-muted text-muted-foreground'
                   }`
                   }
@@ -395,7 +395,7 @@ export function ClientForm({ open, onOpenChange, client, onSuccess }: ClientForm
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={loading} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
+            <Button type="submit" disabled={loading} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {isEditing ? 'Atualizar' : 'Salvar'}
             </Button>

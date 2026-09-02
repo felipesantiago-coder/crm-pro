@@ -14,7 +14,6 @@ import {
   Megaphone,
   LogOut,
   KeyRound,
-  User,
   Trophy,
   Building2,
   BarChart3,
@@ -30,7 +29,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useCRMStore, type CRMView } from '@/store/crm-store';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +38,7 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from '@/components/ui/tooltip';
+import { BrandLogo, BrandSymbol, BrandWordmark } from '@/components/brand';
 
 function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   const { currentView, setCurrentView, notificationReminders } = useCRMStore();
@@ -65,7 +64,7 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
 
   return (
     <TooltipProvider delayDuration={0}>
-      <nav className="flex flex-col gap-1 mt-2 relative">
+      <nav aria-label="Navegação principal" className="flex flex-col gap-1 mt-2 relative">
         {visibleItems.map((item) => {
           const isActive = currentView === item.view;
           const reminderCount =
@@ -80,15 +79,25 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
                 setCurrentView(item.view);
                 onNavigate?.();
               }}
+              aria-current={isActive ? 'page' : undefined}
               className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 relative',
+                'group flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium outline-none transition-colors duration-200 relative',
+                'focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar',
                 collapsed && 'justify-center',
                 isActive
-                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold'
+                  : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground'
               )}
             >
-              <span className={cn('flex-shrink-0', isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
+              {/* Marcador lateral do item ativo (não depende apenas de cor) */}
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-full bg-sidebar-primary transition-opacity duration-200',
+                  isActive ? 'opacity-100' : 'opacity-0'
+                )}
+              />
+              <span className={cn('flex-shrink-0', isActive ? 'text-sidebar-primary' : 'text-muted-foreground group-hover:text-sidebar-accent-foreground')}>
                 {item.icon}
               </span>
               {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
@@ -139,9 +148,9 @@ function UserMenu({ collapsed }: { collapsed: boolean }) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="w-full justify-center">
+          <Button variant="ghost" size="icon" className="w-full justify-center" aria-label={`Menu do usuário: ${userName}`}>
             <Avatar className="h-8 w-8">
-              <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white text-xs font-semibold">
+              <AvatarFallback className="bg-gradient-to-br from-brand-indigo to-brand-cyan text-white text-xs font-semibold">
                 {initials}
               </AvatarFallback>
             </Avatar>
@@ -158,7 +167,7 @@ function UserMenu({ collapsed }: { collapsed: boolean }) {
             Alterar Senha
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })} className="text-red-600 focus:text-red-600">
+          <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })} className="text-destructive focus:text-destructive">
             <LogOut className="h-4 w-4 mr-2" />
             Sair
           </DropdownMenuItem>
@@ -173,7 +182,7 @@ function UserMenu({ collapsed }: { collapsed: boolean }) {
         <Button variant="ghost" className="w-full justify-start px-3 py-2 h-auto">
           <div className="flex items-center gap-3 w-full">
             <Avatar className="h-8 w-8 flex-shrink-0">
-              <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white text-xs font-semibold">
+              <AvatarFallback className="bg-gradient-to-br from-brand-indigo to-brand-cyan text-white text-xs font-semibold">
                 {initials}
               </AvatarFallback>
             </Avatar>
@@ -195,7 +204,7 @@ function UserMenu({ collapsed }: { collapsed: boolean }) {
           Alterar Senha
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })} className="text-red-600 focus:text-red-600">
+        <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })} className="text-destructive focus:text-destructive">
           <LogOut className="h-4 w-4 mr-2" />
           Sair
         </DropdownMenuItem>
@@ -213,39 +222,33 @@ export function CRMLayout({ children }: { children: React.ReactNode }) {
       {/* Desktop Sidebar */}
       <aside
         className={cn(
-          'hidden lg:flex flex-col fixed left-0 top-0 h-full z-40 border-r bg-card transition-all duration-300',
-          sidebarCollapsed ? 'w-[68px]' : 'w-[260px]'
+          'hidden lg:flex flex-col fixed left-0 top-0 h-full z-40 border-r bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+          sidebarCollapsed ? 'w-[var(--sidebar-width-collapsed)]' : 'w-[var(--sidebar-width)]'
         )}
       >
-        <div className="flex items-center justify-between h-16 px-4 border-b">
-          {!sidebarCollapsed && (
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">C</span>
-              </div>
-              <span className="font-bold text-lg tracking-tight">
-                <span className="text-emerald-600 dark:text-emerald-400">CRM</span>{' '}
-                <span className="text-foreground">Pro</span>
-              </span>
+        <div className="flex items-center h-[64px] px-4 border-b border-sidebar-border">
+          {sidebarCollapsed ? (
+            <div className="mx-auto">
+              <BrandSymbol size={34} priority />
+              <span className="sr-only">CRM Pro</span>
             </div>
-          )}
-          {sidebarCollapsed && (
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mx-auto">
-              <span className="text-white font-bold text-sm">C</span>
+          ) : (
+            <div className="flex items-center">
+              <BrandLogo width={170} priority />
             </div>
           )}
         </div>
 
-        <div className="flex-1 px-3 py-4 overflow-y-auto">
+        <div className="flex-1 px-3 py-4 overflow-y-auto overflow-x-hidden">
           <SidebarNav collapsed={sidebarCollapsed} />
         </div>
 
-        <div className="px-3 py-3 border-t space-y-1">
+        <div className="px-3 py-3 border-t border-sidebar-border space-y-1">
           <UserMenu collapsed={sidebarCollapsed} />
           {sidebarCollapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" onClick={toggleSidebar} className="w-full justify-center">
+                <Button variant="ghost" size="sm" onClick={toggleSidebar} className="w-full justify-center" aria-label="Expandir painel">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -262,53 +265,42 @@ export function CRMLayout({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Header + Sheet Sidebar */}
       <div className="flex-1 lg:ml-0 min-w-0">
-        <header className="lg:hidden sticky top-0 z-30 flex items-center h-14 px-4 border-b bg-card">
+        <header className="lg:hidden sticky top-0 z-30 flex items-center h-14 px-4 border-b bg-sidebar text-sidebar-foreground">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="mr-2">
+              <Button variant="ghost" size="icon" className="mr-2 min-h-[44px] min-w-[44px]" aria-label="Abrir menu de navegação">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[260px] p-0">
+            <SheetContent side="left" className="w-[304px] max-w-[calc(100vw-32px)] p-0 bg-sidebar text-sidebar-foreground">
               <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
-              <div className="flex items-center h-14 px-4 border-b">
-                <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">C</span>
-                  </div>
-                  <span className="font-bold text-lg tracking-tight">
-                    <span className="text-emerald-600 dark:text-emerald-400">CRM</span>{' '}
-                    <span className="text-foreground">Pro</span>
-                  </span>
+              <div className="flex items-center h-14 px-4 border-b border-sidebar-border">
+                <div className="flex items-center">
+                  <BrandLogo width={158} priority />
                 </div>
               </div>
               <div className="px-3 py-4">
                 <SidebarNav collapsed={false} onNavigate={() => setMobileOpen(false)} />
               </div>
-              <div className="absolute bottom-0 left-0 right-0 p-3 border-t">
+              <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-sidebar-border safe-area-bottom">
                 <UserMenu collapsed={false} />
               </div>
             </SheetContent>
           </Sheet>
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-md bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-              <span className="text-white font-bold text-xs">C</span>
-            </div>
-            <span className="font-bold text-base tracking-tight">
-              <span className="text-emerald-600 dark:text-emerald-400">CRM</span>{' '}
-              <span className="text-foreground">Pro</span>
-            </span>
+            <BrandSymbol size={28} priority />
+            <BrandWordmark width={92} priority />
           </div>
         </header>
 
         {/* Main content */}
         <main
           className={cn(
-            'transition-all duration-300',
-            sidebarCollapsed ? 'lg:ml-[68px]' : 'lg:ml-[260px]'
+            'transition-[margin] duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+            sidebarCollapsed ? 'lg:ml-[var(--sidebar-width-collapsed)]' : 'lg:ml-[var(--sidebar-width)]'
           )}
         >
-          <div className="p-4 sm:p-5 lg:p-6 max-w-full overflow-x-hidden">{children}</div>
+          <div className="mx-auto w-full max-w-[1560px] p-4 sm:p-5 lg:p-6 2xl:px-8 overflow-x-hidden">{children}</div>
         </main>
       </div>
     </div>

@@ -201,7 +201,7 @@ export function LostLeadsTab() {
           <Button
             onClick={handleRecoverAll}
             disabled={recovering !== null}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             <UserPlus className="h-4 w-4 mr-2" />
             Recuperar todos da página
@@ -259,14 +259,14 @@ export function LostLeadsTab() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-            <Phone className="h-3.5 w-3.5 text-emerald-500" />
+            <Phone className="h-3.5 w-3.5 text-primary" />
             Com telefone
           </div>
           <p className="text-2xl font-bold">{items.filter((i) => i.phone).length}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
             Recuperáveis
           </div>
           <p className="text-2xl font-bold">{items.filter((i) => i.name && i.email && !i.isRecovered).length}</p>
@@ -282,8 +282,8 @@ export function LostLeadsTab() {
         </div>
       ) : items.length === 0 ? (
         <Card className="p-12 text-center">
-          <div className="h-14 w-14 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto mb-4">
-            <CheckCircle2 className="h-7 w-7 text-emerald-500" />
+          <div className="h-14 w-14 rounded-2xl bg-success/10 dark:bg-success/20 flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="h-7 w-7 text-success" />
           </div>
           <h3 className="font-semibold text-lg">Nenhum lead perdido</h3>
           <p className="text-sm text-muted-foreground mt-2">
@@ -308,7 +308,7 @@ export function LostLeadsTab() {
                         </span>
                         {sourceBadge(item.source)}
                         {item.isRecovered && (
-                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px]">
+                          <Badge className="bg-success/10 text-success dark:bg-success/20 dark:text-success text-[10px]">
                             <CheckCircle2 className="h-3 w-3 mr-0.5" /> Recuperado
                           </Badge>
                         )}
@@ -360,7 +360,7 @@ export function LostLeadsTab() {
                           size="sm"
                           onClick={() => handleRecover(item)}
                           disabled={recovering !== null}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white h-9"
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground h-9"
                         >
                           {recovering === item.id ? (
                             <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Recuperando...</>

@@ -39,7 +39,7 @@ const STAGE_COLORS: Record<string, string> = {
   VISITA_REALIZADA: 'bg-violet-400 dark:bg-violet-500',
   CARTA_PROPOSTA: 'bg-amber-400 dark:bg-amber-500',
   CONTRATO_GERADO: 'bg-orange-400 dark:bg-orange-500',
-  FECHADO_GANHO: 'bg-emerald-400 dark:bg-emerald-500',
+  FECHADO_GANHO: 'bg-success',
   FECHADO_PERDIDO: 'bg-rose-400 dark:bg-rose-500',
 };
 
@@ -50,7 +50,7 @@ const STAGE_BG: Record<string, string> = {
   VISITA_REALIZADA: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
   CARTA_PROPOSTA: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   CONTRATO_GERADO: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-  FECHADO_GANHO: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  FECHADO_GANHO: 'bg-success/10 text-success',
   FECHADO_PERDIDO: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
 };
 
@@ -140,15 +140,15 @@ export function AnalyticsDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-muted-foreground">Taxa de Conversão</p>
-                <p className="text-3xl font-bold mt-1">{data.conversionRate}%</p>
+                <p className="text-3xl font-bold mt-1 tabular-nums">{data.conversionRate}%</p>
               </div>
-              <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
-                <Target className="h-5 w-5 text-white" />
+              <div className="h-11 w-11 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shadow-lg">
+                <Target className="h-5 w-5" />
               </div>
             </div>
             <div className="flex items-center mt-2 text-xs text-muted-foreground">
               {data.conversionRate >= 20 ? (
-                <TrendingUp className="h-3 w-3 mr-1 text-emerald-500" />
+                <TrendingUp className="h-3 w-3 mr-1 text-success" />
               ) : (
                 <TrendingDown className="h-3 w-3 mr-1 text-rose-500" />
               )}
@@ -163,14 +163,14 @@ export function AnalyticsDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-muted-foreground">Taxa de Vitória</p>
-                <p className="text-3xl font-bold mt-1">{data.winRate}%</p>
+                <p className="text-3xl font-bold mt-1 tabular-nums">{data.winRate}%</p>
               </div>
               <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg">
                 <Award className="h-5 w-5 text-white" />
               </div>
             </div>
             <div className="flex items-center mt-2 text-xs text-muted-foreground">
-              <span className="text-emerald-500 font-medium">{data.wonCount} ganhos</span>
+              <span className="text-success font-medium">{data.wonCount} ganhos</span>
               <span className="mx-1">&bull;</span>
               <span className="text-rose-500 font-medium">{data.lostCount} perdidos</span>
             </div>
@@ -183,7 +183,7 @@ export function AnalyticsDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-muted-foreground">Visitas este Mês</p>
-                <p className="text-3xl font-bold mt-1">
+                <p className="text-3xl font-bold mt-1 tabular-nums">
                   {data.thisMonth.visitsCompleted}
                   <span className="text-base font-normal text-muted-foreground">
                     /{data.thisMonth.visitsScheduled}
@@ -206,7 +206,7 @@ export function AnalyticsDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-muted-foreground">Atividade Semanal</p>
-                <p className="text-3xl font-bold mt-1">{data.interactionsThisWeek}</p>
+                <p className="text-3xl font-bold mt-1 tabular-nums">{data.interactionsThisWeek}</p>
               </div>
               <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg">
                 <Users className="h-5 w-5 text-white" />
@@ -225,7 +225,7 @@ export function AnalyticsDashboard() {
         <Card className="lg:col-span-2 hover:shadow-md transition-shadow">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-emerald-500" />
+              <BarChart3 className="h-4 w-4 text-primary" />
               Funil de Vendas
             </CardTitle>
           </CardHeader>
@@ -314,8 +314,8 @@ export function AnalyticsDashboard() {
                   label="Concluídos"
                   count={data.schedules.completed}
                   icon={<CalendarCheck className="h-4 w-4" />}
-                  colorClass="text-emerald-500"
-                  bgClass="bg-emerald-50 dark:bg-emerald-950/30"
+                  colorClass="text-success"
+                  bgClass="bg-success/10"
                 />
                 <ScheduleStatItem
                   label="Atrasados"
@@ -336,11 +336,11 @@ export function AnalyticsDashboard() {
                 <div className="pt-2 border-t">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs text-muted-foreground">Taxa de conclusão</span>
-                    <span className="text-sm font-bold">{data.schedules.completionRate}%</span>
+                    <span className="text-sm font-bold tabular-nums">{data.schedules.completionRate}%</span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full transition-all duration-700"
+                      className="h-full bg-chart-1 rounded-full transition-all duration-700"
                       style={{ width: `${data.schedules.completionRate}%` }}
                     />
                   </div>
@@ -395,7 +395,7 @@ export function AnalyticsDashboard() {
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-emerald-500" />
+              <TrendingUp className="h-4 w-4 text-primary" />
               Tendência de Novos Clientes
             </CardTitle>
           </CardHeader>
@@ -413,7 +413,7 @@ export function AnalyticsDashboard() {
                     <span className="text-[10px] font-bold">{m.count}</span>
                     <div className="w-full bg-muted/50 rounded-t-md overflow-hidden flex-1 flex items-end">
                       <div
-                        className="w-full bg-gradient-to-t from-emerald-500 to-teal-400 rounded-t-md transition-all duration-500"
+                        className="w-full bg-chart-1 rounded-t-md transition-all duration-500"
                         style={{ height: `${heightPercent}%` }}
                       />
                     </div>
@@ -449,7 +449,7 @@ function ScheduleStatItem({
       </div>
       <div className="flex-1">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-lg font-bold leading-tight">{count}</p>
+        <p className="text-lg font-bold leading-tight tabular-nums">{count}</p>
       </div>
     </div>
   );

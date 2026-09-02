@@ -154,7 +154,7 @@ export function EnterprisePanel() {
           <button
             className={cn(
               'px-4 py-2 text-sm font-medium rounded-md transition-colors',
-              'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 shadow-sm'
+              'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary shadow-sm'
             )}
           >
             <Building2 className="h-4 w-4 inline mr-1.5 -mt-0.5" />
@@ -245,7 +245,7 @@ export function EnterprisePanel() {
           className={cn(
             'px-4 py-2 text-sm font-medium rounded-md transition-colors',
             activeType === 'REVENDA'
-              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 shadow-sm'
+              ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary shadow-sm'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
@@ -591,7 +591,7 @@ function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery, onOpenFloorPla
             let status: string | null = null;
             let statusColor = 'bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-400';
             let statusIcon = <Clock className="h-3 w-3 mr-1" />;
-            if (/entregue|pronto para morar|habite-se/i.test(allText)) { status = 'Entregue'; statusColor = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'; statusIcon = <CheckCircle2 className="h-3 w-3 mr-1" />; }
+            if (/entregue|pronto para morar|habite-se/i.test(allText)) { status = 'Entregue'; statusColor = 'bg-success/10 text-success dark:bg-success/20 dark:text-success'; statusIcon = <CheckCircle2 className="h-3 w-3 mr-1" />; }
             else if (/em construção|construção/i.test(allText)) { status = 'Em Construção'; statusColor = 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'; statusIcon = <HardHat className="h-3 w-3 mr-1" />; }
             else if (/lançamento|pré-lançamento/i.test(allText)) { status = 'Lançamento'; statusColor = 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'; }
             const priceMatch = info!.summary?.match(/a partir de\s*R\$\s*[\d.]+/i) || info!.apartmentTypes?.[0]?.description?.match(/a partir de\s*R\$\s*[\d.]+/i);
@@ -609,7 +609,7 @@ function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery, onOpenFloorPla
                     {deliveryText && (
                       <Badge className={cn('text-xs font-medium px-2.5 py-1',
                         status === 'Entregue'
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                          ? 'bg-success/10 text-success dark:bg-success/20 dark:text-success'
                           : 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
                       )}>
                         {status === 'Entregue' ? <CheckCircle2 className="h-3 w-3 mr-1" /> : <Clock className="h-3 w-3 mr-1" />}
@@ -628,7 +628,7 @@ function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery, onOpenFloorPla
             <Card className="min-w-0">
               <CardContent className="p-3 sm:p-4 space-y-3">
                 <div className="flex items-center gap-2">
-                  <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0"><Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-600 dark:text-emerald-400" /></div>
+                  <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-primary/10 dark:bg-primary/20 flex items-center justify-center flex-shrink-0"><Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary dark:text-primary" /></div>
                   <h3 className="text-sm font-semibold">Tipos de Unidades</h3>
                   <Badge variant="secondary" className="text-[10px] ml-auto">{info!.apartmentTypes.length} tipo{info!.apartmentTypes.length !== 1 ? 's' : ''}</Badge>
                 </div>
@@ -636,10 +636,10 @@ function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery, onOpenFloorPla
                   {info!.apartmentTypes.map((apt, idx) => {
                     const priceInDesc = apt.description?.match(/R\$[\d.,]+/);
                     return (
-                      <div key={idx} className="rounded-lg border p-3 space-y-2 hover:border-emerald-200 dark:hover:border-emerald-800/50 transition-colors min-w-0">
+                      <div key={idx} className="rounded-lg border p-3 space-y-2 hover:border-primary/30 dark:hover:border-primary/30 transition-colors min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <h4 className="text-sm font-medium break-words">{apt.name}</h4>
-                          {priceInDesc && <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap flex-shrink-0">{priceInDesc[0]}</span>}
+                          {priceInDesc && <span className="text-[11px] font-semibold text-primary dark:text-primary whitespace-nowrap flex-shrink-0">{priceInDesc[0]}</span>}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                           {apt.area && <span className="flex items-center gap-1"><Ruler className="h-3 w-3 flex-shrink-0" />{apt.area}</span>}

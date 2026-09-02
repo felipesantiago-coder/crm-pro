@@ -83,7 +83,7 @@ const STAGE_COLORS: Record<string, string> = {
   VISITA_REALIZADA: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400',
   CARTA_PROPOSTA: 'bg-orange-500/10 text-orange-600 dark:text-orange-400',
   CONTRATO_GERADO: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
-  FECHADO_GANHO: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  FECHADO_GANHO: 'bg-success/10 text-success',
   FECHADO_PERDIDO: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
 };
 
@@ -192,8 +192,8 @@ export function ReportsView() {
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                    <Users className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Users className="h-4 w-4 text-primary dark:text-primary" />
                   </div>
                   <span className="text-xs font-medium text-muted-foreground">Novos Clientes</span>
                 </div>
@@ -248,12 +248,12 @@ export function ReportsView() {
                   <span className="text-xs font-medium text-muted-foreground">Deals</span>
                 </div>
                 <p className="text-2xl font-bold tabular-nums">
-                  <span className="text-emerald-600 dark:text-emerald-400">{s.wonDeals}</span>
+                  <span className="text-success">{s.wonDeals}</span>
                   <span className="text-muted-foreground mx-1">/</span>
                   <span className="text-rose-600 dark:text-rose-400">{s.lostDeals}</span>
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  <TrendingUp className="inline h-3 w-3 text-emerald-600 dark:text-emerald-400" /> Ganhos{' '}
+                  <TrendingUp className="inline h-3 w-3 text-success" /> Ganhos{' '}
                   <TrendingDown className="inline h-3 w-3 text-rose-600 dark:text-rose-400 ml-1" /> Perdidos
                 </p>
               </CardContent>
@@ -266,7 +266,7 @@ export function ReportsView() {
             <Card className="lg:col-span-2">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <BarChart3 className="h-4 w-4 text-primary dark:text-primary" />
                   Atividade Diária
                 </CardTitle>
               </CardHeader>
@@ -278,10 +278,10 @@ export function ReportsView() {
                 ) : (
                   <div className="space-y-2">
                     <div className="flex items-center gap-4 text-[10px] text-muted-foreground mb-3">
-                      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Clientes</span>
-                      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500" /> Interações</span>
-                      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> Agendamentos</span>
-                      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-500" /> Lembretes</span>
+                      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-chart-1" /> Clientes</span>
+                      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-chart-6" /> Interações</span>
+                      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-chart-4" /> Agendamentos</span>
+                      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-chart-3" /> Lembretes</span>
                     </div>
                     <div className="space-y-1">
                       {data.dailyActivity.map((d) => {
@@ -293,10 +293,10 @@ export function ReportsView() {
                           <div key={d.date} className="flex items-center gap-2 text-xs">
                             <span className="w-16 text-muted-foreground shrink-0 text-right tabular-nums">{dayLabel}</span>
                             <div className="flex-1 flex gap-px h-4 items-end">
-                              <div className="flex-1 bg-emerald-500/80 rounded-sm transition-all" style={{ height: `${Math.max((d.newClients / maxDaily) * 100, d.newClients > 0 ? 12 : 2)}%` }} title={`${d.newClients} clientes`} />
-                              <div className="flex-1 bg-blue-500/80 rounded-sm transition-all" style={{ height: `${Math.max((d.interactions / maxDaily) * 100, d.interactions > 0 ? 12 : 2)}%` }} title={`${d.interactions} interações`} />
-                              <div className="flex-1 bg-amber-500/80 rounded-sm transition-all" style={{ height: `${Math.max((d.schedules / maxDaily) * 100, d.schedules > 0 ? 12 : 2)}%` }} title={`${d.schedules} agendamentos`} />
-                              <div className="flex-1 bg-violet-500/80 rounded-sm transition-all" style={{ height: `${Math.max((d.reminders / maxDaily) * 100, d.reminders > 0 ? 12 : 2)}%` }} title={`${d.reminders} lembretes`} />
+                              <div className="flex-1 bg-chart-1 rounded-sm transition-all" style={{ height: `${Math.max((d.newClients / maxDaily) * 100, d.newClients > 0 ? 12 : 2)}%` }} title={`${d.newClients} clientes`} />
+                              <div className="flex-1 bg-chart-6 rounded-sm transition-all" style={{ height: `${Math.max((d.interactions / maxDaily) * 100, d.interactions > 0 ? 12 : 2)}%` }} title={`${d.interactions} interações`} />
+                              <div className="flex-1 bg-chart-4 rounded-sm transition-all" style={{ height: `${Math.max((d.schedules / maxDaily) * 100, d.schedules > 0 ? 12 : 2)}%` }} title={`${d.schedules} agendamentos`} />
+                              <div className="flex-1 bg-chart-3 rounded-sm transition-all" style={{ height: `${Math.max((d.reminders / maxDaily) * 100, d.reminders > 0 ? 12 : 2)}%` }} title={`${d.reminders} lembretes`} />
                             </div>
                           </div>
                         );
@@ -332,7 +332,7 @@ export function ReportsView() {
                           />
                         </div>
                         <span className="text-xs font-medium tabular-nums w-6 text-right">{item.count}</span>
-                        <span className="text-[10px] text-muted-foreground w-10 text-right">{pct}%</span>
+                        <span className="text-[10px] text-muted-foreground w-10 text-right tabular-nums">{pct}%</span>
                       </div>
                     );
                   })}
@@ -360,7 +360,7 @@ export function ReportsView() {
                       <div key={idx} className="flex items-center gap-3 py-1.5">
                         <span className={cn(
                           'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold shrink-0',
-                          idx === 0 ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
+                          idx === 0 ? 'bg-primary/10 text-primary dark:text-primary' :
                           idx === 1 ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' :
                           idx === 2 ? 'bg-orange-500/20 text-orange-600 dark:text-orange-400' :
                           'bg-muted text-muted-foreground'

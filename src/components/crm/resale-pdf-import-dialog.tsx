@@ -115,7 +115,7 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-emerald-500" />
+                <FileText className="h-5 w-5 text-primary" />
                 Importar PDF de Revenda
               </DialogTitle>
               <DialogDescription>
@@ -141,8 +141,8 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
                   className={cn(
                     'relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 cursor-pointer transition-colors',
                     file
-                      ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20'
-                      : 'border-muted-foreground/25 hover:border-emerald-500/50 hover:bg-muted/50'
+                      ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                      : 'border-muted-foreground/25 hover:border-primary/40 hover:bg-muted/50'
                   )}
                   onClick={() => pdfInputRef.current?.click()}
                 >
@@ -155,10 +155,10 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
                   />
                   {file ? (
                     <>
-                      <div className="h-12 w-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-2">
-                        <FileText className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                      <div className="h-12 w-12 rounded-xl bg-primary/10 dark:bg-primary/20 flex items-center justify-center mb-2">
+                        <FileText className="h-6 w-6 text-primary dark:text-primary" />
                       </div>
-                      <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">{file.name}</p>
+                      <p className="text-sm font-medium text-primary dark:text-primary">{file.name}</p>
                       <p className="text-xs text-muted-foreground mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                       <button
                         type="button"
@@ -196,7 +196,7 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
               <Button
                 onClick={handleImport}
                 disabled={!file || importing}
-                className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
               >
                 {importing ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Extraindo imoveis...</>
@@ -216,7 +216,7 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
                 {result.errors.length > 0 ? (
                   <AlertCircle className="h-5 w-5 text-amber-500" />
                 ) : (
-                  <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                  <CheckCircle2 className="h-5 w-5 text-success" />
                 )}
                 Resultado da Importacao
               </DialogTitle>
@@ -232,16 +232,16 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
                 <p className="text-sm font-medium">
                   Empreendimento: <strong>{result.enterpriseName}</strong>
                   {result.isNew && (
-                    <span className="ml-2 text-xs font-normal text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-full">novo</span>
+                    <span className="ml-2 text-xs font-normal text-success bg-success/10 dark:bg-success/20 px-2 py-0.5 rounded-full">novo</span>
                   )}
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   <div className={cn(
                     'rounded-lg border p-3 text-center',
-                    'border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-950/20'
+                    'border-success/30 bg-success/10 dark:border-success/20 dark:bg-success/20'
                   )}>
-                    <CheckCircle2 className="h-5 w-5 mx-auto mb-1 text-emerald-600" />
-                    <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{result.created}</p>
+                    <CheckCircle2 className="h-5 w-5 mx-auto mb-1 text-success" />
+                    <p className="text-xl font-bold text-success dark:text-success">{result.created}</p>
                     <p className="text-[10px] text-muted-foreground">Importados</p>
                   </div>
                   <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800/50 dark:bg-blue-950/20 p-3 text-center">
@@ -286,7 +286,7 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
               </Button>
               <Button
                 onClick={resetAndClose}
-                className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
               >
                 Concluir
               </Button>

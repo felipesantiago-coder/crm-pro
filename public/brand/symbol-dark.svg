@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="256"
+   height="256"
+   viewBox="0 0 256 256"
+   role="img"
+   aria-labelledby="title desc"
+   version="1.1"
+   id="svg12"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs16" />
+  <title
+     id="title">CRM Pro — símbolo Nexus</title>
+  <desc
+     id="desc">Dois módulos arredondados entrelaçados representam relacionamento, integração e continuidade.</desc>
+  <g
+     id="g10">
+    <path
+       id="rect4"
+       style="fill:none;stroke:#9186ff;stroke-width:28"
+       d="m 74,34 h 54 c 19.944,0 36,16.056 36,36 v 54 c 0,19.944 -16.056,36 -36,36 H 74 C 54.056,160 38,143.944 38,124 V 70 C 38,50.056 54.056,34 74,34 Z" />
+    <path
+       id="rect6"
+       style="fill:none;stroke:#3bdcf2;stroke-width:28"
+       d="m 128,88 h 54 c 19.944,0 36,16.056 36,36 v 54 c 0,19.944 -16.056,36 -36,36 h -54 c -19.944,0 -36,-16.056 -36,-36 v -54 c 0,-19.944 16.056,-36 36,-36 z" />
+    <path
+       d="m 73,160 h 39"
+       fill="none"
+       stroke="#9186ff"
+       stroke-width="28"
+       stroke-linecap="butt"
+       id="path8" />
+  </g>
+</svg>

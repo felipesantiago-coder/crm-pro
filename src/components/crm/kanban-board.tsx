@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  MoveRight,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -27,68 +28,14 @@ import { toast } from 'sonner';
 import { format, isPast, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { STAGE_CONFIG, getStageConfig } from '@/lib/presentation/stage-config';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
-const STAGE_CONFIG: Record<
-  string,
-  { label: string; color: string; bg: string; border: string; dot: string }
-> = {
-  LEAD: {
-    label: 'Lead',
-    color: 'text-slate-600 dark:text-slate-300',
-    bg: 'bg-slate-50 dark:bg-slate-900/50',
-    border: 'border-slate-200 dark:border-slate-800',
-    dot: 'bg-slate-400',
-  },
-  PROSPECT: {
-    label: 'Prospect',
-    color: 'text-cyan-600 dark:text-cyan-400',
-    bg: 'bg-cyan-50 dark:bg-cyan-950/30',
-    border: 'border-cyan-200 dark:border-cyan-800/50',
-    dot: 'bg-cyan-500',
-  },
-  VISITA_AGENDADA: {
-    label: 'Visita Agendada',
-    color: 'text-blue-600 dark:text-blue-400',
-    bg: 'bg-blue-50 dark:bg-blue-950/30',
-    border: 'border-blue-200 dark:border-blue-800/50',
-    dot: 'bg-blue-500',
-  },
-  VISITA_REALIZADA: {
-    label: 'Visita Realizada',
-    color: 'text-violet-600 dark:text-violet-400',
-    bg: 'bg-violet-50 dark:bg-violet-950/30',
-    border: 'border-violet-200 dark:border-violet-800/50',
-    dot: 'bg-violet-500',
-  },
-  CARTA_PROPOSTA: {
-    label: 'Carta Proposta',
-    color: 'text-amber-600 dark:text-amber-400',
-    bg: 'bg-amber-50 dark:bg-amber-950/30',
-    border: 'border-amber-200 dark:border-amber-800/50',
-    dot: 'bg-amber-500',
-  },
-  CONTRATO_GERADO: {
-    label: 'Contrato Gerado',
-    color: 'text-orange-600 dark:text-orange-400',
-    bg: 'bg-orange-50 dark:bg-orange-950/30',
-    border: 'border-orange-200 dark:border-orange-800/50',
-    dot: 'bg-orange-500',
-  },
-  FECHADO_GANHO: {
-    label: 'Fechado',
-    color: 'text-emerald-600 dark:text-emerald-400',
-    bg: 'bg-emerald-50 dark:bg-emerald-950/30',
-    border: 'border-emerald-200 dark:border-emerald-800/50',
-    dot: 'bg-emerald-500',
-  },
-  FECHADO_PERDIDO: {
-    label: 'Perdido',
-    color: 'text-rose-600 dark:text-rose-400',
-    bg: 'bg-rose-50 dark:bg-rose-950/30',
-    border: 'border-rose-200 dark:border-rose-800/50',
-    dot: 'bg-rose-500',
-  },
-};
 
 interface PipelineClient {
   id: string;
@@ -173,7 +120,7 @@ export function KanbanBoard() {
           return { ...prev, pipeline: newPipeline };
         });
 
-        const stageLabel = STAGE_CONFIG[newStage]?.label || newStage;
+        const stageLabel = getStageConfig(newStage).label;
         toast.success(`Estágio atualizado para "${stageLabel}"`);
       } else {
         toast.error('Erro ao atualizar estágio');
@@ -234,12 +181,12 @@ export function KanbanBoard() {
 
   function getAvatarColor(name: string) {
     const colors = [
-      'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
-      'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
-      'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-      'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
-      'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
-      'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
+      'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+      'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+      'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+      'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+      'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+      'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
     ];
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
@@ -249,7 +196,7 @@ export function KanbanBoard() {
   }
 
   function renderClientCard(client: PipelineClient, stage: string) {
-    const config = STAGE_CONFIG[stage] || STAGE_CONFIG.LEAD;
+    const config = getStageConfig(stage);
     const isDragging = draggedClient?.id === client.id;
     const isUpdating = updatingStage === client.id;
     const nextSchedule = client.schedules[0];
@@ -273,6 +220,16 @@ export function KanbanBoard() {
           setSelectedClientId(client.id);
           setCurrentView('clientDetail');
         }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setSelectedClientId(client.id);
+            setCurrentView('clientDetail');
+          }
+        }}
+        aria-label={`Cliente ${client.name} — estágio ${config.label}`}
       >
         <div className="flex items-start gap-2.5">
           <div className="flex-shrink-0 mt-0.5">
@@ -290,6 +247,44 @@ export function KanbanBoard() {
                 {getInitials(client.name)}
               </div>
               <p className="text-sm font-semibold truncate">{client.name}</p>
+
+              {/* Alternativa de movimento por teclado/toque: "Mover para..." */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`Mover ${client.name} para outro estágio`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground opacity-0 focus-visible:opacity-100 group-hover:opacity-100 transition-opacity hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring outline-none"
+                  >
+                    <MoveRight className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto">
+                  <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                    Mover para...
+                  </p>
+                  {Object.entries(STAGE_CONFIG)
+                    .filter(([key]) => key !== stage)
+                    .map(([key, stageCfg]) => {
+                      const Icon = stageCfg.icon;
+                      return (
+                        <DropdownMenuItem
+                          key={key}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (updatingStage !== client.id) {
+                              handleStageChange(client.id, key);
+                            }
+                          }}
+                        >
+                          <Icon className={cn('h-4 w-4 mr-2', stageCfg.color)} />
+                          <span>{stageCfg.label}</span>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             {/* Meta info */}
@@ -436,29 +431,30 @@ export function KanbanBoard() {
 
         <div
           ref={scrollRef}
-          className="flex gap-4 overflow-x-auto pb-4 px-2 scrollbar-thin"
+          className="flex gap-4 overflow-x-auto pb-4 px-2 snap-x snap-mandatory scrollbar-thin"
           style={{ scrollbarWidth: 'thin' }}
+          role="region"
+          aria-label="Colunas do pipeline"
         >
           {stages.map((stage) => {
-            const config = STAGE_CONFIG[stage] || STAGE_CONFIG.LEAD;
+            const config = getStageConfig(stage);
             const clients = data?.pipeline[stage] || [];
             const isDragOver = dragOverStage === stage;
 
             return (
               <div
                 key={stage}
-                className="flex-shrink-0 w-[280px]"
+                className="flex-shrink-0 w-[min(82vw,300px)] sm:w-[280px] xl:w-[300px] snap-start"
                 onDragOver={(e) => handleDragOver(e, stage)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, stage)}
               >
                 <div
                   className={cn(
-                    'rounded-xl border-2 transition-colors',
+                    'rounded-xl border-2 transition-colors duration-150',
                     isDragOver
-                      ? 'border-primary/50 bg-primary/5'
-                      : config.border,
-                    config.bg
+                      ? cn('border-primary ring-2', config.dropRing, config.color)
+                      : cn(config.border, config.bg)
                   )}
                 >
                   {/* Column header */}

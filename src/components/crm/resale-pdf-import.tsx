@@ -134,15 +134,15 @@ export function ResalePdfImport({ enterpriseId, enterpriseName, propertyCount, o
 
       {/* Import result */}
       {result && (
-        <Card className={cn('border', result.errors.length > 0 ? 'border-amber-300 dark:border-amber-700' : 'border-emerald-300 dark:border-emerald-700')}>
+        <Card className={cn('border', result.errors.length > 0 ? 'border-amber-300 dark:border-amber-700' : 'border-success/30 dark:border-success/20')}>
           <CardContent className="p-3 space-y-2">
             <div className="flex items-center gap-2">
-              {result.errors.length > 0 ? <AlertCircle className="h-4 w-4 text-amber-500" /> : <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+              {result.errors.length > 0 ? <AlertCircle className="h-4 w-4 text-amber-500" /> : <CheckCircle2 className="h-4 w-4 text-success" />}
               <span className="text-sm font-semibold">Resultado da extração</span>
               <Badge variant="secondary" className="text-[10px]">{result.pageCount} pág.</Badge>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />{result.created} importados</div>
+              <div className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-success" />{result.created} importados</div>
               <div className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-blue-500" />{result.totalProperties} total no catálogo</div>
             </div>
             {result.errors.length > 0 && (

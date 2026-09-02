@@ -148,7 +148,7 @@ export function TagsView() {
             Gerencie as tags para categorizar seus clientes
           </p>
         </div>
-        <Button size="sm" onClick={openCreateForm} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
+        <Button size="sm" onClick={openCreateForm} className="bg-primary text-primary-foreground hover:bg-primary/90">
           <Plus className="h-4 w-4 mr-2" />
           Nova Tag
         </Button>
@@ -169,7 +169,7 @@ export function TagsView() {
           <p className="text-sm text-muted-foreground mt-1 max-w-sm">
             Crie tags para organizar e categorizar seus clientes.
           </p>
-          <Button className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white" onClick={openCreateForm}>
+          <Button className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90" onClick={openCreateForm}>
             <Plus className="h-4 w-4 mr-2" />
             Nova Tag
           </Button>
@@ -252,7 +252,7 @@ export function TagsView() {
                   <button
                     key={color}
                     type="button"
-                    className="h-8 w-8 rounded-lg transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
+                    className="h-8 w-8 rounded-lg transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
                     style={{
                       backgroundColor: color,
                       transform: formColor === color ? 'scale(1.15)' : undefined,
@@ -297,7 +297,7 @@ export function TagsView() {
             <Button variant="outline" onClick={() => setFormOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white">
+            <Button onClick={handleSave} disabled={saving} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Salvar
             </Button>

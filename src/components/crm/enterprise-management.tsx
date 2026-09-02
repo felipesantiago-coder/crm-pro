@@ -448,7 +448,7 @@ export function EnterpriseManagement() {
           className={cn(
             'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
             adminActiveType === 'REVENDA'
-              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 shadow-sm'
+              ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary shadow-sm'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >Revenda</button>
@@ -458,7 +458,7 @@ export function EnterpriseManagement() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-emerald-600" />
+            <Building2 className="h-5 w-5 text-primary" />
             Gestão de Empreendimentos
           </h2>
           <p className="text-muted-foreground mt-1">
@@ -470,7 +470,7 @@ export function EnterpriseManagement() {
           {adminActiveType === 'REVENDA' && (
             <Button
               variant="outline"
-              className="font-semibold border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              className="font-semibold border-primary/40 text-primary hover:bg-primary/10 dark:border-primary/40 dark:text-primary dark:hover:bg-primary/20"
               onClick={() => setResalePdfDialogOpen(true)}
             >
               <FileText className="h-4 w-4 mr-2" />
@@ -487,7 +487,7 @@ export function EnterpriseManagement() {
             <DialogContent className="sm:max-w-[520px]">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <FileSpreadsheet className="h-5 w-5 text-emerald-500" />
+                  <FileSpreadsheet className="h-5 w-5 text-primary" />
                   Importar Empreendimentos em Lote
                 </DialogTitle>
                 <DialogDescription>
@@ -502,9 +502,9 @@ export function EnterpriseManagement() {
                   <div className="rounded-lg border bg-background overflow-x-auto">
                     <table className="w-full text-sm min-w-[300px]">
                       <thead>
-                        <tr className="bg-emerald-50 dark:bg-emerald-950/30">
-                          <th className="px-3 py-2 text-left font-semibold text-emerald-700 dark:text-emerald-400">Nome *</th>
-                          <th className="px-3 py-2 text-left font-semibold text-emerald-700 dark:text-emerald-400">Região</th>
+                        <tr className="bg-primary/10 dark:bg-primary/20">
+                          <th className="px-3 py-2 text-left font-semibold text-primary dark:text-primary">Nome *</th>
+                          <th className="px-3 py-2 text-left font-semibold text-primary dark:text-primary">Região</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -531,8 +531,8 @@ export function EnterpriseManagement() {
                   <div
                     className={`relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 cursor-pointer transition-colors ${
                       batchFile
-                        ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20'
-                        : 'border-muted-foreground/25 hover:border-emerald-500/50 hover:bg-muted/50'
+                        ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                        : 'border-muted-foreground/25 hover:border-primary/40 hover:bg-muted/50'
                     }`}
                     onClick={() => batchFileInputRef.current?.click()}
                   >
@@ -552,10 +552,10 @@ export function EnterpriseManagement() {
                     />
                     {batchFile ? (
                       <>
-                        <div className="h-12 w-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-2">
-                          <FileSpreadsheet className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                        <div className="h-12 w-12 rounded-xl bg-primary/10 dark:bg-primary/20 flex items-center justify-center mb-2">
+                          <FileSpreadsheet className="h-6 w-6 text-primary dark:text-primary" />
                         </div>
-                        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">{batchFile.name}</p>
+                        <p className="text-sm font-medium text-primary dark:text-primary">{batchFile.name}</p>
                         <p className="text-xs text-muted-foreground mt-1">{(batchFile.size / 1024).toFixed(1)} KB</p>
                         <button
                           type="button"
@@ -591,11 +591,11 @@ export function EnterpriseManagement() {
                     <div className="grid grid-cols-3 gap-2">
                       <div className={`rounded-lg border p-2.5 text-center ${
                         batchResults.created.length > 0
-                          ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-950/20'
+                          ? 'border-success/30 bg-success/10 dark:border-success/20 dark:bg-success/20'
                           : 'border-border bg-muted/30'
                       }`}>
-                        <CheckCircle2 className={`h-4 w-4 mx-auto mb-1 ${batchResults.created.length > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`} />
-                        <p className={`text-lg font-bold ${batchResults.created.length > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>{batchResults.created.length}</p>
+                        <CheckCircle2 className={`h-4 w-4 mx-auto mb-1 ${batchResults.created.length > 0 ? 'text-success' : 'text-muted-foreground'}`} />
+                        <p className={`text-lg font-bold ${batchResults.created.length > 0 ? 'text-success dark:text-success' : 'text-muted-foreground'}`}>{batchResults.created.length}</p>
                         <p className="text-[10px] text-muted-foreground">Criados</p>
                       </div>
                       <div className={`rounded-lg border p-2.5 text-center ${
@@ -623,8 +623,8 @@ export function EnterpriseManagement() {
                       <div className="rounded-lg border max-h-[150px] overflow-y-auto">
                         <div className="p-2 space-y-1">
                           {batchResults.created.map((item, i) => (
-                            <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-emerald-50/50 dark:bg-emerald-950/10 text-xs">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                            <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-success/10 dark:bg-success/20 text-xs">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-success flex-shrink-0" />
                               <span className="truncate font-medium">{item.name}</span>
                               {item.region && (
                                 <span className="text-muted-foreground ml-auto flex-shrink-0">{item.region}</span>
@@ -661,7 +661,7 @@ export function EnterpriseManagement() {
                   <Button
                     onClick={handleBatchImport}
                     disabled={!batchFile || batchImporting}
-                    className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
                   >
                     {batchImporting ? (
                       <>
@@ -682,7 +682,7 @@ export function EnterpriseManagement() {
 
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold">
+            <Button className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold">
               <Plus className="h-4 w-4 mr-2" />
               Novo Empreendimento
             </Button>
@@ -719,8 +719,8 @@ export function EnterpriseManagement() {
                     className={cn(
                       'px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors text-center',
                       createType === 'REVENDA'
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
-                        : 'border-muted hover:border-emerald-300 text-muted-foreground'
+                        ? 'border-primary bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary'
+                        : 'border-muted hover:border-primary/30 text-muted-foreground'
                     )}
                   >
                     <Building2 className="h-4 w-4 mx-auto mb-1" />
@@ -756,7 +756,7 @@ export function EnterpriseManagement() {
               <Button
                 onClick={handleCreate}
                 disabled={creating || !createName.trim()}
-                className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
               >
                 {creating ? (
                   <>
@@ -777,8 +777,8 @@ export function EnterpriseManagement() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-              <Building2 className="h-5 w-5 text-emerald-600" />
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-primary" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total de Empreendimentos</p>
@@ -788,8 +788,8 @@ export function EnterpriseManagement() {
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="h-10 w-10 rounded-lg bg-teal-500/10 flex items-center justify-center">
-              <Users className="h-5 w-5 text-teal-600" />
+            <div className="h-10 w-10 rounded-lg bg-chart-2/10 flex items-center justify-center">
+              <Users className="h-5 w-5 text-chart-2" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Clientes Vinculados</p>
@@ -840,7 +840,7 @@ export function EnterpriseManagement() {
           </p>
           {!search && adminActiveType === 'REVENDA' && (
             <div className="mt-4 space-y-3">
-              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold" onClick={() => setResalePdfDialogOpen(true)}>
+              <Button className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold" onClick={() => setResalePdfDialogOpen(true)}>
                 <FileText className="h-4 w-4 mr-2" />
                 Importar PDF de Revenda
               </Button>
@@ -864,13 +864,13 @@ export function EnterpriseManagement() {
               className="group hover:shadow-lg transition-all duration-200 overflow-hidden"
             >
               {/* Image Area */}
-              <div className="relative h-32 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center overflow-hidden">
+              <div className="relative h-32 bg-gradient-to-br from-primary/10 to-chart-2/10 flex items-center justify-center overflow-hidden">
                 {/* Type badge */}
                 <Badge
                   className={cn(
                     'absolute top-2 left-2 z-10 text-[11px] font-semibold border-0 backdrop-blur-sm',
                     enterprise.type === 'REVENDA'
-                      ? 'bg-emerald-500/80 text-white'
+                      ? 'bg-primary/80 text-white'
                       : 'bg-amber-500/80 text-white'
                   )}
                 >
@@ -894,8 +894,8 @@ export function EnterpriseManagement() {
                   </>
                 ) : (
                   <div className="flex flex-col items-center gap-2">
-                    <Building2 className="h-10 w-10 text-emerald-300 dark:text-emerald-600" />
-                    <span className="text-emerald-500 dark:text-emerald-400 font-medium text-sm">
+                    <Building2 className="h-10 w-10 text-primary/40 dark:text-primary/50" />
+                    <span className="text-primary dark:text-primary font-medium text-sm">
                       {enterprise.name}
                     </span>
                   </div>
@@ -1272,7 +1272,7 @@ export function EnterpriseManagement() {
             <Button
               onClick={handleEditSave}
               disabled={saving || !editName.trim()}
-              className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
             >
               {saving ? (
                 <>
