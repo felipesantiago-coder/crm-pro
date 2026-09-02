@@ -1,7 +1,7 @@
 /**
  * Emitter para API routes — envia eventos de realtime via PostgreSQL NOTIFY.
  *
- * BANCO DE DADOS: Neon (via Prisma). O NOTIFY usa a conexão Neon.
+ * BANCO DE DADOS: Supabase (PostgreSQL via Prisma). O NOTIFY usa a conexão do banco.
  *
  * Uso nas API routes (após cada mutação Prisma):
  *
@@ -16,8 +16,10 @@
  *     actorId: session.user.id,
  *   });
  *
- * O emitter usa Prisma $executeRawUnsafe para executar NOTIFY no Neon,
- * que é capturado pelo servidor Socket.io (LISTEN).
+ * O emitter usa Prisma $executeRawUnsafe para executar NOTIFY no Postgres
+ * (Supabase), que é capturado pelo servidor Socket.io (LISTEN).
+ * Nota: o emissor (NOTIFY) funciona pela conexão do Prisma (pooler 6543);
+ * quem faz LISTEN (socket-server) exige conexão de sessão — porta 5432.
  *
  * Isso NÃO interfere no Supabase Realtime — o Supabase é usado apenas
  * para Realtime subscriptions e Storage. Quando o Socket.io estiver ativo,

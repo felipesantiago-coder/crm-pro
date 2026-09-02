@@ -23,7 +23,7 @@
    - Start Command: npm start
    - Environment: Node
 5. Adicione as variáveis de ambiente:
-   - DATABASE_URL=(a mesma string do Supabase/Neon)
+   - DATABASE_URL=(connection string de SESSÃO do Supabase — porta 5432, session pooler ou direta; NÃO use a 6543 do Transaction pooler: LISTEN exige sessão estável)
    - CRM_API_URL=https://seu-crm.vercel.app
    - CORS_ORIGIN=https://seu-crm.vercel.app
    - PORT=3001

@@ -322,7 +322,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { status: 'error', error: errMsg, hint: 'As tabelas tracking_visitors e tracking_events podem nao existir. Execute a migracao no Neon SQL Editor (console.neon.tech) ou rode npx prisma db push.' },
+      { status: 'error', error: errMsg, hint: 'As tabelas tracking_visitors e tracking_events podem nao existir. Execute a migracao no Supabase SQL Editor (dashboard.supabase.com) ou rode npm run db:deploy.' },
       { status: 500 },
     );
   }

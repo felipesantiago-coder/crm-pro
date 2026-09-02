@@ -82,16 +82,14 @@ async function fetchNotificationCount(
 
 /**
  * Provider que escuta mudanças em tempo real via Supabase Realtime
- * em tabelas do banco de dados Neon (clients, tags, reminders, user_settings).
+ * em tabelas do banco de dados (clients, tags, reminders, user_settings).
  *
- * IMPORTANTE: O Supabase NÃO é o banco de dados deste projeto.
- * O banco de dados é o Neon (PostgreSQL via Prisma ORM).
- * O Supabase é usado APENAS para Realtime subscriptions (postgres_changes)
- * e Object Storage (imagens de empreendimentos).
+ * O banco de dados é o Supabase (PostgreSQL via Prisma ORM), então o
+ * Realtime escuta o PRÓPRIO banco do projeto (postgres_changes nativo).
+ * O Supabase também fornece Object Storage (imagens de empreendimentos).
  *
- * O Realtime do Supabase escuta a mesma base de dados Neon via
- * replica WAL. As tabelas residem no Neon; o Supabase apenas
- * propaga as mudanças em tempo real para a UI (toasts).
+ * Requisito: as tabelas devem estar na publication supabase_realtime:
+ *   ALTER PUBLICATION supabase_realtime ADD TABLE clients, tags, reminders, user_settings;
  *
  * Atualiza automaticamente a UI quando dados são modificados por qualquer
  * dispositivo/sessão conectada.

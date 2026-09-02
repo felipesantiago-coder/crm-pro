@@ -4,7 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 // SUPABASE SERVER CLIENT — Object Storage (apenas)
 // ================================================
 // Este cliente NÃO é usado para banco de dados.
-// O banco de dados é o Neon (via Prisma ORM em @/lib/db).
+// O banco de dados conecta via DATABASE_URL (Prisma ORM em @/lib/db);
+// o Supabase hospeda o Postgres E fornece Storage/Realtime do mesmo projeto.
 //
 // Este cliente é usado EXCLUSIVAMENTE para:
 //   - Upload de imagens para o bucket "enterprise-images" (Storage)
@@ -16,7 +17,7 @@ import { createClient } from '@supabase/supabase-js';
 /**
  * Cria client Supabase server-side com permissões de admin (service_role).
  * Usado APENAS para operações de Storage (upload/delete de imagens).
- * NÃO usado para banco de dados — o banco é o Neon via Prisma.
+ * NÃO usado para banco de dados — o banco conecta via DATABASE_URL (Prisma).
  */
 export function createSupabaseServerClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -25,7 +26,7 @@ export function createSupabaseServerClient() {
   if (!url || !serviceKey) {
     throw new Error(
       'NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são obrigatórios ' +
-      '(usados para Storage de imagens, NÃO para banco de dados — o banco é o Neon)'
+      '(usados para Storage de imagens — o banco de dados conecta via DATABASE_URL/Prisma)'
     );
   }
 

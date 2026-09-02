@@ -57,10 +57,10 @@ export const db = new Proxy({} as PrismaClient, {
 /**
  * Ensures the database connection is alive.
  *
- * Neon pode suspender branches inativas (scale-to-zero) — a primeira
- * conexão pode falhar enquanto o banco está acordando (cold start).
- * Esta função retenta com delays crescentes (3s, 4s, 5s) para dar
- * tempo suficiente ao Neon reativar a conexão.
+ * O Supabase pode apresentar falhas transitórias de conexão (pausa de
+ * projeto inativo no plano gratuito, reciclagem de conexões do pooler)
+ * — a primeira tentativa pode falhar momentaneamente. Esta função
+ * retenta com delays crescentes (3s, 4s, 5s).
  * Pior caso: ~12 segundos de espera.
  */
 export async function ensureDbConnection(maxRetries = 3): Promise<PrismaClient> {
@@ -72,7 +72,7 @@ export async function ensureDbConnection(maxRetries = 3): Promise<PrismaClient> 
     } catch (err) {
       console.error(`[DB] Connection attempt ${attempt}/${maxRetries} failed:`, err)
       if (attempt < maxRetries) {
-        // Increasing delay: 3s, 4s, 5s — gives Neon time to wake up
+        // Increasing delay: 3s, 4s, 5s — dá tempo ao pooler/banco de se recuperar
         const delay = (attempt + 2) * 1000
         console.log(`[DB] Waiting ${delay}ms before retry...`)
         await new Promise(resolve => setTimeout(resolve, delay))

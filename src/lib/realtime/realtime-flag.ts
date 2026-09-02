@@ -1,9 +1,9 @@
 /**
  * Flag central para alternar entre Supabase Realtime e Socket.io.
  *
- * O banco de dados é o Neon (via Prisma). O Supabase é usado
- * APENAS para Realtime (subscriptions postgres_changes em tabelas do Neon)
- * e Object Storage (imagens). Não confunda com banco de dados.
+ * O banco de dados é o Supabase (PostgreSQL via Prisma). O Realtime do
+ * Supabase usa subscriptions postgres_changes nas tabelas do PRÓPRIO banco
+ * (e o Object Storage fornece as imagens). Não confunda com um banco externo.
  *
  * Para ATIVAR o Socket.io (alternativa ao Supabase Realtime):
  *   1. Defina NEXT_PUBLIC_SOCKET_URL no Vercel

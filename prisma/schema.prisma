@@ -2,10 +2,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// === PRODUÇÃO (Vercel + Neon PostgreSQL) ===
-// Banco de dados: Neon (serverless PostgreSQL via Prisma ORM)
-// Storage/Realtime: Supabase (apenas Object Storage + Realtime subscriptions)
-// Autenticação: NextAuth Credentials (tabela "users" no Neon, NÃO Supabase Auth)
+// === PRODUÇÃO (Vercel + Supabase PostgreSQL) ===
+// Banco de dados: Supabase (PostgreSQL via Prisma ORM). Runtime usa o
+// Transaction pooler (porta 6543, ?pgbouncer=true); migrations exigem
+// conexão de sessão/direta (porta 5432) — ver scripts/vercel-migrate.mjs
+// e a variável DIRECT_DATABASE_URL.
+// Storage/Realtime: Supabase (mesmo projeto: Object Storage + Realtime)
+// Autenticação: NextAuth Credentials (tabela "users" no Postgres, NÃO Supabase Auth)
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

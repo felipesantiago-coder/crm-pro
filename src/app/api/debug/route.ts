@@ -34,7 +34,7 @@ export async function GET() {
 
     // Detectar provedor do banco pela URL (para debug)
     const dbUrl = process.env.DATABASE_URL || '';
-    const dbProvider = dbUrl.includes('neon.tech') ? 'Neon' : dbUrl.includes('supabase') ? 'Supabase (LEGADO — deveria ser Neon)' : dbUrl.includes('file:') ? 'SQLite (local)' : 'Desconhecido';
+    const dbProvider = dbUrl.includes('supabase') ? 'Supabase' : dbUrl.includes('neon.tech') ? 'Neon (LEGADO — migrado para Supabase)' : dbUrl.includes('file:') ? 'SQLite (local)' : 'Desconhecido';
 
     return NextResponse.json({
       status: 'ok',
@@ -53,7 +53,7 @@ export async function GET() {
         nextauthSecretSet: !!process.env.NEXTAUTH_SECRET,
         nextauthUrl: process.env.NEXTAUTH_URL || 'not set',
         supabaseStorageSet: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-        supabaseStorageNote: 'Supabase usado APENAS para Storage/Realtime (NAO como banco de dados)',
+        supabaseStorageNote: 'Supabase: banco de dados PostgreSQL (via Prisma/DATABASE_URL) + Object Storage + Realtime',
       },
     });
   } catch (error) {
