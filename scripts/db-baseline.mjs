@@ -44,7 +44,7 @@ function maskUrl(u) {
 function log(...a) {
   console.log('[baseline]', ...a);
 }
-function run(cmd, cmdArgs, { inherit = false, dbUrl = urlArg } = {}) {
+function run(cmd, cmdArgs, { inherit = false, dbUrl = sessionUrl } = {}) {
   // Nota: os comandos `prisma migrate *` não aceitam --url no Prisma 6.x;
   // a sobrescrita correta é via env DATABASE_URL (precede o .env do projeto).
   const res = spawnSync(cmd, cmdArgs, {
@@ -61,6 +61,16 @@ if (!urlArg || !/^postgres(ql)?:\/\//i.test(urlArg)) {
   console.error('   npm run db:baseline -- --url "postgresql://user:pass@host:5432/db" --yes');
   process.exit(1);
 }
+
+// Migrations/db push exigem conexão de sessão/direta: converte 6543→5432
+// automaticamente (mesmo host/credenciais/banco) e avisa.
+let sessionUrl = urlArg;
+if (/:6543/.test(sessionUrl)) {
+  sessionUrl = sessionUrl.replace(':6543', ':5432');
+  console.error('[baseline] ⚠️  URL na porta 6543 (transaction pooler) detectada — convertida para 5432 (session pooler).');
+  console.error('[baseline]    db push/baseline exigem conexão de sessão; o runtime do app continua na 6543, sem alterações.');
+}
+
 if (!existsSync(migrationsDir)) {
   console.error('[baseline] ❌ prisma/migrations não encontrado.');
   process.exit(1);
@@ -71,7 +81,7 @@ const migrations = readdirSync(migrationsDir, { withFileTypes: true })
   .map((d) => d.name)
   .sort();
 
-log('URL:', maskUrl(urlArg));
+log('URL:', maskUrl(sessionUrl));
 log(`${migrations.length} migrations encontradas.`);
 log('Primeiro estado do banco:');
 run('npx', ['prisma', 'migrate', 'status'], { inherit: true });

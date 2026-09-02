@@ -10,12 +10,16 @@
  *   build morria exatamente na etapa de migrate.
  *
  * ESTRATÉGIA DE CONEXÃO (em ordem de prioridade):
- *   1. DIRECT_DATABASE_URL, se definida (ideal: conexão de sessão — mesmo
- *      host do pooler na porta 5432, ou db.<ref>.supabase.co:5432);
- *   2. Sem DIRECT_DATABASE_URL: se a URL estiver na porta 6543, tenta a
- *      MESMA URL na porta 5432 (session pooler do Supabase — mesmo host,
- *      mesmas credenciais, mesmo banco);
- *   3. Último recurso: a URL original (caso o pooler aceite a sessão).
+ *   Toda URL na porta 6543 (transaction pooler) é CONVERTIDA automaticamente
+ *   para 5432 (session pooler — mesmo host, mesmas credenciais, mesmo banco).
+ *   Ordem tentada:
+ *   1. DIRECT_DATABASE_URL como conexão de sessão (convertida se estiver 6543);
+ *   2. DATABASE_URL como conexão de sessão (convertida se estiver 6543);
+ *   3. Último recurso: as URLs originais na 6543 (não suportado — tentado
+ *      apenas se todas as variantes de sessão falharem).
+ *   Nota: esta variável/script NÃO afetam o runtime do app — o app continua
+ *   na 6543 (correto para Vercel serverless). A conversão vale só para o
+ *   migrate desta etapa de build.
  *
  * POLÍTICA DE FALHA:
  *   - O código em produção DEPENDE das colunas da migration (roteamento
@@ -81,11 +85,11 @@ function printFailureHelp(attempts) {
   console.error('sem elas quebraria webhook/polling/painel Meta em runtime.');
   console.error('');
   console.error('Como resolver (qualquer uma das opções):');
-  console.error('  1) RECOMENDADO: defina a variável de ambiente DIRECT_DATABASE_URL');
-  console.error('     na Vercel apontando para uma conexão de SESSÃO/direta do');
-  console.error('     Supabase (mesmo host do pooler, porta 5432), ex.:');
+  console.error('  1) RECOMENDADO: defina DIRECT_DATABASE_URL na Vercel com a conexão');
+  console.error('     de SESSÃO/direta do Supabase (porta 5432), ex.:');
   console.error('       postgresql://<user>:<pass>@aws-1-<region>.pooler.supabase.com:5432/<db>');
-  console.error('     Depois faça "Redeploy".');
+  console.error('     Obs.: se ela estiver na 6543, o build já converte para 5432');
+  console.error('     automaticamente — esta variável NÃO afeta o runtime do app.');
   console.error('  2) Local, a partir da sua máquina (conexão direta/sessão):');
   console.error('       DATABASE_URL="<url-sessao>" npm run db:deploy');
   console.error('  3) Se o erro indicar drift (P3005/P3018 — ex.: banco gerenciado');
@@ -97,6 +101,11 @@ function printFailureHelp(attempts) {
 // ---------------------------------------------------------------
 // Resolve a(s) URL(s) candidatas
 // ---------------------------------------------------------------
+// REGRA: migrations exigem conexão de SESSÃO/direta (porta 5432).
+// URLs na porta 6543 (transaction pooler) são convertidas automaticamente
+// para 5432 e só tentadas por último na forma original — assim funciona
+// mesmo se DIRECT_DATABASE_URL estiver apontando para a 6543 (o build
+// corrige sozinho; runtime do app NUNCA é afetado por esta variável).
 const direct = process.env.DIRECT_DATABASE_URL || '';
 const databaseUrl = process.env.DATABASE_URL || '';
 
@@ -122,18 +131,45 @@ function pushCandidate(label, url) {
   candidates.push({ label, url });
 }
 
-if (direct) pushCandidate('DIRECT_DATABASE_URL', direct);
-const swapped = withSessionPort(direct || databaseUrl);
-if (swapped) pushCandidate('mesma URL na porta 5432 (session pooler)', swapped);
-if (!direct) pushCandidate('DATABASE_URL original', databaseUrl);
+/** Conexão de sessão: converte 6543→5432; mantém como está caso contrário. */
+function sessionVariant(url) {
+  return withSessionPort(url) || url;
+}
+function isTransactionPooler(url) {
+  return /:6543/.test(url);
+}
 
-if (!direct && (direct || databaseUrl).includes(':6543')) {
-  warn(
-    'DATABASE_URL aponta para a porta 6543 (pooler de transações do Supabase).',
+if (direct) {
+  pushCandidate(
+    isTransactionPooler(direct)
+      ? 'DIRECT_DATABASE_URL convertida 6543→5432 (session pooler)'
+      : 'DIRECT_DATABASE_URL (conexão de sessão/direta)',
+    sessionVariant(direct),
   );
-  warn(
-    'Prisma Migrate não funciona por transaction pooler — tentando a porta 5432 (session pooler) primeiro.',
+}
+const dbSession = sessionVariant(databaseUrl);
+if (dbSession && (!direct || dbSession !== sessionVariant(direct))) {
+  pushCandidate(
+    isTransactionPooler(databaseUrl)
+      ? 'DATABASE_URL convertida 6543→5432 (session pooler)'
+      : 'DATABASE_URL (conexão de sessão/direta)',
+    dbSession,
   );
+}
+// Último recurso: URLs originais na 6543 (não suportado para migrations —
+// tentado apenas se todas as variantes de sessão falharem).
+if (direct && isTransactionPooler(direct)) {
+  pushCandidate('DIRECT_DATABASE_URL original 6543 (último recurso — transaction pooler não é suportado p/ migrations)', direct);
+}
+if (isTransactionPooler(databaseUrl)) {
+  pushCandidate('DATABASE_URL original 6543 (último recurso — transaction pooler não é suportado p/ migrations)', databaseUrl);
+}
+
+const anyPooler = (direct && isTransactionPooler(direct)) || isTransactionPooler(databaseUrl);
+if (anyPooler) {
+  warn('Detectada URL na porta 6543 (transaction pooler do Supabase).');
+  warn('Prisma Migrate não funciona por transaction pooler — a etapa de migrate usa automaticamente a porta 5432 (session pooler, mesmo host/credenciais/banco).');
+  warn('O runtime do app NÃO é afetado: continua na 6543 (correto para Vercel serverless).');
 }
 
 if (!existsSync(path.join(projectRoot, 'prisma', 'migrations'))) {
