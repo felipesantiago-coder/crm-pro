@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/api-auth';
+import { requireAuth } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 
+// Catálogo de empreendimentos exibido na aba "Empreendimentos" para TODOS os
+// usuários autenticados (somente leitura, sem dados sensíveis). Ferramentas de
+// gestão (CRUD de imagens, plantas, traduções) permanecem exclusivas de ADMIN.
 export async function GET() {
   try {
-    const { error } = await requireAdmin();
+    const { error } = await requireAuth();
     if (error) return error;
 
     const enterprises = await db.enterprise.findMany({

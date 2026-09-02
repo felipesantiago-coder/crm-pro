@@ -8,6 +8,7 @@ import {
   Palette, Navigation, DollarSign, Clock, CheckCircle2, Camera, CalendarDays, LayoutGrid,
   Globe, Save, ChevronDown, ChevronUp,
 } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
 import { GalleryManager } from './gallery-manager';
 import { FloorPlanManager } from './floor-plan-manager';
@@ -93,6 +94,8 @@ interface PanelData {
 // Main Panel
 // ============================================================
 export function EnterprisePanel() {
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'ADMIN';
   const [data, setData] = useState<PanelData | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -182,6 +185,7 @@ export function EnterprisePanel() {
       <>
         <EnterpriseDetail
           enterprise={selectedEnterprise}
+          isAdmin={isAdmin}
           onBack={() => setSelectedEnterprise(null)}
           onOpenGallery={() => setGalleryEnterprise({ id: selectedEnterprise.id, name: selectedEnterprise.name, imageUrl: selectedEnterprise.imageUrl })}
           onOpenFloorPlans={() => setFloorPlanEnterprise({ id: selectedEnterprise.id, name: selectedEnterprise.name })}
@@ -379,7 +383,7 @@ function EnterpriseListItem({ enterprise: e, onClick }: { enterprise: Enterprise
 // ============================================================
 // Enterprise Detail — reads from cachedInfo (no AI calls)
 // ============================================================
-function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery, onOpenFloorPlans }: { enterprise: Enterprise; onBack: () => void; onOpenGallery: () => void; onOpenFloorPlans: () => void }) {
+function EnterpriseDetail({ enterprise: e, isAdmin, onBack, onOpenGallery, onOpenFloorPlans }: { enterprise: Enterprise; isAdmin: boolean; onBack: () => void; onOpenGallery: () => void; onOpenFloorPlans: () => void }) {
   const [activeImgIdx, setActiveImgIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [showTranslations, setShowTranslations] = useState(false);
@@ -469,15 +473,19 @@ function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery, onOpenFloorPla
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {e._count.clients > 0 && <Badge variant="secondary" className="text-xs"><Users className="h-3 w-3 mr-1" />{e._count.clients} cliente{e._count.clients !== 1 ? 's' : ''}</Badge>}
-          <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={onOpenFloorPlans}>
-            <LayoutGrid className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Plantas</span>
-          </Button>
-          <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={onOpenGallery}>
-            <Camera className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Galeria</span>
-            {e.images.length > 0 && <Badge variant="secondary" className="ml-0.5 text-[10px] px-1.5 py-0 h-4">{e.images.length}</Badge>}
-          </Button>
+          {isAdmin && (
+            <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={onOpenFloorPlans}>
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Plantas</span>
+            </Button>
+          )}
+          {isAdmin && (
+            <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={onOpenGallery}>
+              <Camera className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Galeria</span>
+              {e.images.length > 0 && <Badge variant="secondary" className="ml-0.5 text-[10px] px-1.5 py-0 h-4">{e.images.length}</Badge>}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -701,7 +709,8 @@ function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery, onOpenFloorPla
         </Card>
       )}
 
-      {/* ── Translation Editor ────────────────────────── */}
+      {/* ── Translation Editor (somente ADMIN) ─────────── */}
+      {isAdmin && (
       <Card className="border-blue-200 dark:border-blue-800/50">
         <CardContent className="p-0">
           <button
@@ -792,6 +801,7 @@ function EnterpriseDetail({ enterprise: e, onBack, onOpenGallery, onOpenFloorPla
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Lightbox */}
       {lightboxOpen && (
