@@ -1,0 +1,268 @@
+import { db } from '@/lib/db';
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth-options';
+
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
+    // Buscar usuário atual para filtrar clientes
+    const currentUser = await db.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true, role: true },
+    });
+
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get('search') || '';
+    const region = searchParams.get('region') || '';
+    const tagIds = searchParams.getAll('tagId').filter(Boolean);
+    const stage = searchParams.get('stage') || '';
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
+    const needsUpdate = searchParams.get('needsUpdate') === 'true';
+    const utmCampaign = searchParams.get('utmCampaign') || '';
+    const VALID_SORT_FIELDS = ['name', 'createdAt', 'updatedAt', 'lastInteractionAt', 'stage', 'region', 'enterprise', 'phone', 'email'] as const;
+    const sortByRaw = searchParams.get('sortBy') || 'createdAt';
+    const sortBy = VALID_SORT_FIELDS.includes(sortByRaw as typeof VALID_SORT_FIELDS[number])
+      ? sortByRaw
+      : 'createdAt';
+    const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
+
+    // ADMIN vê todos; USER vê apenas os que criou + os que é parceiro
+    const isAdminUser = currentUser.role === 'ADMIN';
+
+    const baseWhere: Record<string, unknown> = {};
+
+    if (search) {
+      baseWhere.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+        { enterprise: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (region) {
+      baseWhere.region = { contains: region, mode: 'insensitive' };
+    }
+
+    if (utmCampaign) {
+      baseWhere.utmCampaign = utmCampaign;
+    }
+
+    if (tagIds.length > 0) {
+      // Each tag must be present (AND logic)
+      const tagFilters = tagIds.map((id) => ({
+        tags: { some: { tagId: id } },
+      }));
+      // Store for later AND combination
+      baseWhere._tagFilters = tagFilters;
+    }
+
+    if (stage) {
+      const stages = stage.split(',').map((s) => s.trim()).filter(Boolean);
+      if (stages.length === 1) {
+        baseWhere.stage = stages[0];
+      } else if (stages.length > 1) {
+        baseWhere.stage = { in: stages };
+      }
+    }
+
+    const excludeClosed = searchParams.get('excludeClosed') === 'true';
+
+    // Montar filtro de acesso por usuário
+    let accessFilter: Record<string, unknown> = {};
+    if (!isAdminUser) {
+      accessFilter = {
+        OR: [
+          { createdBy: currentUser.id },
+          { partners: { some: { userId: currentUser.id } } },
+        ],
+      };
+    }
+
+    const where: Record<string, unknown> = {
+      ...baseWhere,
+      ...accessFilter,
+    };
+
+    // Remove internal marker before passing to Prisma
+    const tagFilters = baseWhere._tagFilters as Array<Record<string, unknown>> | undefined;
+    delete baseWhere._tagFilters;
+    delete where._tagFilters;
+
+    // Build AND conditions for access filter and tag filters
+    const andConditions: Record<string, unknown>[] = [];
+    if (!isAdminUser) {
+      andConditions.push(accessFilter);
+    }
+    if (tagFilters && tagFilters.length > 0) {
+      andConditions.push(...tagFilters);
+    }
+    if (baseWhere.OR || baseWhere.region || baseWhere.stage || baseWhere.utmCampaign) {
+      const searchFilter: Record<string, unknown> = {};
+      if (baseWhere.OR) searchFilter.OR = baseWhere.OR;
+      if (baseWhere.region) searchFilter.region = baseWhere.region;
+      if (baseWhere.stage) searchFilter.stage = baseWhere.stage;
+      if (baseWhere.utmCampaign) searchFilter.utmCampaign = baseWhere.utmCampaign;
+      andConditions.push(searchFilter);
+    }
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
+      delete where.OR;
+      delete where.region;
+      delete where.tags;
+      delete where.stage;
+      delete where.utmCampaign;
+    }
+
+    // Excluir negócios finalizados da listagem principal
+    if (excludeClosed && !stage) {
+      where.stage = { notIn: ['FECHADO_GANHO', 'FECHADO_PERDIDO'] };
+    }
+
+    if (needsUpdate) {
+      const now = new Date();
+      // ADMIN vê todos; USER vê apenas os que criou + os que é parceiro
+      const clientsNeedingUpdate = isAdminUser
+        ? await db.$queryRaw<Array<{id: string}>>`
+            SELECT c.id FROM "clients" c
+            WHERE
+              c.stage NOT IN ('FECHADO_GANHO', 'FECHADO_PERDIDO')
+              AND CASE
+                WHEN c."lastInteractionAt" IS NOT NULL
+                THEN (c."lastInteractionAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
+                ELSE (c."createdAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
+              END
+            ORDER BY c."createdAt" DESC
+          `
+        : await db.$queryRaw<Array<{id: string}>>`
+            SELECT c.id FROM "clients" c
+            WHERE
+              (c."createdBy" = ${currentUser.id} OR EXISTS (
+                SELECT 1 FROM client_partners cp WHERE cp."clientId" = c.id AND cp."userId" = ${currentUser.id}
+              ))
+              AND c.stage NOT IN ('FECHADO_GANHO', 'FECHADO_PERDIDO')
+              AND CASE
+                WHEN c."lastInteractionAt" IS NOT NULL
+                THEN (c."lastInteractionAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
+                ELSE (c."createdAt" + (c."updatePeriod" || ' days')::interval) <= ${now}
+              END
+            ORDER BY c."createdAt" DESC
+          `;
+
+      const paginatedIds = clientsNeedingUpdate
+        .slice((page - 1) * limit, page * limit)
+        .map(c => c.id);
+
+      if (paginatedIds.length === 0) {
+        return NextResponse.json({ clients: [], total: 0, page, limit });
+      }
+
+      const clients = await db.client.findMany({
+        where: { id: { in: paginatedIds } },
+        include: {
+          tags: { include: { tag: true } },
+          reminders: { orderBy: { dueDate: 'asc' }, take: 3 },
+          linkedEnterprise: { select: { id: true, name: true, region: true, imageUrl: true } },
+          partners: { include: { user: { select: { id: true, name: true, email: true } } } },
+        },
+        orderBy: { [sortBy]: sortOrder === 'asc' ? 'asc' : 'desc' },
+      });
+
+      return NextResponse.json({ clients, total: clientsNeedingUpdate.length, page, limit });
+    }
+
+    const [clients, total] = await Promise.all([
+      db.client.findMany({
+        where,
+        include: {
+          tags: { include: { tag: true } },
+          reminders: { orderBy: { dueDate: 'asc' }, take: 3 },
+          linkedEnterprise: { select: { id: true, name: true, region: true, imageUrl: true } },
+          partners: { include: { user: { select: { id: true, name: true, email: true } } } },
+        },
+        orderBy: { [sortBy]: sortOrder === 'asc' ? 'asc' : 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      db.client.count({ where }),
+    ]);
+
+    return NextResponse.json({ clients, total, page, limit });
+  } catch (error) {
+    console.error('Error fetching clients:', error);
+    return NextResponse.json({ error: 'Failed to fetch clients' }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { name, phone, email, region, enterprise, enterpriseId, notes, tagIds, updatePeriod, partnerIds } = body;
+
+    if (!name || name.trim() === '') {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+    }
+
+    // Buscar o usuário atual para definir como criador
+    const currentUser = await db.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
+    });
+
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const client = await db.client.create({
+      data: {
+        name: name.trim(),
+        phone: phone?.trim() || null,
+        email: email?.trim() || null,
+        region: region?.trim() || null,
+        enterprise: enterprise?.trim() || null,
+        enterpriseId: enterpriseId || null,
+        notes: notes?.trim() || null,
+        updatePeriod: updatePeriod || 30,
+        createdBy: currentUser.id,
+        tags: tagIds?.length
+          ? {
+              create: tagIds.map((tagId: string) => ({ tagId })),
+            }
+          : undefined,
+        partners: partnerIds?.length
+          ? {
+              create: partnerIds.map((userId: string) => ({
+                userId,
+                addedBy: currentUser.id,
+              })),
+            }
+          : undefined,
+      },
+      include: {
+        tags: { include: { tag: true } },
+        linkedEnterprise: { select: { id: true, name: true, region: true, imageUrl: true } },
+        partners: { include: { user: { select: { id: true, name: true, email: true } } } },
+      },
+    });
+
+    return NextResponse.json(client, { status: 201 });
+  } catch (error) {
+    console.error('Error creating client:', error);
+    return NextResponse.json({ error: 'Failed to create client' }, { status: 500 });
+  }
+}

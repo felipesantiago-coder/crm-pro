@@ -1,0 +1,286 @@
+{
+  "nav": {
+    "brand": "Desarrollos residenciales",
+    "cta": "Quiero saber más"
+  },
+  "errors": {
+    "notFound": "No encontrado",
+    "notFoundDesc": "Este desarrollo residencial no existe o fue eliminado.",
+    "notFoundCta": "Ver todos los desarrollos",
+    "fetchFailed": "Desarrollo residencial no encontrado.",
+    "connectionError": "Error de conexión.",
+    "submitError": "Error al enviar. Inténtelo de nuevo.",
+    "connectionErrorFull": "Error de conexión. Verifique su internet e inténtelo de nuevo.",
+    "boundaryTitle": "Desarrollo residencial",
+    "boundaryDesc": "Ocurrió un error inesperado. Por favor, intente recargar la página o contáctenos directamente por WhatsApp.",
+    "boundaryWhatsApp": "Hablar con asesor",
+    "boundaryReload": "Recargar página",
+    "boundaryWhatsAppFallback": "Tengo interés en un desarrollo residencial"
+  },
+  "hero": {
+    "namePlaceholder": "Su nombre",
+    "phonePlaceholder": "(11) 99999-9999",
+    "cta": "Saber más",
+    "noCommitment": "Sin compromiso · Respuesta en hasta 24 h",
+    "seeDetails": "Ver más detalles",
+    "talkToConsultant": "Hablar con asesor",
+    "scroll": "Desplazar"
+  },
+  "socialProof": {
+    "messages": [
+      "Otra persona se acaba de registrar",
+      "Alguien acaba de solicitar información",
+      "Una persona más se registró ahora",
+      "Alguien solicitó condiciones de pago",
+      "Otra persona se acaba de registrar"
+    ],
+    "times": [
+      "ahora",
+      "1 min",
+      "2 min",
+      "3 min",
+      "5 min"
+    ],
+    "person": "{count, plural, one {persona} other {personas}}",
+    "interested": "{count, plural, one {interesada} other {interesadas}}",
+    "dataProtected": "Datos protegidos",
+    "response24h": "Respuesta 24 h",
+    "timeAgo": "hace {time}"
+  },
+  "summary": {
+    "status": "Estado",
+    "delivery": "Entrega",
+    "units": "Unidades",
+    "area": "Área",
+    "floors": "Pisos",
+    "parking": "Plazas de estacionamiento",
+    "delivered": "Entregado",
+    "rangeTo": "a"
+  },
+  "why": {
+    "eyebrow": "Sobre el desarrollo residencial",
+    "title": "¿Por qué elegir {name}?",
+    "subtitle": "Todo lo que necesita saber antes de decidir",
+    "locationTitle": "Ubicación privilegiada",
+    "locationDesc": "En el corazón de {neighborhood}, con fácil acceso a comercios, escuelas y transporte.",
+    "locationDescFallback": "Zona estratégica con infraestructura completa alrededor, para facilitar su día a día.",
+    "differentialsTitle": "Diferenciales exclusivos",
+    "differentialsDesc": "{differentials} y mucho más para disfrutar.",
+    "differentialsDescFallback": "Amenidades completas, seguridad las 24 horas y acabados de primer nivel pensados para su bienestar.",
+    "investmentTitle": "Excelente inversión",
+    "investmentDesc": "Precios accesibles y condiciones especiales en una zona con fuerte plusvalía."
+  },
+  "differentials": {
+    "eyebrow": "Diferenciales",
+    "title": "Amenidades y diferenciales",
+    "subtitle": "Todo pensado para su comodidad y bienestar",
+    "tabs": {
+      "social": "Social y amenidades",
+      "comfort": "Comodidad y conveniencia",
+      "tech": "Tecnología y seguridad",
+      "sustainability": "Sostenibilidad",
+      "others": "Otros diferenciales"
+    }
+  },
+  "apartments": {
+    "eyebrow": "Unidades",
+    "title": "Tipos de unidades",
+    "subtitle": "Encuentre el plano de planta ideal para usted",
+    "typeFallback": "Tipo {n}"
+  },
+  "floorPlans": {
+    "eyebrow": "Espacio · planos de planta inteligentes",
+    "title": "Cada metro cuadrado pensado para su estilo de vida",
+    "subtitle": "Desde el compacto de 1 dormitorio hasta el más amplio — planos de planta optimizados con circulación eficiente y ambientes integrados.",
+    "close": "cerrar",
+    "viewPlan": "ver plano de planta",
+    "noImage": "Imagen del plano de planta no disponible",
+    "disclaimer": "Imagen meramente ilustrativa. Sujeto a cambios conforme al memorial del proyecto.",
+    "bookEyebrow": "Folleto completo",
+    "bookCta": "Quiero el folleto completo con toda la información"
+  },
+  "plantLabels": {
+    "bedroom": "{count, plural, one {dormitorio} other {dormitorios}}",
+    "suite": "{count, plural, one {suite} other {suites}}",
+    "withBalcony": "con balcón",
+    "withBalconyStart": "Con balcón",
+    "garden": "Garden",
+    "penthouse": "Penthouse",
+    "default": "Plano de planta"
+  },
+  "gallery": {
+    "eyebrow": "Galería",
+    "title": "Conozca {name}",
+    "photoCount": "{count, plural, one {{count} foto del desarrollo} other {{count} fotos del desarrollo}}",
+    "countBadge": "{count, plural, one {{count} foto} other {{count} fotos}}",
+    "photoAlt": "Foto {n}"
+  },
+  "location": {
+    "eyebrow": "Ubicación",
+    "title": "¿Dónde se encuentra?",
+    "loading": "Cargando mapa...",
+    "unavailable": "Mapa no disponible"
+  },
+  "faq": {
+    "eyebrow": "Dudas",
+    "title": "Preguntas frecuentes",
+    "subtitle": "Resuelva sus dudas antes de decidir",
+    "hasQuestion": "¿Tiene alguna duda?",
+    "talkToConsultant": "Hable con un asesor",
+    "items": [
+      {
+        "q": "¿Cómo funciona la atención personalizada?",
+        "a": "Tras completar el formulario, un asesor exclusivo se pondrá en contacto en un plazo de hasta 24 horas. Recibirá atención individualizada con información detallada sobre planos de planta, precios, condiciones de pago y programación de visita presencial al desarrollo residencial."
+      },
+      {
+        "q": "¿Puedo financiar el inmueble?",
+        "a": "¡Sí! Ofrecemos soporte completo para financiamiento bancario. Trabajamos con los principales bancos del mercado y nuestro equipo le acompaña en todo el proceso, desde la simulación hasta la aprobación del crédito, garantizándole las mejores condiciones."
+      },
+      {
+        "q": "¿Qué documentos necesito para visitar el desarrollo?",
+        "a": "Para programar una visita, solo debe completar el formulario con sus datos. Para la visita presencial, le recomendamos llevar un documento de identificación con foto. Nuestro asesor se pondrá en contacto para confirmar el mejor horario y punto de encuentro."
+      },
+      {
+        "q": "¿La atención es exclusiva para este desarrollo?",
+        "a": "Sí, contará con un asesor dedicado que conoce todos los detalles de este desarrollo residencial. Nuestro equipo está especializado y preparado para resolver todas sus dudas sobre el proyecto, ubicación, amenidades, planos de planta y condiciones comerciales."
+      },
+      {
+        "q": "¿Puedo programar una visita presencial?",
+        "a": "¡Por supuesto! Tras el registro, nuestro asesor se pondrá en contacto para programar la visita en el horario que mejor le convenga. Ofrecemos visitas presenciales guiadas a la obra en curso o al desarrollo ya entregado, según el estado del proyecto."
+      }
+    ]
+  },
+  "form": {
+    "heading": "Solicite información sobre {name}",
+    "headingRich": "Solicite información sobre <accent>{name}</accent>",
+    "subtextWithPrice": "A partir de {price} — condiciones especiales.",
+    "subtextWithInfo": "{status} — conozca las condiciones disponibles.",
+    "subtextFallback": "Condiciones especiales disponibles para usted.",
+    "descriptionBase": "Reciba materiales, precios y condiciones comerciales. Atención personalizada",
+    "descriptionIn": "en {neighborhood}",
+    "descriptionEnd": "Sin compromiso.",
+    "areaRange": "Unidades de {areaRange}",
+    "unitCount": "{count, plural, one {{count} unidad} other {{count} unidades}}",
+    "delivery": "Entrega: {deliveryText}",
+    "dataSafe": "Datos seguros",
+    "noSpam": "Sin spam",
+    "response24h": "Respuesta 24 h",
+    "upto24h": "Hasta 24 h",
+    "noCommitment": "Sin compromiso",
+    "whatsappCta": "¿Prefiere WhatsApp? Escríbanos",
+    "title": "Registro",
+    "subtitle": "Complete para recibir información y condiciones",
+    "nameLabel": "Nombre completo",
+    "namePlaceholder": "Su nombre completo",
+    "emailLabel": "Correo electrónico",
+    "emailPlaceholder": "suemail@ejemplo.com",
+    "phoneLabel": "Teléfono",
+    "phonePlaceholder": "(11) 99999-9999",
+    "selectDefault": "Seleccione...",
+    "yes": "Sí",
+    "no": "No",
+    "submitting": "Enviando...",
+    "submitWithPrice": "Recibir información",
+    "submitDefault": "Quiero saber más",
+    "disclaimer": "Al solicitar información, acepta recibir detalles sobre este desarrollo residencial.",
+    "validation": {
+      "nameRequired": "Ingrese su nombre completo.",
+      "emailInvalid": "Ingrese un correo electrónico válido.",
+      "phoneInvalid": "Ingrese un teléfono válido con código de área (mínimo 10 dígitos).",
+      "fieldRequired": "El campo \"{label}\" es obligatorio."
+    }
+  },
+  "footer": {
+    "brand": "Desarrollos residenciales",
+    "whatsapp": "WhatsApp",
+    "copyright": "Todos los derechos reservados.",
+    "disclaimer": "Todos los precios e información están sujetos a cambios."
+  },
+  "floatingBar": {
+    "whatsapp": "WhatsApp",
+    "seeConditions": "Ver condiciones"
+  },
+  "exitPopup": {
+    "title": "¿Le interesa {name}?",
+    "description": "Reciba precios y condiciones comerciales directamente en su WhatsApp. Sin compromiso.",
+    "whatsappCta": "Hablar por WhatsApp",
+    "formCta": "Quiero saber más",
+    "dataSafe": "Sus datos están seguros y no enviamos spam.",
+    "registeredCount": "{count, plural, one {{count} persona ya se registró.} other {{count} personas ya se registraron.}}",
+    "successTitle": "¡Casi listo!",
+    "successDescription": "Te estamos llevando a completar tu registro..."
+  },
+  "success": {
+    "navBrand": "Desarrollos residenciales",
+    "heading": "¡Registro realizado con éxito!",
+    "greeting": "¡Hola, {name}!",
+    "greetingFallback": "¡Gracias por su interés!",
+    "description": "Su registro para el desarrollo residencial {name} se recibió con éxito.",
+    "descriptionFallback": "Su registro se recibió con éxito.",
+    "followUp": "En breve uno de nuestros asesores especializados se pondrá en contacto para presentarle todas las condiciones exclusivas de este desarrollo.",
+    "trustPersonalized": "Atención personalizada",
+    "trustExclusive": "Condiciones exclusivas",
+    "trustNoCommitment": "Sin compromiso",
+    "nextSteps": "Próximos pasos",
+    "step1": "Recibirá un contacto en un plazo de hasta 24 h",
+    "step2": "Programaremos una visita exclusiva",
+    "step3": "Le presentaremos condiciones especiales",
+    "quickService": "Atención rápida",
+    "talkNow": "Hable ahora con {name}",
+    "whatsappCta": "Llamar por WhatsApp",
+    "preferWait": "¿Prefiere esperar? Sin problema — nos pondremos en contacto al teléfono indicado.",
+    "backToEnterprise": "Volver al desarrollo residencial",
+    "seeAll": "Ver todos los desarrollos",
+    "disclaimer": "Todos los precios e información están sujetos a cambios sin previo aviso.",
+    "copyright": "Todos los derechos reservados.",
+    "whatsappMessage": "¡Hola! Acabo de registrarme en el sitio{enterprise} y me gustaría recibir atención."
+  },
+  "listing": {
+    "navBrand": "Desarrollos residenciales",
+    "badge": "Portafolio exclusivo",
+    "title": "Desarrollos residenciales de primer nivel",
+    "titlePrefix": "Desarrollos residenciales",
+    "titleHighlight": "de primer nivel",
+    "subtitle": "Descubra inmuebles exclusivos cuidadosamente seleccionados para quienes buscan lo mejor en calidad de vida e inversión.",
+    "stats": "{count, plural, one {{count} desarrollo disponible} other {{count} desarrollos disponibles}}",
+    "searching": "buscando \"{query}\"",
+    "searchPlaceholder": "Buscar desarrollo...",
+    "emptyTitle": "Ningún desarrollo encontrado",
+    "emptyDesc": "Intente buscar con otro término o limpie el filtro para ver todos los desarrollos disponibles.",
+    "clearFilter": "Limpiar filtro",
+    "comingSoon": "Próximamente",
+    "viewDetails": "Ver detalles",
+    "unavailable": "No disponible",
+    "footerBrand": "Desarrollos residenciales",
+    "footerDesc": "Encuentre el inmueble ideal para usted y su familia. Calidad, confianza y atención personalizada.",
+    "footerNav": "Navegación",
+    "footerAll": "Todos los desarrollos",
+    "footerConditions": "Condiciones especiales",
+    "footerService": "Atención",
+    "footerWhatsapp": "Escríbanos por WhatsApp",
+    "footerBottomText": "Conozca nuestros desarrollos inmobiliarios con proyectos que combinan comodidad, sofisticación y calidad de vida.",
+    "copyright": "Todos los derechos reservados.",
+    "disclaimer": "Todos los precios e información están sujetos a cambios sin previo aviso."
+  },
+  "whatsapp": {
+    "landingMessage": "¡Hola! Vengo por el anuncio de {name} y me gustaría recibir información sobre las unidades disponibles."
+  },
+  "seo": {
+    "notFoundTitle": "Desarrollo no encontrado",
+    "titleTemplate": "{name} | Desarrollos residenciales",
+    "descriptionTemplate": "Conozca el desarrollo residencial {name}. Planos de planta exclusivos, amenidades completas y condiciones especiales. Regístrese y hable con un asesor.",
+    "listingTitle": "Desarrollos residenciales | Inmuebles de primer nivel",
+    "listingDescription": "Conozca nuestros desarrollos inmobiliarios de primer nivel. Planos de planta exclusivos, amenidades completas, ubicación privilegiada y condiciones especiales de inversión.",
+    "listingOgSiteName": "Desarrollos residenciales"
+  },
+  "subtitle": {
+    "inLocation": "En {location}",
+    "areas": "Áreas de {areaRange}",
+    "delivery": "Entrega {deliveryText}"
+  },
+  "midCta": {
+    "title": "¿Tienes dudas? Habla directamente con un asesor",
+    "subtitle": "Atención rápida, sin compromiso",
+    "button": "Hablar por WhatsApp"
+  }
+}

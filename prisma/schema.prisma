@@ -1,0 +1,531 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// === PRODUÇÃO (Vercel + Neon PostgreSQL) ===
+// Banco de dados: Neon (serverless PostgreSQL via Prisma ORM)
+// Storage/Realtime: Supabase (apenas Object Storage + Realtime subscriptions)
+// Autenticação: NextAuth Credentials (tabela "users" no Neon, NÃO Supabase Auth)
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id                String    @id @default(cuid()) @map("id")
+  name              String    @map("name")
+  phone             String?   @map("phone")
+  email             String?   @unique @map("email")
+  region            String?   @map("region")
+  enterprise        String?   @map("enterprise")
+  enterpriseId      String?   @map("enterpriseId")
+  notes             String?   @map("notes")
+  updatePeriod      Int       @default(30) @map("updatePeriod")
+  stage             String    @default("LEAD") @map("stage")
+  lastInteractionAt DateTime? @map("lastInteractionAt")
+  createdBy         String    @map("createdBy")
+  createdAt         DateTime  @default(now()) @map("createdAt")
+  updatedAt         DateTime  @updatedAt @map("updatedAt")
+  utmSource         String?   @map("utmSource")
+  utmMedium         String?   @map("utmMedium")
+  utmCampaign       String?   @map("utmCampaign")
+  utmContent        String?   @map("utmContent")
+  utmTerm           String?   @map("utmTerm")
+  metaLeadgenId     String?   @unique @map("metaLeadgenId")
+  metaCapConfigId   String?   @map("metaCapConfigId")
+
+  tags         ClientTag[]
+  reminders    Reminder[]
+  interactions Interaction[]
+  schedules    Schedule[]
+  partners     ClientPartner[]
+  linkedEnterprise Enterprise? @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
+  capiConfig   MetaCapConfig?  @relation(fields: [metaCapConfigId], references: [id], onDelete: SetNull)
+  creator      User          @relation("CreatedClients", fields: [createdBy], references: [id], onDelete: Cascade)
+  queueAssignments LeadQueueAssignment[] @relation("AssignmentLead")
+
+  @@index([createdBy])
+  @@index([stage])
+  @@index([region])
+  @@index([enterpriseId])
+  @@index([utmCampaign])
+  @@index([phone])
+  @@index([email])
+  @@index([metaCapConfigId])
+  @@map("clients")
+}
+
+model Interaction {
+  id          String   @id @default(cuid()) @map("id")
+  description String   @map("description")
+  clientId  String   @map("clientId")
+  createdAt DateTime @default(now()) @map("createdAt")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([createdAt])
+  @@map("interactions")
+}
+
+model Tag {
+  id        String   @id @default(cuid()) @map("id")
+  name      String   @unique @map("name")
+  color     String   @default("#6366f1") @map("color")
+  createdAt DateTime @default(now()) @map("createdAt")
+
+  clients ClientTag[]
+
+  @@map("tags")
+}
+
+model ClientTag {
+  id        String   @id @default(cuid()) @map("id")
+  clientId  String   @map("clientId")
+  tagId     String   @map("tagId")
+  createdAt DateTime @default(now()) @map("createdAt")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, tagId])
+  @@map("client_tags")
+}
+
+model Reminder {
+  id                    String   @id @default(cuid()) @map("id")
+  title                 String   @map("title")
+  description           String?  @map("description")
+  dueDate               DateTime  @map("dueDate")
+  dueTime               String?  @map("dueTime")
+  notified              Boolean  @default(false) @map("notified")
+  googleCalendarEventId String?  @map("googleCalendarEventId")
+  clientId              String   @map("clientId")
+  createdAt             DateTime  @default(now()) @map("createdAt")
+  updatedAt             DateTime  @updatedAt @map("updatedAt")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([dueDate])
+  @@index([notified, dueDate])
+  @@map("reminders")
+}
+
+model Enterprise {
+  id                String   @id @default(cuid()) @map("id")
+  name              String   @map("name")
+  type              String   @default("LANCAMENTO") @map("type")  // LANCAMENTO | REVENDA
+  slug              String?  @unique @map("slug")
+  region            String?  @map("region")
+  imageUrl          String?  @map("imageUrl")
+  pdfContent        String?  @map("pdfContent")
+  landingTitle      Json?    @map("landingTitle")      // { "pt-BR": "...", "en": "...", "es": "..." }
+  landingSubtitle   Json?    @map("landingSubtitle")     // { "pt-BR": "...", "en": "...", "es": "..." }
+  landingDescription Json?   @map("landingDescription")  // { "pt-BR": "...", "en": "...", "es": "..." }
+  cachedInfo        Json?    @map("cachedInfo")           // primary (pt-BR) cached info
+  cachedInfoI18n    Json?    @map("cachedInfoI18n")       // { "en": { ... }, "es": { ... } } — translated cachedInfo
+  mapLatitude       Float?   @map("mapLatitude")
+  mapLongitude      Float?   @map("mapLongitude")
+  createdAt         DateTime @default(now()) @map("createdAt")
+  updatedAt         DateTime @updatedAt @map("updatedAt")
+
+  clients     Client[]
+  images      EnterpriseImage[]
+  floorPlans  EnterpriseFloorPlan[]
+  formFields  LandingFormField[]
+  resaleProperties ResaleProperty[]
+
+  @@map("enterprises")
+}
+
+model EnterpriseImage {
+  id        String  @id @default(cuid()) @map("id")
+  url       String  @map("url")
+  altText   String? @map("altText")
+  sortOrder Int     @default(0) @map("sortOrder")
+  enterpriseId String @map("enterpriseId")
+  createdAt  DateTime @default(now()) @map("createdAt")
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@index([enterpriseId])
+  @@map("enterprise_images")
+}
+
+model EnterpriseFloorPlan {
+  id           String  @id @default(cuid()) @map("id")
+  url          String? @map("url")
+  altText      String? @map("altText")
+  sortOrder    Int     @default(0) @map("sortOrder")
+  enterpriseId String  @map("enterpriseId")
+  createdAt    DateTime @default(now()) @map("createdAt")
+  // Plant metadata fields
+  name         String? @map("name")
+  area         String? @map("area")         // e.g. "80,57 m²"
+  bedrooms     Int?    @map("bedrooms")     // number of bedrooms (1, 2, 3, 4)
+  suites       Int?    @default(0) @map("suites")  // number of suites
+  hasBalcony   Boolean @default(false) @map("hasBalcony")
+  isGarden     Boolean @default(false) @map("isGarden")
+  isPenthouse  Boolean @default(false) @map("isPenthouse")
+  description  String? @map("description")  // e.g. "Torre A · unidade térrea com área privativa ampliada"
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@index([enterpriseId])
+  @@map("enterprise_floor_plans")
+}
+
+model User {
+  id                String   @id @default(cuid()) @map("id")
+  name              String   @map("name")
+  email             String   @unique @map("email")
+  phone             String?  @map("phone")
+  passwordHash      String   @map("passwordHash")
+  role              String   @default("USER") @map("role")
+  mustChangePassword Boolean @default(false) @map("mustChangePassword")
+  telegramChatId      String?   @unique @map("telegramChatId")
+  passwordResetToken  String?   @map("passwordResetToken")
+  passwordResetExpires DateTime? @map("passwordResetExpires")
+  createdAt           DateTime  @default(now()) @map("createdAt")
+  updatedAt         DateTime  @updatedAt @map("updatedAt")
+
+  createdClients      Client[]              @relation("CreatedClients")
+  createdSchedules    Schedule[]           @relation("CreatedSchedules")
+  partnerOf           ClientPartner[]
+  addedPartners       ClientPartner[]      @relation("AddedPartners")
+  googleCalendarToken GoogleCalendarToken?
+  queueMemberships    LeadQueueMember[]
+  queueAssignments    LeadQueueAssignment[]
+  @@map("users")
+}
+
+model ClientPartner {
+  id        String   @id @default(cuid()) @map("id")
+  clientId  String   @map("clientId")
+  userId    String   @map("userId")
+  addedBy   String   @map("addedBy")
+  createdAt DateTime @default(now()) @map("createdAt")
+
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  addedByUser User   @relation("AddedPartners", fields: [addedBy], references: [id])
+
+  @@unique([clientId, userId])
+  @@index([userId])
+  @@map("client_partners")
+}
+
+model UserSettings {
+  id        String   @id @default(cuid()) @map("id")
+  key       String   @unique @map("key")
+  value     String   @map("value")
+  updatedAt DateTime  @updatedAt @map("updatedAt")
+
+  @@map("user_settings")
+}
+
+model Schedule {
+  id            String    @id @default(cuid()) @map("id")
+  scheduledDate DateTime  @map("scheduledDate")
+  scheduledTime        String   @map("scheduledTime")
+  description           String?  @map("description")
+  status                String   @default("PENDING") @map("status")
+  completedAt           DateTime? @map("completedAt")
+  clientId              String   @map("clientId")
+  createdBy             String   @map("createdBy")
+  googleCalendarEventId String?  @map("googleCalendarEventId")
+  createdAt     DateTime  @default(now()) @map("createdAt")
+  updatedAt     DateTime  @updatedAt @map("updatedAt")
+
+  client      Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  creatorUser User   @relation("CreatedSchedules", fields: [createdBy], references: [id])
+
+  @@index([clientId])
+  @@index([status])
+  @@map("schedules")
+}
+
+// ============================================================
+// TRACKING PIXEL — Visitor & Event tracking
+// ============================================================
+model TrackingVisitor {
+  id          String   @id @default(cuid()) @map("id")
+  visitorId   String   @unique @map("visitorId")
+  siteId      String   @map("siteId")
+  leadId      String?  @map("leadId")
+  firstSeenAt DateTime @default(now()) @map("firstSeenAt")
+  lastSeenAt  DateTime @updatedAt @map("lastSeenAt")
+  ip          String?  @map("ip")
+  userAgent   String?  @map("userAgent")
+  country     String?  @map("country")
+  city        String?  @map("city")
+  events      TrackingEvent[]
+  @@index([siteId])
+  @@index([leadId])
+  @@index([lastSeenAt])
+  @@map("tracking_visitors")
+}
+
+model TrackingEvent {
+  id          String   @id @default(cuid()) @map("id")
+  visitorId   String   @map("visitorId")
+  sessionId   String   @map("sessionId")
+  siteId      String   @map("siteId")
+  eventType   String   @map("eventType")
+  eventName   String?  @map("eventName")
+  pageUrl     String?  @map("pageUrl")
+  referrer    String?  @map("referrer")
+  utmSource   String?  @map("utmSource")
+  utmMedium   String?  @map("utmMedium")
+  utmCampaign String?  @map("utmCampaign")
+  utmContent  String?  @map("utmContent")
+  utmTerm     String?  @map("utmTerm")
+  metadata    Json?    @map("metadata")
+  createdAt   DateTime @default(now()) @map("createdAt")
+  visitor     TrackingVisitor @relation(fields: [visitorId], references: [visitorId], onDelete: Cascade)
+  @@index([siteId, eventType])
+  @@index([siteId, utmCampaign])
+  @@index([visitorId])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("tracking_events")
+}
+
+// ============================================================
+// LEAD QUEUE — Round-robin lead distribution for ad campaigns
+// ============================================================
+model LeadQueue {
+  id          String   @id @default(cuid()) @map("id")
+  name        String   @map("name")
+  description String?  @map("description")
+  isActive    Boolean  @default(true) @map("isActive")
+  isDefault   Boolean  @default(false) @map("isDefault")
+  currentIdx  Int      @default(0) @map("currentIdx")
+  createdAt   DateTime @default(now()) @map("createdAt")
+  updatedAt   DateTime @updatedAt @map("updatedAt")
+
+  members     LeadQueueMember[]
+  assignments LeadQueueAssignment[]
+
+  @@map("lead_queues")
+}
+
+model LeadQueueMember {
+  id       String  @id @default(cuid()) @map("id")
+  queueId  String  @map("queueId")
+  userId   String  @map("userId")
+  order    Int     @default(0) @map("order")
+  isActive Boolean @default(true) @map("isActive")
+
+  queue LeadQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([queueId, userId])
+  @@index([queueId])
+  @@map("lead_queue_members")
+}
+
+model LeadQueueAssignment {
+  id        String   @id @default(cuid()) @map("id")
+  queueId   String   @map("queueId")
+  userId    String   @map("userId")
+  leadId    String?  @map("leadId")
+  source    String   @map("source")
+  createdAt DateTime @default(now()) @map("createdAt")
+
+  queue LeadQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead  Client?   @relation("AssignmentLead", fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([queueId, createdAt])
+  @@index([userId])
+  @@index([leadId])
+  @@map("lead_queue_assignments")
+}
+
+model GoogleCalendarToken {
+  id           String   @id @default(cuid()) @map("id")
+  userId       String   @unique @map("userId")
+  accessToken  String   @map("accessToken")
+  refreshToken String   @map("refreshToken")
+  expiresAt    DateTime @map("expiresAt")
+  createdAt    DateTime @default(now()) @map("createdAt")
+  updatedAt    DateTime @updatedAt @map("updatedAt")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("google_calendar_tokens")
+}
+
+model LandingFormField {
+  id           String   @id @default(cuid()) @map("id")
+  enterpriseId String   @map("enterpriseId")
+  label        String   @map("label")
+  fieldType    String   @default("text") @map("fieldType")   // text | textarea | select | number | checkbox
+  placeholder  String?  @map("placeholder")
+  options      String?  @map("options")                        // JSON array for select fields
+  required     Boolean  @default(false) @map("required")
+  sortOrder    Int      @default(0) @map("sortOrder")
+  isActive     Boolean  @default(true) @map("isActive")
+  createdAt    DateTime @default(now()) @map("createdAt")
+  updatedAt    DateTime @updatedAt @map("updatedAt")
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@index([enterpriseId])
+  @@map("landing_form_fields")
+}
+
+// ============================================================
+// LOST LEADS — Safety net for leads that failed to register
+// Captured via sendBeacon (page close) or retry queue
+// ============================================================
+model LostLead {
+  id          String    @id @default(cuid()) @map("id")
+  name        String?   @map("name")
+  phone       String?   @map("phone")
+  email       String?   @map("email")
+  slug        String?   @map("slug")
+  source      String    @map("source")      // 'beacon' | 'retry_queue'
+  formData    Json?     @map("formData")
+  userAgent   String?   @map("userAgent")
+  utmSource   String?   @map("utmSource")
+  utmMedium   String?   @map("utmMedium")
+  utmCampaign String?   @map("utmCampaign")
+  utmContent  String?   @map("utmContent")
+  utmTerm     String?   @map("utmTerm")
+  isRecovered Boolean   @default(false) @map("isRecovered")
+  recoveredToClientId String?  @map("recoveredToClientId")
+  createdAt   DateTime  @default(now()) @map("createdAt")
+
+  @@index([isRecovered])
+  @@index([createdAt])
+  @@index([email])
+  @@map("lost_leads")
+}
+
+// ============================================================
+// CLIENT ERROR LOG — JS error capture for landing page debug
+// Catches window.onerror, unhandledrejection, React errors
+// ============================================================
+model ClientErrorLog {
+  id          String   @id @default(cuid()) @map("id")
+  type        String   @map("type")          // 'js_error' | 'promise_rejection' | 'react_error'
+  message     String   @map("message")
+  source      String?  @map("source")        // file/URL where error occurred
+  lineNumber  Int?     @map("lineNumber")
+  colNumber   Int?     @map("colNumber")
+  stackTrace  String?  @map("stackTrace")    // full stack trace
+  pageUrl     String?  @map("pageUrl")
+  userAgent   String?  @map("userAgent")
+  slug        String?  @map("slug")          // enterprise slug if on landing page
+  resolved    Boolean  @default(false) @map("resolved")
+  createdAt   DateTime @default(now()) @map("createdAt")
+
+  @@index([type])
+  @@index([resolved])
+  @@index([createdAt])
+  @@index([slug])
+  @@index([message])
+  @@map("client_error_logs")
+}
+
+// ============================================================
+// META CAPI CONFIG — Multi-client Conversions API
+// Suporta múltiplos datasets/tokens para diferentes clientes.
+// Cada config pode ser vinculado a form_ids específicos para
+// auto-atribuição quando leads chegam via webhook.
+// ============================================================
+model MetaCapConfig {
+  id          String   @id @default(cuid()) @map("id")
+  name        String   @map("name")             // ex: "Felipe - Pixel", "Cliente X - Offline Dataset"
+  accessToken  String   @map("accessToken")
+  datasetId    String   @map("datasetId")
+  enabled     Boolean  @default(true) @map("enabled")
+  isDefault   Boolean  @default(false) @map("isDefault")
+  /** JSON array de form_ids Meta. Quando um lead chega via webhook
+   *  com form_id correspondente, este config é auto-atribuído ao cliente. */
+  formIds     String?  @map("formIds")          // JSON: ["123","456"]
+  createdAt   DateTime @default(now()) @map("createdAt")
+  updatedAt   DateTime @updatedAt @map("updatedAt")
+
+  clients     Client[]
+  formMappings LeadFormMapping[]
+
+  @@map("meta_cap_configs")
+}
+
+// ============================================================
+// LEAD FORM MAPPING — Auto-populated mapping table
+// Every time a lead arrives via webhook, the form_id, ad_name,
+// campaign_name, ad_id, campaign_id are recorded.
+// This builds an automatic mapping that helps the admin know
+// which Form IDs belong to which campaigns/clients.
+// ============================================================
+model LeadFormMapping {
+  id           String   @id @default(cuid()) @map("id")
+  formId       String   @map("formId")           // Meta leadgen form ID
+  formName     String?  @map("formName")         // Form name from Meta
+  adId         String?  @map("adId")             // Ad ID
+  adName       String?  @map("adName")           // Ad name
+  campaignId   String?  @map("campaignId")       // Campaign ID
+  campaignName String?  @map("campaignName")     // Campaign name
+  leadCount    Int      @default(1) @map("leadCount") // How many leads came through this form
+  firstSeenAt  DateTime @default(now()) @map("firstSeenAt")
+  lastSeenAt   DateTime @updatedAt @map("lastSeenAt")
+  /** If admin manually links this form to a CAPI config */
+  capiConfigId String?  @map("capiConfigId")
+
+  capiConfig   MetaCapConfig?  @relation(fields: [capiConfigId], references: [id], onDelete: SetNull)
+
+  @@unique([formId, campaignId])
+  @@index([formId])
+  @@index([capiConfigId])
+  @@index([campaignName])
+  @@map("lead_form_mappings")
+}
+
+// ============================================================
+// RESALE PROPERTY — Imóveis de revenda extraídos de PDF
+// Vinculados a um Enterprise do tipo REVENDA
+// ============================================================
+model ResaleProperty {
+  id            String   @id @default(cuid()) @map("id")
+  enterpriseId  String   @map("enterpriseId")
+  code          String   @map("code")                 // ex: RQB0777
+  sortOrder     Int      @default(0) @map("sortOrder") // ordem original no PDF
+  name          String?  @map("name")
+  region        String?  @map("region")
+  category      String   @default("Outro") @map("category") // Apartamento|Casa|Comercial|Flat|Lote|Outro
+  typology      String?  @map("typology")             // ex: "2 QUARTOS"
+  bedrooms      Int?     @map("bedrooms")
+  area          Float?   @map("area")                 // m²
+  address       String?  @map("address")
+  captor        String?  @map("captor")
+  appointment   String?  @map("appointment")
+  phone         String?  @map("phone")
+  phoneDigits   String?  @map("phoneDigits")
+  price         Float?   @map("price")                // BRL
+  condo         Float?   @map("condo")
+  iptu          Float?   @map("iptu")
+  notes         String?  @map("notes")
+  acceptsFinancing Boolean @default(false) @map("acceptsFinancing")
+  acceptsFgts   Boolean  @default(false) @map("acceptsFgts")
+  url           String?  @map("url")
+  dataNote      String?  @map("dataNote")             // avisos de extração
+  sourcePage    Int?     @map("sourcePage")
+  createdAt     DateTime @default(now()) @map("createdAt")
+  updatedAt     DateTime @updatedAt @map("updatedAt")
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@unique([enterpriseId, code])
+  @@index([enterpriseId])
+  @@index([region])
+  @@index([category])
+  @@index([price])
+  @@index([bedrooms])
+  @@map("resale_properties")
+}
+
