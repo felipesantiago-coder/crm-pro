@@ -862,7 +862,7 @@ function ConfigTab() {
   const [loadingCapi, setLoadingCapi] = useState(false);
   const [showCapiDialog, setShowCapiDialog] = useState(false);
   const [editingCapi, setEditingCapi] = useState<any>(null);
-  const [capiForm, setCapiForm] = useState({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true });
+  const [capiForm, setCapiForm] = useState({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true, queueId: '' });
   const [savingCapi, setSavingCapi] = useState(false);
   const [testingCapId, setTestingCapId] = useState<string | null>(null);
   const [showCapiTokenDialog, setShowCapiTokenDialog] = useState(false);
@@ -903,11 +903,21 @@ function ConfigTab() {
   const [pollLastRun, setPollLastRun] = useState<string | null>(null);
   const [pollLastResult, setPollLastResult] = useState<any>(null);
 
+  // Filas de atendimento (roteamento multi-anúncio)
+  const [queues, setQueues] = useState<Array<{ id: string; name: string; isActive: boolean }>>([]);
+
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/webhooks/meta-leads`
     : '';
 
   useEffect(() => { loadConfig(); if (isAdmin) loadPollConfig(); }, []);
+
+  async function loadQueues() {
+    try {
+      const res = await fetch('/api/lead-queues');
+      if (res.ok) setQueues(await res.json());
+    } catch { /* silent */ }
+  }
 
   async function loadConfig() {
     setLoading(true);
@@ -928,6 +938,7 @@ function ConfigTab() {
     }
     loadCapiConfigs();
     loadFormMappings();
+    loadQueues();
   }
 
   async function checkWebhookStatus() {
@@ -1033,7 +1044,7 @@ function ConfigTab() {
 
   function openNewCapiDialog() {
     setEditingCapi(null);
-    setCapiForm({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true });
+    setCapiForm({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true, queueId: '' });
     setShowCapiDialog(true);
   }
 
@@ -1051,6 +1062,7 @@ function ConfigTab() {
           isDefault: full.isDefault,
           formIds: full.formIds ? JSON.parse(full.formIds).join(', ') : '',
           enabled: full.enabled,
+          queueId: full.queueId || '',
         });
       }
     } catch {
@@ -1061,6 +1073,7 @@ function ConfigTab() {
         isDefault: config.isDefault,
         formIds: '',
         enabled: config.enabled,
+        queueId: config.queueId || '',
       });
     }
     setShowCapiDialog(true);
@@ -1083,6 +1096,7 @@ function ConfigTab() {
         isDefault: capiForm.isDefault,
         enabled: capiForm.enabled,
         formIds: capiForm.formIds ? capiForm.formIds.split(/[,\s]+/).filter(Boolean) : [],
+        queueId: capiForm.queueId || null,
       };
       if (capiForm.accessToken) body.accessToken = capiForm.accessToken;
 
@@ -1164,6 +1178,26 @@ function ConfigTab() {
       }
     } catch {
       toast.error('Erro ao vincular formulário');
+    }
+  }
+
+  async function linkFormToQueue(formId: string, queueId: string | null) {
+    try {
+      const res = await fetch('/api/meta-capi-configs/form-mappings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formId, queueId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(queueId ? `${data.updated} mapeamento(s) roteado(s) para a fila` : 'Roteamento de fila removido');
+        loadFormMappings();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Erro ao vincular fila');
+      }
+    } catch {
+      toast.error('Falha de conexão');
     }
   }
 
@@ -1909,7 +1943,7 @@ function ConfigTab() {
                     <Badge className="bg-muted text-muted-foreground text-[10px]">Nenhum</Badge>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Conecta formulários Meta às configs CAPI para rotear conversões</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Conecta formulários Meta às configs CAPI e às filas de atendimento</p>
               </div>
             </div>
           </AccordionTrigger>
@@ -1918,7 +1952,10 @@ function ConfigTab() {
             <div className="rounded-lg bg-accent/40 dark:bg-accent/20 border border-accent p-3 space-y-2">
               <p className="text-xs font-semibold text-accent-foreground">O que esta seção faz</p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Toda vez que um lead chega via webhook, o sistema registra automaticamente o <strong>Form ID</strong>, nome do formulário, campanha e anúncio. Aqui você vê esse mapeamento e pode <strong>vincular cada formulário a um config CAPI</strong> específico.
+                Toda vez que um lead chega via webhook ou polling, o sistema registra automaticamente o <strong>Form ID</strong>, nome do formulário, campanha e anúncio. Aqui você vê esse mapeamento e pode <strong>vincular cada formulário a um config CAPI</strong> específico e a uma <strong>fila de atendimento</strong>.
+              </p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                <strong>Fila de atendimento:</strong> ao vincular uma fila, os leads desse formulário entram no round-robin dela — cada anúncio/campanha pode ter sua própria fila, com atendimento simultâneo e sem misturar leads de fontes diferentes. Sem vínculo, os leads vão para a <strong>fila padrão</strong>.
               </p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 Essa vinculação garante que quando o lead muda de stage, o evento de conversão seja enviado para o <strong>dataset correto</strong> do cliente.
@@ -1960,6 +1997,7 @@ function ConfigTab() {
                   const campaigns = mapping.campaigns || [];
                   const linkedConfig = mapping.capiConfig;
                   const isMapped = !!mapping.capiConfigId;
+                  const linkedQueue = mapping.queue;
                   return (
                     <div key={mapping.formId} className={`rounded-md border p-2.5 text-xs transition-colors ${isMapped ? 'border-green-200 dark:border-green-800/50 bg-green-50/50 dark:bg-green-950/20' : 'border-amber-200 dark:border-amber-800/50 bg-amber-50/30 dark:bg-amber-950/10'}`}>
                       <div className="flex items-center justify-between gap-2">
@@ -1971,6 +2009,9 @@ function ConfigTab() {
                             ) : (
                               <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] px-1.5 py-0">Sem CAPI</Badge>
                             )}
+                            {linkedQueue && (
+                              <Badge className="bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary text-[9px] px-1.5 py-0">Fila: {linkedQueue.name}</Badge>
+                            )}
                           </div>
                           {mapping.formName && <p className="text-muted-foreground mt-0.5 truncate">{mapping.formName}</p>}
                           <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
@@ -1979,13 +2020,28 @@ function ConfigTab() {
                             {campaigns.length > 1 && <span>+{campaigns.length - 1} campanha{campaigns.length - 1 > 1 ? 's' : ''}</span>}
                           </div>
                         </div>
-                        <Select value={mapping.capiConfigId || '__none__'} onValueChange={(val) => linkFormToConfig(mapping.formId, val === '__none__' ? null : val)}>
-                          <SelectTrigger className="h-7 w-[130px] text-[11px]"><SelectValue placeholder="Vincular CAPI" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">Nenhum</SelectItem>
-                            {capiConfigs.filter((c: any) => c.enabled).map((cfg: any) => (<SelectItem key={cfg.id} value={cfg.id}>{cfg.name}</SelectItem>))}
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <Select value={mapping.capiConfigId || '__none__'} onValueChange={(val) => linkFormToConfig(mapping.formId, val === '__none__' ? null : val)}>
+                            <SelectTrigger className="h-7 w-[130px] text-[11px]"><SelectValue placeholder="Vincular CAPI" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">Nenhum</SelectItem>
+                              {capiConfigs.filter((c: any) => c.enabled).map((cfg: any) => (<SelectItem key={cfg.id} value={cfg.id}>{cfg.name}</SelectItem>))}
+                            </SelectContent>
+                          </Select>
+                          <Select value={mapping.queueId || '__default__'} onValueChange={(val) => linkFormToQueue(mapping.formId, val === '__default__' ? null : val)}>
+                            <SelectTrigger className="h-7 w-[130px] text-[11px]" title="Fila de atendimento deste formulário">
+                              <SelectValue placeholder="Fila padrão" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__default__">Fila padrão</SelectItem>
+                              {queues.map((q) => (
+                                <SelectItem key={q.id} value={q.id} disabled={!q.isActive}>
+                                  {q.name}{!q.isActive ? ' (inativa)' : ''}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1993,7 +2049,7 @@ function ConfigTab() {
               </div>
             )}
 
-            <p className="text-[10px] text-muted-foreground">Form IDs detectados automaticamente via webhook. Vincule cada formulário a um config CAPI para rotear os eventos de conversão corretamente.</p>
+            <p className="text-[10px] text-muted-foreground">Form IDs detectados automaticamente via webhook e polling. Vincule cada formulário a um config CAPI (eventos de conversão) e a uma fila de atendimento (distribuição de leads por anúncio).</p>
           </AccordionContent>
         </AccordionItem>
 
@@ -2059,6 +2115,23 @@ function ConfigTab() {
                 <Label className="text-xs font-medium">Form IDs (opcional, separados por vírgula)</Label>
                 <Input placeholder="Ex: 123456789, 987654321" value={capiForm.formIds} onChange={(e) => setCapiForm({ ...capiForm, formIds: e.target.value })} className="font-mono text-sm" />
                 <p className="text-[10px] text-muted-foreground">IDs dos formulários Meta que devem usar este config. Encontrados no Ads Manager → Formulários de Lead. Ou use o botão <strong>Importar</strong> acima.</p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Fila de atendimento (opcional)</Label>
+                <Select value={capiForm.queueId || '__default__'} onValueChange={(val) => setCapiForm({ ...capiForm, queueId: val === '__default__' ? '' : val })}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Fila padrão do sistema" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__default__">Fila padrão do sistema</SelectItem>
+                    {queues.map((q) => (
+                      <SelectItem key={q.id} value={q.id} disabled={!q.isActive}>
+                        {q.name}{!q.isActive ? ' (inativa)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">Leads dos Form IDs deste config entram nessa fila. O vínculo por formulário (Mapeamento de Formulários) tem prioridade sobre este.</p>
               </div>
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-medium cursor-pointer" onClick={() => setCapiForm({ ...capiForm, isDefault: !capiForm.isDefault })}>Configuração padrão (fallback)</Label>

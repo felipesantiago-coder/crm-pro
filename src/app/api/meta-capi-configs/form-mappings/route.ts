@@ -22,6 +22,9 @@ export async function GET(request: NextRequest) {
           capiConfig: {
             select: { id: true, name: true, enabled: true },
           },
+          queue: {
+            select: { id: true, name: true, isActive: true },
+          },
         },
       });
 
@@ -34,6 +37,8 @@ export async function GET(request: NextRequest) {
         lastSeenAt: Date;
         capiConfigId: string | null;
         capiConfig: { id: string; name: string; enabled: boolean } | null;
+        queueId: string | null;
+        queue: { id: string; name: string; isActive: boolean } | null;
         campaigns: Array<{ campaignId: string | null; campaignName: string | null; adName: string | null; leadCount: number }>;
       }>();
 
@@ -46,6 +51,10 @@ export async function GET(request: NextRequest) {
           if (!existing.capiConfigId && m.capiConfigId) {
             existing.capiConfigId = m.capiConfigId;
             existing.capiConfig = m.capiConfig;
+          }
+          if (!existing.queueId && m.queueId) {
+            existing.queueId = m.queueId;
+            existing.queue = m.queue;
           }
           existing.campaigns.push({
             campaignId: m.campaignId,
@@ -62,6 +71,8 @@ export async function GET(request: NextRequest) {
             lastSeenAt: m.lastSeenAt,
             capiConfigId: m.capiConfigId,
             capiConfig: m.capiConfig,
+            queueId: m.queueId,
+            queue: m.queue,
             campaigns: [{
               campaignId: m.campaignId,
               campaignName: m.campaignName,
@@ -82,6 +93,9 @@ export async function GET(request: NextRequest) {
         capiConfig: {
           select: { id: true, name: true, enabled: true },
         },
+        queue: {
+          select: { id: true, name: true, isActive: true },
+        },
       },
     });
 
@@ -97,25 +111,46 @@ export async function GET(request: NextRequest) {
 
 // ============================================================
 // PATCH /api/meta-capi-configs/form-mappings
-// Vincula um form mapping a um CAPI config.
-// Body: { formId: string, campaignId?: string, capiConfigId: string | null }
+// Vincula um form mapping a um CAPI config e/ou a uma fila de
+// atendimento (roteamento multi-anúncio).
+// Body: { formId: string, campaignId?: string, capiConfigId?: string | null, queueId?: string | null }
 // ============================================================
 export async function PATCH(request: NextRequest) {
   try {
     await requireAdmin();
 
     const body = await request.json();
-    const { formId, campaignId, capiConfigId } = body;
+    const { formId, campaignId, capiConfigId, queueId } = body;
 
     if (!formId) {
       return NextResponse.json({ error: 'formId é obrigatório' }, { status: 400 });
+    }
+
+    // Normaliza: string vazia → null (remove vínculo)
+    const nextCapiConfigId = capiConfigId === undefined ? undefined : (capiConfigId || null);
+    const nextQueueId = queueId === undefined ? undefined : (queueId || null);
+
+    // Valida que a fila existe (evita FK inválida)
+    if (nextQueueId) {
+      const queueExists = await db.leadQueue.findUnique({ where: { id: nextQueueId }, select: { id: true } });
+      if (!queueExists) {
+        return NextResponse.json({ error: 'Fila não encontrada' }, { status: 400 });
+      }
+    }
+
+    const updateData: { capiConfigId?: string | null; queueId?: string | null } = {};
+    if (nextCapiConfigId !== undefined) updateData.capiConfigId = nextCapiConfigId;
+    if (nextQueueId !== undefined) updateData.queueId = nextQueueId;
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'Nada para atualizar (informe capiConfigId e/ou queueId)' }, { status: 400 });
     }
 
     // Se campaignId foi fornecido, atualizar apenas aquele mapping específico
     if (campaignId) {
       const result = await db.leadFormMapping.updateMany({
         where: { formId, campaignId },
-        data: { capiConfigId: capiConfigId || null },
+        data: updateData,
       });
       return NextResponse.json({ updated: result.count });
     }
@@ -123,21 +158,21 @@ export async function PATCH(request: NextRequest) {
     // Sem campaignId: atualizar TODOS os mappings com este formId
     const result = await db.leadFormMapping.updateMany({
       where: { formId },
-      data: { capiConfigId: capiConfigId || null },
+      data: updateData,
     });
 
     // Sincronizar com o formIds JSON do MetaCapConfig
-    if (capiConfigId) {
+    if (nextCapiConfigId) {
       // Buscar todos os formIds já mapeados para este config
       const allMappings = await db.leadFormMapping.findMany({
-        where: { capiConfigId },
+        where: { capiConfigId: nextCapiConfigId },
         select: { formId: true },
         distinct: ['formId'],
       });
       const formIdsArray = allMappings.map(m => m.formId);
 
       await db.metaCapConfig.update({
-        where: { id: capiConfigId },
+        where: { id: nextCapiConfigId },
         data: { formIds: JSON.stringify(formIdsArray) },
       });
     }

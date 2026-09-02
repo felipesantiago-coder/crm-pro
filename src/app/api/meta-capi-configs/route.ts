@@ -19,6 +19,8 @@ export async function GET() {
         enabled: true,
         isDefault: true,
         formIds: true,
+        queueId: true,
+        queue: { select: { id: true, name: true, isActive: true } },
         createdAt: true,
         updatedAt: true,
         // Only show first/last 8 chars of token
@@ -55,13 +57,21 @@ export async function POST(request: NextRequest) {
     await requireAdmin();
 
     const body = await request.json();
-    const { name, accessToken, datasetId, isDefault, formIds } = body;
+    const { name, accessToken, datasetId, isDefault, formIds, queueId } = body;
 
     if (!name || !accessToken || !datasetId) {
       return NextResponse.json(
         { error: 'Nome, access token e dataset ID são obrigatórios' },
         { status: 400 }
       );
+    }
+
+    // Valida fila (roteamento multi-anúncio opcional)
+    if (queueId) {
+      const queueExists = await db.leadQueue.findUnique({ where: { id: queueId }, select: { id: true } });
+      if (!queueExists) {
+        return NextResponse.json({ error: 'Fila não encontrada' }, { status: 400 });
+      }
     }
 
     // If setting as default, unset other defaults
@@ -79,6 +89,7 @@ export async function POST(request: NextRequest) {
         datasetId: datasetId.trim(),
         isDefault: !!isDefault,
         formIds: formIds ? JSON.stringify(formIds) : null,
+        queueId: queueId || null,
       },
     });
 

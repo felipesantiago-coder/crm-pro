@@ -307,6 +307,8 @@ model LeadQueue {
 
   members     LeadQueueMember[]
   assignments LeadQueueAssignment[]
+  capiConfigs MetaCapConfig[]
+  formMappings LeadFormMapping[] @relation("LeadFormMappingQueue")
 
   @@map("lead_queues")
 }
@@ -447,11 +449,16 @@ model MetaCapConfig {
   /** JSON array de form_ids Meta. Quando um lead chega via webhook
    *  com form_id correspondente, este config é auto-atribuído ao cliente. */
   formIds     String?  @map("formIds")          // JSON: ["123","456"]
+  /** Fila de atendimento preferencial para leads dos formIds deste config.
+   *  Roteamento multi-anúncio: cada anúncio/campanha pode ter sua própria fila.
+   *  Prioridade de roteamento: LeadFormMapping.queueId > este campo > fila default. */
+  queueId     String?  @map("queueId")
   createdAt   DateTime @default(now()) @map("createdAt")
   updatedAt   DateTime @updatedAt @map("updatedAt")
 
   clients     Client[]
   formMappings LeadFormMapping[]
+  queue       LeadQueue? @relation(fields: [queueId], references: [id], onDelete: SetNull)
 
   @@map("meta_cap_configs")
 }
@@ -476,13 +483,19 @@ model LeadFormMapping {
   lastSeenAt   DateTime @updatedAt @map("lastSeenAt")
   /** If admin manually links this form to a CAPI config */
   capiConfigId String?  @map("capiConfigId")
+  /** Fila de atendimento dedicada a este formulário/anúncio.
+   *  Roteamento multi-anúncio: leads de forms diferentes podem ir para
+   *  filas diferentes (round-robin independente por fila). */
+  queueId      String?  @map("queueId")
 
   capiConfig   MetaCapConfig?  @relation(fields: [capiConfigId], references: [id], onDelete: SetNull)
+  queue        LeadQueue?      @relation("LeadFormMappingQueue", fields: [queueId], references: [id], onDelete: SetNull)
 
   @@unique([formId, campaignId])
   @@index([formId])
   @@index([capiConfigId])
   @@index([campaignName])
+  @@index([queueId])
   @@map("lead_form_mappings")
 }
 

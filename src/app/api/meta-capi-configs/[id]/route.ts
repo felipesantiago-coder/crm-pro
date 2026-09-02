@@ -40,11 +40,19 @@ export async function PATCH(
     await requireAdmin();
     const { id } = await params;
     const body = await request.json();
-    const { name, accessToken, datasetId, enabled, isDefault, formIds } = body;
+    const { name, accessToken, datasetId, enabled, isDefault, formIds, queueId } = body;
 
     const existing = await db.metaCapConfig.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json({ error: 'Configuração não encontrada' }, { status: 404 });
+    }
+
+    // Valida fila (roteamento multi-anúncio opcional)
+    if (queueId) {
+      const queueExists = await db.leadQueue.findUnique({ where: { id: queueId }, select: { id: true } });
+      if (!queueExists) {
+        return NextResponse.json({ error: 'Fila não encontrada' }, { status: 400 });
+      }
     }
 
     // If setting as default, unset other defaults
@@ -66,6 +74,7 @@ export async function PATCH(
         ...(formIds !== undefined
           ? { formIds: formIds ? JSON.stringify(formIds) : null }
           : {}),
+        ...(queueId !== undefined ? { queueId: queueId || null } : {}),
       },
     });
 
