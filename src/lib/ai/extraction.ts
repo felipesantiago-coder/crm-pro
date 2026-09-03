@@ -37,6 +37,11 @@ import {
   repairTruncatedJson,
 } from './extraction-core';
 import type { DocumentBlock, ExtractionDraft, BlockExtraction } from './extraction-core';
+import {
+  parseStandardMarkdown,
+  PARSER_MODEL_ID,
+  PARSER_PROMPT_VERSION,
+} from './markdown-parser';
 
 export {
   EXTRACTION_SYSTEM_PROMPT,
@@ -94,6 +99,19 @@ export const EXTRACTION_REQUEST_BUDGET_MS = Number(
 const BLOCK_MAX_TOKENS = 8000;
 
 /**
+ * DECISÃO DE PRODUTO (2026-09): as bases passam a ser fornecidas
+ * EXCLUSIVAMENTE em markdown no padrão canônico estabelecido (11 seções do
+ * prompt mestre). Documentos no padrão são extraídos por parse
+ * determinístico (markdown-parser.ts) — sem chamada de IA: instantâneo,
+ * sem 502/504, sem custo e idêntico a cada execução. Documentos FORA do
+ * padrão (bases antigas, PDFs) seguem pelo pipeline de IA abaixo como
+ * fallback — nenhuma regressão.
+ */
+
+/** Kill switch operacional do parser determinístico ('1' → força IA). */
+const PARSER_DISABLED_ENV = 'NEXO_EXTRACTION_PARSER_DISABLED';
+
+/**
  * Executa a extração e grava SEMPRE apenas no draft + run. Nunca toca
  * verifiedInfo, publishedInfo ou cachedInfo (§10.1/§10.5).
  */
@@ -132,9 +150,20 @@ export async function runExtraction(params: {
 
   const documentHash = await computeDocumentHash(content);
 
+  // ── Método de extração: parser determinístico (padrão canônico) → IA ──
+  // O parse é puro e instantâneo (sem custo de tempo/money); null = fora do
+  // padrão → fallback para o pipeline de IA existente.
+  const parserDisabled = process.env[PARSER_DISABLED_ENV] === '1';
+  const parsedDoc = parserDisabled
+    ? null
+    : parseStandardMarkdown(content, { fallbackRegion: enterprise.region });
+  const useParser = parsedDoc !== null;
+  const modelId = useParser ? PARSER_MODEL_ID : MODEL_ID;
+  const promptVersion = useParser ? PARSER_PROMPT_VERSION : EXTRACTION_PROMPT_VERSION;
+
   // Deduplicação por hash — mesmo documento/prompt/modelo não reprocessa.
   const lastRun = await db.enterpriseExtractionRun.findFirst({
-    where: { enterpriseId, documentHash, promptVersion: EXTRACTION_PROMPT_VERSION, modelId: MODEL_ID, status: { in: ['SUCCEEDED', 'PARTIAL'] } },
+    where: { enterpriseId, documentHash, promptVersion, modelId, status: { in: ['SUCCEEDED', 'PARTIAL'] } },
     orderBy: { startedAt: 'desc' },
     select: { id: true, status: true },
   });
@@ -167,14 +196,58 @@ export async function runExtraction(params: {
       status: 'RUNNING',
       trigger,
       startedById: userId,
-      promptVersion: EXTRACTION_PROMPT_VERSION,
-      modelId: MODEL_ID,
-      blocksTotal,
+      promptVersion,
+      modelId,
+      blocksTotal: useParser ? 1 : blocksTotal,
       previousRunId: lastRun?.id ?? null,
     },
   });
 
   try {
+    // ── Caminho determinístico (documento no padrão canônico) ──
+    // Sem chamada de IA: o parse já produziu os candidatos (method 'rule')
+    // com a MESMA semântica do caminho de IA — mesmo draft, mesmo painel de
+    // revisão, mesma política de críticos e publicação.
+    if (useParser && parsedDoc) {
+      const parserDraft: ExtractionDraft = {
+        runId: run.id,
+        documentHash,
+        generatedAt: new Date().toISOString(),
+        status: 'SUCCEEDED',
+        blocksTotal: 1,
+        blocksProcessed: 1,
+        needsReview: parsedDoc.needsReview,
+        promptVersion,
+        modelId,
+        fields: parsedDoc.fields,
+        limitations: parsedDoc.limitations,
+      };
+
+      await db.$transaction([
+        db.enterprise.update({
+          where: { id: enterpriseId },
+          data: {
+            documentHash,
+            extractionDraft: parserDraft as unknown as object,
+            extractionDraftAt: new Date(),
+          },
+        }),
+        db.enterpriseExtractionRun.update({
+          where: { id: run.id },
+          data: { status: 'SUCCEEDED', blocksProcessed: 1, completedAt: new Date() },
+        }),
+      ]);
+
+      await logAiUsage({
+        capability: 'enterprise_extraction', outcome: 'success',
+        userId, scopeId: enterpriseId, dataHash: documentHash,
+        promptVersion, modelId,
+        note: `parse determinístico (sem IA) · ${parsedDoc.sectionsFound.length}/11 seções${parsedDoc.needsReview ? ' · revisão necessária' : ''}`,
+      });
+
+      return parserDraft;
+    }
+
     // Prazo externo (topo da request) tem prioridade — cobre TAMBÉM o
     // overhead de DB/upload, não só o loop de blocos.
     const deadlineAt = params.deadlineAt ?? Date.now() + EXTRACTION_WALL_BUDGET_MS;
@@ -198,8 +271,8 @@ export async function runExtraction(params: {
       });
       await logAiUsage({
         capability: 'enterprise_extraction', outcome: 'error', userId,
-        scopeId: enterpriseId, dataHash: documentHash, promptVersion: EXTRACTION_PROMPT_VERSION,
-        modelId: MODEL_ID, errorCode: 'invalid_output', note: 'nenhum bloco processado',
+        scopeId: enterpriseId, dataHash: documentHash, promptVersion,
+        modelId, errorCode: 'invalid_output', note: 'nenhum bloco processado',
       });
       // Detalhe da 1ª falha vai no NexoError.detail — aparece no log, no toast
       // do upload e no corpo da resposta do extract-info (rota admin).
@@ -224,8 +297,8 @@ export async function runExtraction(params: {
       blocksTotal,
       blocksProcessed: okBlocks.length,
       needsReview,
-      promptVersion: EXTRACTION_PROMPT_VERSION,
-      modelId: MODEL_ID,
+      promptVersion,
+      modelId,
       fields,
       limitations,
     };
@@ -248,7 +321,7 @@ export async function runExtraction(params: {
     await logAiUsage({
       capability: 'enterprise_extraction', outcome: status === 'SUCCEEDED' ? 'success' : 'partial',
       userId, scopeId: enterpriseId, dataHash: documentHash,
-      promptVersion: EXTRACTION_PROMPT_VERSION, modelId: MODEL_ID,
+      promptVersion, modelId,
       note: `blocos ${okBlocks.length}/${blocksTotal}${needsReview ? ' · revisão necessária' : ''}`,
     });
 
@@ -263,7 +336,7 @@ export async function runExtraction(params: {
       await logAiUsage({
         capability: 'enterprise_extraction', outcome: 'error', userId,
         scopeId: enterpriseId, dataHash: documentHash, errorCode: code,
-        promptVersion: EXTRACTION_PROMPT_VERSION, modelId: MODEL_ID,
+        promptVersion, modelId,
       });
     }
     throw err;
