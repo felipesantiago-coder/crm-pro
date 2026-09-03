@@ -27,6 +27,15 @@
  *     Meta quebrados em runtime. Portanto, se nenhuma conexão conseguir
  *     aplicar as migrations, o build FALHA com instruções objetivas — o
  *     deploy anterior (saudável) continua servindo enquanto isso.
+ *   - TIMEOUT: cada tentativa tem timeout (MIGRATE_TIMEOUT_MS, padrão 120s).
+ *     O transaction pooler pode PENDURAR o migrate indefinidamente
+ *     (advisory lock do Prisma espera eternamente) — sem isso o build
+ *     ficava travado até o limite de 45 min da Vercel.
+ *   - DRIFT (P3005/P3018): banco com schema mas SEM histórico de migrations
+ *     (típico de banco restaurado/criado via db push). Nesse caso o script
+ *     executa o baseline automaticamente UMA vez por conexão de sessão
+ *     (db push aditivo + migrate resolve --applied) e tenta o deploy de
+ *     novo. Desligar com MIGRATE_AUTO_BASELINE=off.
  *   - Escape para builds locais sem banco: MIGRATE_ON_FAIL=skip
  *     (degrada para aviso e NÃO falha o build).
  */
@@ -56,17 +65,85 @@ function maskUrl(url) {
   return url.replace(/(\/\/[^:/@]+):([^@]+)@/, '$1:***@');
 }
 
+/** Timeout por tentativa de migrate (transaction pooler pode pendurar). */
+const MIGRATE_TIMEOUT_MS = Number(process.env.MIGRATE_TIMEOUT_MS || 120_000);
+/** Timeout do baseline automático (db push + N resolves + verificação). */
+const BASELINE_TIMEOUT_MS = Number(process.env.BASELINE_TIMEOUT_MS || 300_000);
+
 function runPrismaMigrateDeploy(url) {
   // Nota: `prisma migrate deploy` NÃO aceita --url no Prisma 6.x.
   // A sobrescrita correta é via env DATABASE_URL (process env tem
   // precedência sobre o .env do projeto).
+  // Saída capturada e re-ecoada: permite detectar P3005/P3018 e disparar o
+  // baseline automático; o timeout impede build pendurado até 45 min.
   const res = spawnSync('npx', ['prisma', 'migrate', 'deploy'], {
     cwd: projectRoot,
-    stdio: 'inherit',
+    stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
+    timeout: MIGRATE_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
     env: { ...process.env, DATABASE_URL: url },
   });
-  return res.status === 0;
+  const stdout = res.stdout?.toString() || '';
+  const stderr = res.stderr?.toString() || '';
+  if (stdout) process.stdout.write(stdout);
+  if (stderr) process.stderr.write(stderr);
+  const timedOut = res.signal === 'SIGKILL' || res.error?.code === 'ETIMEDOUT';
+  if (timedOut) {
+    warn(
+      `Tentativa excedeu ${Math.round(MIGRATE_TIMEOUT_MS / 1000)}s e foi abortada (conexão pendurada — típico de transaction pooler).`,
+    );
+  }
+  return { ok: res.status === 0, timedOut, output: `${stdout}\n${stderr}` };
+}
+
+/** Erros de drift que o baseline automático resolve. */
+const DRIFT_PATTERN = /P3005|P3018/;
+
+function isDriftError(output) {
+  return DRIFT_PATTERN.test(output);
+}
+
+function autoBaselineEnabled() {
+  const flag = (process.env.MIGRATE_AUTO_BASELINE || '').toLowerCase();
+  return !(flag === 'off' || flag === 'skip' || flag === '0' || flag === 'false');
+}
+
+/**
+ * Baseline automático (uma vez por URL de sessão) para drift P3005/P3018:
+ * alinha o schema via db push aditivo (sem --accept-data-loss — nada é
+ * destruído) e marca as migrations existentes como aplicadas; em seguida o
+ * migrate deploy é tentado novamente sobre a mesma conexão de sessão.
+ */
+function runAutoBaseline(sessionUrl) {
+  if (!autoBaselineEnabled()) {
+    warn('MIGRATE_AUTO_BASELINE=off — baseline automático desativado.');
+    return false;
+  }
+  warn('Banco com schema mas SEM histórico de migrations (drift P3005/P3018).');
+  warn('Executando baseline automático (db push aditivo + migrate resolve --applied)…');
+  const res = spawnSync(
+    'node',
+    [path.join('scripts', 'db-baseline.mjs'), '--url', sessionUrl, '--yes'],
+    {
+      cwd: projectRoot,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+      timeout: BASELINE_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+      env: { ...process.env, DATABASE_URL: sessionUrl },
+    },
+  );
+  if (res.signal === 'SIGKILL' || res.error?.code === 'ETIMEDOUT') {
+    warn(`Baseline automático excedeu ${Math.round(BASELINE_TIMEOUT_MS / 1000)}s e foi abortado.`);
+    return false;
+  }
+  if (res.status !== 0) {
+    warn('Baseline automático falhou — revise a saída acima (nenhuma alteração destrutiva foi feita).');
+    return false;
+  }
+  log('✅ Baseline automático concluído — tentando migrate deploy novamente.');
+  return true;
 }
 
 function printFailureHelp(attempts) {
@@ -92,9 +169,10 @@ function printFailureHelp(attempts) {
   console.error('     automaticamente — esta variável NÃO afeta o runtime do app.');
   console.error('  2) Local, a partir da sua máquina (conexão direta/sessão):');
   console.error('       DATABASE_URL="<url-sessao>" npm run db:deploy');
-  console.error('  3) Se o erro indicar drift (P3005/P3018 — ex.: banco gerenciado');
-  console.error('     por db push, sem histórico de migrations), baselize UMA vez:');
-  console.error('       npm run db:baseline -- --url "<url-sessao>" --yes');
+  console.error('  3) Se o erro indicar drift (P3005/P3018 — banco com schema mas sem');
+  console.error('     histórico de migrations): o baseline automático JÁ FOI TENTADO.');
+  console.error('     Se ele falhou, rode manualmente a partir da sua máquina:');
+  console.error('       npm run db:baseline -- --url "<url-sessao-5432>" --yes');
   console.error('     e depois faça redeploy.');
   console.error('============================================================');
 }
@@ -181,15 +259,33 @@ if (!existsSync(path.join(projectRoot, 'prisma', 'migrations'))) {
 // Tenta aplicar as migrations
 // ---------------------------------------------------------------
 const attempts = [];
+const baselineTriedFor = new Set(); // URLs de sessão que já receberam baseline
 let applied = false;
 
 for (const candidate of candidates) {
   log(`Tentando migrate deploy via ${candidate.label} → ${maskUrl(candidate.url)}`);
   attempts.push(candidate);
-  if (runPrismaMigrateDeploy(candidate.url)) {
+  const res = runPrismaMigrateDeploy(candidate.url);
+  if (res.ok) {
     log(`✅ Migrations aplicadas/verificadas via ${candidate.label}.`);
     applied = true;
     break;
+  }
+  // Drift (P3005/P3018)? Tenta o baseline automático UMA vez por URL de
+  // sessão e repete o deploy sobre a conexão de sessão correspondente.
+  if (!res.timedOut && isDriftError(res.output)) {
+    const sessionUrl = withSessionPort(candidate.url) || candidate.url;
+    if (!baselineTriedFor.has(sessionUrl)) {
+      baselineTriedFor.add(sessionUrl);
+      if (runAutoBaseline(sessionUrl)) {
+        const retry = runPrismaMigrateDeploy(sessionUrl);
+        if (retry.ok) {
+          log(`✅ Migrations aplicadas/verificadas via ${candidate.label} (após baseline automático).`);
+          applied = true;
+          break;
+        }
+      }
+    }
   }
   warn(`Falhou via ${candidate.label}.`);
 }

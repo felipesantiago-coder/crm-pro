@@ -44,6 +44,9 @@ function maskUrl(u) {
 function log(...a) {
   console.log('[baseline]', ...a);
 }
+/** Timeout por comando prisma (proteção contra conexão pendurada). */
+const STEP_TIMEOUT_MS = Number(process.env.BASELINE_STEP_TIMEOUT_MS || 180_000);
+
 function run(cmd, cmdArgs, { inherit = false, dbUrl = sessionUrl } = {}) {
   // Nota: os comandos `prisma migrate *` não aceitam --url no Prisma 6.x;
   // a sobrescrita correta é via env DATABASE_URL (precede o .env do projeto).
@@ -51,9 +54,22 @@ function run(cmd, cmdArgs, { inherit = false, dbUrl = sessionUrl } = {}) {
     cwd: projectRoot,
     stdio: inherit ? 'inherit' : 'pipe',
     shell: process.platform === 'win32',
+    timeout: STEP_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
     env: { ...process.env, DATABASE_URL: dbUrl },
   });
-  return { ok: res.status === 0, status: res.status, stdout: res.stdout?.toString() || '', stderr: res.stderr?.toString() || '' };
+  const timedOut = res.signal === 'SIGKILL' || res.error?.code === 'ETIMEDOUT';
+  if (timedOut) {
+    console.error(`[baseline] ⚠️  "${cmd} ${cmdArgs.join(' ')}" excedeu ${Math.round(STEP_TIMEOUT_MS / 1000)}s e foi abortado (conexão pendurada).`);
+  }
+  if (!inherit && res.status !== 0) {
+    // Ecoa a saída capturada em caso de falha (visibilidade no log de build)
+    const out = res.stdout?.toString() || '';
+    const err = res.stderr?.toString() || '';
+    if (out) console.error(out);
+    if (err) console.error(err);
+  }
+  return { ok: res.status === 0, status: res.status, timedOut, stdout: res.stdout?.toString() || '', stderr: res.stderr?.toString() || '' };
 }
 
 if (!urlArg || !/^postgres(ql)?:\/\//i.test(urlArg)) {
@@ -120,6 +136,9 @@ for (const name of migrations) {
   if (res.ok) {
     marked += 1;
     log(`  ✓ ${name}`);
+  } else if (res.timedOut) {
+    already += 1;
+    log(`  ⚠️ ${name} — timeout no comando (verifique manualmente)`);
   } else {
     already += 1;
     log(`  • ${name} — já marcada/ignorada`);
