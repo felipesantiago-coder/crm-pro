@@ -72,6 +72,19 @@ const MODEL_ID = 'deepseek-v4-flash';
  * PARCIAL (falha nunca sobrescreve; partial_data avisado na revisão).
  */
 const EXTRACTION_WALL_BUDGET_MS = Number(process.env.NEXO_EXTRACTION_WALL_BUDGET_MS ?? 48_000);
+
+/**
+ * CORREÇÃO DE PRODUÇÃO (2026-09, 504 FUNCTION_INVOCATION_TIMEOUT no upload):
+ * o orçamento de 48 s cobria APENAS o loop de blocos — sessão, upload, as
+ * ~10 queries Prisma (Supabase) e os writes de finalize ficavam SEM teto e
+ * somaram o resto até o maxDuration 60 da function → kill sem corpo JSON.
+ * Agora cada rota captura este prazo no PRIMEIRO linha do handler e o repassa
+ * a runExtraction (deadlineAt) — o ciclo completo fica dentro do maxDuration
+ * 120, e a resposta JSON é garantida mesmo no pior caso.
+ */
+export const EXTRACTION_REQUEST_BUDGET_MS = Number(
+  process.env.NEXO_EXTRACTION_REQUEST_BUDGET_MS ?? 100_000,
+);
 /**
  * CORREÇÃO (2026-09): 3000 tokens truncava o JSON de blocos densos (12
  * tipologias com descrições + 10 diferenciais) — finish_reason=length,
@@ -89,6 +102,12 @@ export async function runExtraction(params: {
   userId: string;
   trigger: 'UPLOAD' | 'MANUAL' | 'REPROCESS';
   force?: boolean;
+  /**
+   * Prazo absoluto de parede (epoch ms) capturado no início da request.
+   * Quando ausente (chamadores antigos), cai no orçamento default de 48 s
+   * a partir de agora — apenas o loop de blocos fica coberto.
+   */
+  deadlineAt?: number;
 }): Promise<ExtractionDraft> {
   const { enterpriseId, userId, trigger, force = false } = params;
   const flags = getFeatureFlags();
@@ -156,7 +175,9 @@ export async function runExtraction(params: {
   });
 
   try {
-    const deadlineAt = Date.now() + EXTRACTION_WALL_BUDGET_MS;
+    // Prazo externo (topo da request) tem prioridade — cobre TAMBÉM o
+    // overhead de DB/upload, não só o loop de blocos.
+    const deadlineAt = params.deadlineAt ?? Date.now() + EXTRACTION_WALL_BUDGET_MS;
     const { results, stoppedByBudget } = await processBlocksSequentially(selected, {
       enterpriseName: enterprise.name,
       region: enterprise.region,

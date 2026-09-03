@@ -195,11 +195,18 @@ export function DocumentHealthCard({
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) {
+        // CORREÇÃO (2026-09, 504): gateway matou a function sem corpo JSON —
+        // mensagem específica orienta o retry (dados existentes preservados).
+        const gatewayTimeout = !body && (res.status === 504 || res.status === 503);
         // Detalhe técnico (quando a API o envia) ajuda a diagnosticar a causa
         const detail = typeof body?.detail === 'string' && body.detail.trim() !== ''
           ? ` (${body.detail.slice(0, 160)})`
           : '';
-        setError(body?.error ? `${body.error}${detail}` : 'A extração falhou — dados existentes preservados.');
+        if (gatewayTimeout) {
+          setError('Tempo limite excedido no servidor durante a extração — dados existentes preservados. Aguarde ~1 minuto e tente novamente.');
+        } else {
+          setError(body?.error ? `${body.error}${detail}` : 'A extração falhou — dados existentes preservados.');
+        }
       }
       await load();
     } catch {

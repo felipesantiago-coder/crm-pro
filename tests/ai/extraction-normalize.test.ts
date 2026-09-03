@@ -163,10 +163,15 @@ test('repairTruncatedJson: lixo irrecuperável → null (bloco conta como falha,
 
 // ── attemptPlan (orçamento de parede × retries) ─────────────────────────────
 
-test('attemptPlan: orçamento cheio reserva 2 tentativas com timeout cheio (22+1+22=45s ≤ 48s)', () => {
-  const plan = attemptPlan(48_000);
+test('attemptPlan: orçamento de request cheio reserva 2 tentativas com timeout cheio (30+1+30=61s ≤ 100s)', () => {
+  const plan = attemptPlan(100_000);
   assert.equal(plan.timeoutMs, BLOCK_TIMEOUT_MS);
   assert.equal(plan.retries, 2); // respostas vazias transientes recuperadas na 2ª tentativa
+});
+
+test('attemptPlan: orçamento antigo de 48s divide o tempo em 2 tentativas de 23,5s', () => {
+  const plan = attemptPlan(48_000);
+  assert.deepEqual(plan, { timeoutMs: 23_500, retries: 2 }); // (48000-1000)/2 — nunca estoura o prazo
 });
 
 test('attemptPlan: orçamento estendido mantém o teto de timeout', () => {

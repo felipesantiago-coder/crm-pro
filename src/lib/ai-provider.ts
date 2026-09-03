@@ -54,21 +54,42 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * `Promise.race` isolado apenas abandona a promessa — o socket permanecia
  * aberto até o provedor responder. Aqui o `AbortController` aborta o fetch,
  * liberando conexão e memória de verdade.
+ *
+ * CORREÇÃO (2026-09, 504 no upload): a leitura do CORPO (`res.text()`) ficava
+ * FORA da janela de timeout — headers recebidos no limite do prazo deixavam o
+ * `res.json()` pendurado sem teto. Agora fetch + corpo compartilham o MESMO
+ * AbortController/timer: a tentativa inteira é limitada a timeoutMs.
  */
-async function fetchWithTimeout(
-  url: string,
-  init: RequestInit,
+interface DeepSeekAttemptResult {
+  ok: boolean;
+  status: number;
+  text: string;
+}
+
+async function callDeepSeekAttempt(
+  bodyStr: string,
   timeoutMs: number,
-  label: string,
-): Promise<Response> {
+): Promise<DeepSeekAttemptResult> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs);
+  const timer = setTimeout(() => controller.abort(new Error(`DeepSeek timeout after ${timeoutMs}ms`)), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    const res = await fetch(DEEPSEEK_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+      },
+      body: bodyStr,
+      signal: controller.signal,
+    });
+    // Leitura do corpo DENTRO da janela de abort (não há streaming aqui —
+    // a API devolve o corpo completo logo após os headers).
+    const text = await res.text();
+    return { ok: res.ok, status: res.status, text };
   } catch (err) {
     if (controller.signal.aborted) {
       const reason = controller.signal.reason;
-      throw reason instanceof Error ? reason : new Error(`${label} timeout after ${timeoutMs}ms`);
+      throw reason instanceof Error ? reason : new Error(`DeepSeek timeout after ${timeoutMs}ms`);
     }
     throw err;
   } finally {
@@ -115,26 +136,22 @@ async function callDeepSeek(
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const res = await fetchWithTimeout(
-        DEEPSEEK_BASE_URL,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-          },
-          body: bodyStr,
-        },
-        timeoutMs,
-        'DeepSeek',
-      );
+      const res = await callDeepSeekAttempt(bodyStr, timeoutMs);
 
       if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`DeepSeek ${res.status}: ${errText.slice(0, 300)}`);
+        throw new Error(`DeepSeek ${res.status}: ${res.text.slice(0, 300)}`);
       }
 
-      const data = await res.json();
+      let data: {
+        choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+        model?: string;
+        usage?: Record<string, number>;
+      };
+      try {
+        data = JSON.parse(res.text);
+      } catch {
+        throw new Error('DeepSeek: corpo da resposta não é JSON válido');
+      }
       const choice = data.choices?.[0];
       const content = choice?.message?.content;
       const finishReason = choice?.finish_reason;
@@ -157,7 +174,7 @@ async function callDeepSeek(
         console.log(`[AI Provider] Tokens — input: ${usage.prompt_tokens ?? '?'} | output: ${usage.completion_tokens ?? '?'} | total: ${usage.total_tokens ?? '?'}`);
       }
 
-      return { reply: choice.message.content, provider: 'DeepSeek-V4-Flash' };
+      return { reply: content, provider: 'DeepSeek-V4-Flash' };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       console.warn(`[AI Provider] DeepSeek attempt ${attempt}/${maxRetries} failed:`, lastError.message);

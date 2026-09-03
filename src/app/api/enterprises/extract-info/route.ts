@@ -2,13 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
-import { runExtraction } from '@/lib/ai/extraction';
+import { runExtraction, EXTRACTION_REQUEST_BUDGET_MS } from '@/lib/ai/extraction';
 import { NexoError } from '@/lib/ai/errors';
 import { getFeatureFlags } from '@/lib/ai/flags';
 
-// Function serverless: o pipeline tem orçamento de parede próprio (48 s);
-// 60 s cobre o ciclo completo (IA + persistência) dentro do limite do plano.
-export const maxDuration = 60;
+// Function serverless: o pipeline tem orçamento de parede próprio; o prazo de
+// request (100 s) é capturado no topo do handler e cobre o ciclo completo
+// (sessão + queries + IA + persistência) dentro do maxDuration de 120 s.
+// CORREÇÃO (2026-09, 504 no upload): com maxDuration 60 e orçamento de apenas
+// 48 s no loop de blocos, o overhead de DB fora do loop cruzava o limite —
+// a function era morta sem corpo JSON e o cliente via erro genérico.
+export const maxDuration = 120;
 
 /**
  * POST /api/enterprises/extract-info — v2 (Fase 3, prompt v1.0 §10).
@@ -21,6 +25,8 @@ export const maxDuration = 60;
  * Body: { enterpriseId: string, force?: boolean }
  */
 export async function POST(req: NextRequest) {
+  // Prazo de parede da REQUEST INTEIRA — antes de qualquer await.
+  const requestDeadlineAt = Date.now() + EXTRACTION_REQUEST_BUDGET_MS;
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
@@ -58,6 +64,7 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       trigger: force ? 'REPROCESS' : 'MANUAL',
       force,
+      deadlineAt: requestDeadlineAt,
     });
 
     return NextResponse.json({

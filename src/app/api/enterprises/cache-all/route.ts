@@ -2,13 +2,18 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
-import { runExtraction } from '@/lib/ai/extraction';
+import { runExtraction, EXTRACTION_REQUEST_BUDGET_MS } from '@/lib/ai/extraction';
 import { NexoError } from '@/lib/ai/errors';
 import { getFeatureFlags } from '@/lib/ai/flags';
 
-// Function serverless: a extração tem orçamento de parede próprio (48 s por
-// run); 60 s cobre o ciclo completo sem estourar o limite do plano Vercel.
-export const maxDuration = 60;
+// Function serverless: o prazo de request (100 s) cobre o lote completo e é
+// repassado a cada runExtraction (deadlineAt) — um item que começa perto do
+// fim do lote recebe só o tempo restante, nunca estoura o maxDuration de 120 s.
+// CORREÇÃO (2026-09, família do 504 no upload): com deadline de lote de 50 s e
+// maxDuration 60, um runExtraction iniciado aos 49 s rodava mais 48 s além do
+// limite — a function era morta sem resposta. O prazo agora é absoluto e
+// compartilhado por todo o lote.
+export const maxDuration = 120;
 
 /**
  * POST /api/enterprises/cache-all — v2 (Fase 3).
@@ -70,11 +75,12 @@ export async function POST() {
     // Orçamento de parede do lote: a function é encerrada graciosamente antes
     // do maxDuration; os empreendimentos restantes ficam pendentes para a
     // próxima execução (o botão pode ser acionado novamente).
-    const batchDeadlineAt = Date.now() + 50_000;
+    const batchDeadlineAt = Date.now() + EXTRACTION_REQUEST_BUDGET_MS;
     let pendingCount = 0;
 
     for (const enterprise of toProcess) {
-      if (Date.now() >= batchDeadlineAt) {
+      // Margem de 5 s para os writes de finalize do último item responderem.
+      if (batchDeadlineAt - Date.now() < 5_000) {
         pendingCount++;
         continue;
       }
@@ -83,6 +89,7 @@ export async function POST() {
           enterpriseId: enterprise.id,
           userId: user.id,
           trigger: 'MANUAL',
+          deadlineAt: batchDeadlineAt,
         });
         results.push({ id: enterprise.id, name: enterprise.name, success: true, needsReview: draft.needsReview });
         successCount++;

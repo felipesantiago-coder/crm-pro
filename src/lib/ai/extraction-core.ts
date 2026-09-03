@@ -24,11 +24,13 @@ const BLOCK_OVERLAP = 500;
 export const MAX_BLOCKS_PER_RUN = 6;
 /**
  * Timeout por tentativa de bloco.
- * 22 s permite 2 tentativas dentro do orçamento de 48 s (22 + 1 + 22 = 45 s):
- * respostas vazias transientes do provedor (comuns, ver ai-provider) são
- * recuperadas na 2ª tentativa sem estourar o maxDuration da Vercel.
+ * 30 s dá chance real de conclusão a gerações de 20–30 s (modelos com
+ * raciocínio antes do conteúdo); com 2 tentativas o pior caso por bloco é
+ * 30 + 1 + 30 = 61 s — cabe no orçamento de request de 100 s
+ * (EXTRACTION_REQUEST_BUDGET_MS, ver extraction.ts), e o attemptPlan corta a
+ * fatia do bloco ao tempo restante, então o orçamento nunca estoura.
  */
-export const BLOCK_TIMEOUT_MS = 22_000;
+export const BLOCK_TIMEOUT_MS = 30_000;
 /** Menor fatia de orçamento que ainda justifica iniciar um bloco. */
 export const MIN_SLICE_MS = 8_000;
 

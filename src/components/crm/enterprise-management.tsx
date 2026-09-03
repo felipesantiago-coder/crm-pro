@@ -327,8 +327,17 @@ export function EnterpriseManagement() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        toast.error(data.error || 'Erro ao processar o PDF');
+        // CORREÇÃO (2026-09, 504): quando a function é morta pelo limite de
+        // tempo da Vercel, o corpo NÃO é JSON (página de erro do gateway) e
+        // res.json() lança — o catch exibia "Erro ao enviar PDF" genérico.
+        // A base JÁ FOI SALVA nesse ponto (o update de pdfContent precede a
+        // extração); orientar o retry pelo "Reprocessar".
+        const data = await res.json().catch(() => null);
+        if (!data && (res.status === 504 || res.status === 502 || res.status === 503)) {
+          toast.error('Tempo limite excedido ao extrair a base. A base foi salva — aguarde ~1 minuto e use "Reprocessar" no cartão da base.');
+          return;
+        }
+        toast.error(data?.error || 'Erro ao processar o PDF');
         return;
       }
 

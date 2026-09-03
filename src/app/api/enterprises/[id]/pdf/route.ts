@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { isAdmin } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { runExtraction, computeDocumentHash } from '@/lib/ai/extraction';
+import { runExtraction, computeDocumentHash, EXTRACTION_REQUEST_BUDGET_MS } from '@/lib/ai/extraction';
 import { extractTextFromPdf } from '@/lib/extract-pdf-text';
 import { logAiUsage } from '@/lib/ai/telemetry';
 
@@ -15,7 +15,14 @@ import { logAiUsage } from '@/lib/ai/telemetry';
 // persistido. Resultado: documento salvo, run presa em RUNNING, draft nunca
 // gravado e o cliente via erro (ou nada) — "o sistema não extrai a nova base".
 // Mesma família de bug da rota extract-info (corrigida na Task 22).
-export const maxDuration = 60;
+//
+// CORREÇÃO 2 (2026-09, 504 FUNCTION_INVOCATION_TIMEOUT): com maxDuration 60 o
+// ciclo completo (sessão + upload + ~10 queries Supabase + 45–48 s de IA +
+// writes de finalize) cruzava o limite quando o provedor respondia devagar —
+// a function era morta SEM corpo JSON. Agora: maxDuration 120 com prazo de
+// request de 100 s capturado no topo do handler (EXTRACTION_REQUEST_BUDGET_MS)
+// e repassado a runExtraction — a resposta JSON é garantida mesmo no pior caso.
+export const maxDuration = 120;
 
 const ACCEPTED_TYPES = [
   'application/pdf',
@@ -34,6 +41,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Prazo de parede da REQUEST INTEIRA — capturado antes de qualquer await
+  // (sessão/DB/upload ficam fora de qualquer orçamento interno).
+  const requestDeadlineAt = Date.now() + EXTRACTION_REQUEST_BUDGET_MS;
   try {
     const session = await getServerSession(authOptions);
     if (!session || !isAdmin(session)) {
@@ -123,15 +133,21 @@ export async function POST(
 
     // Extração v2 → apenas rascunho revisável (nunca publica). O upload
     // NÃO depende da IA estar disponível — falha de extração não falha o upload.
-    const sessionForExtract = await getServerSession(authOptions);
+    // CORREÇÃO (2026-09): reusa a sessão já obtida (o 2º getServerSession
+    // custava outra ida ao banco dentro do ciclo crítico).
     let extractionStatus: 'completed' | 'partial' | 'failed' | 'disabled' = 'failed';
     let extractionError: string | null = null;
     let extractionBlocks: { processed: number; total: number } | null = null;
     try {
-      const userIdForExtract = sessionForExtract?.user?.id
-        || (await db.user.findFirst({ where: { email: sessionForExtract?.user?.email ?? '' }, select: { id: true } }))?.id;
+      const userIdForExtract = session?.user?.id
+        || (await db.user.findFirst({ where: { email: session?.user?.email ?? '' }, select: { id: true } }))?.id;
       if (userIdForExtract) {
-        const draft = await runExtraction({ enterpriseId: id, userId: userIdForExtract, trigger: 'UPLOAD' });
+        const draft = await runExtraction({
+          enterpriseId: id,
+          userId: userIdForExtract,
+          trigger: 'UPLOAD',
+          deadlineAt: requestDeadlineAt,
+        });
         extractionStatus = draft.status === 'SUCCEEDED' ? 'completed' : draft.status === 'PARTIAL' ? 'partial' : 'failed';
         extractionBlocks = { processed: draft.blocksProcessed, total: draft.blocksTotal };
       } else {
