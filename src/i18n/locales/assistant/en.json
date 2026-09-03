@@ -149,7 +149,9 @@
       "clientsOne": "1 client needs an update.",
       "clientsMany": "{count} clients need an update.",
       "cta": "Review with Nexo",
-      "dismiss": "Not now"
+      "dismiss": "Not now",
+      "enterpriseOne": "There is 1 enterprise with an extraction to review.",
+      "enterpriseMany": "There are {count} enterprises with extractions to review."
     },
     "onboarding": {
       "postFirstAnswer": "You can keep the conversation going without repeating context. You can also use the suggestions below."
@@ -180,7 +182,56 @@
       "askNexo": "Ask Nexo about this client",
       "generatedAt": "Generated at {dateTime}",
       "collapse": "Collapse summary",
-      "expand": "Expand summary"
+      "expand": "Expand summary",
+      "stale": "There is new information since this summary.",
+      "refreshHint": "Update to include the changes.",
+      "updatedAgo": "Updated {when}",
+      "minAgo": "{count} min ago",
+      "hoursAgo": "{count} h ago",
+      "daysAgo": "{count} d ago",
+      "insufficient": "No interactions, appointments or reminders recorded yet — the summary needs history.",
+      "facts": {
+        "title": "CRM facts",
+        "stage": "Stage",
+        "owner": "Owner",
+        "lastInteraction": "Last interaction",
+        "nextAppointment": "Next appointment",
+        "pending": "Pending items",
+        "none": "None"
+      },
+      "brief": {
+        "risks": "Points of attention",
+        "pendencies": "Recorded pending items",
+        "questions": "Questions for the next contact",
+        "limitations": "Limitations of this summary"
+      },
+      "actions": {
+        "title": "Suggested next actions",
+        "openChat": "Chat with Nexo",
+        "draftReminder": "Prepare reminder draft",
+        "openSchedule": "Go to appointments",
+        "listPendencies": "List pending items",
+        "confirmHint": "Nothing is saved without your confirmation."
+      },
+      "feedback": {
+        "title": "Was this useful?",
+        "yes": "Yes, it was useful",
+        "no": "Not useful",
+        "thanks": "Thanks for the feedback."
+      },
+      "draft": {
+        "title": "Reminder draft",
+        "titleField": "Title",
+        "description": "Description (optional)",
+        "date": "Date",
+        "time": "Time",
+        "save": "Save reminder",
+        "cancel": "Cancel",
+        "saved": "Reminder created from the summary.",
+        "saveFailed": "Could not save the reminder.",
+        "hint": "Review and edit before saving — nothing is created without confirmation."
+      },
+      "justNow": "just now"
     },
     "settings": {
       "proactivityTitle": "Nexo proactive suggestions",
@@ -196,75 +247,282 @@
       "avatarOffline": "Nexo is unavailable"
     },
     "catalog": {
-      "dashboard.today_summary": { "label": "Summarize my priorities for today", "prompt": "Summarize my priorities for today based on my clients, appointments and reminders." },
-      "dashboard.followups": { "label": "Which clients need an update?", "prompt": "Which clients need an update? Consider the recorded update period." },
-      "dashboard.schedules": { "label": "See my upcoming appointments", "prompt": "What are my upcoming appointments?" },
-      "dashboard.reminders": { "label": "Which reminders are pending?", "prompt": "Which reminders are pending?" },
-      "dashboard.explain": { "label": "Explain the Dashboard indicators", "prompt": "Explain the Dashboard indicators and how to interpret them." },
-      "clients.filtered_summary": { "label": "Summarize clients in this stage", "prompt": "Summarize the clients in the stage I'm focusing on, considering the active filters." },
-      "clients.stale": { "label": "Which leads lack recent interaction?", "prompt": "Which leads lack recent interaction? Tell me since when." },
-      "clients.filters_help": { "label": "How do I use the filters on this screen?", "prompt": "How do I use the filters on the Clients screen?" },
-      "clients.funnel_help": { "label": "Explain the funnel stages", "prompt": "Explain the stages of the CRM Pro client funnel." },
-      "clients.create_help": { "label": "Where do I add a new client?", "prompt": "Where and how do I add a new client in the CRM?" },
-      "clients.by_stage": { "label": "How many clients per stage?", "prompt": "How many clients are there in each funnel stage?" },
-      "clients.next_stage_help": { "label": "Explain the next stage", "prompt": "Explain how moving to the next funnel stage works." },
-      "navigate.clients": { "label": "Open Clients", "prompt": "" },
-      "client.summary": { "label": "Summarize this client", "prompt": "Summarize this client: profile, stage and recent history." },
-      "client.last_interaction": { "label": "What was the last recorded interaction?", "prompt": "What was the last recorded interaction for this client?" },
-      "client.commitments": { "label": "Which commitments are pending?", "prompt": "Which of this client's commitments and appointments are pending?" },
-      "client.next_contact": { "label": "What should I review on the next contact?", "prompt": "What should I review on the next contact with this client? State the basis used." },
-      "client.stage_help": { "label": "Explain the current stage", "prompt": "Explain this client's current funnel stage and what usually comes next." },
-      "client.missing_fields": { "label": "Which information is still missing?", "prompt": "Which important information is still missing from this client's record?" },
-      "client.history": { "label": "See summarized history", "prompt": "Summarize this client's interaction history." },
-      "navigate.client": { "label": "Open client profile", "prompt": "" },
-      "closed.summary": { "label": "Summarize wins and losses", "prompt": "Summarize my won and lost deals in the recent period." },
-      "closed.won_count": { "label": "How many deals were won?", "prompt": "How many deals were closed as won?" },
-      "closed.recent": { "label": "Which deals closed recently?", "prompt": "Which deals were closed recently?" },
-      "closed.explain": { "label": "How do I interpret this screen?", "prompt": "How do I interpret the Closed Deals screen?" },
-      "tags.organize": { "label": "How do I organize clients with tags?", "prompt": "How do I organize my clients using tags in the CRM?" },
-      "tags.most_used": { "label": "Which tags are used the most?", "prompt": "Which tags are used the most across my clients?" },
-      "tags.filter_help": { "label": "How do I filter clients by tag?", "prompt": "How do I filter the client list by tag?" },
-      "tags.first": { "label": "How do I create my first tag?", "prompt": "How do I create my first tag in the CRM?" },
-      "reminders.overdue": { "label": "What is overdue?", "prompt": "Which reminders are overdue?" },
-      "reminders.today": { "label": "Which reminders are due today?", "prompt": "Which reminders are due today?" },
-      "reminders.upcoming": { "label": "What are the upcoming reminders?", "prompt": "What are my upcoming reminders?" },
-      "reminders.create_help": { "label": "How do I create a reminder?", "prompt": "How do I create a reminder in the CRM?" },
-      "reminders.calendar_help": { "label": "How does calendar sync work?", "prompt": "How does appointment sync with Google Calendar work?" },
-      "reminders.next_7_days": { "label": "Reminders for the next 7 days", "prompt": "Which reminders are due in the next 7 days?" },
-      "schedule.tomorrow": { "label": "See tomorrow's appointments", "prompt": "What are my appointments for tomorrow?" },
-      "navigate.reminders": { "label": "Open Reminders", "prompt": "" },
-      "navigate.schedules": { "label": "Open schedule", "prompt": "" },
-      "enterprise.region_search": { "label": "Find developments by region", "prompt": "Help me find developments by region." },
-      "enterprise.types_help": { "label": "Explain launches and resale", "prompt": "Explain the difference between launch and resale developments." },
-      "enterprise.search_help": { "label": "How do I search for a development?", "prompt": "How do I search and filter developments on this screen?" },
-      "enterprise.summary": { "label": "Summarize this development", "prompt": "Summarize this development based on the documented information." },
-      "enterprise.differentials": { "label": "What are the main differentiators?", "prompt": "What are the main differentiators of this development?" },
-      "enterprise.layouts": { "label": "Which layouts are documented?", "prompt": "Which unit layouts and floor plans are documented for this development?" },
-      "enterprise.location": { "label": "Summarize location and infrastructure", "prompt": "Summarize this development's location and infrastructure." },
-      "enterprise.missing": { "label": "Which information is unavailable?", "prompt": "Which information about this development is not available?" },
-      "navigate.enterprise": { "label": "Open development", "prompt": "" },
-      "reports.summary": { "label": "Summarize this period", "prompt": "Summarize the indicators for the selected report period." },
-      "reports.stage_distribution": { "label": "Which stage has the most clients?", "prompt": "Which funnel stage holds the most clients in the period?" },
-      "reports.won_lost": { "label": "Compare won and lost deals", "prompt": "Compare the won and lost deals in the period." },
-      "reports.attention": { "label": "Which indicators deserve attention?", "prompt": "Which indicators in this period deserve attention?" },
-      "reports.explain": { "label": "Explain this report", "prompt": "Explain how to interpret this report." },
-      "navigate.reports": { "label": "Open Reports", "prompt": "" },
-      "meta.summary": { "label": "Summarize leads for this period", "prompt": "Summarize the ad leads for this period." },
-      "meta.campaigns": { "label": "Which campaigns generated the most leads?", "prompt": "Which ad campaigns generated the most leads?" },
-      "meta.conversion": { "label": "Explain the conversion rate", "prompt": "Explain the ads conversion rate and how to interpret it." },
-      "meta.sources": { "label": "Which sources brought the most contacts?", "prompt": "Which sources brought the most ad contacts?" },
-      "meta.queues": { "label": "Explain queues and lost leads", "prompt": "Explain how distribution queues and lost leads work in the ads." },
-      "admin.overview": { "label": "Explain this admin area", "prompt": "Explain what I can do in the CRM administration area." },
-      "admin.create_user": { "label": "How do I create a user?", "prompt": "How do I create a new user in the CRM administration?" },
-      "admin.roles": { "label": "How do access roles work?", "prompt": "How do the CRM access roles work?" },
-      "admin.integrations": { "label": "How do I check user integrations?", "prompt": "How do I check each user's active integrations?" },
-      "settings.calendar": { "label": "How do I connect Google Calendar?", "prompt": "How do I connect my Google Calendar account to the CRM?" },
-      "settings.telegram": { "label": "How do I set up Telegram notifications?", "prompt": "How do I set up Telegram notifications in the CRM?" },
-      "settings.profile": { "label": "How do I change my profile?", "prompt": "How do I change my profile information in the CRM?" },
-      "settings.theme": { "label": "How do I change the theme?", "prompt": "How do I switch between light and dark theme in the CRM?" },
-      "navigate.relevant_view": { "label": "Take me to the right screen", "prompt": "Take me to the right screen for this." },
-      "help.another_question": { "label": "Ask something else", "prompt": "I have another question about the CRM." },
-      "help.home": { "label": "Back to start", "prompt": "" }
+      "dashboard.today_summary": {
+        "label": "Summarize my priorities for today",
+        "prompt": "Summarize my priorities for today based on my clients, appointments and reminders."
+      },
+      "dashboard.followups": {
+        "label": "Which clients need an update?",
+        "prompt": "Which clients need an update? Consider the recorded update period."
+      },
+      "dashboard.schedules": {
+        "label": "See my upcoming appointments",
+        "prompt": "What are my upcoming appointments?"
+      },
+      "dashboard.reminders": {
+        "label": "Which reminders are pending?",
+        "prompt": "Which reminders are pending?"
+      },
+      "dashboard.explain": {
+        "label": "Explain the Dashboard indicators",
+        "prompt": "Explain the Dashboard indicators and how to interpret them."
+      },
+      "clients.filtered_summary": {
+        "label": "Summarize clients in this stage",
+        "prompt": "Summarize the clients in the stage I'm focusing on, considering the active filters."
+      },
+      "clients.stale": {
+        "label": "Which leads lack recent interaction?",
+        "prompt": "Which leads lack recent interaction? Tell me since when."
+      },
+      "clients.filters_help": {
+        "label": "How do I use the filters on this screen?",
+        "prompt": "How do I use the filters on the Clients screen?"
+      },
+      "clients.funnel_help": {
+        "label": "Explain the funnel stages",
+        "prompt": "Explain the stages of the CRM Pro client funnel."
+      },
+      "clients.create_help": {
+        "label": "Where do I add a new client?",
+        "prompt": "Where and how do I add a new client in the CRM?"
+      },
+      "clients.by_stage": {
+        "label": "How many clients per stage?",
+        "prompt": "How many clients are there in each funnel stage?"
+      },
+      "clients.next_stage_help": {
+        "label": "Explain the next stage",
+        "prompt": "Explain how moving to the next funnel stage works."
+      },
+      "navigate.clients": {
+        "label": "Open Clients",
+        "prompt": ""
+      },
+      "client.summary": {
+        "label": "Summarize this client",
+        "prompt": "Summarize this client: profile, stage and recent history."
+      },
+      "client.last_interaction": {
+        "label": "What was the last recorded interaction?",
+        "prompt": "What was the last recorded interaction for this client?"
+      },
+      "client.commitments": {
+        "label": "Which commitments are pending?",
+        "prompt": "Which of this client's commitments and appointments are pending?"
+      },
+      "client.next_contact": {
+        "label": "What should I review on the next contact?",
+        "prompt": "What should I review on the next contact with this client? State the basis used."
+      },
+      "client.stage_help": {
+        "label": "Explain the current stage",
+        "prompt": "Explain this client's current funnel stage and what usually comes next."
+      },
+      "client.missing_fields": {
+        "label": "Which information is still missing?",
+        "prompt": "Which important information is still missing from this client's record?"
+      },
+      "client.history": {
+        "label": "See summarized history",
+        "prompt": "Summarize this client's interaction history."
+      },
+      "navigate.client": {
+        "label": "Open client profile",
+        "prompt": ""
+      },
+      "closed.summary": {
+        "label": "Summarize wins and losses",
+        "prompt": "Summarize my won and lost deals in the recent period."
+      },
+      "closed.won_count": {
+        "label": "How many deals were won?",
+        "prompt": "How many deals were closed as won?"
+      },
+      "closed.recent": {
+        "label": "Which deals closed recently?",
+        "prompt": "Which deals were closed recently?"
+      },
+      "closed.explain": {
+        "label": "How do I interpret this screen?",
+        "prompt": "How do I interpret the Closed Deals screen?"
+      },
+      "tags.organize": {
+        "label": "How do I organize clients with tags?",
+        "prompt": "How do I organize my clients using tags in the CRM?"
+      },
+      "tags.most_used": {
+        "label": "Which tags are used the most?",
+        "prompt": "Which tags are used the most across my clients?"
+      },
+      "tags.filter_help": {
+        "label": "How do I filter clients by tag?",
+        "prompt": "How do I filter the client list by tag?"
+      },
+      "tags.first": {
+        "label": "How do I create my first tag?",
+        "prompt": "How do I create my first tag in the CRM?"
+      },
+      "reminders.overdue": {
+        "label": "What is overdue?",
+        "prompt": "Which reminders are overdue?"
+      },
+      "reminders.today": {
+        "label": "Which reminders are due today?",
+        "prompt": "Which reminders are due today?"
+      },
+      "reminders.upcoming": {
+        "label": "What are the upcoming reminders?",
+        "prompt": "What are my upcoming reminders?"
+      },
+      "reminders.create_help": {
+        "label": "How do I create a reminder?",
+        "prompt": "How do I create a reminder in the CRM?"
+      },
+      "reminders.calendar_help": {
+        "label": "How does calendar sync work?",
+        "prompt": "How does appointment sync with Google Calendar work?"
+      },
+      "reminders.next_7_days": {
+        "label": "Reminders for the next 7 days",
+        "prompt": "Which reminders are due in the next 7 days?"
+      },
+      "schedule.tomorrow": {
+        "label": "See tomorrow's appointments",
+        "prompt": "What are my appointments for tomorrow?"
+      },
+      "navigate.reminders": {
+        "label": "Open Reminders",
+        "prompt": ""
+      },
+      "navigate.schedules": {
+        "label": "Open schedule",
+        "prompt": ""
+      },
+      "enterprise.region_search": {
+        "label": "Find developments by region",
+        "prompt": "Help me find developments by region."
+      },
+      "enterprise.types_help": {
+        "label": "Explain launches and resale",
+        "prompt": "Explain the difference between launch and resale developments."
+      },
+      "enterprise.search_help": {
+        "label": "How do I search for a development?",
+        "prompt": "How do I search and filter developments on this screen?"
+      },
+      "enterprise.summary": {
+        "label": "Summarize this development",
+        "prompt": "Summarize this development based on the documented information."
+      },
+      "enterprise.differentials": {
+        "label": "What are the main differentiators?",
+        "prompt": "What are the main differentiators of this development?"
+      },
+      "enterprise.layouts": {
+        "label": "Which layouts are documented?",
+        "prompt": "Which unit layouts and floor plans are documented for this development?"
+      },
+      "enterprise.location": {
+        "label": "Summarize location and infrastructure",
+        "prompt": "Summarize this development's location and infrastructure."
+      },
+      "enterprise.missing": {
+        "label": "Which information is unavailable?",
+        "prompt": "Which information about this development is not available?"
+      },
+      "navigate.enterprise": {
+        "label": "Open development",
+        "prompt": ""
+      },
+      "reports.summary": {
+        "label": "Summarize this period",
+        "prompt": "Summarize the indicators for the selected report period."
+      },
+      "reports.stage_distribution": {
+        "label": "Which stage has the most clients?",
+        "prompt": "Which funnel stage holds the most clients in the period?"
+      },
+      "reports.won_lost": {
+        "label": "Compare won and lost deals",
+        "prompt": "Compare the won and lost deals in the period."
+      },
+      "reports.attention": {
+        "label": "Which indicators deserve attention?",
+        "prompt": "Which indicators in this period deserve attention?"
+      },
+      "reports.explain": {
+        "label": "Explain this report",
+        "prompt": "Explain how to interpret this report."
+      },
+      "navigate.reports": {
+        "label": "Open Reports",
+        "prompt": ""
+      },
+      "meta.summary": {
+        "label": "Summarize leads for this period",
+        "prompt": "Summarize the ad leads for this period."
+      },
+      "meta.campaigns": {
+        "label": "Which campaigns generated the most leads?",
+        "prompt": "Which ad campaigns generated the most leads?"
+      },
+      "meta.conversion": {
+        "label": "Explain the conversion rate",
+        "prompt": "Explain the ads conversion rate and how to interpret it."
+      },
+      "meta.sources": {
+        "label": "Which sources brought the most contacts?",
+        "prompt": "Which sources brought the most ad contacts?"
+      },
+      "meta.queues": {
+        "label": "Explain queues and lost leads",
+        "prompt": "Explain how distribution queues and lost leads work in the ads."
+      },
+      "admin.overview": {
+        "label": "Explain this admin area",
+        "prompt": "Explain what I can do in the CRM administration area."
+      },
+      "admin.create_user": {
+        "label": "How do I create a user?",
+        "prompt": "How do I create a new user in the CRM administration?"
+      },
+      "admin.roles": {
+        "label": "How do access roles work?",
+        "prompt": "How do the CRM access roles work?"
+      },
+      "admin.integrations": {
+        "label": "How do I check user integrations?",
+        "prompt": "How do I check each user's active integrations?"
+      },
+      "settings.calendar": {
+        "label": "How do I connect Google Calendar?",
+        "prompt": "How do I connect my Google Calendar account to the CRM?"
+      },
+      "settings.telegram": {
+        "label": "How do I set up Telegram notifications?",
+        "prompt": "How do I set up Telegram notifications in the CRM?"
+      },
+      "settings.profile": {
+        "label": "How do I change my profile?",
+        "prompt": "How do I change my profile information in the CRM?"
+      },
+      "settings.theme": {
+        "label": "How do I change the theme?",
+        "prompt": "How do I switch between light and dark theme in the CRM?"
+      },
+      "navigate.relevant_view": {
+        "label": "Take me to the right screen",
+        "prompt": "Take me to the right screen for this."
+      },
+      "help.another_question": {
+        "label": "Ask something else",
+        "prompt": "I have another question about the CRM."
+      },
+      "help.home": {
+        "label": "Back to start",
+        "prompt": ""
+      }
     }
   }
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { db } from '@/lib/db';
+import { resolvePublicEnterpriseInfo } from '@/lib/ai/enterprise-info';
 import LandingPageClient from './landing-page-client';
 import { LandingErrorBoundary } from './landing-error-boundary';
 import { peekNextUser } from '@/lib/lead-queue';
@@ -31,6 +32,8 @@ const ENTERPRISE_SELECT = {
   id: true, name: true, slug: true, region: true, imageUrl: true,
   landingTitle: true, landingSubtitle: true, landingDescription: true,
   cachedInfo: true, mapLatitude: true, mapLongitude: true, createdAt: true,
+  publishedInfo: true, publishedAt: true, publishedVersion: true,
+  verifiedInfo: true, verifiedInfoAt: true,
   _count: { select: { clients: true } },
   images: { select: { id: true, url: true, altText: true, sortOrder: true }, orderBy: { sortOrder: 'asc' } },
   floorPlans: { select: { id: true, url: true, altText: true, sortOrder: true, name: true, area: true, bedrooms: true, suites: true, hasBalcony: true, isGarden: true, isPenthouse: true, description: true }, orderBy: { sortOrder: 'asc' } },
@@ -74,6 +77,16 @@ async function fetchEnterpriseData(slug: string, locale: string) {
     select: { ...ENTERPRISE_SELECT, cachedInfoI18n: true } as any,
   });
   if (!enterprise) return null;
+
+  // ── Fase 5 (§12): o público consome publicado → verificado → legado.
+  // Rascunhos (extractionDraft) NUNCA são públicos. O resultado é exposto
+  // na propriedade `cachedInfo` como camada de compatibilidade temporária,
+  // marcada com `infoSource` para telemetria de dependência legada.
+  const resolved = resolvePublicEnterpriseInfo(enterprise as any);
+  enterprise.cachedInfo = resolved.info as any;
+  const infoSource = resolved.source;
+  const infoReferenceDate = resolved.referenceDate;
+
   const catalog = enterprisesCatalog[slug];
   if (catalog) enterprise.cachedInfo = mergeCachedInfo(enterprise.cachedInfo, catalog);
 
@@ -88,6 +101,10 @@ async function fetchEnterpriseData(slug: string, locale: string) {
     raw.cachedInfo = { ...(raw.cachedInfo || {}), ...raw.cachedInfoI18n[locale] };
   }
   delete raw.cachedInfoI18n;
+  delete raw.publishedInfo;
+  delete raw.verifiedInfo;
+  raw.infoSource = infoSource;
+  raw.infoReferenceDate = infoReferenceDate;
 
   return JSON.parse(JSON.stringify(raw));
 }

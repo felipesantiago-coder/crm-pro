@@ -42,6 +42,7 @@ model Client {
   interactions Interaction[]
   schedules    Schedule[]
   partners     ClientPartner[]
+  briefCache   ClientBriefCache?
   linkedEnterprise Enterprise? @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
   capiConfig   MetaCapConfig?  @relation(fields: [metaCapConfigId], references: [id], onDelete: SetNull)
   creator      User          @relation("CreatedClients", fields: [createdBy], references: [id], onDelete: Cascade)
@@ -138,7 +139,23 @@ model Enterprise {
   floorPlans  EnterpriseFloorPlan[]
   formFields  LandingFormField[]
   resaleProperties ResaleProperty[]
+  extractionRuns   EnterpriseExtractionRun[]
+  infoVersions     EnterpriseInfoVersion[]
 
+  // ── Extração v2 (Fase 3) — draft nunca é público; verificado alimenta CRM;
+  // publicado alimenta landing pages. cachedInfo permanece como legado de
+  // leitura durante a migração progressiva (§19.8).
+  documentHash     String?   @map("documentHash")
+  extractionDraft  Json?     @map("extractionDraft")
+  extractionDraftAt DateTime? @map("extractionDraftAt")
+  verifiedInfo     Json?     @map("verifiedInfo")
+  verifiedInfoAt   DateTime? @map("verifiedInfoAt")
+  verifiedInfoBy   String?   @map("verifiedInfoBy")
+  publishedInfo    Json?     @map("publishedInfo")
+  publishedAt      DateTime? @map("publishedAt")
+  publishedVersion Int       @default(0) @map("publishedVersion")
+
+  @@index([documentHash])
   @@map("enterprises")
 }
 
@@ -154,6 +171,99 @@ model EnterpriseImage {
 
   @@index([enterpriseId])
   @@map("enterprise_images")
+}
+
+/// Execução de extração — metadados sem conteúdo sensível (§10.2).
+model EnterpriseExtractionRun {
+  id             String    @id @default(cuid()) @map("id")
+  enterpriseId   String    @map("enterpriseId")
+  documentHash   String?   @map("documentHash")
+  /// RUNNING | SUCCEEDED | PARTIAL | FAILED
+  status         String    @map("status")
+  /// UPLOAD | MANUAL | REPROCESS
+  trigger        String    @map("trigger")
+  startedById    String?   @map("startedById")
+  promptVersion  String    @map("promptVersion")
+  modelId        String    @map("modelId")
+  blocksTotal    Int       @default(0) @map("blocksTotal")
+  blocksProcessed Int      @default(0) @map("blocksProcessed")
+  /// código estável NexoErrorCode — nunca payload bruto (§16.2)
+  error          String?   @map("error")
+  /// execução anterior relacionada (reprocessamento)
+  previousRunId  String?   @map("previousRunId")
+  startedAt      DateTime  @default(now()) @map("startedAt")
+  completedAt    DateTime? @map("completedAt")
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@index([enterpriseId, startedAt])
+  @@index([documentHash])
+  @@map("enterprise_extraction_runs")
+}
+
+/// Versões publicadas — auditoria e restauração (§10.1/§10.6).
+model EnterpriseInfoVersion {
+  id            String   @id @default(cuid()) @map("id")
+  enterpriseId  String   @map("enterpriseId")
+  version       Int      @map("version")
+  info          Json     @map("info")
+  /// EXTRACTION_APPROVED | MANUAL_EDIT | RESTORE
+  source        String   @map("source")
+  publishedById String?  @map("publishedById")
+  publishedAt   DateTime @default(now()) @map("publishedAt")
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@unique([enterpriseId, version])
+  @@map("enterprise_info_versions")
+}
+
+/// Cache do Resumo do cliente com Nexo — invalidação por dataHash (§9.4).
+model ClientBriefCache {
+  id              String   @id @default(cuid()) @map("id")
+  clientId        String   @unique @map("clientId")
+  brief           Json     @map("brief")
+  facts           Json     @map("facts")
+  dataHash        String   @map("dataHash")
+  promptVersion   String   @map("promptVersion")
+  modelId         String   @map("modelId")
+  /// id interno do usuário que gerou (auditoria técnica)
+  generatedById   String   @map("generatedById")
+  generatedAt     DateTime @default(now()) @map("generatedAt")
+  usefulCount     Int      @default(0) @map("usefulCount")
+  notUsefulCount  Int      @default(0) @map("notUsefulCount")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([generatedAt])
+  @@map("client_brief_cache")
+}
+
+/// Telemetria de capacidades de IA — sem conteúdo, sem PII de contato (§17).
+model AiUsageEvent {
+  id            String   @id @default(cuid()) @map("id")
+  capability    String   @map("capability")
+  /// success | partial | insufficient_data | validation_error | error |
+  /// cache_hit | deduplicated | cancelled
+  outcome       String   @map("outcome")
+  userId        String?  @map("userId")
+  userRole      String?  @map("userRole")
+  scopeId       String?  @map("scopeId")
+  dataHash      String?  @map("dataHash")
+  promptVersion String?  @map("promptVersion")
+  modelId       String?  @map("modelId")
+  latencyMs     Int?     @map("latencyMs")
+  tokensIn      Int?     @map("tokensIn")
+  tokensOut     Int?     @map("tokensOut")
+  cacheHit      Boolean  @default(false) @map("cacheHit")
+  fallbackUsed  Boolean  @default(false) @map("fallbackUsed")
+  errorCode     String?  @map("errorCode")
+  note          String?  @map("note")
+  createdAt     DateTime @default(now()) @map("createdAt")
+
+  @@index([capability, createdAt])
+  @@index([userId, createdAt])
+  @@map("ai_usage_events")
 }
 
 model EnterpriseFloorPlan {

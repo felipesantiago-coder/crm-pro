@@ -39,6 +39,10 @@ function nudgeText(signal: NudgeSignal): string {
       return signal.count === 1
         ? t.proactive.clientsOne
         : formatMessage(t.proactive.clientsMany, { count: signal.count });
+    case 'enterprise_review':
+      return signal.count === 1
+        ? t.proactive.enterpriseOne
+        : formatMessage(t.proactive.enterpriseMany, { count: signal.count });
     case 'schedule_soon':
       return formatMessage(t.proactive.scheduleSoon, { time: '' });
   }
@@ -72,6 +76,7 @@ export function NexoProactiveNudge({
       {
         pendingReminders: signals.pendingReminders,
         overdueClients: signals.overdueClients,
+        enterpriseReview: signals.enterpriseReview,
       },
       state,
     );

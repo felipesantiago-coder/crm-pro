@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import enterprisesCatalog, { EnterpriseCatalogEntry } from '@/data/enterprises-catalog';
+import { resolvePublicEnterpriseInfo } from '@/lib/ai/enterprise-info';
 
 /**
  * Resolve a string from a locale-keyed JSON object.
@@ -84,6 +85,11 @@ export async function GET(
         landingDescription: true,
         cachedInfo: true,
         cachedInfoI18n: true,
+        publishedInfo: true,
+        publishedAt: true,
+        publishedVersion: true,
+        verifiedInfo: true,
+        verifiedInfoAt: true,
         mapLatitude: true,
         mapLongitude: true,
         createdAt: true,
@@ -118,6 +124,15 @@ export async function GET(
       return NextResponse.json({ error: 'Empreendimento não encontrado' }, { status: 404 });
     }
 
+    // ── Fase 5 (§12): público consome publicado → verificado → legado.
+    // Resultado exposto em `cachedInfo` (camada de compatibilidade marcada);
+    // rascunhos de extração NUNCA são públicos. Telemetria de dependência
+    // legada é emitida pelo resolver.
+    const resolved = resolvePublicEnterpriseInfo(enterprise as Record<string, unknown> & { id: string });
+    enterprise.cachedInfo = resolved.info;
+    const infoSource = resolved.source;
+    const infoReferenceDate = resolved.referenceDate;
+
     // Use catalog as fallback for any null/missing fields in DB cachedInfo.
     const catalog = enterprisesCatalog[slug];
     if (catalog) {
@@ -145,9 +160,14 @@ export async function GET(
       enterprise.cachedInfo = { ...base, ...(typeof translated === 'object' ? translated : {}) };
     }
 
-    // Remove internal i18n field from public response
-    const { cachedInfoI18n: _removed, ...publicData } = enterprise;
-    return NextResponse.json(publicData);
+    // Remove internal i18n / draft-state fields from public response
+    const {
+      cachedInfoI18n: _removed,
+      publishedInfo: _pi,
+      verifiedInfo: _vi,
+      ...publicData
+    } = enterprise as typeof enterprise & Record<string, unknown>;
+    return NextResponse.json({ ...publicData, infoSource, infoReferenceDate });
   } catch (error) {
     console.error('[Enterprise Public] Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

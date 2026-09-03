@@ -20,7 +20,7 @@ import {
   NUDGE_SESSION_KEY,
 } from './assistant.constants.ts';
 
-export type NudgeKind = 'schedule_soon' | 'reminders_pending' | 'clients_stale';
+export type NudgeKind = 'schedule_soon' | 'reminders_pending' | 'clients_stale' | 'enterprise_review';
 
 export interface NudgeSignal {
   kind: NudgeKind;
@@ -99,6 +99,7 @@ export function isModalOpen(): boolean {
 export function pickNudge(services: {
   pendingReminders?: number;
   overdueClients?: number;
+  enterpriseReview?: number;
 }, state: NudgeDisplayState): NudgeSignal | null {
   if (state.shownThisSession) return null;
 
@@ -106,6 +107,14 @@ export function pickNudge(services: {
   if (reminders > 0) {
     const kind: NudgeKind = 'reminders_pending';
     if (!wasRecentlyDismissed(state, kind)) return { kind, count: reminders };
+  }
+
+  // Revisão documental (Fase 7): só existe sinal quando um administrador
+  // carrega a vista de empreendimentos com extração pendente/conflito.
+  const review = services.enterpriseReview ?? 0;
+  if (review > 0) {
+    const kind: NudgeKind = 'enterprise_review';
+    if (!wasRecentlyDismissed(state, kind)) return { kind, count: review };
   }
 
   const stale = services.overdueClients ?? 0;

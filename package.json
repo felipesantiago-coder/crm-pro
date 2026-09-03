@@ -14,7 +14,7 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
     "postinstall": "prisma generate",
-    "test": "node --test tests/ai-assistant/*.test.ts"
+    "test": "node --test --import ./tests/ai/register.mjs tests/ai-assistant/*.test.ts tests/ai/*.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

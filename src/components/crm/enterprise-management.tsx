@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { DocumentHealthCard, ExtractionReviewDialog } from '@/components/crm/extraction-review';
 import {
   Dialog,
   DialogContent,
@@ -112,6 +113,9 @@ export function EnterpriseManagement() {
 
   // Resale PDF import dialog
   const [resalePdfDialogOpen, setResalePdfDialogOpen] = useState(false);
+
+  // Extração revisável (Fase 3) — saúde da base + revisão por empreendimento
+  const [reviewEnterprise, setReviewEnterprise] = useState<{ id: string; name: string } | null>(null);
 
   // Batch import
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
@@ -943,6 +947,17 @@ export function EnterpriseManagement() {
                   </div>
                 )}
 
+                {/* Saúde da base documental + revisão de extração (Fases 3/4) */}
+                {enterprise.type !== 'REVENDA' && (
+                  <div className="mb-2">
+                    <DocumentHealthCard
+                      enterpriseId={enterprise.id}
+                      hasDocument={Boolean(enterprise.pdfContent)}
+                      onOpenReview={() => setReviewEnterprise({ id: enterprise.id, name: enterprise.name })}
+                    />
+                  </div>
+                )}
+
                 {/* Resale PDF import - only for REVENDA */}
                 {enterprise.type === 'REVENDA' && (
                   <ResalePdfImport
@@ -1292,6 +1307,15 @@ export function EnterpriseManagement() {
         open={resalePdfDialogOpen}
         onOpenChange={setResalePdfDialogOpen}
         onImportComplete={fetchEnterprises}
+      />
+
+      {/* Revisão de extração por empreendimento (Fase 3) */}
+      <ExtractionReviewDialog
+        open={reviewEnterprise !== null}
+        enterpriseId={reviewEnterprise?.id ?? ''}
+        enterpriseName={reviewEnterprise?.name ?? ''}
+        onOpenChange={(v) => { if (!v) setReviewEnterprise(null); }}
+        onPublished={fetchEnterprises}
       />
     </div>
   );

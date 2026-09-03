@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { db } from '@/lib/db';
+import { resolvePublicEnterpriseInfo } from '@/lib/ai/enterprise-info';
 import LandingPageClient from './landing-page-client';
 
 // ── Static data for known slugs (fallback when DB lookup fails) ──
@@ -20,11 +21,17 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     const enterprise = await db.enterprise.findUnique({
       where: { slug },
       select: {
+        id: true,
         name: true,
         landingTitle: true,
         landingDescription: true,
         imageUrl: true,
         cachedInfo: true,
+        publishedInfo: true,
+        publishedAt: true,
+        publishedVersion: true,
+        verifiedInfo: true,
+        verifiedInfoAt: true,
         images: {
           select: { url: true },
           orderBy: { sortOrder: 'asc' },
@@ -34,7 +41,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     });
 
     if (enterprise) {
-      const info = enterprise.cachedInfo as Record<string, any> | null;
+      // Fase 5 (§12): metadados também consomem somente publicado/verificado.
+      const resolved = resolvePublicEnterpriseInfo(enterprise);
+      const info = resolved.info as Record<string, any> | null;
       // landingTitle/landingDescription are now JSONB { locale: string }
       const titleObj = typeof enterprise.landingTitle === 'object' && enterprise.landingTitle
         ? enterprise.landingTitle as Record<string, string> : null;

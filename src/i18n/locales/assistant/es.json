@@ -149,7 +149,9 @@
       "clientsOne": "Hay 1 cliente que necesita actualización.",
       "clientsMany": "Hay {count} clientes que necesitan actualización.",
       "cta": "Revisar con Nexo",
-      "dismiss": "Ahora no"
+      "dismiss": "Ahora no",
+      "enterpriseOne": "Hay 1 emprendimiento con extracción para revisar.",
+      "enterpriseMany": "Hay {count} emprendimientos con extracción para revisar."
     },
     "onboarding": {
       "postFirstAnswer": "Puedes continuar la conversación sin repetir el contexto. También puedes usar las sugerencias de abajo."
@@ -180,7 +182,56 @@
       "askNexo": "Preguntar a Nexo sobre este cliente",
       "generatedAt": "Generado el {dateTime}",
       "collapse": "Contraer resumen",
-      "expand": "Expandir resumen"
+      "expand": "Expandir resumen",
+      "stale": "Hay información nueva desde este resumen.",
+      "refreshHint": "Actualiza para incorporar los cambios.",
+      "updatedAgo": "Actualizado {when}",
+      "minAgo": "hace {count} min",
+      "hoursAgo": "hace {count} h",
+      "daysAgo": "hace {count} d",
+      "insufficient": "Aún no hay interacciones, citas ni recordatorios registrados — el resumen necesita historial.",
+      "facts": {
+        "title": "Hechos del CRM",
+        "stage": "Etapa",
+        "owner": "Responsable",
+        "lastInteraction": "Última interacción",
+        "nextAppointment": "Próxima cita",
+        "pending": "Pendientes",
+        "none": "Ninguno"
+      },
+      "brief": {
+        "risks": "Puntos de atención",
+        "pendencies": "Pendientes registrados",
+        "questions": "Preguntas para el próximo contacto",
+        "limitations": "Limitaciones de este resumen"
+      },
+      "actions": {
+        "title": "Próximas acciones sugeridas",
+        "openChat": "Conversar con Nexo",
+        "draftReminder": "Preparar borrador de recordatorio",
+        "openSchedule": "Ir a citas",
+        "listPendencies": "Listar pendientes",
+        "confirmHint": "Nada se guarda sin tu confirmación."
+      },
+      "feedback": {
+        "title": "¿Fue útil?",
+        "yes": "Sí, fue útil",
+        "no": "No fue útil",
+        "thanks": "Gracias por el comentario."
+      },
+      "draft": {
+        "title": "Borrador de recordatorio",
+        "titleField": "Título",
+        "description": "Descripción (opcional)",
+        "date": "Fecha",
+        "time": "Hora",
+        "save": "Guardar recordatorio",
+        "cancel": "Cancelar",
+        "saved": "Recordatorio creado a partir del resumen.",
+        "saveFailed": "No se pudo guardar el recordatorio.",
+        "hint": "Revisa y edita antes de guardar — nada se crea sin confirmación."
+      },
+      "justNow": "ahora mismo"
     },
     "settings": {
       "proactivityTitle": "Sugerencias proactivas de Nexo",
@@ -196,75 +247,282 @@
       "avatarOffline": "Nexo no está disponible"
     },
     "catalog": {
-      "dashboard.today_summary": { "label": "Resumir mis prioridades de hoy", "prompt": "Resume mis prioridades de hoy con base en mis clientes, citas y recordatorios." },
-      "dashboard.followups": { "label": "¿Qué clientes necesitan actualización?", "prompt": "¿Qué clientes necesitan actualización? Considera el período de actualización registrado." },
-      "dashboard.schedules": { "label": "Ver mis próximas citas", "prompt": "¿Cuáles son mis próximas citas?" },
-      "dashboard.reminders": { "label": "¿Qué recordatorios están pendientes?", "prompt": "¿Qué recordatorios están pendientes?" },
-      "dashboard.explain": { "label": "Explicar los indicadores del Dashboard", "prompt": "Explica los indicadores del Dashboard y cómo interpretarlos." },
-      "clients.filtered_summary": { "label": "Resumir los clientes de esta etapa", "prompt": "Resume los clientes de la etapa en la que me estoy enfocando, considerando los filtros activos." },
-      "clients.stale": { "label": "¿Qué leads están sin interacción reciente?", "prompt": "¿Qué leads están sin interacción reciente? Dime desde cuándo." },
-      "clients.filters_help": { "label": "¿Cómo usar los filtros de esta pantalla?", "prompt": "¿Cómo usar los filtros de la pantalla de Clientes?" },
-      "clients.funnel_help": { "label": "Explicar las etapas del embudo", "prompt": "Explica las etapas del embudo de clientes del CRM Pro." },
-      "clients.create_help": { "label": "¿Dónde registro un nuevo cliente?", "prompt": "¿Dónde y cómo registro un nuevo cliente en el CRM?" },
-      "clients.by_stage": { "label": "¿Cuántos clientes hay por etapa?", "prompt": "¿Cuántos clientes hay en cada etapa del embudo?" },
-      "clients.next_stage_help": { "label": "Explicar la siguiente etapa", "prompt": "Explica cómo funciona el paso a la siguiente etapa del embudo." },
-      "navigate.clients": { "label": "Abrir Clientes", "prompt": "" },
-      "client.summary": { "label": "Resumir este cliente", "prompt": "Resume este cliente: perfil, etapa e historial reciente." },
-      "client.last_interaction": { "label": "¿Cuál fue la última interacción registrada?", "prompt": "¿Cuál fue la última interacción registrada de este cliente?" },
-      "client.commitments": { "label": "¿Qué compromisos están pendientes?", "prompt": "¿Qué compromisos y citas de este cliente están pendientes?" },
-      "client.next_contact": { "label": "¿Qué debo revisar en el próximo contacto?", "prompt": "¿Qué debo revisar en el próximo contacto con este cliente? Indica la base utilizada." },
-      "client.stage_help": { "label": "Explicar la etapa actual", "prompt": "Explica la etapa actual de este cliente en el embudo y lo que suele venir después." },
-      "client.missing_fields": { "label": "¿Qué información aún falta?", "prompt": "¿Qué información importante aún falta en el registro de este cliente?" },
-      "client.history": { "label": "Ver historial resumido", "prompt": "Haz un resumen del historial de interacciones de este cliente." },
-      "navigate.client": { "label": "Abrir ficha del cliente", "prompt": "" },
-      "closed.summary": { "label": "Resumir ganancias y pérdidas", "prompt": "Resume mis negocios ganados y perdidos en el período reciente." },
-      "closed.won_count": { "label": "¿Cuántos negocios se ganaron?", "prompt": "¿Cuántos negocios se cerraron como ganados?" },
-      "closed.recent": { "label": "¿Qué negocios se cerraron recientemente?", "prompt": "¿Qué negocios se cerraron recientemente?" },
-      "closed.explain": { "label": "¿Cómo interpretar esta pantalla?", "prompt": "¿Cómo interpretar la pantalla de Negocios Finalizados?" },
-      "tags.organize": { "label": "¿Cómo organizar clientes con etiquetas?", "prompt": "¿Cómo organizo mis clientes usando etiquetas en el CRM?" },
-      "tags.most_used": { "label": "¿Qué etiquetas son más utilizadas?", "prompt": "¿Qué etiquetas se usan más en mis clientes?" },
-      "tags.filter_help": { "label": "¿Cómo filtrar clientes por etiqueta?", "prompt": "¿Cómo filtro la lista de clientes por etiqueta?" },
-      "tags.first": { "label": "¿Cómo crear mi primera etiqueta?", "prompt": "¿Cómo creo mi primera etiqueta en el CRM?" },
-      "reminders.overdue": { "label": "¿Qué está vencido?", "prompt": "¿Qué recordatorios están vencidos?" },
-      "reminders.today": { "label": "¿Qué recordatorios vencen hoy?", "prompt": "¿Qué recordatorios vencen hoy?" },
-      "reminders.upcoming": { "label": "¿Cuáles son los próximos recordatorios?", "prompt": "¿Cuáles son mis próximos recordatorios?" },
-      "reminders.create_help": { "label": "¿Cómo crear un recordatorio?", "prompt": "¿Cómo creo un recordatorio en el CRM?" },
-      "reminders.calendar_help": { "label": "¿Cómo funciona la sincronización con el calendario?", "prompt": "¿Cómo funciona la sincronización de citas con Google Calendar?" },
-      "reminders.next_7_days": { "label": "Recordatorios de los próximos 7 días", "prompt": "¿Qué recordatorios vencen en los próximos 7 días?" },
-      "schedule.tomorrow": { "label": "Ver citas de mañana", "prompt": "¿Cuáles son mis citas de mañana?" },
-      "navigate.reminders": { "label": "Abrir Recordatorios", "prompt": "" },
-      "navigate.schedules": { "label": "Abrir agenda", "prompt": "" },
-      "enterprise.region_search": { "label": "Encontrar emprendimientos por región", "prompt": "Ayúdame a encontrar emprendimientos por región." },
-      "enterprise.types_help": { "label": "Explicar lanzamientos y reventa", "prompt": "Explica la diferencia entre emprendimientos de lanzamiento y reventa." },
-      "enterprise.search_help": { "label": "¿Cómo buscar un emprendimiento?", "prompt": "¿Cómo busco y filtro emprendimientos en esta pantalla?" },
-      "enterprise.summary": { "label": "Resumir este emprendimiento", "prompt": "Resume este emprendimiento con base en la información documentada." },
-      "enterprise.differentials": { "label": "¿Cuáles son los principales diferenciales?", "prompt": "¿Cuáles son los principales diferenciales de este emprendimiento?" },
-      "enterprise.layouts": { "label": "¿Qué tipologías están documentadas?", "prompt": "¿Qué tipologías y planos están documentados para este emprendimiento?" },
-      "enterprise.location": { "label": "Resumir ubicación e infraestructura", "prompt": "Resume la ubicación y la infraestructura de este emprendimiento." },
-      "enterprise.missing": { "label": "¿Qué información no está disponible?", "prompt": "¿Qué información de este emprendimiento no está disponible?" },
-      "navigate.enterprise": { "label": "Abrir emprendimiento", "prompt": "" },
-      "reports.summary": { "label": "Resumir este período", "prompt": "Resume los indicadores del período seleccionado en los informes." },
-      "reports.stage_distribution": { "label": "¿Qué etapa concentra más clientes?", "prompt": "¿Qué etapa del embudo concentra más clientes en el período?" },
-      "reports.won_lost": { "label": "Comparar negocios ganados y perdidos", "prompt": "Compara los negocios ganados y perdidos del período." },
-      "reports.attention": { "label": "¿Qué indicadores merecen atención?", "prompt": "¿Qué indicadores de este período merecen atención?" },
-      "reports.explain": { "label": "Explicar este informe", "prompt": "Explica cómo interpretar este informe." },
-      "navigate.reports": { "label": "Abrir Informes", "prompt": "" },
-      "meta.summary": { "label": "Resumir los leads de este período", "prompt": "Resume los leads de anuncios de este período." },
-      "meta.campaigns": { "label": "¿Qué campañas generaron más leads?", "prompt": "¿Qué campañas de anuncios generaron más leads?" },
-      "meta.conversion": { "label": "Explicar la tasa de conversión", "prompt": "Explica la tasa de conversión de los anuncios y cómo interpretarla." },
-      "meta.sources": { "label": "¿Qué orígenes trajeron más contactos?", "prompt": "¿Qué orígenes trajeron más contactos de anuncios?" },
-      "meta.queues": { "label": "Explicar las filas y los leads perdidos", "prompt": "Explica cómo funcionan las filas de distribución y los leads perdidos en los anuncios." },
-      "admin.overview": { "label": "Explicar esta área administrativa", "prompt": "Explica qué puedo hacer en el área administrativa del CRM." },
-      "admin.create_user": { "label": "¿Cómo crear un usuario?", "prompt": "¿Cómo creo un nuevo usuario en la administración del CRM?" },
-      "admin.roles": { "label": "¿Cómo funcionan los perfiles de acceso?", "prompt": "¿Cómo funcionan los perfiles de acceso (roles) del CRM?" },
-      "admin.integrations": { "label": "¿Cómo verificar las integraciones de los usuarios?", "prompt": "¿Cómo verifico las integraciones activas de cada usuario?" },
-      "settings.calendar": { "label": "¿Cómo conectar Google Calendar?", "prompt": "¿Cómo conecto mi cuenta de Google Calendar al CRM?" },
-      "settings.telegram": { "label": "¿Cómo configurar notificaciones de Telegram?", "prompt": "¿Cómo configuro las notificaciones de Telegram en el CRM?" },
-      "settings.profile": { "label": "¿Cómo cambiar mi perfil?", "prompt": "¿Cómo cambio mis datos de perfil en el CRM?" },
-      "settings.theme": { "label": "¿Cómo cambiar el tema?", "prompt": "¿Cómo alterno entre tema claro y oscuro en el CRM?" },
-      "navigate.relevant_view": { "label": "Llévame a la pantalla correcta", "prompt": "Llévame a la pantalla correcta para esto." },
-      "help.another_question": { "label": "Ver otra duda", "prompt": "Tengo otra duda sobre el CRM." },
-      "help.home": { "label": "Volver al inicio", "prompt": "" }
+      "dashboard.today_summary": {
+        "label": "Resumir mis prioridades de hoy",
+        "prompt": "Resume mis prioridades de hoy con base en mis clientes, citas y recordatorios."
+      },
+      "dashboard.followups": {
+        "label": "¿Qué clientes necesitan actualización?",
+        "prompt": "¿Qué clientes necesitan actualización? Considera el período de actualización registrado."
+      },
+      "dashboard.schedules": {
+        "label": "Ver mis próximas citas",
+        "prompt": "¿Cuáles son mis próximas citas?"
+      },
+      "dashboard.reminders": {
+        "label": "¿Qué recordatorios están pendientes?",
+        "prompt": "¿Qué recordatorios están pendientes?"
+      },
+      "dashboard.explain": {
+        "label": "Explicar los indicadores del Dashboard",
+        "prompt": "Explica los indicadores del Dashboard y cómo interpretarlos."
+      },
+      "clients.filtered_summary": {
+        "label": "Resumir los clientes de esta etapa",
+        "prompt": "Resume los clientes de la etapa en la que me estoy enfocando, considerando los filtros activos."
+      },
+      "clients.stale": {
+        "label": "¿Qué leads están sin interacción reciente?",
+        "prompt": "¿Qué leads están sin interacción reciente? Dime desde cuándo."
+      },
+      "clients.filters_help": {
+        "label": "¿Cómo usar los filtros de esta pantalla?",
+        "prompt": "¿Cómo usar los filtros de la pantalla de Clientes?"
+      },
+      "clients.funnel_help": {
+        "label": "Explicar las etapas del embudo",
+        "prompt": "Explica las etapas del embudo de clientes del CRM Pro."
+      },
+      "clients.create_help": {
+        "label": "¿Dónde registro un nuevo cliente?",
+        "prompt": "¿Dónde y cómo registro un nuevo cliente en el CRM?"
+      },
+      "clients.by_stage": {
+        "label": "¿Cuántos clientes hay por etapa?",
+        "prompt": "¿Cuántos clientes hay en cada etapa del embudo?"
+      },
+      "clients.next_stage_help": {
+        "label": "Explicar la siguiente etapa",
+        "prompt": "Explica cómo funciona el paso a la siguiente etapa del embudo."
+      },
+      "navigate.clients": {
+        "label": "Abrir Clientes",
+        "prompt": ""
+      },
+      "client.summary": {
+        "label": "Resumir este cliente",
+        "prompt": "Resume este cliente: perfil, etapa e historial reciente."
+      },
+      "client.last_interaction": {
+        "label": "¿Cuál fue la última interacción registrada?",
+        "prompt": "¿Cuál fue la última interacción registrada de este cliente?"
+      },
+      "client.commitments": {
+        "label": "¿Qué compromisos están pendientes?",
+        "prompt": "¿Qué compromisos y citas de este cliente están pendientes?"
+      },
+      "client.next_contact": {
+        "label": "¿Qué debo revisar en el próximo contacto?",
+        "prompt": "¿Qué debo revisar en el próximo contacto con este cliente? Indica la base utilizada."
+      },
+      "client.stage_help": {
+        "label": "Explicar la etapa actual",
+        "prompt": "Explica la etapa actual de este cliente en el embudo y lo que suele venir después."
+      },
+      "client.missing_fields": {
+        "label": "¿Qué información aún falta?",
+        "prompt": "¿Qué información importante aún falta en el registro de este cliente?"
+      },
+      "client.history": {
+        "label": "Ver historial resumido",
+        "prompt": "Haz un resumen del historial de interacciones de este cliente."
+      },
+      "navigate.client": {
+        "label": "Abrir ficha del cliente",
+        "prompt": ""
+      },
+      "closed.summary": {
+        "label": "Resumir ganancias y pérdidas",
+        "prompt": "Resume mis negocios ganados y perdidos en el período reciente."
+      },
+      "closed.won_count": {
+        "label": "¿Cuántos negocios se ganaron?",
+        "prompt": "¿Cuántos negocios se cerraron como ganados?"
+      },
+      "closed.recent": {
+        "label": "¿Qué negocios se cerraron recientemente?",
+        "prompt": "¿Qué negocios se cerraron recientemente?"
+      },
+      "closed.explain": {
+        "label": "¿Cómo interpretar esta pantalla?",
+        "prompt": "¿Cómo interpretar la pantalla de Negocios Finalizados?"
+      },
+      "tags.organize": {
+        "label": "¿Cómo organizar clientes con etiquetas?",
+        "prompt": "¿Cómo organizo mis clientes usando etiquetas en el CRM?"
+      },
+      "tags.most_used": {
+        "label": "¿Qué etiquetas son más utilizadas?",
+        "prompt": "¿Qué etiquetas se usan más en mis clientes?"
+      },
+      "tags.filter_help": {
+        "label": "¿Cómo filtrar clientes por etiqueta?",
+        "prompt": "¿Cómo filtro la lista de clientes por etiqueta?"
+      },
+      "tags.first": {
+        "label": "¿Cómo crear mi primera etiqueta?",
+        "prompt": "¿Cómo creo mi primera etiqueta en el CRM?"
+      },
+      "reminders.overdue": {
+        "label": "¿Qué está vencido?",
+        "prompt": "¿Qué recordatorios están vencidos?"
+      },
+      "reminders.today": {
+        "label": "¿Qué recordatorios vencen hoy?",
+        "prompt": "¿Qué recordatorios vencen hoy?"
+      },
+      "reminders.upcoming": {
+        "label": "¿Cuáles son los próximos recordatorios?",
+        "prompt": "¿Cuáles son mis próximos recordatorios?"
+      },
+      "reminders.create_help": {
+        "label": "¿Cómo crear un recordatorio?",
+        "prompt": "¿Cómo creo un recordatorio en el CRM?"
+      },
+      "reminders.calendar_help": {
+        "label": "¿Cómo funciona la sincronización con el calendario?",
+        "prompt": "¿Cómo funciona la sincronización de citas con Google Calendar?"
+      },
+      "reminders.next_7_days": {
+        "label": "Recordatorios de los próximos 7 días",
+        "prompt": "¿Qué recordatorios vencen en los próximos 7 días?"
+      },
+      "schedule.tomorrow": {
+        "label": "Ver citas de mañana",
+        "prompt": "¿Cuáles son mis citas de mañana?"
+      },
+      "navigate.reminders": {
+        "label": "Abrir Recordatorios",
+        "prompt": ""
+      },
+      "navigate.schedules": {
+        "label": "Abrir agenda",
+        "prompt": ""
+      },
+      "enterprise.region_search": {
+        "label": "Encontrar emprendimientos por región",
+        "prompt": "Ayúdame a encontrar emprendimientos por región."
+      },
+      "enterprise.types_help": {
+        "label": "Explicar lanzamientos y reventa",
+        "prompt": "Explica la diferencia entre emprendimientos de lanzamiento y reventa."
+      },
+      "enterprise.search_help": {
+        "label": "¿Cómo buscar un emprendimiento?",
+        "prompt": "¿Cómo busco y filtro emprendimientos en esta pantalla?"
+      },
+      "enterprise.summary": {
+        "label": "Resumir este emprendimiento",
+        "prompt": "Resume este emprendimiento con base en la información documentada."
+      },
+      "enterprise.differentials": {
+        "label": "¿Cuáles son los principales diferenciales?",
+        "prompt": "¿Cuáles son los principales diferenciales de este emprendimiento?"
+      },
+      "enterprise.layouts": {
+        "label": "¿Qué tipologías están documentadas?",
+        "prompt": "¿Qué tipologías y planos están documentados para este emprendimiento?"
+      },
+      "enterprise.location": {
+        "label": "Resumir ubicación e infraestructura",
+        "prompt": "Resume la ubicación y la infraestructura de este emprendimiento."
+      },
+      "enterprise.missing": {
+        "label": "¿Qué información no está disponible?",
+        "prompt": "¿Qué información de este emprendimiento no está disponible?"
+      },
+      "navigate.enterprise": {
+        "label": "Abrir emprendimiento",
+        "prompt": ""
+      },
+      "reports.summary": {
+        "label": "Resumir este período",
+        "prompt": "Resume los indicadores del período seleccionado en los informes."
+      },
+      "reports.stage_distribution": {
+        "label": "¿Qué etapa concentra más clientes?",
+        "prompt": "¿Qué etapa del embudo concentra más clientes en el período?"
+      },
+      "reports.won_lost": {
+        "label": "Comparar negocios ganados y perdidos",
+        "prompt": "Compara los negocios ganados y perdidos del período."
+      },
+      "reports.attention": {
+        "label": "¿Qué indicadores merecen atención?",
+        "prompt": "¿Qué indicadores de este período merecen atención?"
+      },
+      "reports.explain": {
+        "label": "Explicar este informe",
+        "prompt": "Explica cómo interpretar este informe."
+      },
+      "navigate.reports": {
+        "label": "Abrir Informes",
+        "prompt": ""
+      },
+      "meta.summary": {
+        "label": "Resumir los leads de este período",
+        "prompt": "Resume los leads de anuncios de este período."
+      },
+      "meta.campaigns": {
+        "label": "¿Qué campañas generaron más leads?",
+        "prompt": "¿Qué campañas de anuncios generaron más leads?"
+      },
+      "meta.conversion": {
+        "label": "Explicar la tasa de conversión",
+        "prompt": "Explica la tasa de conversión de los anuncios y cómo interpretarla."
+      },
+      "meta.sources": {
+        "label": "¿Qué orígenes trajeron más contactos?",
+        "prompt": "¿Qué orígenes trajeron más contactos de anuncios?"
+      },
+      "meta.queues": {
+        "label": "Explicar las filas y los leads perdidos",
+        "prompt": "Explica cómo funcionan las filas de distribución y los leads perdidos en los anuncios."
+      },
+      "admin.overview": {
+        "label": "Explicar esta área administrativa",
+        "prompt": "Explica qué puedo hacer en el área administrativa del CRM."
+      },
+      "admin.create_user": {
+        "label": "¿Cómo crear un usuario?",
+        "prompt": "¿Cómo creo un nuevo usuario en la administración del CRM?"
+      },
+      "admin.roles": {
+        "label": "¿Cómo funcionan los perfiles de acceso?",
+        "prompt": "¿Cómo funcionan los perfiles de acceso (roles) del CRM?"
+      },
+      "admin.integrations": {
+        "label": "¿Cómo verificar las integraciones de los usuarios?",
+        "prompt": "¿Cómo verifico las integraciones activas de cada usuario?"
+      },
+      "settings.calendar": {
+        "label": "¿Cómo conectar Google Calendar?",
+        "prompt": "¿Cómo conecto mi cuenta de Google Calendar al CRM?"
+      },
+      "settings.telegram": {
+        "label": "¿Cómo configurar notificaciones de Telegram?",
+        "prompt": "¿Cómo configuro las notificaciones de Telegram en el CRM?"
+      },
+      "settings.profile": {
+        "label": "¿Cómo cambiar mi perfil?",
+        "prompt": "¿Cómo cambio mis datos de perfil en el CRM?"
+      },
+      "settings.theme": {
+        "label": "¿Cómo cambiar el tema?",
+        "prompt": "¿Cómo alterno entre tema claro y oscuro en el CRM?"
+      },
+      "navigate.relevant_view": {
+        "label": "Llévame a la pantalla correcta",
+        "prompt": "Llévame a la pantalla correcta para esto."
+      },
+      "help.another_question": {
+        "label": "Ver otra duda",
+        "prompt": "Tengo otra duda sobre el CRM."
+      },
+      "help.home": {
+        "label": "Volver al inicio",
+        "prompt": ""
+      }
     }
   }
 }

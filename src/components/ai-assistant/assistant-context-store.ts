@@ -40,7 +40,7 @@ interface AssistantContextState {
    * Sinais proativos globais não sensíveis (§13) — contagens publicadas pelas
    * views (Dashboard/Lembretes). Sobrevivem à troca de tela; nunca contêm PII.
    */
-  proactiveSignals: { pendingReminders?: number; overdueClients?: number; scheduleSoonMinutes?: number };
+  proactiveSignals: { pendingReminders?: number; overdueClients?: number; scheduleSoonMinutes?: number; enterpriseReview?: number };
   /**
    * Contador de pedido de abertura externa (ex.: "Perguntar ao Nexo sobre este
    * cliente" no resumo). O widget observa e abre o painel — sempre por clique.
@@ -110,11 +110,15 @@ export const useAssistantContextStore = create<AssistantContextState>((set, get)
 
   setProactiveSignals: (signals) =>
     set((state) => {
+      // Merge parcial: cada view publica só os sinais que conhece (§13) sem
+      // apagar os demais publicados por outras telas.
+      const merged = { ...state.proactiveSignals, ...signals };
       const changed =
-        state.proactiveSignals.pendingReminders !== signals.pendingReminders ||
-        state.proactiveSignals.overdueClients !== signals.overdueClients ||
-        state.proactiveSignals.scheduleSoonMinutes !== signals.scheduleSoonMinutes;
-      return changed ? { proactiveSignals: signals } : state;
+        state.proactiveSignals.pendingReminders !== merged.pendingReminders ||
+        state.proactiveSignals.overdueClients !== merged.overdueClients ||
+        state.proactiveSignals.scheduleSoonMinutes !== merged.scheduleSoonMinutes ||
+        state.proactiveSignals.enterpriseReview !== merged.enterpriseReview;
+      return changed ? { proactiveSignals: merged } : state;
     }),
 
   // Abertura externa: apenas incrementa o pedido — o clique veio do usuário.

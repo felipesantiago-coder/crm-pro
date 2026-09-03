@@ -3,9 +3,9 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { isAdmin } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { Prisma } from '@prisma/client';
-import { extractAndCache } from '../../extract-info/route';
+import { runExtraction, computeDocumentHash } from '@/lib/ai/extraction';
 import { extractTextFromPdf } from '@/lib/extract-pdf-text';
+import { logAiUsage } from '@/lib/ai/telemetry';
 
 // POST /api/enterprises/[id]/pdf — Upload de base de dados (PDF, Markdown ou TXT)
 const ACCEPTED_TYPES = [
@@ -102,21 +102,43 @@ export async function POST(
       }
     }
 
+    // ── Fase 3 (P0 da auditoria): o upload NÃO apaga dados existentes.
+    // cachedInfo (legado), verifiedInfo e publishedInfo permanecem intactos —
+    // a substituição do documento apenas gera um NOVO rascunho de extração
+    // para revisão humana. Publicação continua exigindo decisão do admin.
+    const documentHash = await computeDocumentHash(extractedText);
     await db.enterprise.update({
       where: { id },
-      data: { pdfContent: extractedText, cachedInfo: Prisma.DbNull },
+      data: { pdfContent: extractedText, documentHash },
     });
 
-    // Await extraction — fire-and-forget is unreliable in serverless (Vercel)
-    // because the function may be killed after the response is sent.
-    let extractionOk = false;
+    // Extração v2 → apenas rascunho revisável (nunca publica). O upload
+    // NÃO depende da IA estar disponível — falha de extração não falha o upload.
+    const sessionForExtract = await getServerSession(authOptions);
+    let extractionStatus: 'completed' | 'partial' | 'failed' | 'disabled' = 'failed';
     let extractionError: string | null = null;
+    let extractionBlocks: { processed: number; total: number } | null = null;
     try {
-      await extractAndCache(id);
-      extractionOk = true;
+      const userIdForExtract = sessionForExtract?.user?.id
+        || (await db.user.findFirst({ where: { email: sessionForExtract?.user?.email ?? '' }, select: { id: true } }))?.id;
+      if (userIdForExtract) {
+        const draft = await runExtraction({ enterpriseId: id, userId: userIdForExtract, trigger: 'UPLOAD' });
+        extractionStatus = draft.status === 'SUCCEEDED' ? 'completed' : draft.status === 'PARTIAL' ? 'partial' : 'failed';
+        extractionBlocks = { processed: draft.blocksProcessed, total: draft.blocksTotal };
+      } else {
+        extractionError = 'usuário não identificado para registrar a execução';
+      }
     } catch (err) {
-      extractionError = err instanceof Error ? err.message : 'Erro desconhecido';
-      console.warn(`[ENTERPRISE KB] Auto-extract falhou para "${enterprise.name}":`, extractionError);
+      const code = (err as { code?: string })?.code ?? 'unknown';
+      extractionError = code === 'capability_disabled' ? 'Extração revisável desativada por flag.' : 'Extração falhou — o rascunho anterior e os dados publicados foram preservados.';
+      console.warn(`[ENTERPRISE KB] Extração v2 não executada para "${enterprise.name}":`, code);
+      if (code !== 'capability_disabled') {
+        logAiUsage({
+          capability: 'enterprise_extraction', outcome: 'error',
+          scopeId: id, dataHash: documentHash, errorCode: code,
+          note: 'pós-upload',
+        });
+      }
     }
 
     return NextResponse.json({
@@ -125,8 +147,11 @@ export async function POST(
       fileType: ext === '.pdf' ? 'PDF' : ext === '.md' || ext === '.markdown' ? 'Markdown' : 'Texto',
       extractedChars: extractedText.length,
       extractedPreview: extractedText.slice(0, 200) + (extractedText.length > 200 ? '...' : ''),
-      extractionStatus: extractionOk ? 'completed' : 'failed',
-      extractionError: extractionError,
+      extractionStatus,
+      extractionBlocks,
+      extractionError,
+      // Dados preservados — comunicar na resposta para a UI exibir
+      preservedData: true,
     });
   } catch (error) {
     console.error('[ENTERPRISE KB] Erro no upload:', error);
@@ -160,14 +185,24 @@ export async function DELETE(
       return NextResponse.json({ error: 'Nenhuma base de dados vinculada a este empreendimento' }, { status: 404 });
     }
 
+    // ── Remoção da base documental (§11.2): remove APENAS a fonte.
+    // Dados verificados/publicados e o legado cachedInfo permanecem —
+    // nunca há perda silenciosa de conteúdo publicado.
     await db.enterprise.update({
       where: { id },
-      data: { pdfContent: null, cachedInfo: Prisma.DbNull },
+      data: { pdfContent: null, documentHash: null },
     });
 
+    logAiUsage({
+      capability: 'enterprise_extraction', outcome: 'success',
+      scopeId: id, note: 'base documental removida — dados verificados/publicados preservados',
+    });
 
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      preservedData: true,
+      message: 'Base removida. Dados verificados e publicados foram preservados; o Nexo deixa de consultar este documento.',
+    });
   } catch (error) {
     console.error('[ENTERPRISE KB] Erro ao remover base de dados:', error);
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
