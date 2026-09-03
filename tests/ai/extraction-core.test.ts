@@ -12,6 +12,8 @@ import {
   sanitizeEnterpriseInfo,
   emptyEnterpriseInfo,
   computeDocumentHash,
+  criticalsPendingDecision,
+  valuesDiffer,
   type DocumentBlock,
 } from '../../src/lib/ai/extraction-core.ts';
 import type { BlockExtraction } from '../../src/lib/ai/contracts.ts';
@@ -269,4 +271,80 @@ test('computeDocumentHash: estável e sensível ao conteúdo', async () => {
   const c = await computeDocumentHash('documento Y');
   assert.equal(a, b);
   assert.notEqual(a, c);
+});
+
+// ── Críticos aguardando decisão (§10.6) ─────────────────────────────────────
+
+function candidate(field: string, value: unknown, status: 'found' | 'missing' | 'conflicting' | 'needs_review') {
+  return { field, value, status, method: 'ai' as const, confidence: null, evidence: [], note: null };
+}
+
+test('criticalsPendingDecision: crítico found divergente sem decisão → pendente (bug do status "A definir")', () => {
+  const pending = criticalsPendingDecision({
+    candidates: [candidate('status', 'Em Construção', 'found')],
+    decisions: [{ field: 'builder', action: 'accept' }], // só baixo risco decidido
+    current: emptyEnterpriseInfo(), // status atual null
+  });
+  assert.deepEqual(pending, ['status']);
+});
+
+test('criticalsPendingDecision: crítico found idêntico ao atual → NÃO pendente', () => {
+  const current = emptyEnterpriseInfo();
+  current.status = 'Em Construção';
+  const pending = criticalsPendingDecision({
+    candidates: [candidate('status', 'Em Construção', 'found')],
+    decisions: [],
+    current,
+  });
+  assert.deepEqual(pending, []);
+});
+
+test('criticalsPendingDecision: decisão explícita (accept/edit/reject) resolve o pendência', () => {
+  for (const action of ['accept', 'edit', 'reject'] as const) {
+    const pending = criticalsPendingDecision({
+      candidates: [candidate('status', 'Em Construção', 'found'), candidate('price', 'R$ 1.000.000', 'conflicting')],
+      decisions: [{ field: 'status', action }, { field: 'price', action }],
+      current: null,
+    });
+    assert.deepEqual(pending, [], `ação ${action} deveria resolver ambos`);
+  }
+});
+
+test('criticalsPendingDecision: conflicting/needs_review/missing sempre pendentes sem decisão', () => {
+  const pending = criticalsPendingDecision({
+    candidates: [
+      candidate('price', 'R$ 350.000', 'conflicting'),
+      candidate('deliveryDate', 'Dezembro/2027', 'needs_review'),
+      candidate('apartmentTypes', [], 'missing'),
+    ],
+    decisions: [],
+    current: null,
+  });
+  assert.deepEqual(new Set(pending), new Set(['price', 'deliveryDate', 'apartmentTypes']));
+});
+
+test('criticalsPendingDecision: não críticos são ignorados; comparador é estável (trim/espaços/ordem de chaves)', () => {
+  assert.deepEqual(criticalsPendingDecision({
+    candidates: [candidate('builder', 'Construtora Nova', 'found'), candidate('summary', 'Resumo', 'found')],
+    decisions: [],
+    current: null,
+  }), []);
+  assert.deepEqual(criticalsPendingDecision({
+    candidates: [candidate('status', '  Em  Construção  ', 'found')],
+    decisions: [],
+    current: (() => { const c = emptyEnterpriseInfo(); c.status = 'Em Construção'; return c; })(),
+  }), []);
+  assert.deepEqual(criticalsPendingDecision({
+    candidates: [candidate('apartmentTypes', [{ name: 'Tipo A', area: '65m²', price: null }], 'found')],
+    decisions: [],
+    current: (() => { const c = emptyEnterpriseInfo(); c.apartmentTypes = [{ name: 'Tipo A', area: '65m²', price: null }]; return c; })(),
+  }), []);
+});
+
+test('valuesDiffer: null vs valor, strings normalizadas, arrays de objetos por conteúdo', () => {
+  assert.equal(valuesDiffer(null, 'Em Construção'), true);
+  assert.equal(valuesDiffer('Em Construção ', 'Em Construção'), false);
+  assert.equal(valuesDiffer([{ name: 'A' }], [{ name: 'A' }]), false);
+  assert.equal(valuesDiffer([{ name: 'A', price: null }], [{ price: null, name: 'A' }]), false);
+  assert.equal(valuesDiffer([{ name: 'A' }], [{ name: 'B' }]), true);
 });

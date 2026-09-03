@@ -51,6 +51,9 @@ interface ExtractedInfo {
   builder: string | null;
   architecture: string | null;
   landscaping: string | null;
+  status: string | null;
+  deliveryDate: string | null;
+  price: string | null;
   differentials: string[];
   apartmentTypes: Array<{
     name: string;
@@ -620,15 +623,24 @@ function EnterpriseDetail({ enterprise: e, isAdmin, onBack, onOpenGallery, onOpe
           {/* Status & Delivery Card — always visible */}
           {(() => {
             const allText = [info!.summary, ...(info!.differentials || [])].filter(Boolean).join(' ');
-            let status: string | null = null;
+            // CORREÇÃO (2026-09): preferir o campo estruturado da extração
+            // (igual à landing pública). Antes o status era inferido SOMENTE por
+            // regex sobre resumo/diferenciais — mesmo com info.status publicado
+            // (ex.: "Em Construção"), o cartão mostrava "A definir" quando o
+            // resumo não citava a palavra "construção".
+            let status: string | null = info!.status || null;
             let statusColor = 'bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-400';
             let statusIcon = <Clock className="h-3 w-3 mr-1" />;
-            if (/entregue|pronto para morar|habite-se/i.test(allText)) { status = 'Entregue'; statusColor = 'bg-success/10 text-success dark:bg-success/20 dark:text-success'; statusIcon = <CheckCircle2 className="h-3 w-3 mr-1" />; }
-            else if (/em construção|construção/i.test(allText)) { status = 'Em Construção'; statusColor = 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'; statusIcon = <HardHat className="h-3 w-3 mr-1" />; }
-            else if (/lançamento|pré-lançamento/i.test(allText)) { status = 'Lançamento'; statusColor = 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'; }
+            if (!status && /entregue|pronto para morar|habite-se/i.test(allText)) { status = 'Entregue'; statusColor = 'bg-success/10 text-success dark:bg-success/20 dark:text-success'; statusIcon = <CheckCircle2 className="h-3 w-3 mr-1" />; }
+            else if (!status && /em construção|construção/i.test(allText)) { status = 'Em Construção'; statusColor = 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'; statusIcon = <HardHat className="h-3 w-3 mr-1" />; }
+            else if (!status && /lançamento|pré-lançamento/i.test(allText)) { status = 'Lançamento'; statusColor = 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'; }
+            else if (status === 'Entregue') { statusColor = 'bg-success/10 text-success dark:bg-success/20 dark:text-success'; statusIcon = <CheckCircle2 className="h-3 w-3 mr-1" />; }
+            else if (status === 'Em Construção') { statusColor = 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'; statusIcon = <HardHat className="h-3 w-3 mr-1" />; }
+            else if (status === 'Lançamento') { statusColor = 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'; }
             const priceMatch = info!.summary?.match(/a partir de\s*R\$\s*[\d.]+/i) || info!.apartmentTypes?.[0]?.description?.match(/a partir de\s*R\$\s*[\d.]+/i);
+            // Delivery: prefere o campo estruturado; regex e heurística como fallback
             const deliveryMatch = allText.match(/entrega.*?(\d{1,2}\/[\d]{4}|outubro \d{4}|dezembro \d{4}|30\/10\/\d{4})/i);
-            const deliveryText = deliveryMatch ? deliveryMatch[1] : (status === 'Entregue' ? 'Já entregue' : null);
+            const deliveryText = info!.deliveryDate || (deliveryMatch ? deliveryMatch[1] : null) || (status === 'Entregue' ? 'Já entregue' : null);
             return (
               <Card className="min-w-0 border-l-4 border-l-[#C9A96E]">
                 <CardContent className="p-3 sm:p-4 space-y-3">

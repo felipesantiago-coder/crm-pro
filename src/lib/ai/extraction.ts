@@ -45,6 +45,8 @@ export {
   emptyEnterpriseInfo,
   computeDocumentHash,
   buildConflictNote,
+  criticalsPendingDecision,
+  valuesDiffer,
 } from './extraction-core';
 export type {
   DocumentBlock,

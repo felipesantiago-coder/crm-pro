@@ -28,6 +28,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NexoAvatar } from '@/components/ai-assistant/nexo-avatar';
 import { useAssistantContextStore } from '@/components/ai-assistant/assistant-context-store';
+import { criticalsPendingDecision } from '@/lib/ai/extraction-core';
+import type { EnterpriseInfo } from '@/lib/ai/contracts';
 import { cn } from '@/lib/utils';
 
 // Registro dos cartões montados — agrega o sinal proativo determinístico
@@ -386,9 +388,19 @@ export function ExtractionReviewDialog({
   const fields = draft?.fields ?? [];
 
   const decidedCount = Object.keys(decisions).length;
-  const unresolvedCritical = fields.filter(
-    (f) => CRITICAL_FIELDS.has(f.field) && (f.status === 'conflicting' || f.status === 'needs_review' || f.status === 'missing') && !decisions[f.field],
-  );
+  // CORREÇÃO (2026-09): críticos `found` cujo valor diverge do atual também
+  // aguardam decisão — antes passavam despercebidos (só conflicting/needs_review/
+  // missing avisavam) e a publicação concluía sem aplicar o campo (ex.: status
+  // extraído como "Em Construção" mas publicado como null → "A definir").
+  const unresolvedCritical = useMemo(() => {
+    if (!draft) return [] as string[];
+    const currentInfo = (status?.verified?.info ?? status?.published?.info ?? null) as EnterpriseInfo | null;
+    return criticalsPendingDecision({
+      candidates: draft.fields,
+      decisions: Object.entries(decisions).map(([field, d]) => ({ field, action: d.action, value: d.value })),
+      current: currentInfo,
+    });
+  }, [draft, decisions, status]);
 
   function setDecision(field: string, d: Decision | null) {
     setDecisions((prev) => {
@@ -693,7 +705,7 @@ export function ExtractionReviewDialog({
                   {unresolvedCritical.length > 0 && (
                     <span className="ml-1 inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
                       <AlertTriangle className="h-3 w-3" aria-hidden />
-                      {unresolvedCritical.length} crítico(s) sem decisão
+                      {unresolvedCritical.length} crítico(s) aguardando decisão ({unresolvedCritical.map((f) => FIELD_LABELS[f] ?? f).join(', ')})
                     </span>
                   )}
                 </>
@@ -763,7 +775,7 @@ export function ExtractionReviewDialog({
           </AlertDialogFooter>
           {unresolvedCritical.length > 0 && (
             <p className="text-xs text-amber-700 dark:text-amber-400">
-              A publicação está bloqueada enquanto houver campos críticos em conflito sem decisão: {unresolvedCritical.map((f) => FIELD_LABELS[f.field] ?? f.field).join(', ')}.
+              A publicação está bloqueada enquanto houver campos críticos aguardando decisão (aceite, edite ou rejeite cada um): {unresolvedCritical.map((f) => FIELD_LABELS[f] ?? f).join(', ')}.
             </p>
           )}
         </AlertDialogContent>

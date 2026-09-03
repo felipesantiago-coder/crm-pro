@@ -404,6 +404,73 @@ function readField(info: EnterpriseInfo, field: string): unknown {
   return map[field];
 }
 
+// ── Críticos aguardando decisão (§10.6, defesa UI + servidor) ───────────────
+
+/** JSON canônico (chaves ordenadas, strings normalizadas) para comparação estável. */
+function canonicalJson(v: unknown): string {
+  if (v === null || v === undefined) return 'null';
+  if (Array.isArray(v)) return `[${v.map(canonicalJson).join(',')}]`;
+  if (typeof v === 'object') {
+    const entries = Object.entries(v as Record<string, unknown>)
+      .filter(([, val]) => val !== undefined)
+      .map(([k, val]) => [k, canonicalJson(val)] as const)
+      .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
+    return `{${entries.map(([k, j]) => `${JSON.stringify(k)}:${j}`).join(',')}}`;
+  }
+  if (typeof v === 'string') return JSON.stringify(v.trim().replace(/\s+/g, ' '));
+  return JSON.stringify(v);
+}
+
+/** Divergência estável entre valor extraído e valor atual (arrays/objetos inclusive). */
+export function valuesDiffer(a: unknown, b: unknown): boolean {
+  return canonicalJson(a) !== canonicalJson(b);
+}
+
+function readCriticalField(info: EnterpriseInfo | null, field: string): unknown {
+  if (!info) return null;
+  const map: Record<string, unknown> = {
+    status: info.status, deliveryDate: info.deliveryDate, price: info.price,
+    apartmentTypes: info.apartmentTypes,
+  };
+  return map[field] ?? null;
+}
+
+export interface CriticalsPendingDecisionParams {
+  candidates: ExtractionCandidate[];
+  decisions: Array<{ field: string; action: 'accept' | 'edit' | 'reject'; value?: unknown }>;
+  /** Valor verificado anterior (ou legado) — base de comparação. */
+  current: EnterpriseInfo | null;
+}
+
+/**
+ * Campos críticos que EXIGEM decisão explícita antes de publicar (§10.6):
+ *  - conflicting / needs_review / missing — sempre (nada é publicado em silêncio);
+ *  - found — apenas quando o valor extraído DIVERGE do valor atual
+ *    (mudança crítica real pendente; valor idêntico não exige decisão).
+ *
+ * CORREÇÃO (2026-09): antes, um crítico `found` sem decisão passava
+ * despercebido no diálogo (só conflicting/needs_review/missing avisavam) e na
+ * rota de publish — a publicação concluía "com sucesso" sem aplicar o campo
+ * (ex.: status "Em Construção" extraído, mas publicado como null → "A definir"
+ * nas superfícies públicas). Esta função unifica o critério entre UI e API.
+ */
+export function criticalsPendingDecision(params: CriticalsPendingDecisionParams): string[] {
+  const decided = new Set(params.decisions.map((d) => d.field));
+  const pending: string[] = [];
+  for (const c of params.candidates) {
+    if (!(CRITICAL_EXTRACTION_FIELDS as readonly string[]).includes(c.field)) continue;
+    if (decided.has(c.field)) continue;
+    if (c.status === 'conflicting' || c.status === 'needs_review' || c.status === 'missing') {
+      pending.push(c.field);
+      continue;
+    }
+    if (c.status === 'found' && valuesDiffer(c.value, readCriticalField(params.current, c.field))) {
+      pending.push(c.field);
+    }
+  }
+  return pending;
+}
+
 /** Valida e normaliza uma EnterpriseInfo antes de persistir. */
 export function sanitizeEnterpriseInfo(input: unknown): EnterpriseInfo {
   const base = emptyEnterpriseInfo();

@@ -7,6 +7,7 @@ import {
   parseDraft,
   sanitizeEnterpriseInfo,
   buildInfoFromDecisions,
+  criticalsPendingDecision,
 } from '@/lib/ai/extraction';
 import { enterpriseInfoSchema, type EnterpriseInfo } from '@/lib/ai/contracts';
 import { logAiUsage } from '@/lib/ai/telemetry';
@@ -94,16 +95,23 @@ export async function POST(req: NextRequest) {
         ? sanitizeEnterpriseInfo(enterprise.cachedInfo)
         : null;
 
-    // Críticos sem decisão = bloqueio de publicação (§12/§10.6).
-    const CRITICAL = ['price', 'deliveryDate', 'status', 'apartmentTypes'];
-    const decidedFields = new Set(decisions.map((d) => d.field));
-    const unresolvedCritical = draft.fields.filter(
-      (f) => CRITICAL.includes(f.field) && (f.status === 'conflicting' || f.status === 'needs_review') && !decidedFields.has(f.field),
-    );
-    if (!verifyOnly && unresolvedCritical.length > 0 && decisions.some((d) => d.action === 'accept')) {
+    // Críticos SEM decisão = bloqueio de publicação (§12/§10.6).
+    // CORREÇÃO (2026-09): o critério antigo só bloqueava conflicting/needs_review
+    // (e ainda assim apenas quando havia algum 'accept' nas decisões) — um
+    // crítico `found` sem decisão (ex.: status "Em Construção" extraído com
+    // sucesso) passava despercebido e era publicado como valor anterior (null),
+    // exibindo "A definir" nas superfícies públicas. criticalsPendingDecision
+    // unifica: conflicting/needs_review/missing sempre bloqueiam; found bloqueia
+    // quando o valor extraído diverge do valor verificado/legado atual.
+    const pendingCriticals = criticalsPendingDecision({
+      candidates: draft.fields,
+      decisions,
+      current: currentVerified,
+    });
+    if (!verifyOnly && pendingCriticals.length > 0) {
       return NextResponse.json(
         {
-          error: `Resolva os campos críticos em conflito antes de publicar: ${unresolvedCritical.map((f) => f.field).join(', ')}.`,
+          error: `Resolva os campos críticos antes de publicar (aceite, edite ou rejeite cada um): ${pendingCriticals.join(', ')}.`,
           code: 'unresolved_critical_conflicts',
         },
         { status: 422 },
