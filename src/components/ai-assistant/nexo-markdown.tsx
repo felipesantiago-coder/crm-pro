@@ -21,6 +21,13 @@ import {
 import { cn } from '@/lib/utils';
 
 const ALLOWED_TAGS = [
+  // OBRIGATÓRIO: com ALLOWED_TAGS customizado + KEEP_CONTENT:false, o DOMPurify
+  // (3.4.x) só preserva nós de texto se '#text' estiver na allowlist
+  // (sanitize adiciona '#text' automaticamente APENAS quando KEEP_CONTENT=true).
+  // Sem isso, TODAS as respostas do assistente ficam vazias — o texto é removido
+  // e apenas as tags sobrevivem (visível: bolha em branco; copiável: o botão
+  // copia message.content, não o HTML renderizado).
+  '#text',
   'h3',
   'h4',
   'p',
