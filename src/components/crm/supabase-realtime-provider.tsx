@@ -1,11 +1,32 @@
 'use client'
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { createClient, RealtimeChannel } from '@supabase/supabase-js'
+import { createClient, RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { useCRMStore } from '@/store/crm-store'
 import { toast } from 'sonner'
 import { Bell, Database } from 'lucide-react'
+
+/**
+ * Cliente Supabase singleton no módulo — o mount/unmount do provider (React
+ * StrictMode, navegações) reutilizava o mesmo storage key com instâncias
+ * novas, gerando o warning "Multiple GoTrueClient instances detected in the
+ * same browser context". Um único client por aba elimina o aviso e conexões
+ * redundantes de WebSocket.
+ */
+let sharedSupabaseClient: SupabaseClient | null = null
+function getSharedSupabaseClient(): SupabaseClient | null {
+  if (typeof window === 'undefined') return null
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseAnonKey) return null
+  if (!sharedSupabaseClient) {
+    sharedSupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      realtime: { params: { eventsPerSecond: 10 } },
+    })
+  }
+  return sharedSupabaseClient
+}
 
 interface SupabaseRealtimeProviderProps {
   children: React.ReactNode
@@ -111,14 +132,8 @@ export function SupabaseRealtimeProvider({ children }: SupabaseRealtimeProviderP
       return
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      realtime: {
-        params: { eventsPerSecond: 10 },
-      },
-    })
+    const supabase = getSharedSupabaseClient()
+    if (!supabase) return
     clientRef.current = supabase as any
 
     const tables = ['clients', 'tags', 'client_tags', 'reminders', 'user_settings']

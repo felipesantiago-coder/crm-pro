@@ -18,6 +18,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useAssistantContextStore } from './assistant-context-store';
+import { entityFromSerialized } from './assistant-entity';
 import type { AssistantPageContext } from './assistant.types';
 
 export interface UseRegisterAssistantContextOptions {
@@ -63,7 +64,7 @@ export function useRegisterAssistantContext(options: UseRegisterAssistantContext
       // Patch restrito: não derruba os filtros/sinais da view hospedeira.
       const patch: Partial<AssistantPageContext> = {
         ...(subviewKey ? { subview: (subviewKey as AssistantPageContext['subview']) } : {}),
-        ...(serialized ? { entity: JSON.parse(serialized) as AssistantPageContext['entity'] } : { entity: undefined }),
+        ...(serialized ? { entity: entityFromSerialized(serialized) } : { entity: undefined }),
       };
       const key = `entity:${subviewKey}:${serialized}`;
       if (key !== lastPublishedRef.current) {
@@ -78,7 +79,7 @@ export function useRegisterAssistantContext(options: UseRegisterAssistantContext
       version: 1,
       view,
       ...(subviewKey ? { subview: (subviewKey as AssistantPageContext['subview']) } : {}),
-      ...(serialized ? { entity: JSON.parse(serialized) as AssistantPageContext['entity'] } : {}),
+      ...(serialized ? { entity: entityFromSerialized(serialized) } : {}),
       ...(filtersKey !== '{}' ? { filters: JSON.parse(filtersKey) as AssistantPageContext['filters'] } : {}),
       ...(signalsKey !== '{}' ? { signals: JSON.parse(signalsKey) as AssistantPageContext['signals'] } : {}),
     };

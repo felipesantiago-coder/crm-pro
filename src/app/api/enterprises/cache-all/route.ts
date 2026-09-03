@@ -6,6 +6,10 @@ import { runExtraction } from '@/lib/ai/extraction';
 import { NexoError } from '@/lib/ai/errors';
 import { getFeatureFlags } from '@/lib/ai/flags';
 
+// Function serverless: a extração tem orçamento de parede próprio (48 s por
+// run); 60 s cobre o ciclo completo sem estourar o limite do plano Vercel.
+export const maxDuration = 60;
+
 /**
  * POST /api/enterprises/cache-all — v2 (Fase 3).
  *
@@ -63,7 +67,17 @@ export async function POST() {
     const results: Array<{ id: string; name: string; success: boolean; needsReview?: boolean; error?: string }> = [];
     let successCount = 0;
 
+    // Orçamento de parede do lote: a function é encerrada graciosamente antes
+    // do maxDuration; os empreendimentos restantes ficam pendentes para a
+    // próxima execução (o botão pode ser acionado novamente).
+    const batchDeadlineAt = Date.now() + 50_000;
+    let pendingCount = 0;
+
     for (const enterprise of toProcess) {
+      if (Date.now() >= batchDeadlineAt) {
+        pendingCount++;
+        continue;
+      }
       try {
         const draft = await runExtraction({
           enterpriseId: enterprise.id,
@@ -82,9 +96,12 @@ export async function POST() {
     }
 
     return NextResponse.json({
-      message: `${successCount} de ${toProcess.length} empreendimentos com rascunho gerado — revise e publique individualmente.`,
+      message: pendingCount > 0
+        ? `${successCount} de ${toProcess.length} empreendimentos com rascunho gerado; ${pendingCount} ficaram pendentes pelo limite de tempo — acione novamente para processá-los.`
+        : `${successCount} de ${toProcess.length} empreendimentos com rascunho gerado — revise e publique individualmente.`,
       processed: successCount,
       total: toProcess.length,
+      pending: pendingCount,
       results,
     });
   } catch (error) {

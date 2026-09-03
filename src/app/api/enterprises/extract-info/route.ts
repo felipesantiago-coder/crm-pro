@@ -6,6 +6,10 @@ import { runExtraction } from '@/lib/ai/extraction';
 import { NexoError } from '@/lib/ai/errors';
 import { getFeatureFlags } from '@/lib/ai/flags';
 
+// Function serverless: o pipeline tem orçamento de parede próprio (48 s);
+// 60 s cobre o ciclo completo (IA + persistência) dentro do limite do plano.
+export const maxDuration = 60;
+
 /**
  * POST /api/enterprises/extract-info — v2 (Fase 3, prompt v1.0 §10).
  *
