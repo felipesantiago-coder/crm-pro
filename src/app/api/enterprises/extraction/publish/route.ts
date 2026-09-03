@@ -142,7 +142,17 @@ export async function POST(req: NextRequest) {
           verifiedInfoAt: now,
           verifiedInfoBy: user.id,
           ...(publish
-            ? { publishedInfo: validation.data, publishedAt: now, publishedVersion: nextVersion }
+            ? {
+                publishedInfo: validation.data,
+                publishedAt: now,
+                publishedVersion: nextVersion,
+                // CORREÇÃO (2026-09): a superfície legada (painel "Informações"
+                // do CRM e fallback público) lê cachedInfo — sem esta
+                // sincronização, mesmo após revisar e publicar, a interface
+                // continuava exibindo a versão antiga. cachedInfo passa a
+                // espelhar SEMPRE o conteúdo aprovado por humano.
+                cachedInfo: validation.data,
+              }
             : {}),
         },
       }),

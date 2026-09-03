@@ -71,6 +71,9 @@ export async function POST(req: NextRequest) {
           publishedInfo: validation.data,
           publishedAt: now,
           publishedVersion: nextVersion,
+          // Consistência com publish: superfície legada espelha a versão
+          // restaurada (aprovada por humano).
+          cachedInfo: validation.data,
         },
       }),
       db.enterpriseInfoVersion.create({

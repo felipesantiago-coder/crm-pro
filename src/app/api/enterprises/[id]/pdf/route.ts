@@ -8,6 +8,15 @@ import { extractTextFromPdf } from '@/lib/extract-pdf-text';
 import { logAiUsage } from '@/lib/ai/telemetry';
 
 // POST /api/enterprises/[id]/pdf — Upload de base de dados (PDF, Markdown ou TXT)
+//
+// CORREÇÃO DE PRODUÇÃO (2026-09): esta rota executa a extração v2 inline
+// (orçamento de parede de 48 s), mas não declarava maxDuration — na Vercel a
+// function era morta pelo default do plano (~10–15 s) ANTES de o rascunho ser
+// persistido. Resultado: documento salvo, run presa em RUNNING, draft nunca
+// gravado e o cliente via erro (ou nada) — "o sistema não extrai a nova base".
+// Mesma família de bug da rota extract-info (corrigida na Task 22).
+export const maxDuration = 60;
+
 const ACCEPTED_TYPES = [
   'application/pdf',
   'text/plain',

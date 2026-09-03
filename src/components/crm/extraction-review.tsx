@@ -139,10 +139,13 @@ function readPath(info: Record<string, unknown> | null | undefined, field: strin
 export function DocumentHealthCard({
   enterpriseId,
   hasDocument,
+  refreshKey,
   onOpenReview,
 }: {
   enterpriseId: string;
   hasDocument: boolean;
+  /** Mudou ⇒ recarrega o status (pós-upload/remoção da base ou extração manual). */
+  refreshKey?: number;
   onOpenReview: () => void;
 }) {
   const [status, setStatus] = useState<StatusResponse | null>(null);
@@ -177,7 +180,7 @@ export function DocumentHealthCard({
       reviewSignalRegistry.delete(enterpriseId);
       publishReviewSignal(setProactiveSignals);
     };
-  }, [load, enterpriseId, setProactiveSignals]);
+  }, [load, enterpriseId, setProactiveSignals, refreshKey]);
 
   async function runExtraction() {
     setRunning(true);

@@ -116,6 +116,10 @@ export function EnterpriseManagement() {
 
   // Extração revisável (Fase 3) — saúde da base + revisão por empreendimento
   const [reviewEnterprise, setReviewEnterprise] = useState<{ id: string; name: string } | null>(null);
+  // CORREÇÃO (2026-09): o DocumentHealthCard não recarregava após upload/remoção
+  // da base (efeito só roda no mount) — continuava exibindo o estado antigo
+  // (inclusive rascunho de documento anterior). Contador força novo fetch.
+  const [healthRefresh, setHealthRefresh] = useState(0);
 
   // Batch import
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
@@ -299,7 +303,7 @@ export function EnterpriseManagement() {
     }
   }
 
-  async function handlePdfUpload(enterpriseId: string, file: File) {
+  async function handlePdfUpload(enterpriseId: string, enterpriseName: string, file: File) {
     const validTypes = ['application/pdf', 'text/plain', 'text/markdown', ''];
     const validExts = ['.pdf', '.txt', '.md', '.markdown'];
     const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
@@ -329,12 +333,35 @@ export function EnterpriseManagement() {
       }
 
       const data = await res.json();
-      toast.success(`PDF processado! ${data.extractedChars.toLocaleString('pt-BR')} caracteres extraídos de "${data.fileName}"`);
+      const chars = (data.extractedChars ?? 0).toLocaleString('pt-BR');
+      const blocks = data.extractionBlocks as { processed: number; total: number } | null;
+      const blocksInfo = blocks ? ` (${blocks.processed}/${blocks.total} blocos)` : '';
+      // CORREÇÃO (2026-09): o resultado da extração inline vinha na resposta
+      // (extractionStatus/extractionError) mas era ignorado pela UI — falha de
+      // extração parecia sucesso ("PDF processado!") e o rascunho novo nunca
+      // era apresentado. Agora o resultado é comunicado e a revisão abre.
+      switch (data.extractionStatus) {
+        case 'completed':
+          toast.success(`Base ${data.fileType ?? ''} processada (${chars} caracteres). Extração concluída${blocksInfo} — revise as informações sugeridas.`);
+          setReviewEnterprise({ id: enterpriseId, name: enterpriseName });
+          break;
+        case 'partial':
+          toast.warning(`Extração parcial${blocksInfo}: limite de tempo atingido. Revise o rascunho disponível ou use "Reprocessar".`);
+          setReviewEnterprise({ id: enterpriseId, name: enterpriseName });
+          break;
+        case 'disabled':
+          toast.warning(`Base ${data.fileType ?? ''} processada (${chars} caracteres). Extração automática desativada por flag — use o cartão da base para extrair.`);
+          break;
+        default:
+          toast.error(`Base ${data.fileType ?? ''} salva (${chars} caracteres), mas a extração falhou${data.extractionError ? `: ${data.extractionError}` : '.'} Use "Reprocessar" no cartão da base.`);
+          break;
+      }
       fetchEnterprises();
     } catch {
       toast.error('Erro ao enviar PDF');
     } finally {
       setPdfUploadingId(null);
+      setHealthRefresh((k) => k + 1);
     }
   }
 
@@ -357,6 +384,7 @@ export function EnterpriseManagement() {
       toast.error('Erro ao remover PDF');
     } finally {
       setPdfUploadingId(null);
+      setHealthRefresh((k) => k + 1);
     }
   }
 
@@ -953,6 +981,7 @@ export function EnterpriseManagement() {
                     <DocumentHealthCard
                       enterpriseId={enterprise.id}
                       hasDocument={Boolean(enterprise.pdfContent)}
+                      refreshKey={healthRefresh}
                       onOpenReview={() => setReviewEnterprise({ id: enterprise.id, name: enterprise.name })}
                     />
                   </div>
@@ -993,7 +1022,7 @@ export function EnterpriseManagement() {
                           className="hidden"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
-                            if (file) handlePdfUpload(enterprise.id, file);
+                            if (file) handlePdfUpload(enterprise.id, enterprise.name, file);
                             e.target.value = '';
                           }}
                         />
@@ -1196,7 +1225,7 @@ export function EnterpriseManagement() {
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file && editingEnterprise) {
-                      handlePdfUpload(editingEnterprise.id, file).then(() => {
+                      handlePdfUpload(editingEnterprise.id, editingEnterprise.name, file).then(() => {
                         // Refresh the editing enterprise data
                         fetch(`/api/enterprises/${editingEnterprise.id}`)
                           .then(r => r.json())
