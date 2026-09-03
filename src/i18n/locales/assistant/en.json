@@ -1,0 +1,93 @@
+{
+  "aiAssistant": {
+    "name": "Nexo",
+    "fullName": "Nexo — CRM Pro AI Assistant",
+    "greeting": "Hello, I'm Nexo",
+    "greetingWithName": "Hello, {name}. I'm Nexo",
+    "welcomeDescription": "I'm the CRM Pro AI assistant. I can look up data you're allowed to see and explain how to use the system.",
+    "welcomeLimit": "In this version, I don't change records or send messages.",
+    "welcomeHint": "Pick a suggestion or type your question.",
+    "launcher": {
+      "open": "Open Nexo, AI assistant",
+      "discoveryTitle": "Ask Nexo",
+      "discoverySubtitle": "Clients, schedule and CRM usage"
+    },
+    "header": {
+      "subtitle": "CRM Pro AI assistant",
+      "newChat": "New conversation",
+      "expand": "Expand panel",
+      "restore": "Restore size",
+      "close": "Close"
+    },
+    "states": {
+      "idle": "Ready to help",
+      "listening": "Following your question",
+      "thinking": "Analyzing your data…",
+      "speaking": "Response ready",
+      "success": "Response complete",
+      "error": "I couldn't respond",
+      "offline": "Currently unavailable"
+    },
+    "categories": {
+      "crm": {
+        "title": "Check my CRM",
+        "description": "Clients, funnel and deals."
+      },
+      "day": {
+        "title": "Organize my day",
+        "description": "Schedule, reminders and priorities."
+      },
+      "learn": {
+        "title": "Learn how to use it",
+        "description": "CRM Pro features and navigation."
+      }
+    },
+    "suggestions": {
+      "attention": "What needs my attention today?",
+      "leads": "Which clients are at LEAD stage?",
+      "scheduleToday": "Do I have any appointments today?",
+      "reminders": "Which reminders are pending?",
+      "followUp": "Which contacts need follow-up?",
+      "funnel": "How does the client funnel work?",
+      "features": "What features does the CRM have?",
+      "closedDeals": "Where do I find my closed deals?"
+    },
+    "contextual": {
+      "clients": "My clients",
+      "agenda": "Today's schedule",
+      "reminders": "Pending reminders",
+      "help": "How to use the CRM"
+    },
+    "composer": {
+      "placeholder": "Ask about clients, schedule or the CRM…",
+      "send": "Send question",
+      "cancel": "Cancel response",
+      "charCounter": "{count} of {max} characters",
+      "enterHint": "Enter sends. Shift+Enter adds a new line."
+    },
+    "messages": {
+      "logLabel": "Conversation with Nexo",
+      "copy": "Copy response",
+      "copied": "Response copied",
+      "newChatCleared": "Conversation cleared.",
+      "newChatUndo": "Undo"
+    },
+    "errors": {
+      "network": "Couldn't connect to the assistant.",
+      "rateLimit": "You've made too many requests in a short time. Please wait a moment.",
+      "session": "Your session has expired. Please sign in again to continue.",
+      "unavailable": "The assistant is temporarily unavailable.",
+      "unknown": "I couldn't complete the response.",
+      "retry": "Try again"
+    },
+    "a11y": {
+      "avatarIdle": "Nexo is ready to help",
+      "avatarListening": "Nexo is following your question",
+      "avatarThinking": "Nexo is analyzing the data",
+      "avatarSpeaking": "Nexo is presenting the response",
+      "avatarSuccess": "Nexo finished the response",
+      "avatarError": "An error occurred in Nexo",
+      "avatarOffline": "Nexo is unavailable"
+    }
+  }
+}

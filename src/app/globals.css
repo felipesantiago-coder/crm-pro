@@ -277,3 +277,124 @@
 .safe-area-bottom {
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   NEXO — Assistente de IA do CRM Pro
+   Tokens oficiais do pacote CRM_Pro_AI_Assistant_Assets_v1.0 (06_Tokens),
+   mapeados para as variáveis de marca já existentes (Nexus Relacional)
+   — nenhum segundo sistema de cores é criado aqui.
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+  --nexo-midnight: var(--brand-midnight);
+  --nexo-graphite: var(--brand-graphite);
+  --nexo-indigo: var(--brand-indigo);
+  --nexo-indigo-bright: var(--brand-indigo-bright);
+  --nexo-cyan: var(--brand-cyan);
+  --nexo-cyan-bright: var(--brand-cyan-bright);
+  --nexo-motion-fast: 120ms;
+  --nexo-motion-base: 180ms;
+  --nexo-motion-slow: 280ms;
+  --nexo-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --nexo-ease-expressive: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Launcher fechado (motion oficial do pacote, adaptado) */
+.nexo-launcher {
+  inline-size: 56px;
+  block-size: 56px;
+  border-radius: 18px;
+  transition:
+    transform var(--nexo-motion-base) var(--nexo-ease-expressive),
+    box-shadow var(--nexo-motion-base) var(--nexo-ease-standard);
+}
+.nexo-launcher:hover { transform: translateY(-2px) scale(1.025); }
+.nexo-launcher:active { transform: scale(0.97); }
+.nexo-launcher:focus-visible {
+  outline: 3px solid var(--nexo-cyan-bright);
+  outline-offset: 3px;
+}
+@media (max-width: 639px) {
+  .nexo-launcher { inline-size: 52px; block-size: 52px; border-radius: 17px; }
+}
+
+/* Entrada do rótulo de descoberta do launcher */
+@keyframes nexo-label-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.nexo-discovery-label {
+  animation: nexo-label-in var(--nexo-motion-slow) var(--nexo-ease-expressive) both;
+}
+
+/* Conteúdo Markdown das mensagens do Nexo */
+.nexo-markdown { font-size: 0.875rem; line-height: 1.6; }
+.nexo-markdown h3,
+.nexo-markdown h4 {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  margin: 0.5em 0 0.25em;
+  color: var(--foreground);
+}
+.nexo-markdown h3:first-child,
+.nexo-markdown h4:first-child { margin-top: 0; }
+.nexo-markdown p { margin: 0.35em 0; }
+.nexo-markdown p:first-child { margin-top: 0; }
+.nexo-markdown p:last-child { margin-bottom: 0; }
+.nexo-markdown ul,
+.nexo-markdown ol { margin: 0.35em 0; padding-inline-start: 1.25em; }
+.nexo-markdown ul { list-style: disc; }
+.nexo-markdown ol { list-style: decimal; }
+.nexo-markdown li { margin: 0.2em 0; }
+.nexo-markdown li > p { margin: 0; }
+.nexo-markdown code {
+  background: var(--muted);
+  border-radius: 0.375rem;
+  padding: 0.1em 0.4em;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+}
+.nexo-markdown pre {
+  background: var(--muted);
+  border-radius: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.nexo-markdown pre code { background: transparent; padding: 0; }
+.nexo-markdown a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.nexo-markdown a::after { content: ' ↗'; font-size: 0.75em; }
+.nexo-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.8125rem;
+  display: block;
+  overflow-x: auto;
+}
+.nexo-markdown th,
+.nexo-markdown td {
+  border: 1px solid var(--border);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+.nexo-markdown th { font-weight: 600; background: var(--muted); }
+.nexo-markdown blockquote {
+  border-inline-start: 3px solid var(--border);
+  padding-inline-start: 0.75em;
+  margin: 0.5em 0;
+  color: var(--muted-foreground);
+}
+
+/* Redução de movimento — o personagem para, o estado segue textual */
+@media (prefers-reduced-motion: reduce) {
+  .nexo-launcher,
+  .nexo-launcher *,
+  .nexo-discovery-label {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+}

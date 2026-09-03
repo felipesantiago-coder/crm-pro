@@ -1,0 +1,93 @@
+{
+  "aiAssistant": {
+    "name": "Nexo",
+    "fullName": "Nexo — Asistente de IA del CRM Pro",
+    "greeting": "Hola, soy Nexo",
+    "greetingWithName": "Hola, {name}. Soy Nexo",
+    "welcomeDescription": "Soy el asistente de IA del CRM Pro. Puedo consultar datos que tienes permiso para ver y explicar cómo usar el sistema.",
+    "welcomeLimit": "En esta versión, no modifico registros ni envío mensajes.",
+    "welcomeHint": "Elige una sugerencia o escribe tu pregunta.",
+    "launcher": {
+      "open": "Abrir Nexo, asistente de IA",
+      "discoveryTitle": "Pregunta a Nexo",
+      "discoverySubtitle": "Clientes, agenda y uso del CRM"
+    },
+    "header": {
+      "subtitle": "Asistente de IA del CRM Pro",
+      "newChat": "Nueva conversación",
+      "expand": "Ampliar panel",
+      "restore": "Restaurar tamaño",
+      "close": "Cerrar"
+    },
+    "states": {
+      "idle": "Listo para ayudar",
+      "listening": "Siguiendo tu pregunta",
+      "thinking": "Analizando tus datos…",
+      "speaking": "Respuesta lista",
+      "success": "Respuesta completada",
+      "error": "No pude responder",
+      "offline": "No disponible en este momento"
+    },
+    "categories": {
+      "crm": {
+        "title": "Consultar mi CRM",
+        "description": "Clientes, embudo y negocios."
+      },
+      "day": {
+        "title": "Organizar mi día",
+        "description": "Agenda, recordatorios y prioridades."
+      },
+      "learn": {
+        "title": "Aprender a usarlo",
+        "description": "Funciones y navegación del CRM Pro."
+      }
+    },
+    "suggestions": {
+      "attention": "¿Qué necesita mi atención hoy?",
+      "leads": "¿Qué clientes están en LEAD?",
+      "scheduleToday": "¿Tengo visitas agendadas hoy?",
+      "reminders": "¿Qué recordatorios están pendientes?",
+      "followUp": "¿Qué contactos necesitan seguimiento?",
+      "funnel": "¿Cómo funciona el embudo de clientes?",
+      "features": "¿Qué funciones tiene el CRM?",
+      "closedDeals": "¿Dónde encuentro mis negocios cerrados?"
+    },
+    "contextual": {
+      "clients": "Mis clientes",
+      "agenda": "Agenda de hoy",
+      "reminders": "Recordatorios pendientes",
+      "help": "Cómo usar el CRM"
+    },
+    "composer": {
+      "placeholder": "Pregunta sobre clientes, agenda o el CRM…",
+      "send": "Enviar pregunta",
+      "cancel": "Cancelar respuesta",
+      "charCounter": "{count} de {max} caracteres",
+      "enterHint": "Enter envía. Shift+Enter agrega una nueva línea."
+    },
+    "messages": {
+      "logLabel": "Conversación con Nexo",
+      "copy": "Copiar respuesta",
+      "copied": "Respuesta copiada",
+      "newChatCleared": "Conversación borrada.",
+      "newChatUndo": "Deshacer"
+    },
+    "errors": {
+      "network": "No fue posible conectarse al asistente.",
+      "rateLimit": "Hiciste demasiadas consultas en poco tiempo. Espera un momento.",
+      "session": "Tu sesión ha expirado. Inicia sesión nuevamente para continuar.",
+      "unavailable": "El asistente no está disponible temporalmente.",
+      "unknown": "No pude completar la respuesta.",
+      "retry": "Intentar de nuevo"
+    },
+    "a11y": {
+      "avatarIdle": "Nexo está listo para ayudar",
+      "avatarListening": "Nexo está siguiendo tu pregunta",
+      "avatarThinking": "Nexo está analizando los datos",
+      "avatarSpeaking": "Nexo está presentando la respuesta",
+      "avatarSuccess": "Nexo completó la respuesta",
+      "avatarError": "Ocurrió un error en Nexo",
+      "avatarOffline": "Nexo no está disponible"
+    }
+  }
+}

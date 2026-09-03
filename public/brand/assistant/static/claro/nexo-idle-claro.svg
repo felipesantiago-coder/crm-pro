@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="nexo-title" shape-rendering="geometricPrecision">
+      <title id="nexo-title">Nexo, assistente de IA do CRM Pro — pronto</title>
+      <defs>
+      <linearGradient id="nexo-shell" x1="48" y1="66" x2="210" y2="202" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#9186FF"/>
+        <stop offset=".52" stop-color="#6558F5"/>
+        <stop offset="1" stop-color="#11B8D8"/>
+      </linearGradient>
+      <linearGradient id="nexo-ear" x1="34" y1="98" x2="222" y2="156" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#6558F5"/><stop offset="1" stop-color="#3BDCF2"/>
+      </linearGradient>
+      <filter id="nexo-shadow" x="-30%" y="-30%" width="160%" height="180%">
+        <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0E1024" flood-opacity=".24"/>
+      </filter>
+    </defs>
+      
+      
+          <defs>
+            <linearGradient id="nexo-bg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EEF0FF"/>
+            </linearGradient>
+          </defs>
+          <rect x="6" y="6" width="244" height="244" rx="58" fill="url(#nexo-bg)" stroke="#DDE0F2" stroke-width="4"/>
+        
+      <circle cx="128" cy="130" r="92" fill="#6558F5" opacity=".09"/>
+      <ellipse cx="128" cy="218" rx="68" ry="11" fill="#0E1024" opacity=".14"/>
+      
+      <g class="nexo-bot" filter="url(#nexo-shadow)">
+        <path d="M128 47 V68" stroke="#6558F5" stroke-width="9" stroke-linecap="round"/>
+        <circle class="nexo-antenna-dot" cx="128" cy="42" r="10" fill="#3BDCF2" stroke="#FFFFFF" stroke-width="4" transform-origin="128px 42px"/>
+        <rect x="30" y="99" width="31" height="60" rx="15.5" fill="url(#nexo-ear)"/>
+        <rect x="195" y="99" width="31" height="60" rx="15.5" fill="url(#nexo-ear)"/>
+        <path d="M48 113 C48 84 71 62 101 62 H155 C185 62 208 84 208 113 V154 C208 178 193 196 171 202 L194 219 L159 207 H101 C71 207 48 184 48 154 Z" fill="url(#nexo-shell)"/>
+        <path d="M70 111 C70 91 85 78 105 78 H151 C171 78 186 91 186 111 V151 C186 168 173 181 156 181 H100 C83 181 70 168 70 151 Z" fill="#0E1024"/>
+        <path d="M82 94 C96 82 114 83 125 83" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" opacity=".18"/>
+        
+      <g class="nexo-eyes">
+        <rect x="89" y="111" width="25" height="15" rx="7.5" fill="#FFFFFF"/>
+        <rect class="nexo-eye-right" x="142" y="111" width="25" height="15" rx="7.5" fill="#FFFFFF"/>
+      </g>
+    
+        <path d="M104 142 Q128 159 152 142" fill="none" stroke="#3BDCF2" stroke-width="8" stroke-linecap="round"/>
+      </g>
+    </svg>
