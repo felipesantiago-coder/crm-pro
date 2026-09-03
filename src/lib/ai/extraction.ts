@@ -22,6 +22,8 @@ import {
   EXTRACTION_SYSTEM_PROMPT,
   MAX_BLOCKS_PER_RUN,
   BLOCK_TIMEOUT_MS,
+  MIN_SLICE_MS,
+  attemptPlan,
   chunkDocument,
   rankBlocks,
   consolidateBlocks,
@@ -31,6 +33,8 @@ import {
   computeDocumentHash,
   buildConflictNote,
   buildBlockUserPrompt,
+  normalizeBlockOutput,
+  repairTruncatedJson,
 } from './extraction-core';
 import type { DocumentBlock, ExtractionDraft, BlockExtraction } from './extraction-core';
 
@@ -68,7 +72,13 @@ const MODEL_ID = 'deepseek-v4-flash';
  * PARCIAL (falha nunca sobrescreve; partial_data avisado na revisão).
  */
 const EXTRACTION_WALL_BUDGET_MS = Number(process.env.NEXO_EXTRACTION_WALL_BUDGET_MS ?? 48_000);
-const MIN_SLICE_MS = 8_000;
+/**
+ * CORREÇÃO (2026-09): 3000 tokens truncava o JSON de blocos densos (12
+ * tipologias com descrições + 10 diferenciais) — finish_reason=length,
+ * parse falhava e o reparo também era truncado. 6000 dá folga sem custo
+ * extra (o modelo só gasta o que precisa).
+ */
+const BLOCK_MAX_TOKENS = 6000;
 
 /**
  * Executa a extração e grava SEMPRE apenas no draft + run. Nunca toca
@@ -157,6 +167,10 @@ export async function runExtraction(params: {
 
     if (okBlocks.length === 0) {
       const errMsg = results[0]?.error ?? 'todos os blocos falharam';
+      // Diagnóstico: cada falha de bloco vai ao log do servidor (Vercel)
+      results.forEach((r, i) => {
+        if (r.error) console.error(`[Extraction v2] bloco ${i + 1}/${selected.length} falhou: ${r.error}`);
+      });
       await db.enterpriseExtractionRun.update({
         where: { id: run.id },
         data: { status: 'FAILED', error: errMsg.slice(0, 200), completedAt: new Date() },
@@ -166,7 +180,9 @@ export async function runExtraction(params: {
         scopeId: enterpriseId, dataHash: documentHash, promptVersion: EXTRACTION_PROMPT_VERSION,
         modelId: MODEL_ID, errorCode: 'invalid_output', note: 'nenhum bloco processado',
       });
-      throw new NexoError('invalid_output', 'nenhum bloco pôde ser processado', 502);
+      // Detalhe da 1ª falha vai no NexoError.detail — aparece no log, no toast
+      // do upload e no corpo da resposta do extract-info (rota admin).
+      throw new NexoError('invalid_output', `nenhum bloco pôde ser processado — ${errMsg}`.slice(0, 300), 502);
     }
 
     const { fields, needsReview } = consolidateBlocks(okBlocks, okMeta, enterprise.region);
@@ -251,17 +267,17 @@ async function processBlocksSequentially(
       break;
     }
     const remainingMs = () => deadlineAt - Date.now();
-    const attemptTimeoutMs = Math.min(BLOCK_TIMEOUT_MS, remainingMs());
-    const attemptRetries = remainingMs() > BLOCK_TIMEOUT_MS ? 2 : 1;
+    // Plano consciente do orçamento: retries só quando cabe 2× timeout + backoff
+    const plan = attemptPlan(remainingMs());
     try {
       const { reply } = await callAI(EXTRACTION_SYSTEM_PROMPT, buildBlockUserPrompt({ ...ctx, block }), {
         temperature: 0.1,
-        maxTokens: 3000,
-        timeoutMs: attemptTimeoutMs,
+        maxTokens: BLOCK_MAX_TOKENS,
+        timeoutMs: plan.timeoutMs,
         retry: true,
-        maxRetries: attemptRetries,
+        maxRetries: plan.retries,
       });
-      const parsed = blockExtractionSchema.safeParse(safeParseJson(reply));
+      const parsed = blockExtractionSchema.safeParse(normalizeBlockOutput(safeParseJson(reply)));
       if (parsed.success) {
         results.push({ originalIndex: i, block: parsed.data, error: null });
       } else if (remainingMs() >= MIN_SLICE_MS) {
@@ -269,9 +285,9 @@ async function processBlocksSequentially(
         const retry = await callAI(
           EXTRACTION_SYSTEM_PROMPT,
           `${buildBlockUserPrompt({ ...ctx, block })}\n\nATENÇÃO: sua resposta anterior não era JSON válido. Devolva APENAS JSON válido.`,
-          { temperature: 0, maxTokens: 3000, timeoutMs: Math.min(BLOCK_TIMEOUT_MS, remainingMs()), retry: false, maxRetries: 1 },
+          { temperature: 0, maxTokens: BLOCK_MAX_TOKENS, timeoutMs: Math.min(BLOCK_TIMEOUT_MS, remainingMs()), retry: false, maxRetries: 1 },
         );
-        const parsedRetry = blockExtractionSchema.safeParse(safeParseJson(retry.reply));
+        const parsedRetry = blockExtractionSchema.safeParse(normalizeBlockOutput(safeParseJson(retry.reply)));
         results.push({
           originalIndex: i,
           block: parsedRetry.success ? parsedRetry.data : null,
@@ -299,7 +315,10 @@ function safeParseJson(text: string): unknown {
   try {
     return JSON.parse(cleaned);
   } catch {
-    return { __invalid: cleaned.slice(0, 100) };
+    // CORREÇÃO (2026-09): JSON truncado (finish_reason=length) é fechado
+    // conservadoramente; lixo irrecuperável vira null — o bloco conta como
+    // falha e segue para reparação (nunca vira bloco "válido vazio").
+    return repairTruncatedJson(cleaned);
   }
 }
 

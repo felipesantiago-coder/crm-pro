@@ -73,7 +73,12 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     if (error instanceof NexoError) {
       const { status, body } = error.toResponse();
-      return NextResponse.json(body, { status });
+      // CORREÇÃO (2026-09): rota admin — o detalhe técnico (ex.: causa da
+      // falha de bloco) acompanha a resposta para diagnóstico na UI.
+      return NextResponse.json(
+        { ...body, detail: error.detail ? error.detail.slice(0, 200) : undefined },
+        { status },
+      );
     }
     console.error('[Extract Info v2] Error:', error);
     return NextResponse.json(

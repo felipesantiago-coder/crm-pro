@@ -138,9 +138,19 @@ export async function POST(
         extractionError = 'usuário não identificado para registrar a execução';
       }
     } catch (err) {
-      const code = (err as { code?: string })?.code ?? 'unknown';
-      extractionError = code === 'capability_disabled' ? 'Extração revisável desativada por flag.' : 'Extração falhou — o rascunho anterior e os dados publicados foram preservados.';
-      console.warn(`[ENTERPRISE KB] Extração v2 não executada para "${enterprise.name}":`, code);
+      const nexoErr = err as { code?: string; detail?: string };
+      const code = nexoErr?.code ?? 'unknown';
+      // CORREÇÃO (2026-09): a causa real (ex.: "DeepSeek 429: ...", "bloco com
+      // saída inválida após reparação") ficava só no log do servidor e o toast
+      // mostrava texto genérico — impossível diagnosticar. Agora o detalhe
+      // sanitizado (140 chars) acompanha a mensagem operacional.
+      const shortDetail = typeof nexoErr?.detail === 'string' && nexoErr.detail.trim() !== ''
+        ? ` (${nexoErr.detail.trim().slice(0, 140)})`
+        : '';
+      extractionError = code === 'capability_disabled'
+        ? 'Extração revisável desativada por flag.'
+        : `Extração falhou${shortDetail} — o rascunho anterior e os dados publicados foram preservados.`;
+      console.warn(`[ENTERPRISE KB] Extração v2 não executada para "${enterprise.name}":`, code, nexoErr?.detail ?? err);
       if (code !== 'capability_disabled') {
         logAiUsage({
           capability: 'enterprise_extraction', outcome: 'error',

@@ -195,7 +195,11 @@ export function DocumentHealthCard({
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(body?.error || 'A extração falhou — dados existentes preservados.');
+        // Detalhe técnico (quando a API o envia) ajuda a diagnosticar a causa
+        const detail = typeof body?.detail === 'string' && body.detail.trim() !== ''
+          ? ` (${body.detail.slice(0, 160)})`
+          : '';
+        setError(body?.error ? `${body.error}${detail}` : 'A extração falhou — dados existentes preservados.');
       }
       await load();
     } catch {

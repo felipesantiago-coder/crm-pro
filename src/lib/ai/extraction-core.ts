@@ -22,7 +22,17 @@ const BLOCK_SIZE = 9_000;
 const BLOCK_OVERLAP = 500;
 /** Máximo de blocos por execução — controle de custo com cobertura declarada. */
 export const MAX_BLOCKS_PER_RUN = 6;
-export const BLOCK_TIMEOUT_MS = 45_000;
+/**
+ * Timeout por tentativa de bloco.
+ * CORREÇÃO (2026-09): 45 s consumia quase todo o orçamento de parede (48 s) —
+ * uma única chamada lenta esgotava o run com ZERO blocos processados (502
+ * "nenhum bloco pôde ser processado"). Com 30 s, o pior caso de um bloco
+ * (tentativa + reparação) cabe dentro do orçamento e sobra fatia para o
+ * próximo bloco — run termina em PARTIAL em vez de FAILED.
+ */
+export const BLOCK_TIMEOUT_MS = 30_000;
+/** Menor fatia de orçamento que ainda justifica iniciar um bloco. */
+export const MIN_SLICE_MS = 8_000;
 
 // ── Chunking ───────────────────────────────────────────────────────────────
 
@@ -128,6 +138,175 @@ Analise o bloco ${params.block.index + 1} abaixo e devolva o JSON com os campos 
 <<<DOC_BLOCK page=${params.block.firstPage ?? 'desconhecida'}-page=${params.block.lastPage ?? 'desconhecida'}>>>
 ${params.block.text}
 <<<FIM_DOC_BLOCK>>>`;
+}
+
+
+// ── Normalização defensiva da saída do modelo (§8.2) ─────────────────────
+
+/**
+ * CORREÇÃO DE PRODUÇÃO (2026-09): o schema Zod do bloco é estrito e uma
+ * near-miss derrubava o BLOCO INTEIRO — status com grafia divergente
+ * ("Em obras"), inteiro como string ("540 unidades"), 11º diferencial,
+ * 13ª tipologia ou um único campo 1 caractere acima do limite. Em bases
+ * densas (30k+ chars), isso falhava em TODOS os blocos e a extração
+ * terminava 502 "nenhum bloco pôde ser processado".
+ *
+ * normalizeBlockOutput saneia a saída ANTES da validação: mapeia sinônimos
+ * de status para o enum canônico (desconhecido → null, nunca inventa),
+ * converte inteiros e corta strings/arrays aos limites do schema. Valores
+ * válidos permanecem VERBATIM. Blocos normalizados passam no schema —
+ * falha real de conteúdo continua sendo detectada.
+ */
+const STATUS_CANONICAL = ['Lançamento', 'Em Construção', 'Entregue'] as const;
+
+const STATUS_SYNONYM_RULES: Array<{ re: RegExp; value: (typeof STATUS_CANONICAL)[number] }> = [
+  { re: /entregue|pronto para morar|habite[- ]?se|conclu[íi]d|finalizad/i, value: 'Entregue' },
+  { re: /em\s+(obras|constru[çc][ãa]o|desenvolvimento)|fase de constru[çc][ãa]o|obras iniciadas|in[íi]cio das obras|em execu[çc][ãa]o/i, value: 'Em Construção' },
+  { re: /lan[çc]ament|na planta|breve lan[çc]ament/i, value: 'Lançamento' },
+];
+
+function clampString(v: unknown, max: number): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  if (t === '') return null;
+  return t.slice(0, max);
+}
+
+function coerceInt(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.max(0, Math.floor(v));
+  if (typeof v === 'string') {
+    const digits = v.replace(/[^\d]/g, '');
+    if (digits !== '') {
+      const n = parseInt(digits, 10);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+}
+
+export function normalizeBlockOutput(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const r = raw as Record<string, unknown>;
+
+  const loc = r.location && typeof r.location === 'object' && !Array.isArray(r.location)
+    ? (r.location as Record<string, unknown>)
+    : {};
+
+  // status: canônico (case-insensitive) > sinônimo > null (nunca derruba o bloco)
+  const statusRaw = typeof r.status === 'string' ? r.status.trim() : '';
+  const statusCanonical = STATUS_CANONICAL.find((s) => s.toLowerCase() === statusRaw.toLowerCase());
+  const status = statusCanonical ?? STATUS_SYNONYM_RULES.find((rule) => rule.re.test(statusRaw))?.value ?? null;
+
+  const apartmentTypes = Array.isArray(r.apartmentTypes)
+    ? (r.apartmentTypes as unknown[])
+        .filter((t): t is Record<string, unknown> => !!t && typeof t === 'object' && !Array.isArray(t))
+        .map((t) => ({
+          name: clampString(t.name, 120),
+          area: clampString(t.area, 40),
+          bedrooms: clampString(t.bedrooms, 60),
+          description: clampString(t.description, 400),
+          price: clampString(t.price, 160),
+        }))
+        .filter((t): t is { name: string; area: string | null; bedrooms: string | null; description: string | null; price: string | null } => t.name !== null)
+        .slice(0, 12)
+    : [];
+
+  return {
+    location: {
+      address: clampString(loc.address, 300),
+      neighborhood: clampString(loc.neighborhood, 160),
+      city: clampString(loc.city, 120),
+      state: clampString(loc.state, 80),
+      region: clampString(loc.region, 120),
+      additionalInfo: clampString(loc.additionalInfo, 300),
+    },
+    builder: clampString(r.builder, 200),
+    architecture: clampString(r.architecture, 200),
+    landscaping: clampString(r.landscaping, 200),
+    status,
+    deliveryDate: clampString(r.deliveryDate, 120),
+    price: clampString(r.price, 160),
+    totalUnits: coerceInt(r.totalUnits),
+    floors: coerceInt(r.floors),
+    parkingSpots: coerceInt(r.parkingSpots),
+    differentials: Array.isArray(r.differentials)
+      ? (r.differentials as unknown[]).map((d) => clampString(d, 80)).filter((d): d is string => d !== null).slice(0, 10)
+      : [],
+    apartmentTypes,
+    summary: clampString(r.summary, 300),
+  };
+}
+
+/**
+ * Reparo de JSON truncado (finish_reason=length): tenta parse direto e,
+ * falhando, fecha string/estruturas abertas (pilha de { [ e estado de
+ * string) e descarta vírgula pendente. Salvamento conservador — o resultado
+ * ainda passa pelo schema/normalização; lixo vira { __invalid }.
+ */
+export function repairTruncatedJson(text: string): unknown {
+  const cleaned = text.trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // segue para o reparo
+  }
+
+  const scan = (s: string) => {
+    const stack: string[] = [];
+    let inString = false;
+    let escaped = false;
+    for (const ch of s) {
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === '{' || ch === '[') stack.push(ch);
+      else if (ch === '}' || ch === ']') stack.pop();
+    }
+    return { stack, inString };
+  };
+
+  const closeAll = (s: string): string => {
+    const { stack, inString } = scan(s);
+    let repaired = s;
+    if (inString) repaired += '"';
+    // vírgula pendente (antes do fim da string ou antes de } ]) é JSON inválido
+    repaired = repaired.replace(/,\s*(?=[}\]]|$)/, '');
+    for (let i = stack.length - 1; i >= 0; i--) repaired += stack[i] === '{' ? '}' : ']';
+    return repaired;
+  };
+
+  const candidates = [closeAll(cleaned)];
+  // variante: descarta fragmento após o último separador completo (, } ])
+  const lastSafe = Math.max(cleaned.lastIndexOf(','), cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
+  if (lastSafe > 0 && lastSafe < cleaned.length - 1) {
+    candidates.push(closeAll(cleaned.slice(0, lastSafe + 1)));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // tenta próxima variante
+    }
+  }
+  return null; // irrecuperável — o chamador trata como bloco inválido
+}
+
+/**
+ * Plano de tentativa de um bloco dentro do orçamento de parede (puro).
+ * CORREÇÃO (2026-09): os retries internos do callAI ignoravam o orçamento —
+ * 2 tentativas × 45 s + backoff podiam passar de 60 s (maxDuration da Vercel)
+ * e a function morria com 502 sem corpo, run presa em RUNNING.
+ * Regra: só 2 tentativas quando cabe 2× timeout + backoff no restante.
+ */
+export function attemptPlan(remainingMs: number): { timeoutMs: number; retries: number } {
+  if (remainingMs < MIN_SLICE_MS) return { timeoutMs: 0, retries: 0 };
+  const timeoutMs = Math.min(BLOCK_TIMEOUT_MS, remainingMs);
+  return { timeoutMs, retries: remainingMs > timeoutMs * 2 + 1_000 ? 2 : 1 };
 }
 
 
