@@ -12,6 +12,7 @@ import {
   MAX_INPUT_CHARS,
 } from './assistant.constants';
 import { formatMessage, getAssistantMessages } from './assistant-messages';
+import type { AssistantPageContext } from './assistant.types';
 import { cn } from '@/lib/utils';
 
 export interface NexoComposerProps {
@@ -24,6 +25,10 @@ export interface NexoComposerProps {
   disabled: boolean;
   /** Foco programático (ao abrir o painel). */
   focusRef: React.RefObject<HTMLTextAreaElement | null>;
+  /** View atual — seleciona o placeholder contextual (prompt v2.0 §16). */
+  view?: AssistantPageContext['view'];
+  /** Entidade fixada/selecionada — placeholder da ficha/empreendimento. */
+  entity?: AssistantPageContext['entity'] | null;
 }
 
 const MIN_HEIGHT_PX = 44;
@@ -38,9 +43,23 @@ export function NexoComposer({
   busy,
   disabled,
   focusRef,
+  view = 'dashboard',
+  entity,
 }: NexoComposerProps) {
   const t = getAssistantMessages();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Placeholder por contexto (prompt v2.0 §16 — composer por contexto).
+  const placeholder = (() => {
+    if (entity?.type === 'client') return t.composer.placeholderClient;
+    if (entity?.type === 'enterprise') return t.composer.placeholderEnterprise;
+    switch (view) {
+      case 'clients': return t.composer.placeholderClients;
+      case 'reports': return t.composer.placeholderReports;
+      case 'settings': return t.composer.placeholderSettings;
+      default: return t.composer.placeholder;
+    }
+  })();
 
   // Auto-expansão até o limite visual (transform-only não se aplica aqui:
   // redimensionar textarea exige height; limitado e sem animação de layout).
@@ -79,8 +98,8 @@ export function NexoComposer({
             onChange={(e) => onChange(e.target.value.slice(0, MAX_INPUT_CHARS))}
             onKeyDown={handleKeyDown}
             onFocus={onFocus}
-            placeholder={t.composer.placeholder}
-            aria-label={t.composer.placeholder}
+            placeholder={placeholder}
+            aria-label={placeholder}
             rows={1}
             maxLength={MAX_INPUT_CHARS}
             disabled={disabled}

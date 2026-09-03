@@ -60,6 +60,7 @@ import {
   CheckCheck,
 } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
+import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
 import { AIContextMemory } from './ai-context-memory';
 import {
   AlertDialog,
@@ -1414,6 +1415,15 @@ export function ClientDetail({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Bridge de contexto do Nexo (§8.2): registra o clientId APENAS depois de
+  // carregado e autorizado pela API (a ficha busca por endpoint autorizado).
+  useRegisterAssistantContext({
+    view: 'clients',
+    subview: 'client-detail',
+    entity: client ? { type: 'client', id: client.id } : undefined,
+    mode: 'entity',
+  });
 
   useEffect(() => {
     if (clientId && open) {

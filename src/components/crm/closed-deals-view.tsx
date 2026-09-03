@@ -16,6 +16,7 @@ import { ClientCard } from './client-card';
 import { ClientDetail } from './client-detail';
 import { ClientForm } from './client-form';
 import { useCRMStore } from '@/store/crm-store';
+import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
 
 interface Client {
   id: string;
@@ -52,6 +53,15 @@ export function ClosedDealsView() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
 
   const limit = 18;
+
+  // Bridge de contexto do Nexo (§8.2): contagens não sensíveis da tela.
+  useRegisterAssistantContext({
+    view: 'closed-deals',
+    filters: {
+      ...(stageFilter !== 'all' ? { stage: stageFilter } : {}),
+    },
+    signals: { visibleCount: total },
+  });
 
   // Debounce search input
   const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);

@@ -47,18 +47,36 @@ const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/chat/completions';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms),
-    ),
-  ]);
-}
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// ── DeepSeek (OpenAI-compatible) ──────────────────────────────────────────
+/**
+ * Timeout com cancelamento REAL da requisição HTTP (prompt v2.0 §7.6).
+ * `Promise.race` isolado apenas abandona a promessa — o socket permanecia
+ * aberto até o provedor responder. Aqui o `AbortController` aborta o fetch,
+ * liberando conexão e memória de verdade.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  label: string,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      const reason = controller.signal.reason;
+      throw reason instanceof Error ? reason : new Error(`${label} timeout after ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── DeepSeek (OpenAI-compatible) ─────────────────────────────────────
 
 async function callDeepSeek(
   systemText: string,
@@ -97,15 +115,16 @@ async function callDeepSeek(
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const res = await withTimeout(
-        fetch(DEEPSEEK_BASE_URL, {
+      const res = await fetchWithTimeout(
+        DEEPSEEK_BASE_URL,
+        {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
           },
           body: bodyStr,
-        }),
+        },
         timeoutMs,
         'DeepSeek',
       );

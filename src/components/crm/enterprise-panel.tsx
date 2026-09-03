@@ -26,6 +26,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
+import { useCRMStore } from '@/store/crm-store';
 
 // ============================================================
 // Types
@@ -115,6 +117,28 @@ export function EnterprisePanel() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  // Ação allowlisted do Nexo: abrir empreendimento selecionado (§20).
+  const enterpriseOpenRequest = useCRMStore((s) => s.enterpriseOpenRequest);
+  useEffect(() => {
+    if (!enterpriseOpenRequest || !data) return;
+    const target = data.enterprises.find((e) => e.id === enterpriseOpenRequest.enterpriseId);
+    if (target) {
+      setActiveType(target.type as 'LANCAMENTO' | 'REVENDA');
+      setSelectedEnterprise(target);
+    }
+  }, [enterpriseOpenRequest?.id, data]);
+
+  // Bridge de contexto do Nexo (§8.2): tipo/região + empreendimento selecionado.
+  useRegisterAssistantContext({
+    view: 'enterprises',
+    subview: selectedEnterprise ? undefined : (activeType === 'REVENDA' ? 'resale' : 'launches'),
+    entity: selectedEnterprise ? { type: 'enterprise', id: selectedEnterprise.id } : undefined,
+    filters: {
+      ...(activeRegion ? { region: activeRegion } : {}),
+      enterpriseType: activeType,
+    },
+  });
+
 
   const filteredEnterprises = (data?.enterprises ?? []).filter((e) => {
     const matchesSearch = !search || e.name.toLowerCase().includes(search.toLowerCase());

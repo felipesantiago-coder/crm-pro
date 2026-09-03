@@ -12,6 +12,8 @@ import {
   Clock,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
+import { useAssistantContextStore } from '@/components/ai-assistant/assistant-context-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -74,6 +76,17 @@ export function RemindersView() {
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reminderToDelete, setReminderToDelete] = useState<ReminderItem | null>(null);
+
+  // Bridge de contexto do Nexo (§8.2): contagens não sensíveis.
+  const nexoPendingCount = reminders.filter((r) => !r.notified).length;
+  useRegisterAssistantContext({
+    view: 'reminders',
+    signals: { pendingReminders: nexoPendingCount, visibleCount: reminders.length },
+  });
+  const setProactiveSignals = useAssistantContextStore((s) => s.setProactiveSignals);
+  useEffect(() => {
+    if (nexoPendingCount > 0) setProactiveSignals({ pendingReminders: nexoPendingCount });
+  }, [nexoPendingCount, setProactiveSignals]);
 
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');

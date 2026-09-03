@@ -24,6 +24,8 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
+import { useSession } from 'next-auth/react';
 import {
   Select,
   SelectContent,
@@ -33,7 +35,6 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
-import { useSession } from 'next-auth/react';
 import { TrackingTab } from './tracking-tab';
 import { LandingPagesTab } from './landing-pages-tab';
 import { QueuesTab } from './queues-tab';
@@ -2313,6 +2314,13 @@ export function MetaAdsPanel() {
   const [topCampaigns, setTopCampaigns] = useState<CampaignStat[]>([]);
   const [topRegions, setTopRegions] = useState<RegionStat[]>([]);
   const [overviewLoading, setOverviewLoading] = useState(true);
+  // Bridge de contexto do Nexo (§8.2): publicado somente para ADMIN (§9.2).
+  const { data: nexoSession } = useSession();
+  const nexoRole = (nexoSession?.user as { role?: string } | undefined)?.role;
+  useRegisterAssistantContext({
+    view: 'meta-ads',
+    disabled: nexoRole !== 'ADMIN',
+  });
   const [activeTab, setActiveTab] = useState('overview');
 
   const fetchOverview = useCallback(async () => {

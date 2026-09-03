@@ -9,10 +9,10 @@
 //   3. Em src/app/page.tsx, remova a importação e o <AIChatWidget />
 //   4. Delete os assets: public/brand/assistant/
 //
-// Reformulação v1.0 — identidade "Nexo" com os assets oficiais
-// CRM_Pro_AI_Assistant_Assets_v1.0 (SVGs em public/brand/assistant/),
-// máquina de estados explícita (use-ai-chat.ts), acessibilidade WCAG 2.2 AA
-// e copy centralizada no namespace aiAssistant.
+// Reformulação v2.0 — interações proativas: contexto estruturado por tela
+// (§8), sugestões determinísticas por view/intent (§10-§12), proatividade
+// controlada com nudge único por sessão (§13), resposta v2 com ações de
+// navegação allowlisted (§19-§20) e acessibilidade WCAG 2.2 AA (§22).
 // ============================================================
 
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -22,13 +22,22 @@ import { FocusScope } from '@radix-ui/react-focus-scope';
 import { toast } from 'sonner';
 import { NexoAvatar } from './nexo-avatar';
 import { NexoComposer } from './nexo-composer';
+import { NexoContextBar } from './nexo-context-bar';
 import { NexoErrorState } from './nexo-error-state';
 import { NexoHeader } from './nexo-header';
 import { NexoLauncher } from './nexo-launcher';
 import { NexoMessage, MessageErrorFlag } from './nexo-message';
+import { NexoNavigationActions } from './nexo-navigation-actions';
+import { NexoSuggestionList } from './nexo-suggestion-list';
 import { NexoWelcome } from './nexo-welcome';
+import { NexoProactiveNudge } from './nexo-nudge';
 import { useAiChat } from './use-ai-chat';
-import { getAssistantMessages } from './assistant-messages';
+import { getAssistantMessages, formatMessage } from './assistant-messages';
+import { getOpeningSuggestionsForView, toClientSuggestions, type ClientSuggestion } from './assistant-suggestions-client';
+import { useAssistantContextStore } from './assistant-context-store';
+import { ONBOARDING_KEY } from './assistant.constants';
+import type { AssistantNavigationAction, AssistantContextView } from './assistant.types';
+import { useCRMStore } from '@/store/crm-store';
 import { cn } from '@/lib/utils';
 
 /**
@@ -65,7 +74,21 @@ function useIsMobileViewport(): boolean {
   return isMobile;
 }
 
-const CONTEXTUAL_KEYS = ['clients', 'agenda', 'reminders', 'help'] as const;
+/** Hint exibido uma única vez (prompt §14 — persistido sem PII). */
+function readOnceFlag(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+function writeOnceFlag(key: string): void {
+  try {
+    window.localStorage.setItem(key, '1');
+  } catch {
+    // Sem persistência — vale apenas para esta sessão.
+  }
+}
 
 export function AIChatWidget() {
   const t = getAssistantMessages();
@@ -73,15 +96,45 @@ export function AIChatWidget() {
   const isMobile = useIsMobileViewport();
   const { data: session } = useSession();
   const chat = useAiChat();
+  const setCurrentView = useCRMStore((s) => s.setCurrentView);
+  const requestOpenClient = useCRMStore((s) => s.requestOpenClient);
+  const requestOpenEnterprise = useCRMStore((s) => s.requestOpenEnterprise);
+  const requestApplyClientFilter = useCRMStore((s) => s.requestApplyClientFilter);
 
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const launcherRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const composerFocusRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
+  // Contexto reativo da tela atual (bridge nas views — §8).
+  const pageContext = useAssistantContextStore((s) => s.pageContext);
+  const suppressed = useAssistantContextStore((s) => s.suppressed);
+  const pinnedContext = useAssistantContextStore((s) => s.pinnedContext);
+
+  // Abertura externa ("Perguntar ao Nexo sobre este cliente"): assinatura do
+  // store — setState em callback de sistema externo, não em corpo de efeito.
+  useEffect(() => {
+    return useAssistantContextStore.subscribe((state, prev) => {
+      if (state.openRequestId !== prev.openRequestId && state.openRequestId > 0) {
+        setOpen(true);
+      }
+    });
+  }, []);
+
   const firstName =
     typeof session?.user?.name === 'string' ? session.user.name : undefined;
+  const userRole =
+    (session?.user as { role?: string } | undefined)?.role ?? 'USER';
+
+  // Dica pós-primeira resposta (§14): exibida exatamente uma vez por navegador —
+  // derivada (sem setState em efeito) e persistida por efeito de escrita.
+  const assistantCount = chat.messages.filter((m) => m.role === 'assistant').length;
+  const showPostFirstAnswerTip = assistantCount === 1 && !readOnceFlag(ONBOARDING_KEY);
+  useEffect(() => {
+    if (showPostFirstAnswerTip) writeOnceFlag(ONBOARDING_KEY);
+  }, [showPostFirstAnswerTip]);
 
   // Rola para a última mensagem quando a conversa muda ou entra em thinking.
   useEffect(() => {
@@ -89,20 +142,37 @@ export function AIChatWidget() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [chat.messages.length, chat.visualState]);
 
-  // Ao abrir: foco no composer após a transição do painel (prompt §16.1).
+  // Ao abrir: foco no composer via callback de transição (§22 — sem timer fixo).
   useEffect(() => {
     if (!open) return;
-    const id = window.setTimeout(() => composerFocusRef.current?.focus(), 260);
-    return () => window.clearTimeout(id);
+    const panel = panelRef.current;
+    const textarea = composerFocusRef.current;
+    if (!panel || !textarea) return;
+    let fallbackId = 0;
+    const focusComposer = () => {
+      textarea.focus();
+      panel.removeEventListener('transitionend', onTransitionEnd);
+      window.clearTimeout(fallbackId);
+    };
+    function onTransitionEnd(event: TransitionEvent) {
+      if (event.target === panel) focusComposer();
+    }
+    panel.addEventListener('transitionend', onTransitionEnd);
+    // Fallback curto caso a transição não dispare (reduced motion).
+    fallbackId = window.setTimeout(focusComposer, 400);
+    return () => {
+      panel.removeEventListener('transitionend', onTransitionEnd);
+      window.clearTimeout(fallbackId);
+    };
   }, [open]);
 
   const closePanel = useCallback(() => {
     setOpen(false);
-    // Restaura o foco no launcher (prompt §16.1).
+    // Restaura o foco no launcher (prompt §22).
     window.setTimeout(() => launcherRef.current?.focus(), 60);
   }, []);
 
-  // Escape fecha o painel quando não há ação mais apropriada (prompt §16.1).
+  // Escape fecha o painel quando não há ação mais apropriada (prompt §22).
   useEffect(() => {
     if (!open) return;
     const handler = (event: KeyboardEvent) => {
@@ -130,6 +200,56 @@ export function AIChatWidget() {
     });
   }
 
+  /** Ações allowlisted — navegação local, nunca escrita (prompt §20). */
+  function handleNavigationAction(action: AssistantNavigationAction) {
+    switch (action.type) {
+      case 'NAVIGATE_VIEW': {
+        const view = action.view as AssistantContextView;
+        const label = t.context.views[view as keyof typeof t.context.views] ?? view;
+        setCurrentView(view as never);
+        if (isMobile) closePanel();
+        toast(formatMessage(t.navigation.navigateAnnounce, { view: label }), {
+          duration: 2500,
+        });
+        break;
+      }
+      case 'OPEN_CLIENT':
+        requestOpenClient(action.clientId);
+        if (isMobile) closePanel();
+        break;
+      case 'OPEN_ENTERPRISE':
+        requestOpenEnterprise(action.enterpriseId);
+        if (isMobile) closePanel();
+        break;
+      case 'APPLY_CLIENT_FILTER':
+        requestApplyClientFilter(action.stage, action.tagIds);
+        setCurrentView('clients');
+        if (isMobile) closePanel();
+        break;
+    }
+  }
+
+  /** Sugestão com ação local executa navegação sem chamar o modelo (§10). */
+  function handleSuggestionSelect(suggestion: ClientSuggestion) {
+    if (suggestion.action?.type === 'NAVIGATE_VIEW') {
+      handleNavigationAction({ type: 'NAVIGATE_VIEW', view: suggestion.action.view, label: '' });
+      return;
+    }
+    chat.send(suggestion.prompt || suggestion.label);
+  }
+
+  // Sugestões de abertura: catálogo determinístico por view/papel/entidade (§10).
+  const effectiveEntity = pinnedContext ?? pageContext.entity ?? null;
+  const openingSuggestions = getOpeningSuggestionsForView({
+    view: pageContext.view,
+    role: userRole,
+    entity: effectiveEntity,
+  });
+  // Pós-resposta: sugestões do servidor (continuidade por intent — §12).
+  const postResponseSuggestions = chat.suggestedReplies.length
+    ? toClientSuggestions(chat.suggestedReplies)
+    : openingSuggestions;
+
   const hasMessages = chat.messages.length > 0;
   const showThinking = chat.visualState === 'thinking';
   const isOffline = chat.visualState === 'offline';
@@ -137,35 +257,50 @@ export function AIChatWidget() {
     chat.errorKind !== null &&
     (chat.visualState === 'error' || chat.visualState === 'offline');
 
+  // Texto de processamento por intent (§7.8) — nunca "Analisando seus dados…" genérico.
+  const loadingText = chat.activeIntent
+    ? t.states.loading[chat.activeIntent === 'client_summary' ? 'clients'
+        : chat.activeIntent === 'today_schedule' ? 'schedules'
+        : chat.activeIntent === 'reminders' ? 'reminders'
+        : chat.activeIntent === 'enterprise_summary' ? 'enterprise'
+        : chat.activeIntent === 'report_summary' ? 'reports'
+        : 'help']
+    : t.states.thinking;
+
   return (
     <>
-      {/* Launcher fechado */}
-      <NexoLauncher
-        open={open}
-        theme={theme}
-        onOpen={() => setOpen(true)}
-        launcherRef={launcherRef}
-      />
+      {/* Launcher fechado + nudge proativo (nunca autoabre — §13) */}
+      <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end">
+        <NexoProactiveNudge panelOpen={open} onReview={() => setOpen(true)} />
+        <NexoLauncher
+          open={open}
+          theme={theme}
+          onOpen={() => setOpen(true)}
+          launcherRef={launcherRef}
+        />
+      </div>
 
-      {/* Painel — desktop/tablet: janela ancorada; mobile: bottom sheet modal */}
+      {/* Painel — desktop/tablet: janela ancorada; mobile: bottom sheet modal.
+          Fechado: `inert` real impede foco nos descendentes (§7.10/§22). */}
       <FocusScope trapped={open && isMobile}>
         <div
+          ref={panelRef}
           role="dialog"
           aria-labelledby="nexo-panel-title"
           aria-modal={open && isMobile ? true : undefined}
-          aria-hidden={!open || undefined}
+          inert={!open || undefined}
           className={cn(
             'fixed z-50 flex flex-col overflow-hidden rounded-3xl border bg-card shadow-2xl',
             'transition-[opacity,transform] duration-[var(--nexo-motion-slow)] ease-[var(--nexo-ease-standard)]',
             // Posição
             'inset-x-2 bottom-2 sm:inset-x-auto sm:bottom-5 sm:right-5',
-            // Mobile: sheet de 100dvh respeitando safe areas (prompt §11.3)
+            // Mobile: sheet de 100dvh respeitando safe areas (prompt §22)
             'h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)]',
-            // Desktop padrão 420 px; expandido 720 px (prompt §11.1)
+            // Desktop padrão 420 px; expandido 720 px
             'sm:h-[min(680px,calc(100dvh-32px))] sm:w-[min(420px,calc(100vw-32px))]',
             expanded &&
               'sm:w-[min(720px,calc(100vw-32px))] sm:h-[min(680px,calc(100dvh-32px))]',
-            // Sombra mais leve e difusa no tema escuro (prompt §18)
+            // Sombra mais leve e difusa no tema escuro
             'dark:shadow-[0_18px_48px_rgb(0_0_0/0.45)]',
             open
               ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
@@ -181,6 +316,9 @@ export function AIChatWidget() {
             onClose={closePanel}
           />
 
+          {/* Barra de contexto da tela atual (§8.3) — sem criar mensagens */}
+          {open && <NexoContextBar compact />}
+
           {/* Corpo: boas-vindas ou conversa */}
           {hasMessages ? (
             <div
@@ -194,7 +332,7 @@ export function AIChatWidget() {
             >
               {chat.messages.map((message) => (
                 <React.Fragment key={message.id}>
-                  <NexoMessage message={message} />
+                  <NexoMessage message={message} onNavigationAction={handleNavigationAction} />
                   {message.role === 'user' && message.status === 'error' && (
                     <div className="flex justify-end">
                       <MessageErrorFlag />
@@ -218,8 +356,42 @@ export function AIChatWidget() {
                         className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--nexo-cyan)]"
                         aria-hidden
                       />
-                      {t.states.thinking}
+                      {loadingText}
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Cancelamento com pergunta preservada (§7.9) */}
+              {chat.cancelledQuestion && !chat.isBusy && (
+                <div
+                  role="status"
+                  className="flex flex-col gap-1.5 rounded-xl border bg-muted/40 px-3 py-2.5"
+                >
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    {t.messages.cancelled}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={chat.retry}
+                      className={cn(
+                        'inline-flex min-h-[36px] items-center rounded-lg border px-2.5 text-[11px] font-medium text-foreground',
+                        'transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--nexo-cyan-bright)]',
+                      )}
+                    >
+                      {t.messages.cancelledRetry}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={chat.resumeEditingCancelled}
+                      className={cn(
+                        'inline-flex min-h-[36px] items-center rounded-lg border px-2.5 text-[11px] font-medium text-foreground',
+                        'transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--nexo-cyan-bright)]',
+                      )}
+                    >
+                      {t.messages.cancelledEdit}
+                    </button>
                   </div>
                 </div>
               )}
@@ -229,12 +401,15 @@ export function AIChatWidget() {
               <NexoWelcome
                 firstName={firstName}
                 theme={theme}
+                view={pageContext.view}
                 onSuggestion={(text) => chat.send(text)}
+                openingSuggestions={openingSuggestions}
+                onSuggestionSelect={handleSuggestionSelect}
               />
             </div>
           )}
 
-          {/* Estado de erro / indisponibilidade (prompt §14.4) */}
+          {/* Estado de erro / indisponibilidade (§16) */}
           {showErrorBanner && chat.errorKind && (
             <NexoErrorState
               kind={chat.errorKind}
@@ -243,23 +418,19 @@ export function AIChatWidget() {
             />
           )}
 
-          {/* Sugestões contextuais quando há conversa (prompt §11.4) */}
+          {/* Sugestões pós-resposta (continuidade por intent — §12) */}
           {hasMessages && !chat.isBusy && !showErrorBanner && (
-            <div className="flex flex-shrink-0 gap-1.5 overflow-x-auto border-t bg-muted/20 px-3 py-2">
-              {CONTEXTUAL_KEYS.map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => chat.send(t.contextual[key])}
-                  className={cn(
-                    'flex-shrink-0 whitespace-nowrap rounded-full border bg-card px-2.5 py-2 text-[11px] text-muted-foreground',
-                    'transition-colors hover:bg-muted hover:text-foreground',
-                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--nexo-cyan-bright)]',
-                  )}
-                >
-                  {t.contextual[key]}
-                </button>
-              ))}
+            <div className="flex-shrink-0 border-t bg-muted/20 px-3 py-2">
+              {!suppressed && showPostFirstAnswerTip && (
+                <p className="mb-1.5 rounded-lg bg-muted/40 px-2.5 py-1.5 text-[10px] leading-relaxed text-muted-foreground" role="note">
+                  {t.onboarding.postFirstAnswer}
+                </p>
+              )}
+              <NexoSuggestionList
+                suggestions={postResponseSuggestions}
+                onSelect={handleSuggestionSelect}
+                dense
+              />
             </div>
           )}
 
@@ -272,6 +443,8 @@ export function AIChatWidget() {
             busy={chat.isBusy}
             disabled={isOffline}
             focusRef={composerFocusRef}
+            view={pageContext.view}
+            entity={effectiveEntity}
           />
         </div>
       </FocusScope>

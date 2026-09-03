@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
 import {
   Users,
   MessageSquare,
@@ -95,6 +96,16 @@ export function ReportsView() {
   const [customTo, setCustomTo] = useState('');
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Bridge de contexto do Nexo (§8.2): período/datas válidas do relatório.
+  useRegisterAssistantContext({
+    view: 'reports',
+    filters: {
+      reportPeriod: (period as 'weekly' | 'monthly' | 'quarterly' | 'semiannual' | 'annual' | 'custom'),
+      ...(period === 'custom' && customFrom ? { reportFrom: customFrom } : {}),
+      ...(period === 'custom' && customTo ? { reportTo: customTo } : {}),
+    },
+  });
 
   const fetchReport = useCallback(async () => {
     setLoading(true);

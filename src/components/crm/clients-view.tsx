@@ -18,7 +18,8 @@ import { ClientCard } from './client-card';
 import { ClientForm } from './client-form';
 import { ClientDetail } from './client-detail';
 import { ImportExport } from './import-export';
-import { useCRMStore } from '@/store/crm-store';
+import { useCRMStore, type CRMView } from '@/store/crm-store';
+import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
 import { getCached, invalidateCache } from '@/lib/fetch-cache';
 
 interface Client {
@@ -75,7 +76,39 @@ export function ClientsView() {
   const [showImportExport, setShowImportExport] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
 
+  const clientDetailRequestId = useCRMStore((s) => s.clientDetailRequest);
+  const clientFilterRequest = useCRMStore((s) => s.clientFilterRequest);
+
   const limit = 18;
+
+  // Ação allowlisted do Nexo: abrir ficha de cliente autorizado (§20).
+  useEffect(() => {
+    if (!clientDetailRequestId) return;
+    setDetailOpen(true);
+  }, [clientDetailRequestId?.id]);
+
+  // Ação allowlisted do Nexo: aplicar filtro de etapa reversível (§20).
+  useEffect(() => {
+    if (!clientFilterRequest) return;
+    if (clientFilterRequest.stage) setFilterStage(clientFilterRequest.stage);
+    if (clientFilterRequest.tagIds && clientFilterRequest.tagIds.length > 0) {
+      setFilterTagIds(clientFilterRequest.tagIds);
+    }
+    setPage(1);
+  }, [clientFilterRequest?.id]);
+
+  // Bridge de contexto do Nexo (§8.2): apenas enum, filtros estruturados e
+  // contagens — nunca texto livre de busca nem conteúdo de formulário.
+  useRegisterAssistantContext({
+    view: 'clients',
+    filters: {
+      ...(filterStage ? { stage: filterStage } : {}),
+      ...(filterRegion ? { region: filterRegion } : {}),
+      ...(filterTagIds.length > 0 ? { tagIds: filterTagIds } : {}),
+    },
+    signals: { visibleCount: total },
+    disabled: formOpen,
+  });
 
   // Debounce search input
   const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);

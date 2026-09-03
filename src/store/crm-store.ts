@@ -16,6 +16,13 @@ interface CRMState {
     dueDate: string;
     client: { id: string; name: string };
   }>;
+  /**
+   * Pedidos de navegação do Nexo (ações allowlisted — prompt v2.0 §20).
+   * Views observam o id crescente e aplicam localmente. Nenhuma escrita.
+   */
+  clientDetailRequest: { id: number; clientId: string } | null;
+  enterpriseOpenRequest: { id: number; enterpriseId: string } | null;
+  clientFilterRequest: { id: number; stage?: string; tagIds?: string[] } | null;
 
   setCurrentView: (view: CRMView) => void;
   toggleSidebar: () => void;
@@ -28,6 +35,9 @@ interface CRMState {
   removeFilterTagId: (tagId: string) => void;
   setNotificationReminders: (reminders: CRMState['notificationReminders']) => void;
   clearFilters: () => void;
+  requestOpenClient: (clientId: string) => void;
+  requestOpenEnterprise: (enterpriseId: string) => void;
+  requestApplyClientFilter: (stage?: string, tagIds?: string[]) => void;
 }
 
 export const useCRMStore = create<CRMState>((set) => ({
@@ -38,6 +48,9 @@ export const useCRMStore = create<CRMState>((set) => ({
   filterRegion: '',
   filterTagIds: [],
   notificationReminders: [],
+  clientDetailRequest: null,
+  enterpriseOpenRequest: null,
+  clientFilterRequest: null,
 
   setCurrentView: (view) => set({ currentView: view }),
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -56,4 +69,20 @@ export const useCRMStore = create<CRMState>((set) => ({
   })),
   setNotificationReminders: (reminders) => set({ notificationReminders: reminders }),
   clearFilters: () => set({ searchQuery: '', filterRegion: '', filterTagIds: [] }),
+  requestOpenClient: (clientId) =>
+    set((state) => ({
+      currentView: 'clients',
+      selectedClientId: clientId,
+      clientDetailRequest: { id: (state.clientDetailRequest?.id ?? 0) + 1, clientId },
+    })),
+  requestOpenEnterprise: (enterpriseId) =>
+    set((state) => ({
+      currentView: 'enterprises',
+      enterpriseOpenRequest: { id: (state.enterpriseOpenRequest?.id ?? 0) + 1, enterpriseId },
+    })),
+  requestApplyClientFilter: (stage, tagIds) =>
+    set((state) => ({
+      currentView: 'clients',
+      clientFilterRequest: { id: (state.clientFilterRequest?.id ?? 0) + 1, stage, tagIds },
+    })),
 }));

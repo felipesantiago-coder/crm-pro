@@ -12,12 +12,26 @@ import { Badge } from '@/components/ui/badge';
 import { useTheme } from 'next-themes';
 import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
+import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
+import { useAssistantContextStore, initProactivityPreference } from '@/components/ai-assistant/assistant-context-store';
+import { getAssistantMessages } from '@/components/ai-assistant/assistant-messages';
 
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
   const { data: session, update: updateSession } = useSession();
   const userRole = (session?.user as { role?: string })?.role;
   const isAdmin = userRole === 'ADMIN';
+
+  // Preferência de proatividade do Nexo (prompt v2.0 §13.2) — não sensível.
+  const proactiveEnabled = useAssistantContextStore((s) => s.proactiveSuggestionsEnabled);
+  const setProactiveEnabled = useAssistantContextStore((s) => s.setProactiveSuggestionsEnabled);
+  useEffect(() => {
+    initProactivityPreference();
+  }, []);
+  const assistantT = getAssistantMessages();
+
+  // Bridge de contexto do Nexo (§8.2).
+  useRegisterAssistantContext({ view: 'settings' });
 
   // Perfil do usuário
   const [userName, setUserName] = useState('');
@@ -582,6 +596,32 @@ export function SettingsView() {
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Sugestões proativas do Nexo (prompt v2.0 §13.2) */}
+        <Card className="hover:shadow-md transition-shadow duration-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Bell className="h-4 w-4 text-[var(--nexo-cyan)]" />
+              {assistantT.settings.proactivityTitle}
+            </CardTitle>
+            <CardDescription>
+              {assistantT.settings.proactivityDescription}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="nexo-proactive" className="text-sm">
+                {assistantT.settings.proactivityTitle}
+              </Label>
+              <Switch
+                id="nexo-proactive"
+                checked={proactiveEnabled}
+                onCheckedChange={setProactiveEnabled}
+                aria-label={assistantT.settings.proactivityTitle}
+              />
+            </div>
           </CardContent>
         </Card>
 

@@ -4,13 +4,19 @@
     "fullName": "Nexo — Assistente de IA do CRM Pro",
     "greeting": "Olá, eu sou o Nexo",
     "greetingWithName": "Olá, {name}. Eu sou o Nexo",
-    "welcomeDescription": "Sou o assistente de IA do CRM Pro. Posso consultar dados que você tem permissão para ver e explicar como usar o sistema.",
-    "welcomeLimit": "Nesta versão, não altero registros nem envio mensagens.",
+    "welcomeDescription": "Sou o assistente de IA do CRM Pro. Posso consultar informações que você tem permissão para ver, explicar recursos e ajudar a organizar prioridades.",
+    "welcomeLimit": "Eu não altero registros nem envio mensagens. Você continua no controle das ações.",
     "welcomeHint": "Escolha uma sugestão ou digite sua pergunta.",
+    "firstUseQuestion": "O que você quer fazer primeiro?",
+    "firstUseOptions": {
+      "day": "Revisar meu dia",
+      "clients": "Consultar clientes",
+      "learn": "Aprender o CRM"
+    },
     "launcher": {
       "open": "Abrir Nexo, assistente de IA",
-      "discoveryTitle": "Pergunte ao Nexo",
-      "discoverySubtitle": "Clientes, agenda e uso do CRM"
+      "discoveryTitle": "Conheça o Nexo",
+      "discoverySubtitle": "Consulte clientes, agenda e tire dúvidas sobre o CRM."
     },
     "header": {
       "subtitle": "Assistente de IA do CRM Pro",
@@ -21,12 +27,21 @@
     },
     "states": {
       "idle": "Pronto para ajudar",
-      "listening": "Acompanhando sua pergunta",
-      "thinking": "Analisando seus dados…",
+      "listening": "Escreva sua pergunta",
+      "thinking": "Preparando a orientação…",
       "speaking": "Resposta pronta",
       "success": "Resposta concluída",
       "error": "Não consegui responder",
-      "offline": "Indisponível no momento"
+      "offline": "Assistente indisponível no momento",
+      "cancelled": "Consulta cancelada",
+      "loading": {
+        "clients": "Consultando seus clientes…",
+        "schedules": "Verificando sua agenda…",
+        "reminders": "Conferindo seus lembretes…",
+        "enterprise": "Consultando os dados do empreendimento…",
+        "reports": "Analisando os indicadores do período…",
+        "help": "Preparando a orientação…"
+      }
     },
     "categories": {
       "crm": {
@@ -42,43 +57,134 @@
         "description": "Recursos e navegação do CRM Pro."
       }
     },
-    "suggestions": {
-      "attention": "O que precisa da minha atenção hoje?",
-      "leads": "Quais clientes estão como LEAD?",
-      "scheduleToday": "Tenho agendamentos para hoje?",
-      "reminders": "Quais lembretes estão pendentes?",
-      "followUp": "Quais contatos precisam de acompanhamento?",
-      "funnel": "Como funciona o funil de clientes?",
-      "features": "Quais funcionalidades o CRM possui?",
-      "closedDeals": "Onde encontro meus negócios fechados?"
-    },
-    "contextual": {
-      "clients": "Meus clientes",
-      "agenda": "Agenda de hoje",
-      "reminders": "Lembretes pendentes",
-      "help": "Como usar o CRM"
-    },
     "composer": {
       "placeholder": "Pergunte sobre clientes, agenda ou o CRM…",
+      "placeholderClients": "Pergunte sobre seus clientes ou o funil…",
+      "placeholderClient": "Pergunte sobre este cliente…",
+      "placeholderEnterprise": "Pergunte sobre este empreendimento…",
+      "placeholderReports": "Pergunte sobre os indicadores deste período…",
+      "placeholderSettings": "Pergunte como configurar o CRM…",
       "send": "Enviar pergunta",
-      "cancel": "Cancelar resposta",
+      "sending": "Enviando pergunta…",
+      "cancel": "Cancelar consulta",
       "charCounter": "{count} de {max} caracteres",
-      "enterHint": "Enter envia. Shift+Enter cria nova linha."
+      "enterHint": "Enter envia. Shift+Enter cria uma nova linha."
     },
     "messages": {
       "logLabel": "Conversa com o Nexo",
       "copy": "Copiar resposta",
-      "copied": "Resposta copiada",
-      "newChatCleared": "Conversa limpa.",
-      "newChatUndo": "Desfazer"
+      "copied": "Resposta copiada.",
+      "copyFailed": "Não foi possível copiar a resposta.",
+      "newChatCleared": "Nova conversa iniciada.",
+      "newChatUndo": "Restaurar conversa anterior",
+      "contextRemoved": "O contexto da tela não será usado na próxima pergunta.",
+      "cancelled": "Consulta cancelada. Sua pergunta foi mantida para você tentar novamente.",
+      "cancelledRetry": "Tentar novamente",
+      "cancelledEdit": "Editar pergunta"
     },
     "errors": {
-      "network": "Não foi possível conectar ao assistente.",
-      "rateLimit": "Você fez muitas consultas em pouco tempo. Aguarde um momento.",
+      "network": "Não foi possível conectar ao Nexo. Verifique sua conexão e tente novamente.",
+      "rate_limit": "Você fez várias consultas em pouco tempo. Aguarde um momento e tente novamente.",
       "session": "Sua sessão expirou. Entre novamente para continuar.",
-      "unavailable": "O assistente está temporariamente indisponível.",
-      "unknown": "Não consegui concluir a resposta.",
+      "unavailable": "O Nexo está temporariamente indisponível.",
+      "timeout": "A consulta demorou mais que o esperado. Tente novamente.",
+      "partial_data": "Consegui responder parcialmente, mas alguns dados do CRM não estavam disponíveis.",
+      "unknown": "Não consegui concluir a consulta.",
       "retry": "Tentar novamente"
+    },
+    "context": {
+      "ariaLabel": "Contexto atual do assistente",
+      "view": "Contexto: {view}",
+      "client": "Contexto: cliente selecionado",
+      "enterprise": "Contexto: empreendimento selecionado",
+      "clientUnavailable": "Cliente selecionado (indisponível)",
+      "enterpriseUnavailable": "Empreendimento selecionado (indisponível)",
+      "remove": "Não usar este contexto",
+      "pin": "Manter este contexto",
+      "unpin": "Deixar de manter este contexto",
+      "basedOn": "Baseado em: {label}",
+      "basedOnJustNow": "atualizado agora",
+      "firstTimeTip": "Estou usando o contexto de {view} para tornar as sugestões mais relevantes.",
+      "views": {
+        "dashboard": "Dashboard",
+        "enterprises": "Empreendimentos",
+        "clients": "Clientes",
+        "closed-deals": "Negócios Finalizados",
+        "tags": "Tags",
+        "reminders": "Lembretes",
+        "reports": "Relatórios",
+        "meta-ads": "Anúncios Meta",
+        "admin": "Administração",
+        "settings": "Configurações"
+      }
+    },
+    "navigation": {
+      "openView": "Abrir {view}",
+      "openClient": "Abrir ficha do cliente",
+      "openEnterprise": "Abrir empreendimento",
+      "applyFilter": "Aplicar filtro de etapa",
+      "navigateAnnounce": "Navegando para {view}"
+    },
+    "followUpNavigation": {
+      "dashboard": "Abrir Dashboard",
+      "enterprises": "Abrir Empreendimentos",
+      "clients": "Abrir Clientes",
+      "closed-deals": "Abrir Negócios Finalizados",
+      "tags": "Abrir Tags",
+      "reminders": "Abrir Lembretes",
+      "reports": "Abrir Relatórios",
+      "meta-ads": "Abrir Anúncios Meta",
+      "admin": "Abrir Administração",
+      "settings": "Abrir Configurações"
+    },
+    "suggestionsUI": {
+      "more": "Ver mais sugestões",
+      "less": "Mostrar menos sugestões",
+      "listLabel": "Sugestões de perguntas"
+    },
+    "proactive": {
+      "scheduleSoon": "Seu próximo agendamento começa em {time}.",
+      "remindersOne": "Você tem 1 lembrete para revisar.",
+      "remindersMany": "Você tem {count} lembretes para revisar.",
+      "clientsOne": "Há 1 cliente que precisa de atualização.",
+      "clientsMany": "Há {count} clientes que precisam de atualização.",
+      "cta": "Revisar com o Nexo",
+      "dismiss": "Agora não"
+    },
+    "onboarding": {
+      "postFirstAnswer": "Você pode continuar a conversa sem repetir o contexto. Também pode usar as sugestões abaixo."
+    },
+    "returning": {
+      "morning": "Bom dia, {name}. O que você quer revisar?",
+      "afternoon": "Boa tarde, {name}. Como posso ajudar no CRM?",
+      "evening": "Boa noite, {name}. O que você quer consultar?",
+      "subtextDashboard": "Posso resumir prioridades, agendamentos e lembretes.",
+      "subtextClients": "Posso consultar o funil, explicar filtros e resumir clientes.",
+      "subtextClientDetail": "Posso analisar o histórico deste cliente e os próximos pontos de atenção.",
+      "subtextEnterprises": "Posso consultar as informações documentadas deste empreendimento.",
+      "subtextReports": "Posso resumir os indicadores do período selecionado.",
+      "subtextSettings": "Posso orientar a configuração das integrações e do perfil."
+    },
+    "summary": {
+      "title": "Resumo do cliente com Nexo",
+      "description": "Uma síntese do histórico para preparar o próximo contato.",
+      "generate": "Gerar resumo",
+      "update": "Atualizar resumo",
+      "loading": "Analisando o histórico do cliente…",
+      "empty": "Gere um resumo quando quiser revisar o histórico, os compromissos e os próximos pontos de atenção.",
+      "note": "Sugestões baseadas apenas nos dados registrados no CRM.",
+      "error": "Não foi possível gerar o resumo agora.",
+      "copy": "Copiar resumo",
+      "copied": "Resumo copiado.",
+      "copyFailed": "Não foi possível copiar o resumo.",
+      "askNexo": "Perguntar ao Nexo sobre este cliente",
+      "generatedAt": "Gerado em {dateTime}",
+      "collapse": "Recolher resumo",
+      "expand": "Expandir resumo"
+    },
+    "settings": {
+      "proactivityTitle": "Sugestões proativas do Nexo",
+      "proactivityDescription": "Permite que o Nexo mostre avisos contextuais discretos perto do ícone, como lembretes pendentes. Nada é aberto automaticamente e nenhum conteúdo de conversa é armazenado."
     },
     "a11y": {
       "avatarIdle": "Nexo está pronto para ajudar",
@@ -88,6 +194,77 @@
       "avatarSuccess": "Nexo concluiu a resposta",
       "avatarError": "Ocorreu um erro no Nexo",
       "avatarOffline": "Nexo está indisponível"
+    },
+    "catalog": {
+      "dashboard.today_summary": { "label": "Resumir minhas prioridades de hoje", "prompt": "Resuma minhas prioridades de hoje com base nos meus clientes, agendamentos e lembretes." },
+      "dashboard.followups": { "label": "Quais clientes precisam de atualização?", "prompt": "Quais clientes precisam de atualização? Considere o período de atualização registrado." },
+      "dashboard.schedules": { "label": "Ver meus próximos agendamentos", "prompt": "Quais são os meus próximos agendamentos?" },
+      "dashboard.reminders": { "label": "Quais lembretes estão pendentes?", "prompt": "Quais lembretes estão pendentes?" },
+      "dashboard.explain": { "label": "Explicar os indicadores do Dashboard", "prompt": "Explique os indicadores do Dashboard e como interpretá-los." },
+      "clients.filtered_summary": { "label": "Resumir os clientes desta etapa", "prompt": "Resuma os clientes da etapa em que estou focando, considerando os filtros ativos." },
+      "clients.stale": { "label": "Quais leads estão sem interação recente?", "prompt": "Quais leads estão sem interação recente? Diga desde quando." },
+      "clients.filters_help": { "label": "Como usar os filtros desta tela?", "prompt": "Como usar os filtros da tela de Clientes?" },
+      "clients.funnel_help": { "label": "Explicar as etapas do funil", "prompt": "Explique as etapas do funil de clientes do CRM Pro." },
+      "clients.create_help": { "label": "Onde cadastro um novo cliente?", "prompt": "Onde e como cadastro um novo cliente no CRM?" },
+      "clients.by_stage": { "label": "Quantos clientes há por etapa?", "prompt": "Quantos clientes há em cada etapa do funil?" },
+      "clients.next_stage_help": { "label": "Explicar a próxima etapa", "prompt": "Explique como funciona a passagem para a próxima etapa do funil." },
+      "navigate.clients": { "label": "Abrir Clientes", "prompt": "" },
+      "client.summary": { "label": "Resumir este cliente", "prompt": "Resuma este cliente: perfil, estágio e histórico recente." },
+      "client.last_interaction": { "label": "Qual foi a última interação registrada?", "prompt": "Qual foi a última interação registrada para este cliente?" },
+      "client.commitments": { "label": "Quais compromissos estão pendentes?", "prompt": "Quais compromissos e agendamentos deste cliente estão pendentes?" },
+      "client.next_contact": { "label": "O que devo revisar no próximo contato?", "prompt": "O que devo revisar no próximo contato com este cliente? Indique a base usada." },
+      "client.stage_help": { "label": "Explicar o estágio atual", "prompt": "Explique o estágio atual deste cliente no funil e o que costuma vir depois." },
+      "client.missing_fields": { "label": "Quais informações ainda estão faltando?", "prompt": "Quais informações importantes ainda estão faltando no cadastro deste cliente?" },
+      "client.history": { "label": "Ver histórico resumido", "prompt": "Faça um resumo do histórico de interações deste cliente." },
+      "navigate.client": { "label": "Abrir ficha do cliente", "prompt": "" },
+      "closed.summary": { "label": "Resumir ganhos e perdas", "prompt": "Resuma meus negócios ganhos e perdidos no período recente." },
+      "closed.won_count": { "label": "Quantos negócios foram ganhos?", "prompt": "Quantos negócios foram fechados como ganhos?" },
+      "closed.recent": { "label": "Quais negócios foram encerrados recentemente?", "prompt": "Quais negócios foram encerrados recentemente?" },
+      "closed.explain": { "label": "Como interpretar esta tela?", "prompt": "Como interpretar a tela de Negócios Finalizados?" },
+      "tags.organize": { "label": "Como organizar clientes com tags?", "prompt": "Como organizar meus clientes usando tags no CRM?" },
+      "tags.most_used": { "label": "Quais tags são mais utilizadas?", "prompt": "Quais tags são mais utilizadas nos meus clientes?" },
+      "tags.filter_help": { "label": "Como filtrar clientes por tag?", "prompt": "Como filtrar a lista de clientes por tag?" },
+      "tags.first": { "label": "Como criar minha primeira tag?", "prompt": "Como criar minha primeira tag no CRM?" },
+      "reminders.overdue": { "label": "O que está vencido?", "prompt": "Quais lembretes estão vencidos?" },
+      "reminders.today": { "label": "Quais lembretes vencem hoje?", "prompt": "Quais lembretes vencem hoje?" },
+      "reminders.upcoming": { "label": "Quais são os próximos lembretes?", "prompt": "Quais são os meus próximos lembretes?" },
+      "reminders.create_help": { "label": "Como criar um lembrete?", "prompt": "Como criar um lembrete no CRM?" },
+      "reminders.calendar_help": { "label": "Como funciona a sincronização com o calendário?", "prompt": "Como funciona a sincronização de agendamentos com o Google Calendar?" },
+      "reminders.next_7_days": { "label": "Lembretes dos próximos 7 dias", "prompt": "Quais lembretes vencem nos próximos 7 dias?" },
+      "schedule.tomorrow": { "label": "Ver agendamentos de amanhã", "prompt": "Quais são os meus agendamentos de amanhã?" },
+      "navigate.reminders": { "label": "Abrir Lembretes", "prompt": "" },
+      "navigate.schedules": { "label": "Abrir agenda", "prompt": "" },
+      "enterprise.region_search": { "label": "Encontrar empreendimentos por região", "prompt": "Ajude-me a encontrar empreendimentos por região." },
+      "enterprise.types_help": { "label": "Explicar lançamentos e revenda", "prompt": "Explique a diferença entre empreendimentos de lançamento e revenda." },
+      "enterprise.search_help": { "label": "Como pesquisar um empreendimento?", "prompt": "Como pesquisar e filtrar empreendimentos nesta tela?" },
+      "enterprise.summary": { "label": "Resumir este empreendimento", "prompt": "Resuma este empreendimento com base nas informações documentadas." },
+      "enterprise.differentials": { "label": "Quais são os principais diferenciais?", "prompt": "Quais são os principais diferenciais deste empreendimento?" },
+      "enterprise.layouts": { "label": "Quais tipologias estão documentadas?", "prompt": "Quais tipologias e plantas estão documentadas para este empreendimento?" },
+      "enterprise.location": { "label": "Resumir localização e infraestrutura", "prompt": "Resuma a localização e a infraestrutura deste empreendimento." },
+      "enterprise.missing": { "label": "Quais informações não estão disponíveis?", "prompt": "Quais informações deste empreendimento não estão disponíveis?" },
+      "navigate.enterprise": { "label": "Abrir empreendimento", "prompt": "" },
+      "reports.summary": { "label": "Resumir este período", "prompt": "Resuma os indicadores do período selecionado nos relatórios." },
+      "reports.stage_distribution": { "label": "Qual etapa concentra mais clientes?", "prompt": "Qual etapa do funil concentra mais clientes no período?" },
+      "reports.won_lost": { "label": "Comparar negócios ganhos e perdidos", "prompt": "Compare os negócios ganhos e perdidos do período." },
+      "reports.attention": { "label": "Quais indicadores merecem atenção?", "prompt": "Quais indicadores deste período merecem atenção?" },
+      "reports.explain": { "label": "Explicar este relatório", "prompt": "Explique como interpretar este relatório." },
+      "navigate.reports": { "label": "Abrir Relatórios", "prompt": "" },
+      "meta.summary": { "label": "Resumir os leads deste período", "prompt": "Resuma os leads de anúncios deste período." },
+      "meta.campaigns": { "label": "Quais campanhas geraram mais leads?", "prompt": "Quais campanhas de anúncios geraram mais leads?" },
+      "meta.conversion": { "label": "Explicar a taxa de conversão", "prompt": "Explique a taxa de conversão dos anúncios e como interpretá-la." },
+      "meta.sources": { "label": "Quais origens trouxeram mais contatos?", "prompt": "Quais origens trouxeram mais contatos de anúncios?" },
+      "meta.queues": { "label": "Explicar as filas e os leads perdidos", "prompt": "Explique como funcionam as filas de distribuição e os leads perdidos nos anúncios." },
+      "admin.overview": { "label": "Explicar esta área administrativa", "prompt": "Explique o que posso fazer na área administrativa do CRM." },
+      "admin.create_user": { "label": "Como criar um usuário?", "prompt": "Como criar um novo usuário na administração do CRM?" },
+      "admin.roles": { "label": "Como funcionam os perfis de acesso?", "prompt": "Como funcionam os perfis de acesso (papéis) do CRM?" },
+      "admin.integrations": { "label": "Como verificar as integrações dos usuários?", "prompt": "Como verificar as integrações ativas de cada usuário?" },
+      "settings.calendar": { "label": "Como conectar o Google Calendar?", "prompt": "Como conectar minha conta do Google Calendar ao CRM?" },
+      "settings.telegram": { "label": "Como configurar notificações do Telegram?", "prompt": "Como configurar as notificações do Telegram no CRM?" },
+      "settings.profile": { "label": "Como alterar meu perfil?", "prompt": "Como alterar meus dados de perfil no CRM?" },
+      "settings.theme": { "label": "Como mudar o tema?", "prompt": "Como alternar entre tema claro e escuro no CRM?" },
+      "navigate.relevant_view": { "label": "Levar-me até a tela", "prompt": "Me leve até a tela certa para isso." },
+      "help.another_question": { "label": "Ver outra dúvida", "prompt": "Tenho outra dúvida sobre o CRM." },
+      "help.home": { "label": "Voltar ao início", "prompt": "" }
     }
   }
 }

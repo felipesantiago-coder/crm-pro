@@ -27,7 +27,8 @@
       "@/*": [
         "./src/*"
       ]
-    }
+    },
+    "allowImportingTsExtensions": true
   },
   "include": [
     "next-env.d.ts",
@@ -41,6 +42,7 @@
     "repo-source",
     "crm-pro-audit",
     "examples",
-    "skills"
+    "skills",
+    "tests"
   ]
 }

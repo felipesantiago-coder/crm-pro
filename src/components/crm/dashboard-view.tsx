@@ -51,6 +51,8 @@ import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
 import { format, differenceInDays, isToday, isTomorrow, isPast, isThisWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useCRMStore } from '@/store/crm-store';
+import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
+import { useAssistantContextStore } from '@/components/ai-assistant/assistant-context-store';
 import { toast } from 'sonner';
 import { getCached, invalidateCache } from '@/lib/fetch-cache';
 
@@ -170,6 +172,27 @@ export function DashboardView() {
   const [editForm, setEditForm] = useState({ scheduledDate: '', scheduledTime: '', description: '' });
   const { setCurrentView, setSelectedClientId } = useCRMStore();
 
+  // Sinais proativos (§13) alimentam o nudge determinístico — nunca PII.
+  const upcoming = allSchedules.filter(
+    (s) => s.status === 'PENDING' && new Date(s.scheduledDate).getTime() > Date.now(),
+  );
+  const nextSchedule = upcoming.length > 0
+    ? upcoming.sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime())[0]
+    : null;
+  const minutesToNext = nextSchedule
+    ? Math.round((new Date(nextSchedule.scheduledDate).getTime() - Date.now()) / 60000)
+    : undefined;
+  const setProactiveSignals = useAssistantContextStore((s) => s.setProactiveSignals);
+  useEffect(() => {
+    setProactiveSignals({
+      pendingReminders,
+      overdueClients: needsUpdateClients.length,
+      ...(minutesToNext !== undefined && minutesToNext > 0 && minutesToNext <= 120
+        ? { scheduleSoonMinutes: minutesToNext }
+        : {}),
+    });
+  }, [pendingReminders, needsUpdateClients.length, minutesToNext, setProactiveSignals]);
+
   useEffect(() => {
     async function loadDashboard() {
       try {
@@ -258,6 +281,19 @@ export function DashboardView() {
   }, [allSchedules]);
 
   const pendingSchedulesCount = allSchedules.filter((s) => s.status === 'PENDING' && !isPast(new Date(s.scheduledDate))).length;
+
+  // Bridge de contexto do Nexo (§8.2): apenas enum + contagens não sensíveis.
+  useRegisterAssistantContext({
+    view: 'dashboard',
+    subview: dashboardTab === 'default' ? undefined : dashboardTab,
+    signals: {
+      pendingReminders,
+      overdueFollowUps: needsUpdateClients.length,
+      todaySchedules: todaySchedules.length,
+      upcomingSchedules: upcoming.length,
+      visibleCount: totalClients,
+    },
+  });
   const overdueSchedulesCount = allSchedules.filter((s) => s.status === 'PENDING' && isPast(new Date(s.scheduledDate))).length;
 
   async function handleRecordInteraction(clientId: string) {

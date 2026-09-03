@@ -54,6 +54,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { EnterpriseManagement } from '@/components/crm/enterprise-management';
 import { ErrorLogsTab } from '@/components/crm/error-logs-view';
+import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
 
 interface UserItem {
   id: string;
@@ -75,6 +76,12 @@ export function AdminPanel() {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // Bridge de contexto do Nexo (§8.2): publicado somente para ADMIN (§9.2).
+  const adminRole = ((session?.user as { role?: string } | undefined)?.role) === 'ADMIN';
+  useRegisterAssistantContext({
+    view: 'admin',
+    disabled: !adminRole,
+  });
 
   // Notification status
   const [notifStatus, setNotifStatus] = useState<NotificationStatus[]>([]);

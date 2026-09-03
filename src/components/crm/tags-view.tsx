@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Tag as TagIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -52,6 +53,12 @@ export function TagsView() {
   const [saving, setSaving] = useState(false);
 
   const [formName, setFormName] = useState('');
+
+  // Bridge de contexto do Nexo (§8.2): contagem não sensível de tags.
+  useRegisterAssistantContext({
+    view: 'tags',
+    signals: { tagCount: tags.length },
+  });
   const [formColor, setFormColor] = useState('#0d9488');
 
   useEffect(() => {

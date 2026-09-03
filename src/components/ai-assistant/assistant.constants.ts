@@ -32,6 +32,27 @@ export const LISTENING_IDLE_TIMEOUT_MS = 8000;
 export const DISCOVERY_DISMISSED_KEY = 'nexo:discovery-dismissed';
 
 /**
+ * Versão do onboarding persistido em preferência NÃO sensível
+ * (prompt v2.0 §14 — nunca mensagem ou PII).
+ */
+export const ONBOARDING_KEY = 'nexo:onboarding:v2';
+
+/** Preferência de proatividade (persistida — não sensível; prompt v2.0 §13.2). */
+export const PROACTIVITY_KEY = 'nexo:proactive-enabled';
+
+/**
+ * Dispensa de nudge: guarda apenas { id genérico, timestamp } — 24 h (§13.2).
+ * Sem conteúdo, sem PII.
+ */
+export const NUDGE_DISMISS_KEY = 'nexo:nudge-dismissed';
+
+/** Depois de "Agora não", o mesmo nudge não volta por 24 horas. */
+export const NUDGE_DISMISS_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Máximo de um nudge proativo por sessão (§13.2). */
+export const NUDGE_SESSION_KEY = 'nexo:nudge-shown';
+
+/**
  * Textura do meio-caractere usado como placeholder interno no
  * renderizador de Markdown (Private Use Area — não colide com conteúdo).
  */
