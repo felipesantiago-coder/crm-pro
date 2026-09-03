@@ -60,7 +60,7 @@ export type {
 
 // ── Pipeline principal ──────────────────────────────────────────────────────
 
-export const EXTRACTION_PROMPT_VERSION = 'ext-v2-2026-09-04';
+export const EXTRACTION_PROMPT_VERSION = 'ext-v2-2026-09-04b';
 const MODEL_ID = 'deepseek-v4-flash';
 
 /**
@@ -75,10 +75,10 @@ const EXTRACTION_WALL_BUDGET_MS = Number(process.env.NEXO_EXTRACTION_WALL_BUDGET
 /**
  * CORREÇÃO (2026-09): 3000 tokens truncava o JSON de blocos densos (12
  * tipologias com descrições + 10 diferenciais) — finish_reason=length,
- * parse falhava e o reparo também era truncado. 6000 dá folga sem custo
- * extra (o modelo só gasta o que precisa).
+ * parse falhava e o reparo também era truncado. 8000 cobre também modelos
+ * com raciocínio que consomem tokens antes do conteúdo útil.
  */
-const BLOCK_MAX_TOKENS = 6000;
+const BLOCK_MAX_TOKENS = 8000;
 
 /**
  * Executa a extração e grava SEMPRE apenas no draft + run. Nunca toca

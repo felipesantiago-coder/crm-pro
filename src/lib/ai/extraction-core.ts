@@ -24,13 +24,11 @@ const BLOCK_OVERLAP = 500;
 export const MAX_BLOCKS_PER_RUN = 6;
 /**
  * Timeout por tentativa de bloco.
- * CORREÇÃO (2026-09): 45 s consumia quase todo o orçamento de parede (48 s) —
- * uma única chamada lenta esgotava o run com ZERO blocos processados (502
- * "nenhum bloco pôde ser processado"). Com 30 s, o pior caso de um bloco
- * (tentativa + reparação) cabe dentro do orçamento e sobra fatia para o
- * próximo bloco — run termina em PARTIAL em vez de FAILED.
+ * 22 s permite 2 tentativas dentro do orçamento de 48 s (22 + 1 + 22 = 45 s):
+ * respostas vazias transientes do provedor (comuns, ver ai-provider) são
+ * recuperadas na 2ª tentativa sem estourar o maxDuration da Vercel.
  */
-export const BLOCK_TIMEOUT_MS = 30_000;
+export const BLOCK_TIMEOUT_MS = 22_000;
 /** Menor fatia de orçamento que ainda justifica iniciar um bloco. */
 export const MIN_SLICE_MS = 8_000;
 
@@ -128,6 +126,8 @@ REGRAS:
 - Extraia SOMENTE o que estiver EXPLICITAMENTE no bloco. Não invente, não complete, não presuma.
 - Ausente = null. Nunca string vazia.
 - "deliveryDate" e "price" preservam EXATAMENTE o formato do texto.
+- "apartmentTypes" lista TIPOLOGIAS (plantas/medidas, ex.: "Final 01 — 3 suítes", "Tipo 2 quartos 86,24 m²"), NUNCA unidades individuais. NÃO enumere unidades de tabelas de preços/estoque (ex.: "Unidade 101", "Bloco A unidade 2").
+- Diante de tabela de unidades por preço, derive apenas: "price" (valor comercial representativo do bloco — ex.: menor "Valor Total" da tabela, no formato "a partir de R$ <valor>") e "totalUnits" (contagem total declarada, ex.: "123 unidades" → 123).
 - Devolva APENAS JSON válido. Sem markdown, sem texto fora do JSON.`;
 
 export function buildBlockUserPrompt(params: { enterpriseName: string; region: string | null; block: DocumentBlock }): string {
@@ -298,15 +298,25 @@ export function repairTruncatedJson(text: string): unknown {
 
 /**
  * Plano de tentativa de um bloco dentro do orçamento de parede (puro).
- * CORREÇÃO (2026-09): os retries internos do callAI ignoravam o orçamento —
- * 2 tentativas × 45 s + backoff podiam passar de 60 s (maxDuration da Vercel)
- * e a function morria com 502 sem corpo, run presa em RUNNING.
- * Regra: só 2 tentativas quando cabe 2× timeout + backoff no restante.
+ * Reserva tempo para 2 tentativas sempre que couber — respostas vazias
+ * transientes do provedor são comuns (ver ai-provider) e se recuperam na
+ * 2ª tentativa. Limites:
+ *  - restante ≥ 2× BLOCK_TIMEOUT + backoff → 2 tentativas com timeout cheio;
+ *  - restante ≥ 2× MIN_SLICE + backoff → 2 tentativas dividindo o tempo;
+ *  - abaixo disso → 1 tentativa com o tempo restante (tentativas curtas
+ *    demais não conseguem gerar a resposta).
+ * Pior caso por bloco: consome no máximo o restante − 1 s (orçamento nunca
+ * estoura e a run termina em PARTIAL em vez de FAILED/estouro).
  */
 export function attemptPlan(remainingMs: number): { timeoutMs: number; retries: number } {
   if (remainingMs < MIN_SLICE_MS) return { timeoutMs: 0, retries: 0 };
-  const timeoutMs = Math.min(BLOCK_TIMEOUT_MS, remainingMs);
-  return { timeoutMs, retries: remainingMs > timeoutMs * 2 + 1_000 ? 2 : 1 };
+  if (remainingMs >= BLOCK_TIMEOUT_MS * 2 + 1_000) {
+    return { timeoutMs: BLOCK_TIMEOUT_MS, retries: 2 };
+  }
+  if (remainingMs >= MIN_SLICE_MS * 2 + 1_000) {
+    return { timeoutMs: Math.floor((remainingMs - 1_000) / 2), retries: 2 };
+  }
+  return { timeoutMs: Math.min(BLOCK_TIMEOUT_MS, remainingMs), retries: 1 };
 }
 
 

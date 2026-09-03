@@ -163,22 +163,26 @@ test('repairTruncatedJson: lixo irrecuperável → null (bloco conta como falha,
 
 // ── attemptPlan (orçamento de parede × retries) ─────────────────────────────
 
-test('attemptPlan: orçamento cheio usa 1 tentativa (2× timeout + backoff não cabem)', () => {
+test('attemptPlan: orçamento cheio reserva 2 tentativas com timeout cheio (22+1+22=45s ≤ 48s)', () => {
   const plan = attemptPlan(48_000);
   assert.equal(plan.timeoutMs, BLOCK_TIMEOUT_MS);
-  assert.equal(plan.retries, 1); // antes era 2 — estourava maxDuration de 60 s
+  assert.equal(plan.retries, 2); // respostas vazias transientes recuperadas na 2ª tentativa
 });
 
-test('attemptPlan: orçamento estendido (env) permite 2 tentativas', () => {
+test('attemptPlan: orçamento estendido mantém o teto de timeout', () => {
   const plan = attemptPlan(65_000);
   assert.equal(plan.timeoutMs, BLOCK_TIMEOUT_MS);
   assert.equal(plan.retries, 2);
 });
 
-test('attemptPlan: fatia curta reduz o timeout e mantém 1 tentativa', () => {
+test('attemptPlan: fatia média divide o tempo em 2 tentativas', () => {
+  const plan = attemptPlan(30_000);
+  assert.deepEqual(plan, { timeoutMs: 14_500, retries: 2 }); // (30000-1000)/2
+});
+
+test('attemptPlan: fatia curta demais para 2 tentativas úteis → 1 tentativa com o restante', () => {
   const plan = attemptPlan(12_000);
-  assert.equal(plan.timeoutMs, 12_000);
-  assert.equal(plan.retries, 1);
+  assert.deepEqual(plan, { timeoutMs: 12_000, retries: 1 });
 });
 
 test('attemptPlan: abaixo do mínimo não inicia bloco', () => {
