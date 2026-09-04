@@ -918,7 +918,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
       {/* ══════════════════════════════════════════════════
           4. SUMMARY SECTION
           ══════════════════════════════════════════════════ */}
-      {(info.totalUnits || areaRange || info.floors || info.parkingSpots || status || deliveryText) && (
+      {(info?.totalUnits || areaRange || info?.floors || info?.parkingSpots || status || deliveryText) && (
         <ScrollReveal>
           <section id="summary" className="bg-white">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -937,7 +937,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                     <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">{t('summary.delivery')}</p>
                   </div>
                 )}
-                {info.totalUnits != null && info.totalUnits > 0 && (
+                {info?.totalUnits != null && info.totalUnits > 0 && (
                   <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
                     <Building2 className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
                     <p className="text-xl sm:text-2xl font-bold text-[#33492F]">{info.totalUnits}</p>
@@ -951,14 +951,14 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                     <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">{t('summary.area')}</p>
                   </div>
                 )}
-                {info.floors != null && info.floors > 0 && (
+                {info?.floors != null && info.floors > 0 && (
                   <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
                     <Layers className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
                     <p className="text-xl sm:text-2xl font-bold text-[#33492F]">{info.floors}</p>
                     <p className="text-[11px] sm:text-xs text-[#1a1a1a]/40 mt-1">{t('summary.floors')}</p>
                   </div>
                 )}
-                {info.parkingSpots != null && info.parkingSpots > 0 && (
+                {info?.parkingSpots != null && info.parkingSpots > 0 && (
                   <div className="text-center p-4 sm:p-5 rounded-2xl bg-[#F7F6F3]">
                     <Car className="h-5 w-5 text-[#33492F] mx-auto mb-2" />
                     <p className="text-xl sm:text-2xl font-bold text-[#33492F]">{info.parkingSpots}</p>
@@ -991,7 +991,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">{t('why.locationTitle')}</h3>
                 <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">
                   {info?.location?.neighborhood || info?.location?.city
-                    ? t('why.locationDesc', { neighborhood: `${info.location.neighborhood || info.location.city}${info.location.city && info.location.neighborhood ? ', ' + info.location.city : ''}` })
+                    ? t('why.locationDesc', { neighborhood: `${info?.location?.neighborhood || info?.location?.city}${info?.location?.city && info?.location?.neighborhood ? ', ' + info?.location?.city : ''}` })
                     : t('why.locationDescFallback')}
                 </p>
               </div>
@@ -1003,7 +1003,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                 <h3 className="text-base font-semibold text-[#1a1a1a] mb-2">{t('why.differentialsTitle')}</h3>
                 <p className="text-sm text-[#1a1a1a]/50 leading-relaxed">
                   {info?.differentials && info.differentials.length > 0
-                    ? t('why.differentialsDesc', { differentials: info.differentials.slice(0, 3).join(', ') })
+                    ? t('why.differentialsDesc', { differentials: info?.differentials?.slice(0, 3)?.join(', ') })
                     : t('why.differentialsDescFallback')}
                 </p>
               </div>
@@ -1096,7 +1096,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
               </div>
               {/* Grid layout — no horizontal scroll */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-                {info.apartmentTypes.map((apt, i) => (
+                {info?.apartmentTypes?.map((apt, i) => (
                   <div key={i} className="rounded-3xl bg-white border border-[#1a1a1a]/[0.04] p-5 sm:p-6 hover:border-[#33492F]/15 hover:shadow-md transition-all">
                     <h3 className="text-base font-semibold text-[#1a1a1a] mb-3">{apt.name || t('apartments.typeFallback', { n: i + 1 })}</h3>
                     <div className="space-y-2.5">
@@ -1278,7 +1278,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                   {info?.location?.address && (
                     <div className="flex items-start gap-3">
                       <MapPin className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
-                      <p className="text-sm text-[#1a1a1a]/60">{info.location.address}</p>
+                      <p className="text-sm text-[#1a1a1a]/60">{info?.location?.address}</p>
                     </div>
                   )}
                   {(info?.location?.neighborhood || info?.location?.city) && (
@@ -1290,7 +1290,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                   {info?.location?.additionalInfo && (
                     <div className="flex items-start gap-3">
                       <Map className="h-4 w-4 text-[#33492F] flex-shrink-0 mt-0.5" />
-                      <p className="text-sm text-[#1a1a1a]/60">{info.location.additionalInfo}</p>
+                      <p className="text-sm text-[#1a1a1a]/60">{info?.location?.additionalInfo}</p>
                     </div>
                   )}
                 </div>

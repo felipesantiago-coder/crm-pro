@@ -1,29 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import {
-  resolvePublicEnterpriseInfo,
-  mergePublicInfoWithCatalog,
-} from '@/lib/ai/enterprise-info';
-import enterprisesCatalog from '@/data/enterprises-catalog';
+import { resolvePublicEnterpriseInfo } from '@/lib/ai/enterprise-info';
 
 /**
  * GET /api/enterprises/public-list — listagem pública (seção /empreendimentos).
  *
- * CORREÇÃO (2026-09, "seção pública com valores desatualizados"):
- * esta rota foi esquecida no refactor Fase 5 — não consumia a cadeia
- * publicado → verificado → legado e NÃO devolvia info alguma extraída
- * (publishedInfo/verifiedInfo/cachedInfo). O cartão da listagem, que espera
- * `cachedInfo` (resumo/status), recaindo sempre em `landingSubtitle` — campo
- * curado MANUALMENTE no painel e que NENHUM fluxo de extração/publicação
- * atualiza. Resultado: após publicar uma base nova (ex.: Villa Bianco com
- * preço novo), o cartão continuava exibindo o valor antigo indefinidamente.
- * Não era cache temporal — era fonte de dados desconectada.
- *
- * Agora a listagem usa o MESMO resolver das demais superfícies públicas
- * (§12): publicado → verificado → legado, com fallback do catálogo estático
- * apenas para campos nulos. A info resolvida é exposta em `cachedInfo`
- * (camada de compatibilidade) + `infoSource` para telemetria. Rascunho de
- * extração NUNCA é público.
+ * §12-v2 ("a base de dados é a única fonte da verdade pública"):
+ * - consome a MESMA cadeia estrita das demais superfícies: publicado →
+ *   verificado, e SOMENTE com base documental presente (pdfContent);
+ * - SEM fallback de catálogo estático e SEM legado cachedInfo;
+ * - base removida (ou sem extração publicada) → `cachedInfo` null e
+ *   `landingSubtitle` SUPRIMIDO no card — nada derivado de base é exibido
+ *   ("nada seja exibido na seção pública do empreendimento").
+ * Rascunho de extração NUNCA é público.
  */
 
 function resolveI18nString(field: Record<string, string> | null | undefined, locale: string): string | null {
@@ -52,6 +41,7 @@ export async function GET(request: NextRequest) {
         },
         cachedInfo: true,
         cachedInfoI18n: true,
+        pdfContent: true,
         publishedInfo: true,
         publishedAt: true,
         publishedVersion: true,
@@ -65,17 +55,10 @@ export async function GET(request: NextRequest) {
     const resolved = enterprises.map((e) => {
       const { cachedInfoI18n, publishedInfo, verifiedInfo, ...listItem } = e;
 
-      // ── §12: mesma cadeia pública das demais superfícies ──
-      const publicInfo = resolvePublicEnterpriseInfo(e);
-
+      // ── §12-v2: cadeia pública estrita com gate de base documental ──
+      const publicInfo = resolvePublicEnterpriseInfo(e, { requireBaseDocument: true });
+      const hasApprovedInfo = publicInfo.source === 'published' || publicInfo.source === 'verified';
       let info: Record<string, unknown> | null = publicInfo.info as Record<string, unknown> | null;
-
-      // Fallback do catálogo estático apenas para campos nulos (idêntico às
-      // demais superfícies) — o valor do banco SEMPRE vence quando existe.
-      const catalog = e.slug ? enterprisesCatalog[e.slug] : undefined;
-      if (catalog) {
-        info = mergePublicInfoWithCatalog(info, catalog);
-      }
 
       // i18n: tradução do locale mesclada sobre a base (idêntico à landing)
       if (locale !== 'pt-BR' && cachedInfoI18n && (cachedInfoI18n as Record<string, Record<string, unknown>>)[locale]) {
@@ -85,7 +68,12 @@ export async function GET(request: NextRequest) {
       return {
         ...listItem,
         landingTitle: resolveI18nString(e.landingTitle as Record<string, string> | null, locale),
-        landingSubtitle: resolveI18nString(e.landingSubtitle as Record<string, string> | null, locale),
+        // Sem extração/edição publicada, o resumo do card NÃO recua para o
+        // landingSubtitle (texto curado que pode carregar preço antigo) —
+        // "nada seja exibido" (§12-v2).
+        landingSubtitle: hasApprovedInfo
+          ? resolveI18nString(e.landingSubtitle as Record<string, string> | null, locale)
+          : null,
         cachedInfo: info,
         infoSource: publicInfo.source,
         infoReferenceDate: publicInfo.referenceDate,

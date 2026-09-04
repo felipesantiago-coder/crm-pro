@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import enterprisesCatalog, { EnterpriseCatalogEntry } from '@/data/enterprises-catalog';
-import { resolvePublicEnterpriseInfo, mergePublicInfoWithCatalog } from '@/lib/ai/enterprise-info';
+import { resolvePublicEnterpriseInfo } from '@/lib/ai/enterprise-info';
 
 /**
  * Resolve a string from a locale-keyed JSON object.
@@ -16,10 +15,9 @@ function resolveI18nString(
 }
 
 /**
- * mergeCachedInfo foi unificado em mergePublicInfoWithCatalog
- * (src/lib/ai/enterprise-info.ts) — mesma semântica para TODAS as superfícies
- * públicas (landing SSR, esta API e a listagem /public-list), sem risco de
- * divergência.
+ * mergeCachedInfo foi REMOVIDO (§12-v2): o catálogo estático NUNCA mais
+ * preenche campos públicos — o público exibe somente a extração/edição
+ * publicada, e apenas com base documental presente.
  */
 
 export async function GET(
@@ -45,6 +43,7 @@ export async function GET(
         landingDescription: true,
         cachedInfo: true,
         cachedInfoI18n: true,
+        pdfContent: true,
         publishedInfo: true,
         publishedAt: true,
         publishedVersion: true,
@@ -84,20 +83,13 @@ export async function GET(
       return NextResponse.json({ error: 'Empreendimento não encontrado' }, { status: 404 });
     }
 
-    // ── Fase 5 (§12): público consome publicado → verificado → legado.
-    // Resultado exposto em `cachedInfo` (camada de compatibilidade marcada);
-    // rascunhos de extração NUNCA são públicos. Telemetria de dependência
-    // legada é emitida pelo resolver.
-    const resolved = resolvePublicEnterpriseInfo(enterprise as Record<string, unknown> & { id: string });
+    // ── §12-v2: público consome APENAS publicado → verificado, e SOMENTE
+    // com base documental presente (pdfContent). Base removida → nada é
+    // público. Rascunhos de extração NUNCA são públicos.
+    const resolved = resolvePublicEnterpriseInfo(enterprise as Record<string, unknown> & { id: string }, { requireBaseDocument: true });
     enterprise.cachedInfo = resolved.info;
     const infoSource = resolved.source;
     const infoReferenceDate = resolved.referenceDate;
-
-    // Use catalog as fallback for any null/missing fields in DB cachedInfo.
-    const catalog: EnterpriseCatalogEntry | undefined = enterprisesCatalog[slug];
-    if (catalog) {
-      enterprise.cachedInfo = mergePublicInfoWithCatalog(enterprise.cachedInfo, catalog) as any;
-    }
 
     // ── i18n resolution for text fields ──────────────
     // Resolve locale-keyed JSON → flat string for the landing page client

@@ -1073,7 +1073,7 @@ export function EnterpriseManagement() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Remover Base de Dados</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Remover a base de dados de &quot;{enterprise.name}&quot;? O assistente de IA não poderá mais responder perguntas sobre este empreendimento.
+                                Remover a base de dados de &quot;{enterprise.name}&quot;? O assistente de IA não poderá mais responder perguntas sobre este empreendimento e a SEÇÃO PÚBLICA deixa de exibir as informações deste empreendimento até que uma nova base seja enviada, extraída e publicada.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -1226,7 +1226,7 @@ export function EnterpriseManagement() {
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground py-1">
-                  Nenhuma base de dados vinculada. O assistente de IA não poderá responder perguntas específicas sobre este empreendimento.
+                  Nenhuma base de dados vinculada. O assistente de IA não poderá responder perguntas específicas sobre este empreendimento e a seção pública não exibe informações extraídas (política: o público reflete somente a extração/edição mais recente da base).
                 </p>
               )}
               <label className="cursor-pointer">

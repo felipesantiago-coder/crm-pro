@@ -220,9 +220,12 @@ export async function DELETE(
       return NextResponse.json({ error: 'Nenhuma base de dados vinculada a este empreendimento' }, { status: 404 });
     }
 
-    // ── Remoção da base documental (§11.2): remove APENAS a fonte.
-    // Dados verificados/publicados e o legado cachedInfo permanecem —
-    // nunca há perda silenciosa de conteúdo publicado.
+    // ── Remoção da base documental (§11.2 + §12-v2): remove APENAS a fonte.
+    // Os campos verificado/publicado permanecem no banco (recuperáveis ao
+    // reenviar uma base e republicar), mas deixa de haver base documental —
+    // e, pela política §12-v2, a SEÇÃO PÚBLICA DEIXA DE EXIBIR as informações
+    // deste empreendimento até que uma nova base seja enviada, extraída e
+    // publicada (gate requireBaseDocument nos resolvers públicos).
     await db.enterprise.update({
       where: { id },
       data: { pdfContent: null, documentHash: null },
@@ -230,13 +233,13 @@ export async function DELETE(
 
     logAiUsage({
       capability: 'enterprise_extraction', outcome: 'success',
-      scopeId: id, note: 'base documental removida — dados verificados/publicados preservados',
+      scopeId: id, note: 'base documental removida — seção pública sem dados (§12-v2); verificado/publicado preservados no banco',
     });
 
     return NextResponse.json({
       success: true,
       preservedData: true,
-      message: 'Base removida. Dados verificados e publicados foram preservados; o Nexo deixa de consultar este documento.',
+      message: 'Base removida. A seção pública deste empreendimento deixa de exibir informações até que uma nova base seja enviada, extraída e publicada.',
     });
   } catch (error) {
     console.error('[ENTERPRISE KB] Erro ao remover base de dados:', error);

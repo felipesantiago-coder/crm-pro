@@ -23,10 +23,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       select: {
         id: true,
         name: true,
+        pdfContent: true,
         landingTitle: true,
         landingDescription: true,
         imageUrl: true,
-        cachedInfo: true,
         publishedInfo: true,
         publishedAt: true,
         publishedVersion: true,
@@ -41,8 +41,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     });
 
     if (enterprise) {
-      // Fase 5 (§12): metadados também consomem somente publicado/verificado.
-      const resolved = resolvePublicEnterpriseInfo(enterprise);
+      // Fase 5 (§12-v2): metadados também consomem somente publicado/verificado COM base presente.
+      const resolved = resolvePublicEnterpriseInfo(enterprise, { requireBaseDocument: true });
       const info = resolved.info as Record<string, any> | null;
       // landingTitle/landingDescription are now JSONB { locale: string }
       const titleObj = typeof enterprise.landingTitle === 'object' && enterprise.landingTitle

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { db } from '@/lib/db';
-import { resolvePublicEnterpriseInfo, mergePublicInfoWithCatalog } from '@/lib/ai/enterprise-info';
+import { resolvePublicEnterpriseInfo } from '@/lib/ai/enterprise-info';
 import LandingPageClient from './landing-page-client';
 import { LandingErrorBoundary } from './landing-error-boundary';
 import { peekNextUser } from '@/lib/lead-queue';
@@ -9,9 +9,6 @@ import { locales, defaultLocale, isValidLocale, ogLocale, type Locale } from '@/
 import ptBRMessages from '@/i18n/locales/pt-BR.json';
 import enMessages from '@/i18n/locales/en.json';
 import esMessages from '@/i18n/locales/es.json';
-
-// ── Static data for known slugs (fallback when DB lookup fails) ──
-import enterprisesCatalog from '@/data/enterprises-catalog';
 
 const messagesMap: Record<string, Record<string, any>> = {
   'pt-BR': ptBRMessages,
@@ -35,6 +32,7 @@ const ENTERPRISE_SELECT = {
   id: true, name: true, slug: true, region: true, imageUrl: true,
   landingTitle: true, landingSubtitle: true, landingDescription: true,
   cachedInfo: true, mapLatitude: true, mapLongitude: true, createdAt: true,
+  pdfContent: true,
   publishedInfo: true, publishedAt: true, publishedVersion: true,
   verifiedInfo: true, verifiedInfoAt: true,
   _count: { select: { clients: true } },
@@ -47,9 +45,8 @@ const ENTERPRISE_SELECT = {
   },
 } as const;
 
-// mergeCachedInfo foi unificado em mergePublicInfoWithCatalog
-// (src/lib/ai/enterprise-info.ts) — mesma semântica para TODAS as superfícies
-// públicas, sem risco de divergência entre listagem e landing.
+// mergeCachedInfo/mergePublicInfoWithCatalog foram REMOVIDOS (§12-v2):
+// nenhuma superfície pública mais recebe fallback do catálogo estático.
 
 function resolveI18nString(field: any, locale: string): string | null {
   if (!field || typeof field !== 'object') return typeof field === 'string' ? field : null;
@@ -63,17 +60,16 @@ async function fetchEnterpriseData(slug: string, locale: string) {
   });
   if (!enterprise) return null;
 
-  // ── Fase 5 (§12): o público consome publicado → verificado → legado.
-  // Rascunhos (extractionDraft) NUNCA são públicos. O resultado é exposto
-  // na propriedade `cachedInfo` como camada de compatibilidade temporária,
-  // marcada com `infoSource` para telemetria de dependência legada.
-  const resolved = resolvePublicEnterpriseInfo(enterprise as any);
+  // Política §12-v2 (enterprise-info.ts): o público consome APENAS
+  // publicado → verificado, e SOMENTE com base documental presente — sem
+  // fallback de catálogo estático e sem legado cachedInfo. Base removida →
+  // nada de dados é exibido. Rascunhos (extractionDraft) NUNCA são públicos.
+  // O resultado é exposto em `cachedInfo` (camada de compatibilidade) com
+  // `infoSource` para diagnóstico.
+  const resolved = resolvePublicEnterpriseInfo(enterprise as any, { requireBaseDocument: true });
   enterprise.cachedInfo = resolved.info as any;
   const infoSource = resolved.source;
   const infoReferenceDate = resolved.referenceDate;
-
-  const catalog = enterprisesCatalog[slug];
-  if (catalog) enterprise.cachedInfo = mergePublicInfoWithCatalog(enterprise.cachedInfo, catalog) as any;
 
   // Resolve i18n string fields → flat string for client
   const raw = enterprise as any;
@@ -110,19 +106,17 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   try {
     const enterprise = await db.enterprise.findUnique({
       where: { slug },
-      select: { name: true, landingTitle: true, landingDescription: true, cachedInfoI18n: true, imageUrl: true, cachedInfo: true, images: { select: { url: true }, orderBy: { sortOrder: 'asc' }, take: 1 } },
+      select: { name: true, landingTitle: true, landingDescription: true, cachedInfoI18n: true, imageUrl: true, pdfContent: true, publishedInfo: true, publishedAt: true, publishedVersion: true, verifiedInfo: true, verifiedInfoAt: true, images: { select: { url: true }, orderBy: { sortOrder: 'asc' }, take: 1 } },
     });
     if (enterprise) {
-      const info = enterprise.cachedInfo as Record<string, any> | null;
+      // §12-v2: metadados também consomem somente publicado/verificado COM base presente.
+      const resolved = resolvePublicEnterpriseInfo(enterprise, { requireBaseDocument: true });
+      const info = resolved.info as Record<string, any> | null;
       enterpriseName = resolveI18nString(enterprise.landingTitle, locale) || enterprise.name;
       enterpriseDescription = resolveI18nString(enterprise.landingDescription, locale) || (locale !== 'pt-BR' && enterprise.cachedInfoI18n?.[locale] as any)?.summary || info?.summary || null;
       imageUrl = enterprise.imageUrl || enterprise.images[0]?.url || null;
     }
   } catch {}
-  if (!enterpriseName) {
-    const catalog = enterprisesCatalog[slug];
-    if (catalog) { enterpriseName = catalog.summary?.split('—')[0].trim() || slug; enterpriseDescription = catalog.summary || null; }
-  }
   if (!enterpriseName) return { title: seo.notFoundTitle || 'Empreendimento não encontrado' };
 
   const titleTemplate = seo.titleTemplate || '{name} | Empreendimentos';
