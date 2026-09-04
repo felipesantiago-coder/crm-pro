@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
+import { notFound } from 'next/navigation';
 import { db } from '@/lib/db';
-import { resolvePublicEnterpriseInfo } from '@/lib/ai/enterprise-info';
+import { resolvePublicEnterpriseInfo, mergePublicInfoI18n } from '@/lib/ai/enterprise-info';
 import LandingPageClient from './landing-page-client';
 import { LandingErrorBoundary } from './landing-error-boundary';
 import { peekNextUser } from '@/lib/lead-queue';
@@ -77,10 +78,14 @@ async function fetchEnterpriseData(slug: string, locale: string) {
   raw.landingSubtitle = resolveI18nString(raw.landingSubtitle, locale);
   raw.landingDescription = resolveI18nString(raw.landingDescription, locale);
 
-  // Resolve cachedInfo i18n: merge translated locale over base
-  if (locale !== 'pt-BR' && raw.cachedInfoI18n && raw.cachedInfoI18n[locale]) {
-    raw.cachedInfo = { ...(raw.cachedInfo || {}), ...raw.cachedInfoI18n[locale] };
-  }
+  // Resolve cachedInfo i18n: merge translated locale over base — SOMENTE com
+  // info aprovada (§12-v2 rev. Task 41): tradução é derivada da cadeia de
+  // extração e NUNCA ressuscita dado de base removida/não aprovada.
+  raw.cachedInfo = mergePublicInfoI18n(
+    raw.cachedInfo as Record<string, unknown> | null,
+    raw.cachedInfoI18n,
+    locale,
+  );
   delete raw.cachedInfoI18n;
   delete raw.publishedInfo;
   delete raw.verifiedInfo;
@@ -106,14 +111,23 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   try {
     const enterprise = await db.enterprise.findUnique({
       where: { slug },
-      select: { name: true, landingTitle: true, landingDescription: true, cachedInfoI18n: true, imageUrl: true, pdfContent: true, publishedInfo: true, publishedAt: true, publishedVersion: true, verifiedInfo: true, verifiedInfoAt: true, images: { select: { url: true }, orderBy: { sortOrder: 'asc' }, take: 1 } },
+      select: { name: true, landingTitle: true, landingDescription: true, imageUrl: true, pdfContent: true, publishedInfo: true, publishedAt: true, publishedVersion: true, verifiedInfo: true, verifiedInfoAt: true, images: { select: { url: true }, orderBy: { sortOrder: 'asc' }, take: 1 } },
     });
     if (enterprise) {
-      // §12-v2: metadados também consomem somente publicado/verificado COM base presente.
+      // §12-v2 rev. Task 41: sem info aprovada com base presente, a página
+      // pública NÃO EXISTE (notFound no body) — metadados coerentes: título
+      // de não-encontrado + noindex. Nada do empreendimento vaza (nem nome,
+      // nem descrição curada, nem resumo da cadeia órfã).
       const resolved = resolvePublicEnterpriseInfo(enterprise, { requireBaseDocument: true });
+      if (resolved.source === 'none') {
+        return {
+          title: seo.notFoundTitle || 'Empreendimento não encontrado',
+          robots: { index: false, follow: false },
+        };
+      }
       const info = resolved.info as Record<string, any> | null;
       enterpriseName = resolveI18nString(enterprise.landingTitle, locale) || enterprise.name;
-      enterpriseDescription = resolveI18nString(enterprise.landingDescription, locale) || (locale !== 'pt-BR' && enterprise.cachedInfoI18n?.[locale] as any)?.summary || info?.summary || null;
+      enterpriseDescription = info?.summary || resolveI18nString(enterprise.landingDescription, locale) || null;
       imageUrl = enterprise.imageUrl || enterprise.images[0]?.url || null;
     }
   } catch {}
@@ -160,6 +174,17 @@ export default async function LandingPage({ params }: PageProps) {
     fetchEnterpriseData(slug, locale).catch((err) => { console.error('[LandingPage] fetchEnterpriseData failed for slug', slug, err); return null; }),
     peekNextUser({ slug }).catch(() => null),
   ]);
+  // §12-v2 rev. Task 41 ("ela somente exiba as informações da extração e
+  // edição mais recente das informações da base de dados"): sem extração
+  // aprovada COM base documental, a página pública do empreendimento NÃO
+  // EXISTE — 404 por request (renderização dinâmica: o administrador publica
+  // e a página volta no próximo acesso; remove a base e ela some).
+  // Isso elimina os últimos vazamentos da landing sem info aprovada: hero
+  // com landingSubtitle curado (texto com preço antigo), descrição curada no
+  // formulário e seções com placeholders.
+  if (initialData && (initialData as { infoSource?: string }).infoSource === 'none') {
+    notFound();
+  }
   const initialQueueUser = queueUserData ? { userId: queueUserData.userId, userPhone: queueUserData.userPhone } : null;
   return (
     <LandingErrorBoundary>

@@ -169,3 +169,32 @@ test('REGRESSÃO Task 41: painel reflete a política — sem base, resolver inte
   const r = resolvePublicEnterpriseInfo(src, { requireBaseDocument: true });
   assert.equal(r.source, 'none');
 });
+
+// ── Task 41 (seção pública): tradução NUNCA ressuscita dado sem info aprovada ──
+import { mergePublicInfoI18n } from '../../src/lib/ai/enterprise-info.ts';
+
+test('mergePublicInfoI18n: com info aprovada, tradução do locale enriquece o dado', () => {
+  const base = info({ summary: 'Resumo PT' }) as Record<string, unknown>;
+  const translations = { en: { summary: 'English summary' } };
+  const merged = mergePublicInfoI18n(base, translations, 'en');
+  assert.equal(merged?.summary, 'English summary');
+  assert.equal(merged?.builder, 'Construtora'); // campos não traduzidos herdam a base
+});
+
+test('REGRESSÃO Task 41: SEM info aprovada, tradução órfã NUNCA reconstrói a ficha (EN/ES)', () => {
+  // Antes: { ...null, ...cachedInfoI18n[locale] } exibia a ficha traduzida
+  // completa mesmo com a base removida — o público "nunca deixava de
+  // apresentar as informações" para visitantes EN/ES.
+  const translations = { en: info({ summary: 'Orphan English summary' }) };
+  const merged = mergePublicInfoI18n(null, translations, 'en');
+  assert.equal(merged, null);
+  assert.equal(mergePublicInfoI18n(null, translations, 'es'), null);
+});
+
+test('mergePublicInfoI18n: pt-BR e traduções ausentes retornam a info intacta', () => {
+  const base = info() as Record<string, unknown>;
+  assert.equal(mergePublicInfoI18n(base, { en: { summary: 'x' } }, 'pt-BR'), base);
+  assert.equal(mergePublicInfoI18n(base, null, 'en'), base);
+  assert.equal(mergePublicInfoI18n(base, undefined, 'en'), base);
+  assert.equal(mergePublicInfoI18n(base, 'não-objeto', 'en'), base);
+});

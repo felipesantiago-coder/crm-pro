@@ -59,6 +59,27 @@ export function hasBaseDocument(pdfContent: unknown): boolean {
   return typeof pdfContent === 'string' && pdfContent.trim().length > 0;
 }
 
+/**
+ * §12-v2 rev. Task 41 — merge da tradução do locale sobre a info pública
+ * APROVADA. REGRA CRÍTICA: sem info aprovada (info null — base removida ou
+ * nada publicado/verificado), a tradução NUNCA ressuscita dados: as
+ * traduções (cachedInfoI18n) são derivadas da cadeia de extração e herdam o
+ * gate. Antes o merge `{ ...null, ...tradução }` reconstruía a ficha inteira
+ * para visitantes EN/ES mesmo com a base removida — o público "nunca deixava
+ * de apresentar as informações".
+ */
+export function mergePublicInfoI18n<T extends Record<string, unknown>>(
+  info: T | null,
+  translations: unknown,
+  locale: string,
+): T | null {
+  if (!info) return null;
+  if (locale === 'pt-BR' || !translations || typeof translations !== 'object') return info;
+  const translated = (translations as Record<string, unknown>)[locale];
+  if (!translated || typeof translated !== 'object') return info;
+  return { ...info, ...(translated as T) };
+}
+
 export function resolvePublicEnterpriseInfo(
   enterprise: PublicEnterpriseSource,
   options: ResolvePublicInfoOptions = {},

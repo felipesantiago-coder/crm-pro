@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { resolvePublicEnterpriseInfo } from '@/lib/ai/enterprise-info';
+import { resolvePublicEnterpriseInfo, mergePublicInfoI18n } from '@/lib/ai/enterprise-info';
 
 /**
  * Resolve a string from a locale-keyed JSON object.
@@ -83,10 +83,14 @@ export async function GET(
       return NextResponse.json({ error: 'Empreendimento não encontrado' }, { status: 404 });
     }
 
-    // ── §12-v2: público consome APENAS publicado → verificado, e SOMENTE
-    // com base documental presente (pdfContent). Base removida → nada é
-    // público. Rascunhos de extração NUNCA são públicos.
+    // ── §12-v2 rev. Task 41: público consome APENAS publicado → verificado, e
+    // SOMENTE com base documental presente (pdfContent). Sem info aprovada, a
+    // página pública NÃO EXISTE → 404 (a landing SSR aplica notFound(); aqui
+    // o client-side refetch recebe o mesmo veredito). Rascunhos NUNCA são públicos.
     const resolved = resolvePublicEnterpriseInfo(enterprise as Record<string, unknown> & { id: string }, { requireBaseDocument: true });
+    if (resolved.source === 'none') {
+      return NextResponse.json({ error: 'Empreendimento sem informações públicas' }, { status: 404 });
+    }
     enterprise.cachedInfo = resolved.info;
     const infoSource = resolved.source;
     const infoReferenceDate = resolved.referenceDate;
@@ -102,15 +106,16 @@ export async function GET(
     enterprise.landingDescription = resolveI18nString(rawDesc, locale);
 
     // ── i18n resolution for cachedInfo ────────────────
-    // If locale is not pt-BR and a translation exists, use it (merged over base)
+    // If locale is not pt-BR and a translation exists, use it (merged over
+    // base). §12-v2 rev. Task 41: a tradução NUNCA ressuscita dado — sem
+    // info aprovada o retorno acima já foi 404; o merge só enriquece a info
+    // existente (mergePublicInfoI18n).
     const i18nInfo = enterprise.cachedInfoI18n as Record<string, any> | null;
-    if (locale !== 'pt-BR' && i18nInfo && i18nInfo[locale]) {
-      // Deep-merge: translated fields override base, base fills missing
-      const base = (enterprise.cachedInfo && typeof enterprise.cachedInfo === 'object')
-        ? enterprise.cachedInfo as Record<string, any> : {};
-      const translated = i18nInfo[locale];
-      enterprise.cachedInfo = { ...base, ...(typeof translated === 'object' ? translated : {}) };
-    }
+    enterprise.cachedInfo = mergePublicInfoI18n(
+      enterprise.cachedInfo as Record<string, unknown> | null,
+      i18nInfo,
+      locale,
+    ) as typeof enterprise.cachedInfo;
 
     // Remove internal i18n / draft-state fields from public response
     const {
