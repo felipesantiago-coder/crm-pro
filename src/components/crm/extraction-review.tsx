@@ -28,7 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NexoAvatar } from '@/components/ai-assistant/nexo-avatar';
 import { useAssistantContextStore } from '@/components/ai-assistant/assistant-context-store';
-import { criticalsPendingDecision } from '@/lib/ai/extraction-core';
+import { criticalsPendingDecision, canDeleteDraft } from '@/lib/ai/extraction-core';
 import type { EnterpriseInfo } from '@/lib/ai/contracts';
 import { cn } from '@/lib/utils';
 
@@ -154,6 +154,8 @@ export function DocumentHealthCard({
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletingDraft, setDeletingDraft] = useState(false);
+  const [confirmDeleteDraft, setConfirmDeleteDraft] = useState(false);
   const setProactiveSignals = useAssistantContextStore((s) => s.setProactiveSignals);
 
   const load = useCallback(async () => {
@@ -213,6 +215,29 @@ export function DocumentHealthCard({
       setError('A extração falhou — dados existentes preservados.');
     } finally {
       setRunning(false);
+    }
+  }
+
+  /** Apaga o rascunho (campos extraídos) — base documental e publicados preservados. */
+  async function deleteDraft() {
+    setDeletingDraft(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/enterprises/extraction/draft', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enterpriseId }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(body?.error || 'Não foi possível apagar o rascunho.');
+      }
+      await load();
+    } catch {
+      setError('Não foi possível apagar o rascunho.');
+    } finally {
+      setDeletingDraft(false);
+      setConfirmDeleteDraft(false);
     }
   }
 
@@ -321,6 +346,18 @@ export function DocumentHealthCard({
             <FileSearch className="h-3 w-3" aria-hidden />
             Revisar extração
           </Button>
+          {draft && (
+            <Button
+              size="sm" variant="ghost"
+              className="h-8 min-h-[32px] gap-1.5 px-2.5 text-xs text-destructive hover:bg-destructive/10"
+              onClick={() => setConfirmDeleteDraft(true)}
+              disabled={deletingDraft || !canDeleteDraft(status?.lastRun?.status).allowed}
+              title={canDeleteDraft(status?.lastRun?.status).reason ?? 'Apagar o rascunho de extração'}
+            >
+              {deletingDraft ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : <Trash2 className="h-3 w-3" aria-hidden />}
+              Apagar rascunho
+            </Button>
+          )}
         </div>
 
         {!hasDocument && (
@@ -335,6 +372,37 @@ export function DocumentHealthCard({
           </p>
         )}
       </CardContent>
+
+      {/* Confirmação: apagar rascunho PRESERVA base documental e dados publicados */}
+      <AlertDialog open={confirmDeleteDraft} onOpenChange={setConfirmDeleteDraft}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar o rascunho de extração?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-1.5 text-sm">
+                <p>
+                  Os campos extraídos da base atual deixarão de estar disponíveis para revisão até uma nova extração.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  A base documental permanece intacta, assim como os dados verificados, os publicados no público e o histórico de versões. Depois é só clicar em “Extrair informações” para gerar um rascunho novo.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-9">Cancelar</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              className="h-9 gap-1.5 text-xs"
+              disabled={deletingDraft}
+              onClick={() => void deleteDraft()}
+            >
+              {deletingDraft ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : <Trash2 className="h-3.5 w-3.5" aria-hidden />}
+              Apagar rascunho
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

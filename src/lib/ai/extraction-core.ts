@@ -703,6 +703,26 @@ export function planVersionDeletion(
   return { deletable, active };
 }
 
+// ── Apagar rascunho de extração (sem tocar na base documental) ──────────────
+
+/**
+ * Guarda para apagar o rascunho (draft) de extração de um empreendimento.
+ *
+ * Enquanto uma run está RUNNING não se pode apagar o rascunho (a execução
+ * escreveria um novo por cima / estado inconsistente). Qualquer outro caso
+ * é apagável: pdfContent/documentHash (base documental) e os dados
+ * verificados/publicados vivem em campos separados e não são afetados.
+ */
+export function canDeleteDraft(lastRunStatus: string | null | undefined): { allowed: boolean; reason: string | null } {
+  if (lastRunStatus === 'RUNNING') {
+    return {
+      allowed: false,
+      reason: 'Extração em andamento — aguarde a conclusão ou a falha da execução antes de apagar o rascunho.',
+    };
+  }
+  return { allowed: true, reason: null };
+}
+
 /** Valida e normaliza uma EnterpriseInfo antes de persistir. */
 export function sanitizeEnterpriseInfo(input: unknown): EnterpriseInfo {
   const base = emptyEnterpriseInfo();
