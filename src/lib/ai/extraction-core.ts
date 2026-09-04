@@ -673,6 +673,36 @@ export function criticalsPendingDecision(params: CriticalsPendingDecisionParams)
   return pending;
 }
 
+// ── Apagão de versões antigas (gestão de histórico pelo admin) ──────────────
+
+export interface VersionDeletionPlan {
+  /** Versões que PODEM ser apagadas (todas exceto a ativa). */
+  deletable: number[];
+  /** Versão ativa (última publicada/restaurada) — nunca apagável. */
+  active: number | null;
+}
+
+/**
+ * Planeja quais versões do histórico o administrador pode apagar.
+ *
+ * A versão ATIVA é sempre preservada: é a âncora da numeração
+ * (publishedVersion) e a última referência de rollback do conteúdo que está
+ * no ar. As anteriores — extraídas de bases anteriores — são apagáveis
+ * individualmente ou em lote. Publicar/restaurar sempre CRIAM versões novas
+ * (append-only), então apagar antigas não quebra restauração futura.
+ *
+ * Sem versão publicada (publishedVersion = 0), o histórico inteiro é órfão
+ * (conteúdo de bases anteriores nunca aprovado) e pode ser limpo.
+ */
+export function planVersionDeletion(
+  versions: Array<{ version: number }>,
+  currentPublishedVersion: number,
+): VersionDeletionPlan {
+  const active = currentPublishedVersion > 0 ? currentPublishedVersion : null;
+  const deletable = versions.map((v) => v.version).filter((v) => v !== active);
+  return { deletable, active };
+}
+
 /** Valida e normaliza uma EnterpriseInfo antes de persistir. */
 export function sanitizeEnterpriseInfo(input: unknown): EnterpriseInfo {
   const base = emptyEnterpriseInfo();

@@ -17,7 +17,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Loader2, RefreshCw, FileSearch, AlertTriangle, CheckCircle2, XCircle,
-  Pencil, History, RotateCcw, ShieldCheck, Database, FileWarning, CircleSlash, Check,
+  Pencil, History, RotateCcw, ShieldCheck, Database, FileWarning, CircleSlash, Check, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -367,6 +367,8 @@ export function ExtractionReviewDialog({
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  // 'old' = limpar todas as anteriores à ativa; number = apagar versão específica.
+  const [deletingVersion, setDeletingVersion] = useState<number | 'old' | null>(null);
 
   const load = useCallback(async () => {
     if (!open) return;
@@ -537,6 +539,35 @@ export function ExtractionReviewDialog({
       setError('Não foi possível restaurar.');
     } finally {
       setPublishing(false);
+    }
+  }
+
+  /** Apaga versão(ões) do histórico — a ativa é preservada pelo servidor. */
+  async function deleteVersions(payload: { version: number } | { keepCurrent: true }) {
+    setPublishing(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/enterprises/extraction/versions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enterpriseId, ...payload }),
+      });
+      const body = await res.json().catch(() => null);
+      if (res.ok) {
+        setSuccessMsg(
+          'keepCurrent' in payload
+            ? `Histórico antigo apagado — ${body?.deleted ?? 0} versão(ões) removida(s); a ativa (v${body?.active ?? status?.published?.version ?? '—'}) foi preservada.`
+            : `Versão v${payload.version} apagada do histórico.`,
+        );
+        await load();
+      } else {
+        setError(body?.error || 'Não foi possível apagar a versão.');
+      }
+    } catch {
+      setError('Não foi possível apagar a versão.');
+    } finally {
+      setPublishing(false);
+      setDeletingVersion(null);
     }
   }
 
@@ -760,19 +791,51 @@ export function ExtractionReviewDialog({
                   <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium">
                     <History className="h-3.5 w-3.5" aria-hidden /> Versões publicadas ({status?.versions.length})
                   </summary>
+                  {(status?.versions.length ?? 0) > 1 && (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="min-w-0 text-[10px] text-muted-foreground">
+                        Versões de bases anteriores podem ser apagadas — a ativa (v{status?.published?.version ?? '—'}) é sempre preservada.
+                      </p>
+                      <Button
+                        variant="outline" size="sm"
+                        className="h-6 flex-shrink-0 gap-1 px-2 text-[10px] text-destructive hover:bg-destructive/10"
+                        onClick={() => setDeletingVersion('old')}
+                        disabled={publishing}
+                      >
+                        <Trash2 className="h-2.5 w-2.5" aria-hidden /> Limpar antigas
+                      </Button>
+                    </div>
+                  )}
                   <ul className="mt-2 space-y-1.5">
-                    {status?.versions.map((v) => (
-                      <li key={v.id} className="flex flex-wrap items-center gap-2 text-[11px]">
-                        <span className="font-medium">v{v.version}</span>
-                        <Badge variant="outline" className="h-4 text-[9px]">{v.source}</Badge>
-                        <span className="text-muted-foreground">{new Date(v.publishedAt).toLocaleString('pt-BR')}</span>
-                        {v.version !== status?.published?.version && (
-                          <Button variant="outline" size="sm" className="ml-auto h-6 min-h-[24px] px-1.5 text-[10px]" onClick={() => restore(v.version)} disabled={publishing}>
-                            <RotateCcw className="h-2.5 w-2.5" aria-hidden /> Restaurar
-                          </Button>
-                        )}
-                      </li>
-                    ))}
+                    {status?.versions.map((v) => {
+                      const isActive = v.version === status?.published?.version;
+                      return (
+                        <li key={v.id} className="flex flex-wrap items-center gap-2 text-[11px]">
+                          <span className="font-medium">v{v.version}</span>
+                          <Badge variant="outline" className="h-4 text-[9px]">{v.source}</Badge>
+                          <span className="text-muted-foreground">{new Date(v.publishedAt).toLocaleString('pt-BR')}</span>
+                          {isActive ? (
+                            <Badge variant="outline" className="ml-auto h-4 border-emerald-500/40 px-1 text-[9px] uppercase text-emerald-700 dark:text-emerald-400">ativa</Badge>
+                          ) : (
+                            <div className="ml-auto flex items-center gap-1">
+                              <Button variant="outline" size="sm" className="h-6 min-h-[24px] px-1.5 text-[10px]" onClick={() => restore(v.version)} disabled={publishing}>
+                                <RotateCcw className="h-2.5 w-2.5" aria-hidden /> Restaurar
+                              </Button>
+                              <Button
+                                variant="ghost" size="sm"
+                                className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10"
+                                onClick={() => setDeletingVersion(v.version)}
+                                disabled={publishing}
+                                aria-label={`Apagar versão v${v.version}`}
+                                title="Apagar versão"
+                              >
+                                <Trash2 className="h-3 w-3" aria-hidden />
+                              </Button>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </details>
               )}
@@ -860,6 +923,45 @@ export function ExtractionReviewDialog({
               A publicação está bloqueada: decida nos cartões destacados em âmbar (aceite, edite ou rejeite cada um): {unresolvedCritical.map((f) => FIELD_LABELS[f] ?? f).join(', ')}.
             </p>
           )}
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação de exclusão de versões (ação destrutiva, ~irreversível) */}
+      <AlertDialog open={deletingVersion !== null} onOpenChange={(v) => { if (!v) setDeletingVersion(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deletingVersion === 'old' ? 'Apagar todas as versões anteriores?' : `Apagar a versão v${deletingVersion}?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-1.5 text-sm">
+                <p>
+                  {deletingVersion === 'old'
+                    ? `Todas as versões anteriores à ativa (v${status?.published?.version ?? '—'}) serão removidas definitivamente do histórico.`
+                    : 'A versão será removida definitivamente do histórico e não poderá mais ser restaurada.'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  A versão ativa e o conteúdo publicado nos empreendimentos não são afetados.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-9">Cancelar</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              className="h-9 gap-1.5 text-xs"
+              disabled={publishing}
+              onClick={() => {
+                if (deletingVersion === 'old') void deleteVersions({ keepCurrent: true });
+                else if (typeof deletingVersion === 'number') void deleteVersions({ version: deletingVersion });
+              }}
+            >
+              {publishing && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              Apagar definitivamente
+            </Button>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
