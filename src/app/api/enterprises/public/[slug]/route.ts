@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import enterprisesCatalog, { EnterpriseCatalogEntry } from '@/data/enterprises-catalog';
-import { resolvePublicEnterpriseInfo } from '@/lib/ai/enterprise-info';
+import { resolvePublicEnterpriseInfo, mergePublicInfoWithCatalog } from '@/lib/ai/enterprise-info';
 
 /**
  * Resolve a string from a locale-keyed JSON object.
@@ -16,51 +16,11 @@ function resolveI18nString(
 }
 
 /**
- * Merge: DB cachedInfo is the PRIMARY source; catalog is FALLBACK only.
- * DB fields win when non-null. Catalog fills in only null/undefined DB fields.
+ * mergeCachedInfo foi unificado em mergePublicInfoWithCatalog
+ * (src/lib/ai/enterprise-info.ts) — mesma semântica para TODAS as superfícies
+ * públicas (landing SSR, esta API e a listagem /public-list), sem risco de
+ * divergência.
  */
-function mergeCachedInfo(
-  dbCachedInfo: any,
-  catalog: EnterpriseCatalogEntry,
-): any {
-  if (!catalog || Object.keys(catalog).length === 0) return dbCachedInfo;
-
-  const base = dbCachedInfo || {};
-  const merged: any = { ...base };
-
-  // Simple string/number fields — DB wins if non-null; catalog fills nulls
-  for (const key of ['builder', 'architecture', 'landscaping', 'status', 'deliveryDate', 'price', 'totalUnits', 'floors', 'parkingSpots', 'summary'] as const) {
-    if ((merged[key] === null || merged[key] === undefined) && catalog[key] !== undefined && catalog[key] !== null) {
-      merged[key] = catalog[key];
-    }
-  }
-
-  // Location — DB wins per-field; catalog fills missing
-  if (catalog.location) {
-    merged.location = { ...(base.location || {}) };
-    for (const locKey of ['address', 'neighborhood', 'city', 'state', 'region', 'additionalInfo'] as const) {
-      if ((merged.location[locKey] === null || merged.location[locKey] === undefined) && catalog.location[locKey] !== undefined && catalog.location[locKey] !== null) {
-        merged.location[locKey] = catalog.location[locKey];
-      }
-    }
-  }
-
-  // Differentials — DB wins if non-empty array; catalog fills only if DB is empty/missing
-  if (!Array.isArray(merged.differentials) || merged.differentials.length === 0) {
-    if (Array.isArray(catalog.differentials) && catalog.differentials.length > 0) {
-      merged.differentials = catalog.differentials;
-    }
-  }
-
-  // Apartment types — DB wins if non-empty array; catalog fills only if DB is empty/missing
-  if (!Array.isArray(merged.apartmentTypes) || merged.apartmentTypes.length === 0) {
-    if (Array.isArray(catalog.apartmentTypes) && catalog.apartmentTypes.length > 0) {
-      merged.apartmentTypes = catalog.apartmentTypes;
-    }
-  }
-
-  return merged;
-}
 
 export async function GET(
   request: Request,
@@ -134,9 +94,9 @@ export async function GET(
     const infoReferenceDate = resolved.referenceDate;
 
     // Use catalog as fallback for any null/missing fields in DB cachedInfo.
-    const catalog = enterprisesCatalog[slug];
+    const catalog: EnterpriseCatalogEntry | undefined = enterprisesCatalog[slug];
     if (catalog) {
-      enterprise.cachedInfo = mergeCachedInfo(enterprise.cachedInfo, catalog);
+      enterprise.cachedInfo = mergePublicInfoWithCatalog(enterprise.cachedInfo, catalog) as any;
     }
 
     // ── i18n resolution for text fields ──────────────

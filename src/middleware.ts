@@ -115,11 +115,16 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // ── 2. Landing pages HTML: stale-while-revalidate ──────
+  // ── 2. Landing pages HTML: revalidação obrigatória ─────
+  // CORREÇÃO (2026-09, "seção pública desatualizada"): antes usava
+  // stale-while-revalidate=60, que permitia CDN/navegador servirem uma cópia
+  // ANTIGA da landing por até uma janela de 60s após a publicação de uma base
+  // nova. Regra §12: atualização publicada deve refletir OBRIGATORIAMENTE →
+  // max-age=0 + must-revalidate (sem stale).
   const isLandingPage = /^\/empreendimentos\/[^/]+(\/?$|\/cadastro-sucesso)/.test(pathname);
 
   if (isLandingPage) {
-    response.headers.set('Cache-Control', 'public, max-age=0, stale-while-revalidate=60');
+    response.headers.set('Cache-Control', 'public, max-age=0, must-revalidate');
     return response;
   }
 

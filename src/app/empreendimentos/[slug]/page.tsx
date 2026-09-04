@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { db } from '@/lib/db';
-import { resolvePublicEnterpriseInfo } from '@/lib/ai/enterprise-info';
+import { resolvePublicEnterpriseInfo, mergePublicInfoWithCatalog } from '@/lib/ai/enterprise-info';
 import LandingPageClient from './landing-page-client';
 import { LandingErrorBoundary } from './landing-error-boundary';
 import { peekNextUser } from '@/lib/lead-queue';
@@ -23,10 +23,13 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-// ISR: revalidate every 60s — landing page content changes infrequently.
-// This eliminates the DB query on every request, dramatically reducing TTFB.
-// generateMetadata still uses force-dynamic (separate request context).
-export const revalidate = 60;
+// CORREÇÃO (2026-09, "seção pública desatualizada"): o ISR de 60s aqui era
+// ilusório — o uso de headers() nesta rota já força renderização dinâmica —
+// e, pior, não oferecia garantia de frescor caso a rota deixasse de ser
+// dinâmica. Regra §12: atualização de base publicada deve refletir
+// OBRIGATORIAMENTE nas superfícies públicas → renderização sempre dinâmica,
+// leitura direta do banco a cada request.
+export const dynamic = 'force-dynamic';
 
 const ENTERPRISE_SELECT = {
   id: true, name: true, slug: true, region: true, imageUrl: true,
@@ -44,27 +47,9 @@ const ENTERPRISE_SELECT = {
   },
 } as const;
 
-function mergeCachedInfo(dbCachedInfo: any, catalog: any): any {
-  if (!catalog || Object.keys(catalog).length === 0) return dbCachedInfo;
-  const base = dbCachedInfo || {};
-  const merged: any = { ...base };
-  for (const key of ['builder', 'architecture', 'landscaping', 'status', 'deliveryDate', 'price', 'totalUnits', 'floors', 'parkingSpots', 'summary'] as const) {
-    if ((merged[key] === null || merged[key] === undefined) && catalog[key] !== undefined && catalog[key] !== null) merged[key] = catalog[key];
-  }
-  if (catalog.location) {
-    merged.location = { ...(base.location || {}) };
-    for (const locKey of ['address', 'neighborhood', 'city', 'state', 'region', 'additionalInfo'] as const) {
-      if ((merged.location[locKey] === null || merged.location[locKey] === undefined) && catalog.location[locKey] !== undefined) merged.location[locKey] = catalog.location[locKey];
-    }
-  }
-  if (!Array.isArray(merged.differentials) || merged.differentials.length === 0) {
-    if (Array.isArray(catalog.differentials) && catalog.differentials.length > 0) merged.differentials = catalog.differentials;
-  }
-  if (!Array.isArray(merged.apartmentTypes) || merged.apartmentTypes.length === 0) {
-    if (Array.isArray(catalog.apartmentTypes) && catalog.apartmentTypes.length > 0) merged.apartmentTypes = catalog.apartmentTypes;
-  }
-  return merged;
-}
+// mergeCachedInfo foi unificado em mergePublicInfoWithCatalog
+// (src/lib/ai/enterprise-info.ts) — mesma semântica para TODAS as superfícies
+// públicas, sem risco de divergência entre listagem e landing.
 
 function resolveI18nString(field: any, locale: string): string | null {
   if (!field || typeof field !== 'object') return typeof field === 'string' ? field : null;
@@ -88,7 +73,7 @@ async function fetchEnterpriseData(slug: string, locale: string) {
   const infoReferenceDate = resolved.referenceDate;
 
   const catalog = enterprisesCatalog[slug];
-  if (catalog) enterprise.cachedInfo = mergeCachedInfo(enterprise.cachedInfo, catalog);
+  if (catalog) enterprise.cachedInfo = mergePublicInfoWithCatalog(enterprise.cachedInfo, catalog) as any;
 
   // Resolve i18n string fields → flat string for client
   const raw = enterprise as any;
