@@ -422,37 +422,51 @@ export function ExtractionReviewDialog({
     });
   }
 
+  const INT_FIELDS = new Set(['totalUnits', 'floors', 'parkingSpots']);
+
+  /** Valor da decisão com o TIPO correto do campo (seed/commit compartilham). */
+  function typedDecisionValue(f: FieldCandidate, raw: { text?: string; rows?: Array<{ name: string; area: string; bedrooms: string; price: string }> }): unknown {
+    if (f.field === 'apartmentTypes') {
+      return (raw.rows ?? []).filter((t) => t.name.trim() !== '');
+    }
+    if (f.field === 'differentials') {
+      return (raw.text ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    }
+    if (INT_FIELDS.has(f.field)) {
+      const n = parseInt((raw.text ?? '').replace(/\D/g, ''), 10);
+      return Number.isFinite(n) ? n : null;
+    }
+    const v = (raw.text ?? '').trim();
+    return v === '' ? null : v;
+  }
+
   function startEdit(f: FieldCandidate) {
     if (f.field === 'apartmentTypes') {
       const list = Array.isArray(f.value) ? f.value as Array<Record<string, unknown>> : [];
-      setEditTypes((prev) => ({
-        ...prev,
-        [f.field]: list.map((t) => ({
-          name: String(t.name ?? ''),
-          area: String(t.area ?? ''),
-          bedrooms: String(t.bedrooms ?? ''),
-          price: String(t.price ?? ''),
-        })),
+      const rows = list.map((t) => ({
+        name: String(t.name ?? ''),
+        area: String(t.area ?? ''),
+        bedrooms: String(t.bedrooms ?? ''),
+        price: String(t.price ?? ''),
       }));
+      setEditTypes((prev) => ({ ...prev, [f.field]: rows }));
+      // CORREÇÃO (2026-09, "editar não salva"): a decisão nasce com o valor
+      // ATUAL do campo (tipado) — se o commit do editor não ocorrer (blur
+      // perdido, fechamento do diálogo), publicar mantém o valor em vez de
+      // GRAVAR null/[] por cima (apagava preço/tipologias).
+      setDecision(f.field, { action: 'edit', value: typedDecisionValue(f, { rows }) });
     } else {
-      setEditing((prev) => ({ ...prev, [f.field]: f.value === null || f.value === undefined ? '' : typeof f.value === 'object' ? (f.value as string[]).join(', ') : String(f.value) }));
+      const seed = f.value === null || f.value === undefined ? '' : typeof f.value === 'object' ? (f.value as string[]).join(', ') : String(f.value);
+      setEditing((prev) => ({ ...prev, [f.field]: seed }));
+      setDecision(f.field, { action: 'edit', value: typedDecisionValue(f, { text: seed }) });
     }
-    setDecision(f.field, { action: 'edit', value: undefined });
   }
 
   function commitEdit(f: FieldCandidate) {
     if (f.field === 'apartmentTypes') {
-      const list = (editTypes[f.field] ?? []).filter((t) => t.name.trim() !== '');
-      setDecision(f.field, { action: 'edit', value: list });
-    } else if (f.field === 'differentials') {
-      const list = (editing[f.field] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-      setDecision(f.field, { action: 'edit', value: list });
-    } else if (['totalUnits', 'floors', 'parkingSpots'].includes(f.field)) {
-      const n = parseInt((editing[f.field] ?? '').replace(/\D/g, ''), 10);
-      setDecision(f.field, { action: 'edit', value: Number.isFinite(n) ? n : null });
+      setDecision(f.field, { action: 'edit', value: typedDecisionValue(f, { rows: editTypes[f.field] ?? [] }) });
     } else {
-      const v = (editing[f.field] ?? '').trim();
-      setDecision(f.field, { action: 'edit', value: v === '' ? null : v });
+      setDecision(f.field, { action: 'edit', value: typedDecisionValue(f, { text: editing[f.field] ?? '' }) });
     }
   }
 
@@ -460,19 +474,32 @@ export function ExtractionReviewDialog({
     setPublishing(true);
     setError(null);
     try {
+      // FLUSH: todo campo em modo edição recebe commit do valor digitado
+      // ANTES de montar o payload — nenhum valor digitado se perde se o blur
+      // não ocorrer (ex.: botão acionado por teclado/toque). Estado do render
+      // atual é sempre fresco no clique.
+      const flushed: Record<string, Decision> = { ...decisions };
+      for (const f of fields) {
+        if (flushed[f.field]?.action !== 'edit') continue;
+        if (f.field === 'apartmentTypes') {
+          flushed[f.field] = { action: 'edit', value: typedDecisionValue(f, { rows: editTypes[f.field] ?? [] }) };
+        } else {
+          flushed[f.field] = { action: 'edit', value: typedDecisionValue(f, { text: editing[f.field] ?? '' }) };
+        }
+      }
       const res = await fetch('/api/enterprises/extraction/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           enterpriseId,
-          decisions: Object.entries(decisions).map(([field, d]) => ({ field, action: d.action, value: d.value })),
+          decisions: Object.entries(flushed).map(([field, d]) => ({ field, action: d.action, value: d.value })),
           verifyOnly,
         }),
       });
       const body = await res.json().catch(() => null);
       if (res.ok) {
         setSuccessMsg(verifyOnly
-          ? 'Alterações salvas como verificado — ainda não publicadas.'
+          ? 'Alterações salvas como verificado — o painel do empreendimento já reflete. Publique para valer nas superfícies públicas.'
           : `Publicação concluída (v${body?.publishedVersion ?? '?'}) — landing pages agora usam a versão aprovada.`);
         setDecisions({});
         onPublished?.();
@@ -609,7 +636,7 @@ export function ExtractionReviewDialog({
                       <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
                         <div className="min-w-0">
                           <p className="text-[10px] text-muted-foreground">Atual (verificado)</p>
-                          <p className="truncate" title={formatValue(current)}>{formatValue(current)}</p>
+                          <p className="break-words whitespace-normal">{formatValue(current)}</p>
                         </div>
                         <div className="min-w-0">
                           <p className="text-[10px] text-muted-foreground">Sugerido pela extração</p>
@@ -618,17 +645,18 @@ export function ExtractionReviewDialog({
                               value={editing[f.field] ?? ''}
                               onChange={(e) => setEditing((prev) => ({ ...prev, [f.field]: e.target.value }))}
                               onBlur={() => commitEdit(f)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
                               className="h-7 text-xs"
                               aria-label={`Editar ${FIELD_LABELS[f.field] ?? f.field}`}
                             />
                           ) : isEditing(f.field) ? (
                             <div className="space-y-1">
                               {(editTypes[f.field] ?? []).map((t, i) => (
-                                <div key={i} className="grid grid-cols-4 gap-1">
-                                  <Input value={t.name} onChange={(e) => setEditTypes((prev) => ({ ...prev, [f.field]: prev[f.field].map((x, j) => j === i ? { ...x, name: e.target.value } : x) }))} placeholder="Nome" className="h-7 text-[11px]" aria-label="Nome do tipo" />
-                                  <Input value={t.area} onChange={(e) => setEditTypes((prev) => ({ ...prev, [f.field]: prev[f.field].map((x, j) => j === i ? { ...x, area: e.target.value } : x) }))} placeholder="Área" className="h-7 text-[11px]" aria-label="Área" />
-                                  <Input value={t.bedrooms} onChange={(e) => setEditTypes((prev) => ({ ...prev, [f.field]: prev[f.field].map((x, j) => j === i ? { ...x, bedrooms: e.target.value } : x) }))} placeholder="Quartos" className="h-7 text-[11px]" aria-label="Quartos" />
-                                  <Input value={t.price} onChange={(e) => setEditTypes((prev) => ({ ...prev, [f.field]: prev[f.field].map((x, j) => j === i ? { ...x, price: e.target.value } : x) }))} placeholder="Preço" className="h-7 text-[11px]" aria-label="Preço" />
+                                <div key={i} className="grid grid-cols-2 gap-1 sm:grid-cols-4">
+                                  <Input value={t.name} onChange={(e) => setEditTypes((prev) => ({ ...prev, [f.field]: prev[f.field].map((x, j) => j === i ? { ...x, name: e.target.value } : x) }))} onBlur={() => commitEdit(f)} placeholder="Nome" className="h-7 text-[11px]" aria-label="Nome do tipo" />
+                                  <Input value={t.area} onChange={(e) => setEditTypes((prev) => ({ ...prev, [f.field]: prev[f.field].map((x, j) => j === i ? { ...x, area: e.target.value } : x) }))} onBlur={() => commitEdit(f)} placeholder="Área" className="h-7 text-[11px]" aria-label="Área" />
+                                  <Input value={t.bedrooms} onChange={(e) => setEditTypes((prev) => ({ ...prev, [f.field]: prev[f.field].map((x, j) => j === i ? { ...x, bedrooms: e.target.value } : x) }))} onBlur={() => commitEdit(f)} placeholder="Quartos" className="h-7 text-[11px]" aria-label="Quartos" />
+                                  <Input value={t.price} onChange={(e) => setEditTypes((prev) => ({ ...prev, [f.field]: prev[f.field].map((x, j) => j === i ? { ...x, price: e.target.value } : x) }))} onBlur={() => commitEdit(f)} placeholder="Preço" className="h-7 text-[11px]" aria-label="Preço" />
                                 </div>
                               ))}
                               <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => { setEditTypes((prev) => ({ ...prev, [f.field]: [...(prev[f.field] ?? []), { name: '', area: '', bedrooms: '', price: '' }] })); }}>
@@ -636,7 +664,7 @@ export function ExtractionReviewDialog({
                               </Button>
                             </div>
                           ) : (
-                            <p className="truncate" title={formatValue(f.value)}>{formatValue(f.value)}</p>
+                            <p className="break-words whitespace-normal">{formatValue(f.value)}</p>
                           )}
                         </div>
                       </div>
@@ -651,7 +679,7 @@ export function ExtractionReviewDialog({
                             </p>
                           )}
                           {f.evidence.slice(0, 1).map((ev, i) => (
-                            <p key={i} className="truncate text-[10px] italic text-muted-foreground" title={ev.excerpt}>
+                            <p key={i} className="break-words text-[10px] italic text-muted-foreground" title={ev.excerpt}>
                               “{ev.excerpt}”{ev.page ? ` — página ${ev.page}` : ''}
                             </p>
                           ))}

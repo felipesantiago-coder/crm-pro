@@ -540,8 +540,11 @@ export function EnterpriseManagement() {
                 {/* Template info */}
                 <div className="rounded-xl border bg-muted/50 p-4 space-y-3">
                   <p className="text-sm font-medium">Formato esperado do arquivo:</p>
-                  <div className="rounded-lg border bg-background overflow-x-auto">
-                    <table className="w-full text-sm min-w-[300px]">
+                  <div className="rounded-lg border bg-background">
+                    {/* CORREÇÃO (2026-09): min-w-[300px] removida — forçava rolagem
+                        horizontal dentro do diálogo em telas estreitas. A tabela de
+                        2 colunas ajusta-se à largura disponível. */}
+                    <table className="w-full text-sm table-fixed">
                       <thead>
                         <tr className="bg-primary/10 dark:bg-primary/20">
                           <th className="px-3 py-2 text-left font-semibold text-primary dark:text-primary">Nome *</th>

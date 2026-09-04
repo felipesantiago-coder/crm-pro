@@ -562,7 +562,18 @@ export function buildInfoFromDecisions(params: {
 
   for (const [field, decision] of byDecision) {
     if (decision.action === 'reject') continue;           // mantém verificado anterior
-    if (decision.action === 'edit') { assign(field, decision.value); continue; }
+    if (decision.action === 'edit') {
+      // CORREÇÃO (2026-09, "editar não salva"): decisão de edição SEM valor
+      // (value perdido no JSON, blur não commitado, cliente antigo) NUNCA
+      // limpa o campo — undefined significa "nenhum novo valor enviado" e
+      // mantém o valor verificado anterior. `null` explícito continua
+      // limpando o campo (intenção declarada pelo revisor). Antes,
+      // assign(field, undefined) gravava null/[] — apagava preço e tipologias
+      // publicadas com um clique em "Editar" + "Aplicar".
+      if (decision.value === undefined) continue;
+      assign(field, decision.value);
+      continue;
+    }
     const candidate = byField.get(field);
     if (!candidate) continue;
     if (candidate.status === 'missing' || candidate.status === 'rejected') continue; // ausência não sobrescreve

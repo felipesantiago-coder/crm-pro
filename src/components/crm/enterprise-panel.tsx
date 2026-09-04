@@ -78,6 +78,11 @@ interface Enterprise {
   landingSubtitle: I18nString;
   landingDescription: I18nString;
   cachedInfo: ExtractedInfo | null;
+  // CORREÇÃO (2026-09, "editar não salva"): o dado aprovado na revisão da
+  // extração grava em verifiedInfo; o legado cachedInfo só espelha ao
+  // PUBLICAR. Sem este campo no tipo, o painel mostrava sempre a versão
+  // antiga e o admin concluía que a edição "não salvou".
+  verifiedInfo: ExtractedInfo | null;
   cachedInfoI18n: Record<string, ExtractedInfo> | null;  // { "en": { ... }, "es": { ... } }
   createdAt: string;
   images: EnterpriseImage[];
@@ -477,7 +482,14 @@ function EnterpriseDetail({ enterprise: e, isAdmin, onBack, onOpenGallery, onOpe
 
   const images = e.images.length > 0 ? e.images : [];
   const heroImage = e.imageUrl || images[0]?.url || null;
-  const info = e.cachedInfo;
+  // CORREÇÃO (2026-09, "editar não salva"): precedência verifiedInfo (dado
+  // aprovado por humano na revisão) → cachedInfo (legado). Antes o painel
+  // lia SOMENTE cachedInfo: ao "Salvar só como verificado" (sem publicar),
+  // a tela continuava mostrando o valor antigo — o admin concluía que a
+  // edição não foi salva. Superfícies PÚBLICAS seguem governadas por
+  // publishedInfo/cachedInfo — apenas o painel do admin passa a refletir
+  // o estado mais recente aprovado.
+  const info = e.verifiedInfo ?? e.cachedInfo;
 
   const hasInfo = info && (
     info.location?.address || info.location?.neighborhood || info.location?.city ||
