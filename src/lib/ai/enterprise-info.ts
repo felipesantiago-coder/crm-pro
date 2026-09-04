@@ -50,6 +50,15 @@ export interface ResolvePublicInfoOptions {
   requireBaseDocument?: boolean;
 }
 
+/**
+ * Gate §12-v2 — presença real de base documental. String vazia/só espaços
+ * conta como ausente. Fonte única para o resolver público, a restauração de
+ * versões e o painel administrativo (mesma régua em toda a aplicação).
+ */
+export function hasBaseDocument(pdfContent: unknown): boolean {
+  return typeof pdfContent === 'string' && pdfContent.trim().length > 0;
+}
+
 export function resolvePublicEnterpriseInfo(
   enterprise: PublicEnterpriseSource,
   options: ResolvePublicInfoOptions = {},
@@ -58,9 +67,7 @@ export function resolvePublicEnterpriseInfo(
 
   // Gate §12-v2: sem base documental, o público não exibe NADA — mesmo que
   // publishedInfo/verifiedInfo permaneçam no banco (eram derivados da base).
-  // String vazia/só espaços conta como ausente.
-  const hasBaseDocument = typeof enterprise.pdfContent === 'string' && enterprise.pdfContent.trim().length > 0;
-  if (options.requireBaseDocument && !hasBaseDocument) {
+  if (options.requireBaseDocument && !hasBaseDocument(enterprise.pdfContent)) {
     return none;
   }
 

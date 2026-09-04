@@ -83,6 +83,14 @@ interface Enterprise {
   // PUBLICAR. Sem este campo no tipo, o painel mostrava sempre a versão
   // antiga e o admin concluía que a edição "não salvou".
   verifiedInfo: ExtractedInfo | null;
+  verifiedInfoAt: string | null;
+  publishedInfo: ExtractedInfo | null;
+  publishedAt: string | null;
+  publishedVersion: number | null;
+  // Task 41 (sincronização real): presença de base documental. Sem base,
+  // NENHUMA informação extraída é exibida (§12-v2) — a cadeia inteira é
+  // derivada da base; removida a fonte, nada permanece em exibição.
+  hasDocument: boolean;
   cachedInfoI18n: Record<string, ExtractedInfo> | null;  // { "en": { ... }, "es": { ... } }
   createdAt: string;
   images: EnterpriseImage[];
@@ -483,13 +491,36 @@ function EnterpriseDetail({ enterprise: e, isAdmin, onBack, onOpenGallery, onOpe
   const images = e.images.length > 0 ? e.images : [];
   const heroImage = e.imageUrl || images[0]?.url || null;
   // CORREÇÃO (2026-09, "editar não salva"): precedência verifiedInfo (dado
-  // aprovado por humano na revisão) → cachedInfo (legado). Antes o painel
-  // lia SOMENTE cachedInfo: ao "Salvar só como verificado" (sem publicar),
-  // a tela continuava mostrando o valor antigo — o admin concluía que a
-  // edição não foi salva. Superfícies PÚBLICAS seguem governadas por
-  // publishedInfo/cachedInfo — apenas o painel do admin passa a refletir
-  // o estado mais recente aprovado.
-  const info = e.verifiedInfo ?? e.cachedInfo;
+  // aprovado por humano na revisão) → publishedInfo → cachedInfo (legado).
+  // Antes o painel lia SOMENTE cachedInfo: ao "Salvar só como verificado"
+  // (sem publicar), a tela continuava mostrando o valor antigo — o admin
+  // concluía que a edição não foi salva.
+  //
+  // Task 41 (sincronização real, §12-v2): a cadeia só é exibível COM base
+  // documental presente. A API do painel não retornava verifiedInfo — a
+  // precedência acima era código morto e a tela mostrava sempre cachedInfo
+  // (espelho legado, atualizado só no publish). Sem base, nada é exibido:
+  // removida a fonte, removem-se os dados também do painel.
+  const rawInfo = e.verifiedInfo ?? e.publishedInfo ?? e.cachedInfo;
+  const info = e.hasDocument ? rawInfo : null;
+
+  // Metadados da fonte exibida — transparência total do estado de sincronia.
+  const infoSource: 'verified' | 'published' | 'legacy' | 'none' = !rawInfo
+    ? 'none'
+    : e.verifiedInfo
+      ? 'verified'
+      : e.publishedInfo
+        ? 'published'
+        : 'legacy';
+  const infoSourceMeta: { label: string; cls: string } = !e.hasDocument
+    ? { label: 'Sem base de dados — nada em exibição', cls: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400' }
+    : infoSource === 'verified'
+      ? { label: `Verificado — aguardando publicação${e.verifiedInfoAt ? ` · ${new Date(e.verifiedInfoAt).toLocaleDateString('pt-BR')}` : ''}`, cls: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' }
+      : infoSource === 'published'
+        ? { label: `Publicado v${e.publishedVersion ?? '—'}${e.publishedAt ? ` · ${new Date(e.publishedAt).toLocaleDateString('pt-BR')}` : ''}`, cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' }
+        : infoSource === 'legacy'
+          ? { label: 'Legado (extração antiga)', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' }
+          : { label: 'Nenhuma informação extraída', cls: 'bg-muted text-muted-foreground' };
 
   const hasInfo = info && (
     info.location?.address || info.location?.neighborhood || info.location?.city ||
@@ -509,6 +540,13 @@ function EnterpriseDetail({ enterprise: e, isAdmin, onBack, onOpenGallery, onOpe
         <div className="flex-1 min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight break-words">{e.name}</h1>
           {e.region && <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1.5"><MapPin className="h-4 w-4 flex-shrink-0" /><span className="truncate">{e.region}</span></p>}
+          {/* Task 41: estado de sincronia da informação exibida — o admin vê
+              SEMPRE de onde vêm os dados (verificado/publicado/legado/sem base). */}
+          <div className="mt-1.5">
+            <Badge className={cn('text-[11px] font-medium px-2 py-0.5 border-0', infoSourceMeta.cls)} data-testid="info-source-badge">
+              {infoSourceMeta.label}
+            </Badge>
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {e._count.clients > 0 && <Badge variant="secondary" className="text-xs"><Users className="h-3 w-3 mr-1" />{e._count.clients} cliente{e._count.clients !== 1 ? 's' : ''}</Badge>}
@@ -562,6 +600,22 @@ function EnterpriseDetail({ enterprise: e, isAdmin, onBack, onOpenGallery, onOpe
           </div>
         </div>
       ) : null}
+
+      {/* Task 41 (§12-v2): sem base documental, NADA derivado de extração é
+          exibido — aqui, no painel, o admin recebe a explicação do estado. */}
+      {!e.hasDocument && (
+        <Card className="border-dashed">
+          <CardContent className="p-5 sm:p-6 text-center">
+            <FileText className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-sm font-medium">Nenhuma base de dados vinculada a este empreendimento</p>
+            <p className="text-xs text-muted-foreground mt-1.5 max-w-md mx-auto leading-relaxed">
+              As informações extraídas não são exibidas sem uma base de dados — removida a base, os dados extraídos
+              (verificados e publicados) são apagados. Envie uma base em <span className="font-medium">Administração</span>,
+              revise a extração e aprove para que as informações voltem a ser exibidas aqui e na seção pública.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cached structured info — no AI calls */}
       {hasInfo ? (

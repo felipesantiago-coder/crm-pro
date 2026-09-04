@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
 import { enterpriseInfoSchema } from '@/lib/ai/contracts';
+import { hasBaseDocument } from '@/lib/ai/enterprise-info';
 import { logAiUsage } from '@/lib/ai/telemetry';
 
 /**
@@ -52,10 +53,20 @@ export async function POST(req: NextRequest) {
 
     const enterprise = await db.enterprise.findUnique({
       where: { id: enterpriseId },
-      select: { publishedVersion: true },
+      select: { publishedVersion: true, pdfContent: true },
     });
     if (!enterprise) {
       return NextResponse.json({ error: 'Empreendimento não encontrado' }, { status: 404 });
+    }
+
+    // §12-v2 (rev. Task 41): versões são derivadas de uma base documental.
+    // Sem base, restaurar recriaria dados cuja fonte foi removida — violando
+    // a política "removida a base, nada é exibido". Reenvie uma base primeiro.
+    if (!hasBaseDocument(enterprise.pdfContent)) {
+      return NextResponse.json(
+        { error: 'Este empreendimento está sem base de dados. Envie uma nova base, extraia e aprove antes de restaurar versões.' },
+        { status: 409 },
+      );
     }
 
     const now = new Date();

@@ -138,3 +138,34 @@ test('extractionDraft (rascunho) nunca entra na cadeia pública', () => {
   const r = resolvePublicEnterpriseInfo(src, { requireBaseDocument: true });
   assert.equal(r.source, 'none');
 });
+
+// ── Task 41: helper hasBaseDocument — mesma régua de gate em todo o sistema ──
+import { hasBaseDocument } from '../../src/lib/ai/enterprise-info.ts';
+
+test('hasBaseDocument: string não vazia = presente', () => {
+  assert.equal(hasBaseDocument('conteúdo da base'), true);
+  assert.equal(hasBaseDocument('x'), true);
+});
+
+test('hasBaseDocument: null, não-string, vazia e só espaços = ausente', () => {
+  assert.equal(hasBaseDocument(null), false);
+  assert.equal(hasBaseDocument(undefined), false);
+  assert.equal(hasBaseDocument(''), false);
+  assert.equal(hasBaseDocument('   \n\t  '), false);
+  assert.equal(hasBaseDocument(12345), false);
+});
+
+test('REGRESSÃO Task 41: painel reflete a política — sem base, resolver interno também não inventa dado', () => {
+  // Cenário do print: base removida, mas verifiedInfo/publishedInfo
+  // permaneciam no banco e o painel exibia tudo. Novo contrato: a cadeia só
+  // é exibível com base presente (gate aplicado em todas as superfícies).
+  const src: PublicEnterpriseSource = {
+    id: 'e41',
+    pdfContent: '',
+    publishedInfo: info({ price: 'R$ 1.530.142' }),
+    verifiedInfo: info({ price: 'R$ 1.530.142' }),
+  };
+  assert.equal(hasBaseDocument(src.pdfContent), false);
+  const r = resolvePublicEnterpriseInfo(src, { requireBaseDocument: true });
+  assert.equal(r.source, 'none');
+});

@@ -1073,7 +1073,7 @@ export function EnterpriseManagement() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Remover Base de Dados</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Remover a base de dados de &quot;{enterprise.name}&quot;? O assistente de IA não poderá mais responder perguntas sobre este empreendimento e a SEÇÃO PÚBLICA deixa de exibir as informações deste empreendimento até que uma nova base seja enviada, extraída e publicada.
+                                Remover a base de dados de &quot;{enterprise.name}&quot;? TODAS as informações derivadas dela serão apagadas — rascunho de extração, dados verificados, publicados e traduções da ficha. A SEÇÃO PÚBLICA e o painel de Empreendimentos deixam de exibir as informações até que uma nova base seja enviada, extraída e aprovada (o histórico de versões permanece apenas para auditoria; imagens e textos curados à mão não são afetados).
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
