@@ -658,6 +658,12 @@ export function ExtractionReviewDialog({
     if (decided?.action === 'reject') return { label: 'Rejeitado', icon: XCircle, cls: 'text-muted-foreground' };
     switch (f.status) {
       case 'found': return { label: 'Encontrado', icon: CheckCircle2, cls: 'text-emerald-700 dark:text-emerald-400' };
+      // CORREÇÃO (2026-09): decisões registradas no rascunho pelo publish —
+      // o cartão reflete a decisão anterior ao reabrir o diálogo (antes
+      // voltavam como "Encontrado" e os críticos editados reexigiam decisão).
+      case 'accepted': return { label: 'Aceito', icon: CheckCircle2, cls: 'text-emerald-700 dark:text-emerald-400' };
+      case 'edited': return { label: 'Editado', icon: Pencil, cls: 'text-blue-700 dark:text-blue-400' };
+      case 'rejected': return { label: 'Rejeitado', icon: XCircle, cls: 'text-muted-foreground' };
       case 'conflicting': return { label: 'Conflitante — revisão individual', icon: AlertTriangle, cls: 'text-amber-700 dark:text-amber-400' };
       case 'needs_review': return { label: 'Precisa de revisão', icon: AlertTriangle, cls: 'text-amber-700 dark:text-amber-400' };
       case 'missing': return { label: 'Não encontrado no documento', icon: CircleSlash, cls: 'text-muted-foreground' };

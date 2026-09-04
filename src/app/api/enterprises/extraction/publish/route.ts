@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import {
   parseDraft,
   sanitizeEnterpriseInfo,
   buildInfoFromDecisions,
   criticalsPendingDecision,
+  applyDecisionsToDraft,
 } from '@/lib/ai/extraction';
 import { enterpriseInfoSchema, type EnterpriseInfo } from '@/lib/ai/contracts';
 import { logAiUsage } from '@/lib/ai/telemetry';
@@ -138,6 +140,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // CORREÇÃO (2026-09, "botão de confirmar a edição não funciona"): as
+    // decisões aplicadas são REGISTRADAS no rascunho (status do candidato
+    // vira accepted/edited/rejected) e o needsReview é recalculado contra a
+    // base aprovada. Sem isso, o recarregamento do diálogo zerava as decisões
+    // locais e todo crítico com valor aprovado divergente do candidato voltava
+    // a "aguardar decisão" — loop infinito de redecisão + versões publicadas
+    // repetidas a cada tentativa.
+    const reconciledDraft = applyDecisionsToDraft(draft, decisions, validation.data);
+
     const now = new Date();
     const publish = !verifyOnly;
     const nextVersion = enterprise.publishedVersion + (publish ? 1 : 0);
@@ -149,6 +160,7 @@ export async function POST(req: NextRequest) {
           verifiedInfo: validation.data,
           verifiedInfoAt: now,
           verifiedInfoBy: user.id,
+          extractionDraft: reconciledDraft as unknown as Prisma.InputJsonValue,
           ...(publish
             ? {
                 publishedInfo: validation.data,

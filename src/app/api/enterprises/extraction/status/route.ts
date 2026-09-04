@@ -95,7 +95,9 @@ export async function GET(req: NextRequest) {
 
     const missingFields = draft?.fields.filter((f) => f.status === 'missing').map((f) => f.field) ?? [];
     const conflictingFields = draft?.fields.filter((f) => f.status === 'conflicting').map((f) => f.field) ?? [];
-    const foundFields = draft?.fields.filter((f) => f.status === 'found' || f.status === 'needs_review' || f.status === 'accepted').map((f) => f.field) ?? [];
+    // 'accepted'/'edited' contam como encontrados: foram extraídos e depois
+    // decididos/aprimorados por humano no publish (conciliação do rascunho).
+    const foundFields = draft?.fields.filter((f) => f.status === 'found' || f.status === 'needs_review' || f.status === 'accepted' || f.status === 'edited').map((f) => f.field) ?? [];
 
     return NextResponse.json({
       enterpriseId: enterprise.id,

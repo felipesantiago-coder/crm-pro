@@ -56,6 +56,7 @@ export {
   buildConflictNote,
   criticalsPendingDecision,
   valuesDiffer,
+  applyDecisionsToDraft,
 } from './extraction-core';
 export type {
   DocumentBlock,

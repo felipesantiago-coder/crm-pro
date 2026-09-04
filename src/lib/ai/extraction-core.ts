@@ -673,6 +673,53 @@ export function criticalsPendingDecision(params: CriticalsPendingDecisionParams)
   return pending;
 }
 
+// ── Conciliação do rascunho com as decisões humanas (pós-publish) ───────────
+
+/**
+ * Registra no rascunho as decisões humanas aplicadas no publish e recalcula
+ * needsReview contra a base aprovada.
+ *
+ * CORREÇÃO (2026-09, "botão de confirmar a edição não funciona"): o publish
+ * NÃO gravava as decisões no rascunho — o recarregamento do diálogo zerava o
+ * estado local de decisões e os críticos `found` cujo valor aprovado divergia
+ * do candidato (todo `edit`, e todo `reject` que preservou o valor anterior)
+ * voltavam a "aguardar decisão" IMEDIATAMENTE após um publish bem-sucedido.
+ * O revisor redecidia em loop e cada tentativa publicava uma versão nova —
+ * a impressão era de que o botão de confirmação da edição não salvava nada.
+ *
+ * Ao marcar o status do candidato decidido (accepted/edited/rejected —
+ * status já previstos no schema de extração), criticalsPendingDecision deixa
+ * de exigir redecisão (esses status não são conflicting/needs_review/missing/
+ * found-divergente) e o cartão reflete a decisão ao reabrir o diálogo.
+ */
+export function applyDecisionsToDraft(
+  draft: ExtractionDraft,
+  decisions: Array<{ field: string; action: 'accept' | 'edit' | 'reject'; value?: unknown }>,
+  approvedInfo: EnterpriseInfo | null,
+): ExtractionDraft {
+  const actionByField = new Map(
+    decisions
+      .filter((d) => d.action === 'accept' || d.action === 'edit' || d.action === 'reject')
+      .map((d) => [d.field, d.action] as const),
+  );
+  const statusByAction: Record<'accept' | 'edit' | 'reject', ExtractionCandidate['status']> = {
+    accept: 'accepted',
+    edit: 'edited',
+    reject: 'rejected',
+  };
+  const fields = draft.fields.map((f) => {
+    const action = actionByField.get(f.field);
+    // decisão sobre campo fora do rascunho (draft antigo/parcial) → ignorada
+    if (!action) return f;
+    return { ...f, status: statusByAction[action] };
+  });
+  // needsReview passa a refletir o que AINDA exige decisão humana contra a
+  // base recém-aprovada — não o estado congelado da extração original.
+  const needsReview =
+    criticalsPendingDecision({ candidates: fields, decisions: [], current: approvedInfo }).length > 0;
+  return { ...draft, fields, needsReview };
+}
+
 // ── Apagão de versões antigas (gestão de histórico pelo admin) ──────────────
 
 export interface VersionDeletionPlan {
