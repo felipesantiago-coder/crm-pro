@@ -17,7 +17,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Loader2, RefreshCw, FileSearch, AlertTriangle, CheckCircle2, XCircle,
-  Pencil, History, RotateCcw, ShieldCheck, Database, FileWarning, CircleSlash,
+  Pencil, History, RotateCcw, ShieldCheck, Database, FileWarning, CircleSlash, Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -618,13 +618,23 @@ export function ExtractionReviewDialog({
                   const ChipIcon = chip.icon;
                   const current = readPath(status?.verified?.info, f.field) ?? readPath(status?.published?.info, f.field);
                   const critical = CRITICAL_FIELDS.has(f.field);
+                  // CORREÇÃO (2026-09, "não sei onde decidir"): críticos pendentes
+                  // ficam destacados no próprio cartão — antes o aviso só aparecia
+                  // no rodapé/diálogo de publicação e o revisor não localizava qual
+                  // campo bloqueava (ex.: editou tipologias e o pendente era Preço).
+                  const pendingDecision = unresolvedCritical.includes(f.field);
                   return (
-                    <div key={f.field} className={cn('rounded-lg border p-2.5', f.status === 'conflicting' && 'border-amber-500/40')}>
+                    <div key={f.field} className={cn('rounded-lg border p-2.5', pendingDecision ? 'border-amber-500/60 ring-1 ring-amber-500/40' : f.status === 'conflicting' && 'border-amber-500/40')}>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-xs font-semibold">{FIELD_LABELS[f.field] ?? f.field}</span>
                         {critical && (
                           <Badge variant="outline" className="h-4 gap-1 px-1 text-[9px] uppercase">
                             <ShieldCheck className="h-2.5 w-2.5" aria-hidden /> crítico
+                          </Badge>
+                        )}
+                        {pendingDecision && (
+                          <Badge variant="outline" className="h-4 gap-1 border-amber-500/40 px-1 text-[9px] uppercase text-amber-700 dark:text-amber-400">
+                            decisão pendente
                           </Badge>
                         )}
                         <span className={cn('ml-auto inline-flex items-center gap-1 text-[10px]', chip.cls)}>
@@ -641,14 +651,28 @@ export function ExtractionReviewDialog({
                         <div className="min-w-0">
                           <p className="text-[10px] text-muted-foreground">Sugerido pela extração</p>
                           {isEditing(f.field) && f.field !== 'apartmentTypes' ? (
-                            <Input
-                              value={editing[f.field] ?? ''}
-                              onChange={(e) => setEditing((prev) => ({ ...prev, [f.field]: e.target.value }))}
-                              onBlur={() => commitEdit(f)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
-                              className="h-7 text-xs"
-                              aria-label={`Editar ${FIELD_LABELS[f.field] ?? f.field}`}
-                            />
+                            <div className="flex items-center gap-1">
+                              <Input
+                                value={editing[f.field] ?? ''}
+                                onChange={(e) => setEditing((prev) => ({ ...prev, [f.field]: e.target.value }))}
+                                onBlur={() => commitEdit(f)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+                                className="h-7 text-xs"
+                                aria-label={`Editar ${FIELD_LABELS[f.field] ?? f.field}`}
+                              />
+                              {/* CORREÇÃO (2026-09, "sem botão para salvar"): confirmação
+                                  explícita no local — o commit só no blur era invisível
+                                  e o revisor não sabia como gravar o valor digitado. */}
+                              <Button
+                                variant="outline" size="sm"
+                                className="h-7 w-7 flex-shrink-0 p-0"
+                                onClick={() => commitEdit(f)}
+                                aria-label={`Confirmar edição de ${FIELD_LABELS[f.field] ?? f.field}`}
+                                title="Confirmar edição"
+                              >
+                                <Check className="h-3.5 w-3.5" aria-hidden />
+                              </Button>
+                            </div>
                           ) : isEditing(f.field) ? (
                             <div className="space-y-1">
                               {(editTypes[f.field] ?? []).map((t, i) => (
@@ -659,15 +683,34 @@ export function ExtractionReviewDialog({
                                   <Input value={t.price} onChange={(e) => setEditTypes((prev) => ({ ...prev, [f.field]: prev[f.field].map((x, j) => j === i ? { ...x, price: e.target.value } : x) }))} onBlur={() => commitEdit(f)} placeholder="Preço" className="h-7 text-[11px]" aria-label="Preço" />
                                 </div>
                               ))}
-                              <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => { setEditTypes((prev) => ({ ...prev, [f.field]: [...(prev[f.field] ?? []), { name: '', area: '', bedrooms: '', price: '' }] })); }}>
-                                + tipo
-                              </Button>
+                              <div className="flex items-center gap-1.5">
+                                <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => { setEditTypes((prev) => ({ ...prev, [f.field]: [...(prev[f.field] ?? []), { name: '', area: '', bedrooms: '', price: '' }] })); }}>
+                                  + tipo
+                                </Button>
+                                {/* Confirmação explícita das tipologias — mesmo
+                                    gatilho do commit no blur, agora visível. */}
+                                <Button
+                                  variant="outline" size="sm"
+                                  className="h-6 gap-1 px-2 text-[10px]"
+                                  onClick={() => commitEdit(f)}
+                                  aria-label="Confirmar edição das tipologias"
+                                  title="Confirmar edição"
+                                >
+                                  <Check className="h-3 w-3" aria-hidden /> Confirmar
+                                </Button>
+                              </div>
                             </div>
                           ) : (
                             <p className="break-words whitespace-normal">{formatValue(f.value)}</p>
                           )}
                         </div>
                       </div>
+
+                      {isEditing(f.field) && (
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          Enter, o clique fora do campo ou o botão de confirmar registram o valor — depois use “Aplicar alterações” para gravar no servidor.
+                        </p>
+                      )}
 
                       {/* Evidência + nota de conflito */}
                       {(f.evidence.length > 0 || f.note) && (
@@ -744,7 +787,7 @@ export function ExtractionReviewDialog({
                   {unresolvedCritical.length > 0 && (
                     <span className="ml-1 inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
                       <AlertTriangle className="h-3 w-3" aria-hidden />
-                      {unresolvedCritical.length} crítico(s) aguardando decisão ({unresolvedCritical.map((f) => FIELD_LABELS[f] ?? f).join(', ')})
+                      {unresolvedCritical.length} crítico(s) aguardando decisão ({unresolvedCritical.map((f) => FIELD_LABELS[f] ?? f).join(', ')}) — decida nos cartões destacados
                     </span>
                   )}
                 </>
@@ -814,7 +857,7 @@ export function ExtractionReviewDialog({
           </AlertDialogFooter>
           {unresolvedCritical.length > 0 && (
             <p className="text-xs text-amber-700 dark:text-amber-400">
-              A publicação está bloqueada enquanto houver campos críticos aguardando decisão (aceite, edite ou rejeite cada um): {unresolvedCritical.map((f) => FIELD_LABELS[f] ?? f).join(', ')}.
+              A publicação está bloqueada: decida nos cartões destacados em âmbar (aceite, edite ou rejeite cada um): {unresolvedCritical.map((f) => FIELD_LABELS[f] ?? f).join(', ')}.
             </p>
           )}
         </AlertDialogContent>
