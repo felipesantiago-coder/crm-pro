@@ -122,13 +122,155 @@ export async function GET(
   }
 
   // ── 3. Pages da conta: acesso + EXTRAÇÃO AUTOMÁTICA de page token
-  //      + assinatura leadgen ──────────────────────────────────────────
+  //      + assinatura leadgen + DESCOBERTA DA CAUSA RAIZ ────────────
   // Comportamento RESTAURADO (era feito pelo diagnóstico global): se o
   // GET direto na página falhar ou não retornar access_token (token de
   // USUÁRIO), o page token é derivado via /me/accounts e SALVO na conta
   // (pageTokens) — não expira com o user token e passa a ser usado pelo
   // webhook ao buscar field_data dos leads da página.
+  //
+  // Quando a página é inacessível, o diagnóstico NÃO se limita a dizer
+  // "sem acesso": cruza 4 sondas para apontar a causa exata —
+  //   (a) página REAL dona dos formulários (/{form-id}?fields=page — o
+  //       token lê leads, então revela se o Page ID do card está errado);
+  //   (b) leads perdidos (meta_webhook_unmapped_page) com o page id REAL
+  //       que o Meta já entregou no webhook;
+  //   (c) permissões concedidas ao token (/me/permissions — token de
+  //       usuário; falha com page token é tratada como inconclusiva);
+  //   (d) páginas que o token ENXERGA em /me/accounts.
   const pageIds = parseJsonArray(account.pageIds).slice(0, 10);
+  const probeFormIds = parseJsonArray(account.formIds).slice(0, 5);
+
+  // Probes preguiçosos — cada um executa no máximo 1× por diagnóstico e
+  // só quando alguma página falha (custo zero quando tudo está OK).
+  let permissionsProbe: { granted: Record<string, boolean> } | null | undefined;
+  const probePermissions = async () => {
+    if (permissionsProbe !== undefined) return permissionsProbe;
+    const perms = await graphGet('me/permissions', account.accessToken);
+    if (!perms.ok || !Array.isArray(perms.data?.data)) {
+      permissionsProbe = null; // page token ou falha — inconclusivo
+      return null;
+    }
+    const granted: Record<string, boolean> = {};
+    for (const p of perms.data.data as Array<{ permission?: string; status?: string }>) {
+      if (p?.permission) granted[p.permission] = p.status === 'granted';
+    }
+    permissionsProbe = { granted };
+    return permissionsProbe;
+  };
+
+  let meAccountsProbe: Array<{ id: string; name?: string }> | null | undefined;
+  const probeMeAccounts = async () => {
+    if (meAccountsProbe !== undefined) return meAccountsProbe;
+    const res = await graphGet('me/accounts?fields=id,name&limit=100', account.accessToken);
+    meAccountsProbe = res.ok && Array.isArray(res.data?.data) ? res.data.data : null;
+    return meAccountsProbe;
+  };
+
+  const formPagesProbe = new Map<string, { pageId: string; pageName?: string; formName?: string }>();
+  const probeFormPage = async (formId: string) => {
+    const cached = formPagesProbe.get(formId);
+    if (cached) return cached;
+    const res = await graphGet(`${formId}?fields=id,name,page{id,name}`, account.accessToken);
+    const found =
+      res.ok && res.data?.page?.id
+        ? { pageId: String(res.data.page.id), pageName: res.data.page.name, formName: res.data.name }
+        : null;
+    if (found) formPagesProbe.set(formId, found);
+    return found;
+  };
+
+  let lostPagesProbe: Record<string, number> | null | undefined;
+  const probeLostLeadPages = async () => {
+    if (lostPagesProbe !== undefined) return lostPagesProbe;
+    try {
+      const rows = await db.lostLead.findMany({
+        where: { source: 'meta_webhook_unmapped_page', createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: { formData: true },
+      });
+      const counts: Record<string, number> = {};
+      for (const row of rows) {
+        const pid = (row.formData as { pageId?: unknown } | null)?.pageId;
+        if (typeof pid === 'string' && pid) counts[pid] = (counts[pid] || 0) + 1;
+      }
+      lostPagesProbe = counts;
+    } catch {
+      lostPagesProbe = null;
+    }
+    return lostPagesProbe;
+  };
+
+  /** Cruza as sondas e monta a causa raiz + correção para uma página inacessível. */
+  const buildPageFailureDiagnosis = async (pageId: string) => {
+    const parts: string[] = [];
+    const fixes: string[] = [];
+    let realPageId: string | null = null;
+
+    // (a) Página REAL revelada pelos formulários (o token lê leads deles!)
+    const formHints: string[] = [];
+    for (const formId of probeFormIds) {
+      const fp = await probeFormPage(formId);
+      if (!fp) continue;
+      if (fp.pageId === pageId) {
+        formHints.push(`form ${formId} confirma que a página configurada É a dona dele (ID correto)`);
+        realPageId = pageId;
+      } else {
+        formHints.push(`form ${formId} pertence à página ${fp.pageId}${fp.pageName ? ` "${fp.pageName}"` : ''} — DIFERENTE do configurado`);
+        if (!realPageId) realPageId = fp.pageId;
+      }
+    }
+    if (formHints.length > 0) parts.push(`Descoberta pelos formulários: ${formHints.join('; ')}.`);
+
+    // (b) Leads perdidos: página REAL que o Meta já entregou no webhook
+    const lost = await probeLostLeadPages();
+    if (lost && Object.keys(lost).length > 0) {
+      const lostSummary = Object.entries(lost)
+        .slice(0, 3)
+        .map(([pid, n]) => `${pid} (${n} lead${n > 1 ? 's' : ''})`)
+        .join(', ');
+      parts.push(`O webhook JÁ entregou leads de página(s) NÃO vinculada(s) nos últimos 30 dias: ${lostSummary} — estão em Leads Perdidos (recupere via Importação Manual).`);
+      if (!realPageId) realPageId = Object.keys(lost)[0];
+    }
+
+    // (c) Permissões concedidas ao token (token de USUÁRIO)
+    const perms = await probePermissions();
+    if (perms) {
+      const g = perms.granted;
+      const permSummary = ['pages_show_list', 'pages_manage_metadata', 'pages_read_engagement', 'leads_retrieval']
+        .map((p) => `${p}: ${g[p] === true ? 'granted' : g[p] === false ? 'DECLINED' : 'ausente'}`)
+        .join(', ');
+      parts.push(`Permissões do token: ${permSummary}.`);
+      if (g['pages_show_list'] !== true) {
+        fixes.push('Gere um novo token concedendo pages_show_list (além de leads_retrieval) e atualize o card.');
+      }
+    }
+
+    // (d) Páginas que o token ENXERGA
+    const pages = await probeMeAccounts();
+    if (pages && pages.length > 0) {
+      const list = pages
+        .slice(0, 5)
+        .map((p) => `${p.name || '?'} (${p.id})`)
+        .join(', ');
+      parts.push(`/me/accounts com este token lista ${pages.length} página(s): ${list}${pages.length > 5 ? ' …' : ''}.`);
+    } else if (pages) {
+      parts.push('/me/accounts com este token retorna LISTA VAZIA — a identidade do token não administra nenhuma página.');
+    }
+
+    // Correção principal, ordenada pela causa mais provável
+    if (realPageId && realPageId !== pageId) {
+      fixes.unshift(`O Page ID do card está ERRADO — corrija para ${realPageId} (aba Webhook → Page IDs da conta) e reexecute o diagnóstico.`);
+    } else if (realPageId === pageId) {
+      fixes.unshift('O ID está CORRETO — o problema é ACESSO: conceda papel na página à identidade do token (Page Settings → Page access, ou Business Manager → Páginas → Adicionar pessoas) ou troque o token por um de System User com a página como ativo.');
+    } else if (fixes.length === 0) {
+      fixes.unshift('Conceda acesso da página à identidade do token (ou use System User com a página como ativo) e confira o ID — a página real aparece nos leads perdidos e nos detalhes acima.');
+    }
+
+    return { parts, fix: fixes.join(' ') };
+  };
+
   for (const pageId of pageIds) {
     const page = await graphGet(`${pageId}?fields=name,access_token`, account.accessToken);
     let pageName: string = page.ok ? page.data?.name || pageId : pageId;
@@ -155,19 +297,21 @@ export async function GET(
             console.warn(`[Diagnóstico] Falha ao salvar page token da página ${pageId} na conta:`, err instanceof Error ? err.message : err);
           });
       } else if (derived.reason === 'me_accounts_error') {
+        const diag = await buildPageFailureDiagnosis(pageId);
         checks.push({
           key: `page_${pageId}`,
           status: 'error',
-          details: `Page ${pageId}: SEM acesso direto com o token desta conta — ${page.error || 'erro desconhecido'}. O fallback /me/accounts também falhou: ${derived.error || 'erro desconhecido'}`,
-          fix: 'Confirme que o access token da conta é válido e tem pages_show_list/pages_manage_metadata, depois reexecute o diagnóstico.',
+          details: `Page ${pageId}: SEM acesso direto com o token desta conta — ${page.error || 'erro desconhecido'}. O fallback /me/accounts também falhou: ${derived.error || 'erro desconhecido'}.${diag.parts.length ? ` ${diag.parts.join(' ')}` : ''}`,
+          fix: diag.fix,
         });
         continue;
       } else if (derived.reason === 'page_not_listed') {
+        const diag = await buildPageFailureDiagnosis(pageId);
         checks.push({
           key: `page_${pageId}`,
           status: 'error',
-          details: `Page ${pageId}: SEM acesso com o token desta conta — ${page.error || 'erro desconhecido'}. A página também NÃO aparece em /me/accounts com este token (a extração automática do page token não foi possível).`,
-          fix: 'Conceda acesso da página ao token desta conta (pages_show_list/pages_manage_metadata; em System User, adicione a página como ativo do usuário) ou confira o ID.',
+          details: `Page ${pageId}: SEM acesso com o token desta conta — ${page.error || 'erro desconhecido'}. A página NÃO aparece em /me/accounts com este token (extração automática do page token impossível).${diag.parts.length ? ` ${diag.parts.join(' ')}` : ''}`,
+          fix: diag.fix,
         });
         continue;
       } else {
