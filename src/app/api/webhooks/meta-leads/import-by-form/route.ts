@@ -5,6 +5,7 @@ import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
 import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
+import { fetchEnabledAdAccounts } from '@/lib/meta-ad-accounts';
 
 // ============================================================
 // POST /api/webhooks/meta-leads/import-by-form
@@ -333,10 +334,11 @@ export async function POST(request: NextRequest) {
     if (error) return error;
 
     const body = await request.json();
-    const { formId, fromDate, toDate } = body as {
+    const { formId, fromDate, toDate, accountId } = body as {
       formId?: string;
       fromDate?: string;
       toDate?: string;
+      accountId?: string;
     };
 
     // Validações
@@ -375,18 +377,25 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Import by Form] Iniciando: formId=${formId}, desde=${since}, até=${until}`);
 
-    // Buscar Page Access Token
-    const settings = await db.userSettings.findMany({
-      where: { key: { in: ['meta_page_access_token'] } },
-    });
-    const pageAccessToken = settings.find(s => s.key === 'meta_page_access_token')?.value;
-
-    if (!pageAccessToken) {
+    // Tokens nas CONTAS de anúncios (configuração EXCLUSIVAMENTE por
+    // conta — não existe mais token global). accountId = preferência;
+    // sem sucesso no preferido, tenta as demais contas (o formulário
+    // pode pertencer a outra página/conta).
+    const accounts = await fetchEnabledAdAccounts('all');
+    if (accounts.length === 0) {
       return NextResponse.json(
-        { error: 'Page Access Token não configurado. Vá em Configurações > Webhook e preencha o campo.' },
+        { error: 'Nenhuma conta de anúncios configurada. Cadastre em Anúncios Meta > Contas de Anúncio com o access token dela.' },
         { status: 400 }
       );
     }
+    const preferredAccount = accountId ? accounts.find(a => a.id === accountId) : undefined;
+    if (accountId && !preferredAccount) {
+      return NextResponse.json({ error: 'Conta de anúncios não encontrada ou inativa' }, { status: 404 });
+    }
+    const tokenCandidates = [
+      ...(preferredAccount?.accessToken ? [preferredAccount.accessToken] : []),
+      ...accounts.filter(a => a.id !== preferredAccount?.id && a.accessToken).map(a => a.accessToken),
+    ];
 
     // Buscar um admin para createdBy
     const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true }, orderBy: { createdAt: 'asc' } });
@@ -399,14 +408,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nenhum usuário cadastrado no sistema' }, { status: 400 });
     }
 
-    // Buscar todos os leads do formulário no Meta
-    let metaLeads: MetaLead[];
+    // Buscar todos os leads do formulário no Meta — tenta o token de
+    // cada conta (preferida primeiro) até obter sucesso
+    let metaLeads: MetaLead[] = [];
+    let lastFetchError: any = null;
     try {
-      metaLeads = await fetchLeadsFromForm(formId, pageAccessToken, since, until);
+      for (const token of tokenCandidates) {
+        try {
+          metaLeads = await fetchLeadsFromForm(formId, token, since, until);
+          if (metaLeads.length > 0) break;
+        } catch (err) {
+          lastFetchError = err;
+        }
+      }
     } catch (fetchErr: any) {
-      console.error('[Import by Form] Erro ao buscar leads do Meta:', fetchErr);
+      lastFetchError = fetchErr;
+    }
+    if (!metaLeads.length && lastFetchError) {
+      console.error('[Import by Form] Erro ao buscar leads do Meta:', lastFetchError);
       return NextResponse.json(
-        { error: fetchErr.message || 'Erro ao buscar leads do Meta. Verifique se o Form ID e o Page Access Token estão corretos.' },
+        { error: lastFetchError.message || 'Erro ao buscar leads do Meta. Verifique se o Form ID pertence a uma página de uma das contas configuradas.' },
         { status: 502 }
       );
     }

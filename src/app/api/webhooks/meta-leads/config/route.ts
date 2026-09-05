@@ -4,7 +4,13 @@ import { requireAdmin } from '@/lib/api-auth';
 
 /**
  * API de configuração do Meta Ads Integration
- * Endpoint admin-only para gerenciar as configurações do webhook.
+ * Endpoint admin-only.
+ *
+ * CONFIGURAÇÃO POR CONTA: verify token, app secret, page token e o
+ * toggle do webhook NÃO existem mais no global — são configurados em
+ * cada conta de anúncios (Anúncios Meta > Contas de Anúncio > card da
+ * conta). Este endpoint mantém apenas o contador de leads e a
+ * configuração GLOBAL opcional de CAPI (Conversions API).
  */
 
 export async function GET() {
@@ -16,11 +22,7 @@ export async function GET() {
       where: {
         key: {
           in: [
-            'meta_webhook_verify_token',
-            'meta_app_secret',
-            'meta_webhook_enabled',
             'meta_lead_count',
-            'meta_page_access_token',
             'meta_capi_enabled',
             'meta_capi_access_token',
             'meta_capi_dataset_id',
@@ -35,12 +37,8 @@ export async function GET() {
     });
 
     return NextResponse.json({
-      enabled: map['meta_webhook_enabled'] === 'true',
-      hasVerifyToken: !!map['meta_webhook_verify_token'],
-      hasAppSecret: !!map['meta_app_secret'],
-      hasPageAccessToken: !!map['meta_page_access_token'],
       leadCount: parseInt(map['meta_lead_count'] || '0', 10),
-      // CAPI (Conversions API)
+      // CAPI (Conversions API) — global opcional; por conta no card dela
       capiEnabled: map['meta_capi_enabled'] === 'true',
       hasCapAccessToken: !!map['meta_capi_access_token'],
       capiDatasetId: map['meta_capi_dataset_id'] || '',
@@ -58,50 +56,24 @@ export async function PUT(request: NextRequest) {
     if (error) return error;
 
     const body = await request.json();
-    const { verifyToken, appSecret, pageAccessToken, enabled, capiAccessToken, capiDatasetId, capiEnabled } = body;
+    const { capiAccessToken, capiDatasetId, capiEnabled } = body;
 
-    // Upsert cada configuração individualmente
+    if (
+      capiAccessToken === undefined &&
+      capiDatasetId === undefined &&
+      capiEnabled === undefined
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Webhook e polling são configurados POR CONTA (Anúncios Meta > Contas de Anúncio). Este endpoint aceita apenas capiAccessToken/capiDatasetId/capiEnabled.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Upsert cada configuração CAPI individualmente
     const upserts: Promise<unknown>[] = [];
-
-    if (verifyToken !== undefined) {
-      upserts.push(
-        db.userSettings.upsert({
-          where: { key: 'meta_webhook_verify_token' },
-          update: { value: String(verifyToken).trim() },
-          create: { key: 'meta_webhook_verify_token', value: String(verifyToken).trim() },
-        })
-      );
-    }
-
-    if (appSecret !== undefined) {
-      upserts.push(
-        db.userSettings.upsert({
-          where: { key: 'meta_app_secret' },
-          update: { value: String(appSecret).trim() },
-          create: { key: 'meta_app_secret', value: String(appSecret).trim() },
-        })
-      );
-    }
-
-    if (pageAccessToken !== undefined) {
-      upserts.push(
-        db.userSettings.upsert({
-          where: { key: 'meta_page_access_token' },
-          update: { value: String(pageAccessToken).trim() },
-          create: { key: 'meta_page_access_token', value: String(pageAccessToken).trim() },
-        })
-      );
-    }
-
-    if (enabled !== undefined) {
-      upserts.push(
-        db.userSettings.upsert({
-          where: { key: 'meta_webhook_enabled' },
-          update: { value: enabled ? 'true' : 'false' },
-          create: { key: 'meta_webhook_enabled', value: enabled ? 'true' : 'false' },
-        })
-      );
-    }
 
     if (capiAccessToken !== undefined) {
       upserts.push(
@@ -137,7 +109,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Configurações do Meta Ads atualizadas com sucesso',
+      message: 'Configuração CAPI atualizada com sucesso (webhook/polling são por conta)',
     });
   } catch (error) {
     console.error('[Meta Config] Erro ao salvar configurações:', error);

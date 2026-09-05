@@ -1,18 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth-options';
 import crypto from 'crypto';
+import { parseJsonArray } from '@/lib/meta-ad-accounts';
 
 // ============================================================
 // POST /api/webhooks/meta-leads/simulate
 //
 // Endpoint de SIMULAÇÃO que envia um payload idêntico ao que
 // o Meta enviaria, mas com dados de teste. Útil para verificar
-// se o pipeline completo (HMAC → parse → Graph API → create
-// client → queue → Telegram) está funcionando sem depender
-// de um lead real.
+// se o pipeline completo (HMAC → resolução da conta → parse →
+// Graph API → create client → queue → Telegram) está funcionando
+// sem depender de um lead real.
 //
-// SEGURANÇA: Requer query param ?secret=<meta_app_secret>
-// ou header X-Simulate-Secret. Sem isso, retorna 403.
+// CONFIGURAÇÃO POR CONTA: a assinatura HMAC é calculada com o App
+// Secret de uma CONTA de anúncios (a escolhida via ?accountId= ou a
+// primeira conta com webhook ativo e secret) e a entry.id usa uma
+// page ID vinculada a essa conta — exatamente como o Meta real faria.
+//
+// SEGURANÇA (qualquer UMA das formas):
+//   - Sessão NextAuth com role ADMIN
+//   - Header X-Simulate-Secret: <CRON_SECRET>
+//   - Query param ?secret=<CRON_SECRET>
 // ============================================================
 
 function simulateSignature(payload: string, appSecret: string): string {
@@ -23,42 +33,71 @@ function simulateSignature(payload: string, appSecret: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  // 1. Autenticação por secret (mesmo nível de segurança do webhook)
-  const querySecret = new URL(request.url).searchParams.get('secret');
-  const headerSecret = request.headers.get('x-simulate-secret');
-  const providedSecret = querySecret || headerSecret;
+  // 1. Autenticação: sessão admin OU CRON_SECRET (não existe mais
+  //    app secret global para validar aqui)
+  let authorized = false;
+  try {
+    const session = await getServerSession(authOptions);
+    if (session?.user?.role === 'ADMIN') authorized = true;
+  } catch {}
 
-  // Buscar app_secret real do banco
-  const settings = await db.userSettings.findUnique({
-    where: { key: 'meta_app_secret' },
-  });
-  const realSecret = settings?.value;
+  if (!authorized) {
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+      const provided =
+        request.headers.get('x-simulate-secret') ||
+        new URL(request.url).searchParams.get('secret');
+      if (provided === cronSecret) authorized = true;
+    }
+  }
 
-  if (!realSecret) {
+  if (!authorized) {
     return NextResponse.json(
-      { error: 'App Secret não configurado no sistema' },
-      { status: 500 }
+      { error: 'Não autorizado — use sessão ADMIN ou CRON_SECRET (header X-Simulate-Secret ou ?secret=)' },
+      { status: 401 }
     );
   }
 
-  if (providedSecret !== realSecret) {
+  // 2. Escolher a conta de origem da simulação (configuração por conta)
+  const body = await request.json().catch(() => ({} as any));
+  const requestedAccountId: string | undefined = body?.adAccountId;
+
+  const accounts = await db.metaAdAccount.findMany({
+    where: { enabled: true, webhookEnabled: { not: false } },
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+  }).catch(() => []);
+
+  if (accounts.length === 0) {
     return NextResponse.json(
-      { error: 'Secret inválido. Use ?secret=<meta_app_secret> ou header X-Simulate-Secret' },
-      { status: 403 }
+      { error: 'Nenhuma conta de anúncios com webhook ativo — cadastre uma conta em Anúncios Meta > Contas de Anúncio' },
+      { status: 400 }
     );
   }
 
-  // 2. Ler config para verificar estado
-  const configSettings = await db.userSettings.findMany({
-    where: {
-      key: { in: ['meta_webhook_enabled', 'meta_page_access_token'] },
-    },
-  });
-  const configMap: Record<string, string> = {};
-  configSettings.forEach((s) => { configMap[s.key] = s.value; });
+  const account = accounts.find((a) => a.id === requestedAccountId) || accounts[0];
 
-  const isEnabled = configMap['meta_webhook_enabled'] === 'true';
-  const hasPageAccessToken = !!configMap['meta_page_access_token'];
+  if (!account.appSecret) {
+    return NextResponse.json(
+      {
+        error: `A conta "${account.name}" está sem app secret — sem ele a assinatura HMAC não é aceita pelo webhook (configuração por conta)`,
+        fix: 'Preencha o App Secret na aba Webhook do card desta conta.',
+      },
+      { status: 400 }
+    );
+  }
+
+  const pageIds = parseJsonArray(account.pageIds);
+  const entryPageId = body?.pageId || pageIds[0];
+
+  if (!entryPageId) {
+    return NextResponse.json(
+      {
+        error: `A conta "${account.name}" está sem page IDs — o webhook não conseguiria resolver a conta de origem`,
+        fix: 'Cadastre ao menos uma page ID na aba Webhook do card desta conta.',
+      },
+      { status: 400 }
+    );
+  }
 
   // 3. Montar payload de simulação (idêntico ao formato do Meta)
   const fakeLeadgenId = `SIM_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
@@ -67,7 +106,7 @@ export async function POST(request: NextRequest) {
     object: 'page',
     entry: [
       {
-        id: '209477248924771',
+        id: entryPageId,
         time: Math.floor(Date.now() / 1000),
         changes: [
           {
@@ -94,18 +133,20 @@ export async function POST(request: NextRequest) {
   };
 
   const payloadStr = JSON.stringify(metaPayload);
-  const signature = simulateSignature(payloadStr, realSecret);
+  const signature = simulateSignature(payloadStr, account.appSecret);
 
   // 4. Informações de diagnóstico
   const diagInfo = {
     simulatedLeadgenId: fakeLeadgenId,
-    webhookEnabled: isEnabled,
-    hasPageAccessToken,
+    simulatedForAccount: {
+      id: account.id,
+      name: account.name,
+      adAccountId: account.adAccountId,
+      entryPageId,
+    },
     payloadSize: payloadStr.length,
     signatureValid: true,
-    note: isEnabled
-      ? 'Enviando payload simulado para o webhook real...'
-      : 'ATENÇÃO: Webhook está DESABILITADO. O lead será salvo como perdido (comportamento correto).',
+    note: 'Enviando payload simulado assinado com o app secret DESTA conta para o webhook real...',
   };
 
   // 5. Chamar o webhook internamente
@@ -164,18 +205,23 @@ export async function GET() {
   return NextResponse.json({
     endpoint: '/api/webhooks/meta-leads/simulate',
     method: 'POST',
-    description: 'Simula um payload do Meta Lead Ads para testar o pipeline completo do webhook.',
+    description: 'Simula um payload do Meta Lead Ads para testar o pipeline completo do webhook PARA UMA CONTA específica.',
     authentication: {
-      query_param: '?secret=<meta_app_secret>',
-      header: 'X-Simulate-Secret: <meta_app_secret>',
+      session: 'Sessão NextAuth ADMIN',
+      header: 'X-Simulate-Secret: <CRON_SECRET>',
+      query_param: '?secret=<CRON_SECRET>',
+    },
+    body: {
+      adAccountId: '(opcional) id da conta de anúncios — default: primeira conta com webhook ativo e secret',
+      pageId: '(opcional) page id de origem — default: primeira page da conta',
     },
     behavior: [
-      '1. Valida o secret contra o meta_app_secret configurado',
-      '2. Monta um payload idêntico ao formato do Meta',
+      '1. Escolhe a conta (configuração por conta) e usa o app secret DELA',
+      '2. Monta um payload idêntico ao formato do Meta com entry.id = page da conta',
       '3. Calcula HMAC-SHA256 correto',
       '4. Faz POST interno para /api/webhooks/meta-leads',
       '5. Retorna o resultado completo (status, body, diagnóstico)',
     ],
-    important: 'Se o webhook estiver DESABILITADO, o lead será salvo como perdido (comportamento correto). Ative o webhook antes de testar.',
+    important: 'A conta precisa ter app secret e page IDs próprios (não existe webhook global).',
   });
 }

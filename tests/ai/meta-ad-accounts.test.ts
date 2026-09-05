@@ -1,7 +1,8 @@
 /**
  * meta-ad-accounts.test.ts — Helpers puros da integração multi-conta
- * Meta Ads (evolução §13-v2): tokens por página/conta na captação e
- * normalização de contas. Sem IA e sem banco — funções determinísticas.
+ * Meta Ads (evolução §13-v2 + configuração EXCLUSIVAMENTE por conta):
+ * tokens por página/conta na captação, normalização de contas e
+ * checklist de conexão. Sem IA e sem banco — funções determinísticas.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +11,9 @@ import {
   normalizeAdAccountId,
   resolveAccountByPageId,
   buildWebhookSecretCandidates,
+  resolveAccountByVerifyToken,
   resolvePageToken,
+  evaluateAccountConnection,
   filterAccountsByChannel,
   type AdAccountRef,
 } from '../../src/lib/meta-ad-accounts.ts';
@@ -75,7 +78,7 @@ test('resolveAccountByPageId: primeira página da lista também resolve', () => 
   assert.equal(resolveAccountByPageId(accounts, '111')?.id, 'a1');
 });
 
-test('resolveAccountByPageId: sem match → null (cai no token global)', () => {
+test('resolveAccountByPageId: sem match → null (lead vai para LostLeads)', () => {
   const accounts = [acc('a1', '["111"]')];
   assert.equal(resolveAccountByPageId(accounts, '999'), null);
 });
@@ -86,19 +89,19 @@ test('resolveAccountByPageId: conta sem pageIds e pageId vazio → null', () => 
   assert.equal(resolveAccountByPageId([acc('a1', '["111"]')], undefined), null);
 });
 
-// ── buildWebhookSecretCandidates ───────────────────────────────
+// ── buildWebhookSecretCandidates (somente por conta) ───────────
 
-test('buildWebhookSecretCandidates: global primeiro, depois secrets das contas, sem duplicatas', () => {
-  const candidates = buildWebhookSecretCandidates('global-secret', [
+test('buildWebhookSecretCandidates: secrets das contas, sem duplicatas (sem global)', () => {
+  const candidates = buildWebhookSecretCandidates([
     { appSecret: 'secret-a', enabled: true },
-    { appSecret: 'global-secret', enabled: true },
+    { appSecret: 'secret-a', enabled: true },
     { appSecret: 'secret-b', enabled: true },
   ]);
-  assert.deepEqual(candidates, ['global-secret', 'secret-a', 'secret-b']);
+  assert.deepEqual(candidates, ['secret-a', 'secret-b']);
 });
 
 test('buildWebhookSecretCandidates: contas desativadas não entram', () => {
-  const candidates = buildWebhookSecretCandidates(null, [
+  const candidates = buildWebhookSecretCandidates([
     { appSecret: 'secret-off', enabled: false },
     { appSecret: 'secret-on', enabled: true },
   ]);
@@ -106,17 +109,39 @@ test('buildWebhookSecretCandidates: contas desativadas não entram', () => {
 });
 
 test('buildWebhookSecretCandidates: nenhum secret → lista vazia (403 no webhook)', () => {
-  assert.deepEqual(buildWebhookSecretCandidates(null, [{ appSecret: null, enabled: true }]), []);
-  assert.deepEqual(buildWebhookSecretCandidates(undefined, []), []);
+  assert.deepEqual(buildWebhookSecretCandidates([{ appSecret: null, enabled: true }]), []);
+  assert.deepEqual(buildWebhookSecretCandidates([]), []);
 });
 
 test('buildWebhookSecretCandidates: contas com webhook próprio desligado não entram (settings por conta)', () => {
-  const candidates = buildWebhookSecretCandidates('global-secret', [
+  const candidates = buildWebhookSecretCandidates([
     { appSecret: 'secret-webhook-off', enabled: true, webhookEnabled: false },
     { appSecret: 'secret-webhook-on', enabled: true, webhookEnabled: true },
     { appSecret: 'secret-legado', enabled: true }, // sem toggle = ligado (compat)
   ]);
-  assert.deepEqual(candidates, ['global-secret', 'secret-webhook-on', 'secret-legado']);
+  assert.deepEqual(candidates, ['secret-webhook-on', 'secret-legado']);
+});
+
+// ── resolveAccountByVerifyToken ────────────────────────────────
+
+test('resolveAccountByVerifyToken: encontra a conta dona do verify token', () => {
+  const accounts = [
+    { ...acc('a1', '["111"]'), verifyToken: 'vt-a1' },
+    { ...acc('a2', '["222"]'), verifyToken: 'vt-a2' },
+  ];
+  assert.equal(resolveAccountByVerifyToken(accounts, 'vt-a2')?.id, 'a2');
+});
+
+test('resolveAccountByVerifyToken: token nulo/desconhecido → null', () => {
+  const accounts = [{ ...acc('a1', '["111"]'), verifyToken: 'vt-a1' }];
+  assert.equal(resolveAccountByVerifyToken(accounts, 'outra'), null);
+  assert.equal(resolveAccountByVerifyToken(accounts, null), null);
+  assert.equal(resolveAccountByVerifyToken(accounts, undefined), null);
+});
+
+test('resolveAccountByVerifyToken: conta sem verify token próprio nunca casa', () => {
+  const accounts = [acc('a1', '["111"]')]; // sem verifyToken
+  assert.equal(resolveAccountByVerifyToken(accounts, 'qualquer'), null);
 });
 
 // ── filterAccountsByChannel (settings agrupadas por conta) ─────
@@ -159,16 +184,53 @@ test('filterAccountsByChannel: canal all mantém todas (toggles não filtram)', 
   assert.equal(filterAccountsByChannel(accounts, 'all').length, 2);
 });
 
-// ── resolvePageToken ────────────────────────────────────────────
+// ── resolvePageToken (exclusivamente por conta) ────────────────
 
-test('resolvePageToken: token da conta resolvida tem prioridade sobre o global', () => {
-  const account = { accessToken: 'token-conta' };
-  assert.equal(resolvePageToken(account, 'token-global'), 'token-conta');
+test('resolvePageToken: retorna o token da conta resolvida', () => {
+  assert.equal(resolvePageToken({ accessToken: 'token-conta' }), 'token-conta');
+  assert.equal(resolvePageToken(null), null);
+  assert.equal(resolvePageToken({ accessToken: '' }), null);
 });
 
-test('resolvePageToken: sem conta ou sem token → cai no global (comportamento legado)', () => {
-  assert.equal(resolvePageToken(null, 'token-global'), 'token-global');
-  assert.equal(resolvePageToken({ accessToken: '' }, 'token-global'), 'token-global');
-  assert.equal(resolvePageToken({ accessToken: 't' }, null), 't');
-  assert.equal(resolvePageToken(null, null), null);
+// ── evaluateAccountConnection (checklist por conta) ────────────
+
+test('evaluateAccountConnection: conta completa → webhook e polling prontos', () => {
+  const account = {
+    ...acc('a1', '["111","222"]'),
+    verifyToken: 'vt',
+    appSecret: 'sec',
+    formIds: '["333"]',
+    webhookEnabled: true,
+    pollingEnabled: true,
+  };
+  const evaluation = evaluateAccountConnection(account);
+  assert.equal(evaluation.webhookReady, true);
+  assert.equal(evaluation.pollingReady, true);
+  assert.equal(evaluation.pageCount, 2);
+  assert.ok(evaluation.checks.every((c) => c.ok));
+});
+
+test('evaluateAccountConnection: sem verify/pages → webhook NÃO pronto (não existe global)', () => {
+  const account = { ...acc('a1', null), formIds: '["333"]' };
+  const evaluation = evaluateAccountConnection(account);
+  assert.equal(evaluation.webhookReady, false);
+  assert.equal(evaluation.pollingReady, true);
+  const missing = evaluation.checks.filter((c) => c.required && !c.ok).map((c) => c.key);
+  assert.deepEqual(missing, ['verifyToken', 'appSecret', 'pageIds']);
+});
+
+test('evaluateAccountConnection: canais desligados derrubam o readiness correspondente', () => {
+  const account = {
+    ...acc('a1', '["111"]'),
+    verifyToken: 'vt',
+    appSecret: 'sec',
+    formIds: '["333"]',
+    webhookEnabled: false,
+    pollingEnabled: false,
+  };
+  const evaluation = evaluateAccountConnection(account);
+  assert.equal(evaluation.webhookReady, false);
+  assert.equal(evaluation.pollingReady, false);
+  assert.equal(evaluation.checks.find((c) => c.key === 'webhookEnabled')?.ok, false);
+  assert.equal(evaluation.checks.find((c) => c.key === 'pollingEnabled')?.ok, false);
 });

@@ -3,23 +3,24 @@ import { db } from '@/lib/db';
 // ============================================================
 // Meta Ad Accounts — Multi-conta Meta Ads (captação multi-token)
 // ============================================================
-// Uma conta de anúncios (MetaAdAccount) tem o seu próprio access
-// token (System User/Page), verify token e app secret opcionais de
-// webhook, page_ids e form_ids. Assim o webhook e o polling conseguem
-// capturar leads de CONTAS DIFERENTES de forma independente:
+// A conta de anúncios (MetaAdAccount) é a ÚNICA fonte de configuração
+// de conexão com o Meta: cada uma tem o próprio access token (System
+// User/Page), verify token e app secret do webhook, page_ids e
+// form_ids. NÃO existe mais webhook/polling global — todo lead entra
+// resolvido por uma conta:
 //
 //   Webhook  → entry[].id (page id) resolve a conta → token da conta
-//              é usado para buscar field_data do lead; verify token e
-//              app secret da conta também são aceitos na validação.
+//              é usado para buscar field_data do lead; o verify token
+//              e o app secret aceitos são SEMPRE os das contas.
+//              Página sem conta vinculada → lead salvo em LostLeads.
 //   Polling  → cada conta é consultada com o PRÓPRIO token (forms da
-//              conta via formIds); forms sem conta continuam usando o
-//              token global (comportamento legado preservado).
+//              conta via formIds). Não há polling global.
 //   Routing  → resolveQueueForMetaLead aceita campaignId + adAccountId
 //              (prioridade: campanha > formulário > conta > config > default).
 //
-// Degradacão graciosa: qualquer falha (ex.: migration pendente) é
-// tratada e o fluxo legado (token global) segue funcionando —
-// nenhum lead é perdido.
+// Degradacão graciosa: falhas de schema (migration pendente) retornam
+// [] com log — o webhook salva os leads como perdidos em vez de
+// quebrar (nenhum lead é perdido silenciosamente).
 // ============================================================
 
 /** Shape mínimo usado nas resoluções (independe do Prisma Client). */
@@ -104,19 +105,16 @@ export function resolveAccountByPageId<T extends AdAccountRef>(
 
 /**
  * Candidatos de App Secret para validar a assinatura HMAC do webhook:
- * secret global primeiro (comportamento legado), depois os secrets
- * das contas habilitadas com webhook PRÓPRIO ativo (settings por
- * conta). Sem duplicatas.
+ * EXCLUSIVAMENTE os secrets das contas habilitadas com webhook PRÓPRIO
+ * ativo (não existe mais secret global). Sem duplicatas.
  */
 export function buildWebhookSecretCandidates(
-  globalSecret: string | null | undefined,
   accounts: Array<{ appSecret?: string | null; enabled?: boolean; webhookEnabled?: boolean }>,
 ): string[] {
   const candidates: string[] = [];
   const push = (secret?: string | null) => {
     if (secret && !candidates.includes(secret)) candidates.push(secret);
   };
-  push(globalSecret || null);
   for (const account of accounts) {
     if (account.enabled === false) continue;
     if (account.webhookEnabled === false) continue; // webhook da conta desligado
@@ -126,15 +124,202 @@ export function buildWebhookSecretCandidates(
 }
 
 /**
- * Token de página a usar para buscar dados do lead (field_data):
- * token da conta resolvida primeiro; cai para o token global.
+ * Encontra a conta cujo verify token dedicado corresponde ao token
+ * recebido na verificação do webhook (hub.verify_token). Só contas
+ * com webhook próprio ativo participam — não existe verify token
+ * global.
+ */
+export function resolveAccountByVerifyToken<T extends AdAccountRef>(
+  accounts: T[],
+  token: string | null | undefined,
+): T | null {
+  if (!token) return null;
+  return accounts.find((a) => a.verifyToken && a.verifyToken === token) || null;
+}
+
+/**
+ * Token a usar para buscar dados do lead (field_data): EXCLUSIVAMENTE
+ * o token da conta resolvida — não há mais token global de fallback.
  */
 export function resolvePageToken(
   account: Pick<AdAccountRef, 'accessToken'> | null | undefined,
-  globalFallback: string | null | undefined,
 ): string | null {
-  if (account?.accessToken) return account.accessToken;
-  return globalFallback || null;
+  return account?.accessToken || null;
+}
+
+// ============================================================
+// Diagnóstico de conexão POR CONTA (puro — sem rede, sem banco)
+// ============================================================
+
+export interface AccountConfigCheck {
+  key: string;
+  label: string;
+  ok: boolean;
+  /** Obrigatório para o canal funcionar (vs recomendado). */
+  required: boolean;
+  hint: string;
+}
+
+export interface AccountConnectionEvaluation {
+  hasToken: boolean;
+  hasVerifyToken: boolean;
+  hasAppSecret: boolean;
+  pageCount: number;
+  formCount: number;
+  webhookEnabled: boolean;
+  pollingEnabled: boolean;
+  /** Webhook pronto: token + verify + secret + pages + canal ativo. */
+  webhookReady: boolean;
+  /** Polling pronto: token + forms + canal ativo. */
+  pollingReady: boolean;
+  checks: AccountConfigCheck[];
+}
+
+/**
+ * Avalia a completude das configurações de conexão de UMA conta
+ * (checklist usado no diagnóstico por conta da UI). Como não existe
+ * mais webhook/polling global, verify token e pages passam a ser
+ * OBRIGATÓRIOS para o webhook da conta, e formIds para o polling.
+ */
+export function evaluateAccountConnection<T extends AdAccountRef>(
+  account: T,
+): AccountConnectionEvaluation {
+  const hasToken = !!account.accessToken;
+  const hasVerifyToken = !!account.verifyToken;
+  const hasAppSecret = !!account.appSecret;
+  const pageCount = parseJsonArray(account.pageIds).length;
+  const formCount = parseJsonArray(account.formIds).length;
+  const webhookEnabled = account.webhookEnabled !== false;
+  const pollingEnabled = account.pollingEnabled !== false;
+
+  const checks: AccountConfigCheck[] = [
+    {
+      key: 'token',
+      label: 'Access token da conta',
+      ok: hasToken,
+      required: true,
+      hint: 'Token (System User/Page) usado para buscar leads e consultar a Graph API desta conta.',
+    },
+    {
+      key: 'verifyToken',
+      label: 'Verify token do webhook',
+      ok: hasVerifyToken,
+      required: true,
+      hint: 'Obrigatório — usado na verificação (hub.challenge) do webhook desta conta no Meta for Developers.',
+    },
+    {
+      key: 'appSecret',
+      label: 'App secret do webhook',
+      ok: hasAppSecret,
+      required: true,
+      hint: 'Obrigatório — valida a assinatura HMAC (X-Hub-Signature-256) dos payloads desta conta.',
+    },
+    {
+      key: 'pageIds',
+      label: 'Page IDs vinculadas',
+      ok: pageCount > 0,
+      required: true,
+      hint: 'Obrigatório — o webhook usa entry[].id (page id) para resolver a conta de origem do lead.',
+    },
+    {
+      key: 'webhookEnabled',
+      label: 'Canal webhook ativo',
+      ok: webhookEnabled,
+      required: true,
+      hint: 'Toggle do webhook desta conta (as demais contas não são afetadas).',
+    },
+    {
+      key: 'formIds',
+      label: 'Form IDs para polling',
+      ok: formCount > 0,
+      required: false,
+      hint: 'Necessário apenas para o polling desta conta (Sync Forms preenche automaticamente).',
+    },
+    {
+      key: 'pollingEnabled',
+      label: 'Canal polling ativo',
+      ok: pollingEnabled,
+      required: false,
+      hint: 'Toggle do polling desta conta (as demais contas não são afetadas).',
+    },
+  ];
+
+  return {
+    hasToken,
+    hasVerifyToken,
+    hasAppSecret,
+    pageCount,
+    formCount,
+    webhookEnabled,
+    pollingEnabled,
+    webhookReady: hasToken && hasVerifyToken && hasAppSecret && pageCount > 0 && webhookEnabled,
+    pollingReady: hasToken && formCount > 0 && pollingEnabled,
+    checks,
+  };
+}
+
+// ============================================================
+// Helper de rede — busca de field_data por leadgen id (multi-conta)
+// ============================================================
+
+const GRAPH_API_BASE = 'https://graph.facebook.com/v22.0';
+
+/**
+ * Busca o field_data de um lead via Graph API com um token específico.
+ * Retorna null em qualquer falha (HTTP, timeout, resposta sem field_data).
+ */
+export async function fetchLeadDataForLeadgen(
+  leadgenId: string,
+  token: string,
+  timeoutMs = 8_000,
+): Promise<Array<{ name: string; values: string[] }> | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const url = `${GRAPH_API_BASE}/${leadgenId}?access_token=${encodeURIComponent(token)}&fields=field_data`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      console.error(`[Meta Ad Accounts] fetchLeadData(${leadgenId}) HTTP ${response.status}: ${errorText.slice(0, 200)}`);
+      return null;
+    }
+    const data = await response.json();
+    const fieldData = data?.field_data;
+    if (!fieldData || !Array.isArray(fieldData)) return null;
+    return fieldData as Array<{ name: string; values: string[] }>;
+  } catch (error) {
+    console.error(`[Meta Ad Accounts] Falha ao buscar lead ${leadgenId}:`, error);
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Busca o field_data de um lead tentando os tokens das CONTAS: usa o
+ * token da conta preferida (quando informada) e, em caso de falha ou
+ * ausência, percorre as demais contas habilitadas até obter sucesso.
+ * Substitui o antigo token global das ferramentas de importação.
+ */
+export async function fetchLeadDataViaAccounts(
+  leadgenId: string,
+  accounts: Array<{ id: string; name: string; accessToken: string; enabled?: boolean }>,
+  preferredAccountId?: string | null,
+): Promise<{ fieldData: Array<{ name: string; values: string[] }> | null; accountId: string | null }> {
+  const usable = accounts.filter((a) => a.accessToken && a.enabled !== false);
+  const ordered = [
+    ...usable.filter((a) => a.id === preferredAccountId),
+    ...usable.filter((a) => a.id !== preferredAccountId),
+  ];
+  for (const account of ordered) {
+    const fieldData = await fetchLeadDataForLeadgen(leadgenId, account.accessToken);
+    if (fieldData) return { fieldData, accountId: account.id };
+  }
+  return { fieldData: null, accountId: null };
 }
 
 // ============================================================
@@ -190,7 +375,8 @@ export async function fetchEnabledAdAccounts(
 
 /**
  * Resolve a conta de anúncios por page_id direto no banco (webhook).
- * Considera somente contas com o webhook PRÓPRIO ativo (canal webhook).
+ * Considera somente contas com o webhook PRÓPRIO ativo (canal webhook)
+ * — não existe mais resolução por configuração global.
  */
 export async function resolveAdAccountForPage(
   pageId: string | null | undefined,

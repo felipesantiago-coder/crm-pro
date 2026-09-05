@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
+import { fetchEnabledAdAccounts } from '@/lib/meta-ad-accounts';
 import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
 import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     if (error) return error;
 
     const body = await request.json();
-    const { leadgenIds } = body as { leadgenIds?: string[] };
+    const { leadgenIds, accountId } = body as { leadgenIds?: string[]; accountId?: string };
 
     if (!leadgenIds || !Array.isArray(leadgenIds) || leadgenIds.length === 0) {
       return NextResponse.json({ error: 'Envie um array leadgenIds' }, { status: 400 });
@@ -62,15 +63,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Máximo de 50 leads por requisição' }, { status: 400 });
     }
 
-    // Buscar Page Access Token nas configurações
-    const settings = await db.userSettings.findMany({
-      where: { key: { in: ['meta_page_access_token'] } },
-    });
-    const pageAccessToken = settings.find(s => s.key === 'meta_page_access_token')?.value;
-
-    if (!pageAccessToken) {
-      return NextResponse.json({ error: 'Page Access Token não configurado. Vá em Configurações > Webhook e preencha o campo.' }, { status: 400 });
+    // Tokens nas CONTAS de anúncios (configuração EXCLUSIVAMENTE por
+    // conta — não existe mais token global). accountId = preferência;
+    // sem preferência, tenta o token de cada conta até obter sucesso.
+    const accounts = await fetchEnabledAdAccounts('all');
+    if (accounts.length === 0) {
+      return NextResponse.json({ error: 'Nenhuma conta de anúncios configurada. Cadastre em Anúncios Meta > Contas de Anúncio com o access token dela.' }, { status: 400 });
     }
+    const preferredAccount = accountId ? accounts.find(a => a.id === accountId) : undefined;
+    if (accountId && !preferredAccount) {
+      return NextResponse.json({ error: 'Conta de anúncios não encontrada ou inativa' }, { status: 404 });
+    }
+    const tokenCandidates = [
+      ...(preferredAccount?.accessToken ? [preferredAccount.accessToken] : []),
+      ...accounts.filter(a => a.id !== preferredAccount?.id && a.accessToken).map(a => a.accessToken),
+    ];
 
     // Buscar um admin para createdBy
     const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true }, orderBy: { createdAt: 'asc' } });
@@ -95,8 +102,11 @@ export async function POST(request: NextRequest) {
 
     const validIds = leadgenIds.map(id => String(id).trim()).filter(Boolean);
     const fetchPromises = validIds.map(async (leadgenId) => {
-      const data = await fetchLeadFromMeta(leadgenId, pageAccessToken);
-      return data ? { leadgenId, data } as FetchedLead : null;
+      for (const token of tokenCandidates) {
+        const data = await fetchLeadFromMeta(leadgenId, token);
+        if (data) return data ? { leadgenId, data } as FetchedLead : null;
+      }
+      return null;
     });
 
     const fetchResults = await Promise.allSettled(fetchPromises);

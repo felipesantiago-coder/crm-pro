@@ -21,7 +21,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
@@ -844,25 +843,11 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
 // Tab: Configuração (migrado do painel original)
 // ============================================================
 function ConfigTab() {
-  const [enabled, setEnabled] = useState(false);
-  const [verifyToken, setVerifyToken] = useState('');
-  const [appSecret, setAppSecret] = useState('');
-  const [showAppSecret, setShowAppSecret] = useState(false);
-  const [pageAccessToken, setPageAccessToken] = useState('');
-  const [showPageToken, setShowPageToken] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [webhookStatus, setWebhookStatus] = useState<any>(null);
-  const [leadCount, setLeadCount] = useState(0);
-  const [hasVerifyToken, setHasVerifyToken] = useState(false);
-  const [hasAppSecret, setHasAppSecret] = useState(false);
-  const [hasPageAccessToken, setHasPageAccessToken] = useState(false);
-  const [diagnosing, setDiagnosing] = useState(false);
-  const [diagnosis, setDiagnosis] = useState<any>(null);
 
   // CAPI Multi-config states
   const [capiConfigs, setCapiConfigs] = useState<any[]>([]);
-  const [adAccounts, setAdAccounts] = useState<Array<{ id: string; name: string; adAccountId: string; enabled: boolean }>>([]);
+  const [adAccounts, setAdAccounts] = useState<Array<{ id: string; name: string; adAccountId: string; enabled: boolean; hasVerifyToken?: boolean; hasAppSecret?: boolean; pageIds?: string | null; formIds?: string | null; webhookEnabled?: boolean; pollingEnabled?: boolean }>>([]);
   const [loadingCapi, setLoadingCapi] = useState(false);
   const [showCapiDialog, setShowCapiDialog] = useState(false);
   const [editingCapi, setEditingCapi] = useState<any>(null);
@@ -894,27 +879,12 @@ function ConfigTab() {
   const [importByFormLoading, setImportByFormLoading] = useState(false);
   const [importByFormResult, setImportByFormResult] = useState<any>(null);
 
-  // Polling automático Meta Leads (migrado de settings-view)
-  const { data: session } = useSession();
-  const userRole = (session?.user as { role?: string })?.role;
-  const isAdmin = userRole === 'ADMIN';
-  const [pollLoading, setPollLoading] = useState(true);
-  const [pollEnabled, setPollEnabled] = useState(false);
-  const [pollFormIds, setPollFormIds] = useState<string[]>(['']);
-  const [pollSavedEnabled, setPollSavedEnabled] = useState(false);
-  const [pollSaving, setPollSaving] = useState(false);
-  const [pollTriggering, setPollTriggering] = useState(false);
-  const [pollLastRun, setPollLastRun] = useState<string | null>(null);
-  const [pollLastResult, setPollLastResult] = useState<any>(null);
 
   // Filas de atendimento (roteamento multi-anúncio)
   const [queues, setQueues] = useState<Array<{ id: string; name: string; isActive: boolean }>>([]);
 
-  const webhookUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/api/webhooks/meta-leads`
-    : '';
 
-  useEffect(() => { loadConfig(); if (isAdmin) loadPollConfig(); }, []);
+  useEffect(() => { loadConfig(); }, []);
 
   async function loadQueues() {
     try {
@@ -926,109 +896,20 @@ function ConfigTab() {
   async function loadConfig() {
     setLoading(true);
     try {
-      const res = await fetch('/api/webhooks/meta-leads/config');
+      loadCapiConfigs();
+      loadFormMappings();
+      loadQueues();
+      // Contas de anúncios — ÚNICA fonte de configuração da integração
+      // (webhook, polling, campanhas, formulários, CAPI e testes por conta)
+      const res = await fetch('/api/meta-ad-accounts');
       if (res.ok) {
         const data = await res.json();
-        setEnabled(data.enabled);
-        setLeadCount(data.leadCount);
-        setHasVerifyToken(data.hasVerifyToken);
-        setHasAppSecret(data.hasAppSecret);
-        setHasPageAccessToken(data.hasPageAccessToken);
+        setAdAccounts(Array.isArray(data) ? data : []);
       }
     } catch {
       // Silencioso
     } finally {
       setLoading(false);
-    }
-    loadCapiConfigs();
-    loadFormMappings();
-    loadQueues();
-    // Contas de anúncios (para atribuir configs CAPI a uma conta no dialog)
-    fetch('/api/meta-ad-accounts')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setAdAccounts(Array.isArray(d) ? d : []))
-      .catch(() => {});
-  }
-
-  async function checkWebhookStatus() {
-    try {
-      const res = await fetch('/api/webhooks/meta-leads/config');
-      if (res.ok) {
-        const data = await res.json();
-        setWebhookStatus(data);
-        setEnabled(data.enabled);
-        setLeadCount(data.leadCount);
-        setHasVerifyToken(data.hasVerifyToken);
-        setHasAppSecret(data.hasAppSecret);
-        setHasPageAccessToken(data.hasPageAccessToken);
-        if (data.enabled && data.hasVerifyToken && data.hasAppSecret && data.hasPageAccessToken) {
-          toast.success('Webhook ativo e pronto para receber leads');
-        } else if (data.enabled) {
-          toast.warning('Webhook ativado, mas falta configurar campos obrigatórios');
-        } else {
-          toast.info('Webhook configurado mas desativado — ative o switch para receber leads');
-        }
-      }
-    } catch {
-      toast.error('Erro ao verificar status do webhook');
-    }
-  }
-
-  async function runDiagnosis() {
-    setDiagnosing(true);
-    setDiagnosis(null);
-    try {
-      const res = await fetch('/api/webhooks/meta-leads/diagnose');
-      if (res.ok) {
-        const data = await res.json();
-        setDiagnosis(data);
-        const errCount = data.summary?.errors ?? 0;
-        const warnCount = data.summary?.warnings ?? 0;
-        if (errCount > 0) {
-          toast.error(`Diagnóstico: ${errCount} erro(s) encontrado(s)`);
-        } else if (warnCount > 0) {
-          toast.warning(`Diagnóstico: funcionando com ${warnCount} aviso(s)`);
-        } else {
-          toast.success('Diagnóstico: tudo OK!');
-        }
-      } else {
-        toast.error('Erro ao executar diagnóstico');
-      }
-    } catch {
-      toast.error('Falha de conexão ao executar diagnóstico');
-    } finally {
-      setDiagnosing(false);
-    }
-  }
-
-  async function saveConfig() {
-    setSaving(true);
-    try {
-      const res = await fetch('/api/webhooks/meta-leads/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          verifyToken: verifyToken || null,
-          appSecret: appSecret || null,
-          pageAccessToken: pageAccessToken || null,
-          enabled,
-        }),
-      });
-
-      if (res.ok) {
-        toast.success('Configurações do Meta Ads salvas com sucesso');
-        setVerifyToken('');
-        setAppSecret('');
-        setPageAccessToken('');
-        loadConfig();
-      } else {
-        const data = await res.json();
-        throw new Error(data.error || 'Erro ao salvar');
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar configurações');
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -1317,106 +1198,6 @@ function ConfigTab() {
     }
   }
 
-  // ═══ Polling Meta Leads (migrado de settings-view) ═══
-  async function loadPollConfig() {
-    setPollLoading(true);
-    try {
-      const res = await fetch('/api/cron/fetch-meta-leads/config');
-      if (res.status === 403) { setPollLoading(false); return; }
-      const data = await res.json();
-      if (data) {
-        setPollEnabled(data.enabled === true);
-        setPollSavedEnabled(data.enabled === true);
-        setPollFormIds(data.formIds?.length ? data.formIds : ['']);
-        setPollLastRun(data.lastRun || null);
-        setPollLastResult(data.lastResult || null);
-      }
-    } catch { /* silent */ }
-    finally { setPollLoading(false); }
-  }
-
-  function addPollFormId() { setPollFormIds([...pollFormIds, '']); }
-  function removePollFormId(index: number) { setPollFormIds(pollFormIds.filter((_, i) => i !== index)); }
-  function updatePollFormId(index: number, value: string) {
-    const updated = [...pollFormIds];
-    updated[index] = value.replace(/\D/g, '');
-    setPollFormIds(updated);
-  }
-
-  async function savePollConfig() {
-    setPollSaving(true);
-    try {
-      const validIds = pollFormIds.filter((id) => id.length > 0);
-      const res = await fetch('/api/cron/fetch-meta-leads/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: pollEnabled, formIds: validIds }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(pollEnabled ? 'Polling ativado! Leads serão importados a cada 5 minutos.' : 'Polling desativado.');
-        setPollFormIds(validIds.length ? validIds : ['']);
-        setPollSavedEnabled(pollEnabled);
-      } else {
-        toast.error(data.error || 'Erro ao salvar configuração');
-      }
-    } catch {
-      toast.error('Erro ao salvar configuração do polling');
-    } finally {
-      setPollSaving(false);
-    }
-  }
-
-  async function triggerPollNow() {
-    const hasUnsaved = pollEnabled !== pollSavedEnabled;
-    if (hasUnsaved) {
-      toast.info('Salvando configuração antes de executar...');
-      const validIds = pollFormIds.filter((id) => id.length > 0);
-      try {
-        const saveRes = await fetch('/api/cron/fetch-meta-leads/config', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled: pollEnabled, formIds: validIds }),
-        });
-        if (saveRes.ok) {
-          setPollSavedEnabled(pollEnabled);
-          setPollFormIds(validIds.length ? validIds : ['']);
-        } else {
-          const saveData = await saveRes.json();
-          toast.error(`Erro ao salvar: ${saveData.error || 'desconhecido'}`);
-          return;
-        }
-      } catch {
-        toast.error('Erro ao salvar configuração');
-        return;
-      }
-    }
-    setPollTriggering(true);
-    try {
-      const res = await fetch('/api/cron/fetch-meta-leads');
-      const data = await res.json();
-      if (res.status === 401) {
-        toast.error('Sessão expirada. Faça login novamente.');
-      } else if (res.ok) {
-        if (data.status === 'disabled') {
-          toast.warning('Polling está desativado. Ative primeiro e salve.');
-        } else if (data.status === 'idle') {
-          toast.info('Nenhum form ID configurado. Adicione ao menos um form ID.');
-        } else {
-          toast.success(`Polling executado: ${data.totalFetched} encontrados, ${data.totalImported} importados (${data.elapsed}).`);
-          setPollLastResult(data);
-          setPollLastRun(new Date().toISOString());
-        }
-      } else {
-        toast.error(data.error || 'Erro ao executar polling');
-      }
-    } catch {
-      toast.error('Erro ao executar polling manual');
-    } finally {
-      setPollTriggering(false);
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -1425,12 +1206,12 @@ function ConfigTab() {
     );
   }
 
-  const pollingEndpointUrl = (typeof window !== 'undefined' ? window.location.origin : '') + '/api/cron/fetch-meta-leads';
-
-  // Status badges helpers
-  const webhookReady = enabled && hasVerifyToken && hasAppSecret && hasPageAccessToken;
+  // Status badges helpers — POR CONTA (não existe configuração global)
+  const accountsEnabled = adAccounts.filter((a: any) => a.enabled).length;
+  const countIds = (raw: string | null | undefined) => { try { const v = JSON.parse(raw || '[]'); return Array.isArray(v) ? v.length : 0; } catch { return 0; } };
+  const accountsWebhookReady = adAccounts.filter((a: any) => a.enabled && a.webhookEnabled !== false && a.hasVerifyToken && a.hasAppSecret && countIds(a.pageIds) > 0).length;
+  const accountsPollingReady = adAccounts.filter((a: any) => a.enabled && a.pollingEnabled !== false && countIds(a.formIds) > 0).length;
   const hasCapiActive = capiConfigs.some((c: any) => c.enabled);
-  const hasPollActive = pollEnabled;
   const hasFormMappings = formMappings.length > 0;
 
   return (
@@ -1439,7 +1220,7 @@ function ConfigTab() {
       <div>
         <h2 className="text-lg font-semibold">Configurações dos Anúncios Meta</h2>
         <p className="text-sm text-muted-foreground">
-          Configurações agrupadas por conta de anúncios (Seção 1) + configuração global de fallback — cada conta com webhook, polling, campanhas e CAPI próprios, sem se misturar com as demais
+          Cada conta de anúncios agrupa TODAS as configurações de conexão — webhook, polling, campanhas, formulários, CAPI e testes próprios, sem se misturar com as demais. Não existe configuração global.
         </p>
       </div>
 
@@ -1451,11 +1232,11 @@ function ConfigTab() {
             <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Como funciona a integração</span>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
-            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border ${webhookReady ? 'border-green-200 bg-green-50 dark:border-green-800/50 dark:bg-green-950/30' : 'border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/30'}`}>
-              <Zap className={`h-3.5 w-3.5 ${webhookReady ? 'text-green-500' : 'text-amber-500'}`} />
-              <span className="font-medium">1. Webhook</span>
-              <Badge className={`text-[9px] px-1 py-0 ${webhookReady ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
-                {webhookReady ? 'OK' : 'Configurar'}
+            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border ${accountsEnabled > 0 && accountsWebhookReady === accountsEnabled ? 'border-green-200 bg-green-50 dark:border-green-800/50 dark:bg-green-950/30' : 'border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/30'}`}>
+              <Zap className={`h-3.5 w-3.5 ${accountsEnabled > 0 && accountsWebhookReady === accountsEnabled ? 'text-green-500' : 'text-amber-500'}`} />
+              <span className="font-medium">1. Contas (webhook)</span>
+              <Badge className={`text-[9px] px-1 py-0 ${accountsEnabled > 0 && accountsWebhookReady === accountsEnabled ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                {accountsWebhookReady}/{accountsEnabled || 0} prontas
               </Badge>
             </div>
             <span className="text-muted-foreground">→</span>
@@ -1481,13 +1262,13 @@ function ConfigTab() {
             </div>
           </div>
           <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
-            <strong>Fluxo:</strong> O Meta envia leads via <strong>Webhook</strong> (ou <strong>Polling</strong> busca a cada 5 min) → cada conta de anúncio (Seção 1) usa os próprios token/verify/secret → o CRM detecta <strong>Form ID + Campanha</strong> → cria o cliente na fila da origem → envia evento de conversão via <strong>CAPI</strong> (se configurado). Contas sem valor próprio usam a configuração global como fallback.
+            <strong>Fluxo:</strong> O Meta envia leads via <strong>Webhook</strong> (ou o <strong>Polling</strong> busca a cada ciclo) → a conta de origem é resolvida pelos <strong>próprios</strong> token/verify/secret/pages dela (Seção 1) → o CRM detecta <strong>Form ID + Campanha</strong> → cria o cliente na fila da origem → envia evento de conversão via <strong>CAPI</strong> (opcional). <strong>Não existe configuração global</strong> — teste e diagnostique cada conta na aba Testes do card dela.
           </p>
         </CardContent>
       </Card>
 
       {/* ═══ Accordion de Configurações ═══ */}
-      <Accordion type="multiple" defaultValue={['ad-accounts', 'webhook']} className="space-y-3">
+      <Accordion type="multiple" defaultValue={['ad-accounts']} className="space-y-3">
 
         {/* SEÇÃO 1: Contas de Anúncio — cada conta agrupa as PRÓPRIAS
             configurações (webhook, polling, campanhas, formulários, CAPI) */}
@@ -1500,9 +1281,9 @@ function ConfigTab() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-sm">Contas de Anúncio — configurações por conta</span>
-                  <Badge className="bg-muted text-muted-foreground text-[10px]">Recomendado</Badge>
+                  <Badge className="bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 text-[10px]">Obrigatória — única configuração</Badge>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Cada conta agrupa webhook, polling, campanhas, formulários e CAPI próprios — sem se misturar com as demais</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Cada conta agrupa webhook, polling, campanhas, formulários, CAPI e testes de conexão próprios — sem se misturar com as demais</p>
               </div>
             </div>
           </AccordionTrigger>
@@ -1512,340 +1293,7 @@ function ConfigTab() {
         </AccordionItem>
 
         {/* ═══════════════════════════════════════════════════════
-            SEÇÃO 2: Webhook Global (fallback) — Recepção de Leads
-            ═══════════════════════════════════════════════════════ */}
-        <AccordionItem value="webhook" className="border rounded-xl overflow-hidden data-[state=open]:border-blue-200 dark:data-[state=open]:border-blue-800/50 data-[state=open]:shadow-sm transition-all">
-          <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
-            <div className="flex items-center gap-3 text-left">
-              <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${webhookReady ? 'bg-green-100 dark:bg-green-900/30' : 'bg-blue-100 dark:bg-blue-900/30'}`}>
-                <Zap className={`h-4 w-4 ${webhookReady ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-sm">Webhook Global (fallback)</span>
-                  {webhookReady ? (
-                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] gap-1"><CheckCircle2 className="h-2.5 w-2.5" /> Ativo</Badge>
-                  ) : enabled ? (
-                    <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px]">Incompleto</Badge>
-                  ) : (
-                    <Badge className="bg-muted text-muted-foreground text-[10px]">Inativo</Badge>
-                  )}
-                  {leadCount > 0 && <span className="text-[10px] text-muted-foreground">{leadCount} leads recebidos</span>}
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Base da integração — vale para leads sem conta e para contas sem verify/secret/página próprios (Seção 1)</p>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-4 pb-4 space-y-4">
-            {/* O que faz */}
-            <div className="rounded-lg bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/20 p-3 space-y-2">
-              <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">O que esta seção faz</p>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Quando alguém preenche um formulário de Lead Ads no Facebook ou Instagram, o Meta envia uma notificação para seu servidor (webhook). O CRM então busca os dados completos do lead e cria automaticamente um cliente com stage <strong>LEAD</strong>, atribuído à fila de distribuição e com notificação via Telegram. O endpoint é <strong>único</strong> — contas com webhook próprio (Seção 1) usam o mesmo URL, mas com verify token, app secret e página próprios.
-              </p>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                <strong>Depende de:</strong> Nada — é a configuração base da integração.
-              </p>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                <strong>É usado por:</strong> CAPI (Seção 4) e Formulários (Seção 5) dependem dos dados que chegam por aqui. Contas com webhook próprio (Seção 1) complementam este webhook sem substituí-lo.
-              </p>
-            </div>
-
-            {/* Toggle */}
-            <div className="flex items-center justify-between">
-              <Label htmlFor="meta-enabled" className="text-sm cursor-pointer">
-                {enabled ? 'Integração ativada' : 'Ativar integração'}
-              </Label>
-              <Switch id="meta-enabled" checked={enabled} onCheckedChange={setEnabled} />
-            </div>
-
-            <Separator />
-
-            {/* Webhook URL */}
-            <div className="space-y-2">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                URL do Webhook
-              </Label>
-              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border">
-                <code className="flex-1 text-xs font-mono truncate text-foreground">{webhookUrl}</code>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0" onClick={() => copyToClipboard(webhookUrl, 'URL do Webhook')}>
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Cole esta URL no campo &quot;Callback URL&quot; ao configurar o webhook no Meta for Developers ou Ads Manager
-              </p>
-            </div>
-
-            {/* Verify Token */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Token de Verificação</Label>
-                {hasVerifyToken && <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> Configurado</Badge>}
-              </div>
-              <Input placeholder={hasVerifyToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Ex: meu_token_secreto_123'} value={verifyToken} onChange={(e) => setVerifyToken(e.target.value)} type="text" className="font-mono text-sm" />
-              <p className="text-[11px] text-muted-foreground">
-                Crie uma string aleatória segura (ex: <code className="bg-muted px-1 rounded">openssl rand -hex 16</code>). Use o mesmo valor no campo &quot;Verify Token&quot; do Meta.
-              </p>
-            </div>
-
-            {/* App Secret */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">App Secret (segurança)</Label>
-                {hasAppSecret && <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> Configurado</Badge>}
-              </div>
-              <div className="relative">
-                <Input placeholder={hasAppSecret ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'Ex: a1b2c3d4e5f6...'} value={appSecret} onChange={(e) => setAppSecret(e.target.value)} type={showAppSecret ? 'text' : 'password'} className="font-mono text-sm pr-10" />
-                <Button type="button" variant="ghost" size="sm" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0" onClick={() => setShowAppSecret(!showAppSecret)}>
-                  {showAppSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Encontrado em Meta for Developers → Seu App → Settings → Basic → App Secret. Obrigatório para validar que os leads vieram realmente do Meta (HMAC-SHA256).
-              </p>
-            </div>
-
-            {/* Page Access Token */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Page Access Token (obrigatório)</Label>
-                {hasPageAccessToken && <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> Configurado</Badge>}
-              </div>
-              <div className="relative">
-                <Input placeholder={hasPageAccessToken ? '•••••••••••••••• (valor salvo — preencha apenas para alterar)' : 'EAAxxxxxxxxxxxxxxxxx...'} value={pageAccessToken} onChange={(e) => setPageAccessToken(e.target.value)} type={showPageToken ? 'text' : 'password'} className="font-mono text-sm pr-10" />
-                <Button type="button" variant="ghost" size="sm" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0" onClick={() => setShowPageToken(!showPageToken)}>
-                  {showPageToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Necessário para buscar dados do lead (o Meta envia apenas o ID no webhook).
-                Para obter: acesse o <span className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer" onClick={() => window.open('https://developers.facebook.com/tools/explorer/', '_blank')}>Graph API Explorer</span>,
-                selecione sua Página como Token User, marque a permissão <code className="bg-muted px-1 rounded">pages_read_engagement</code> e copie o token gerado.
-              </p>
-            </div>
-
-            <Separator />
-
-            {/* Actions */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={saveConfig} disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white">
-                {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</> : <><Save className="h-4 w-4 mr-2" /> Salvar Webhook</>}
-              </Button>
-              <Button variant="outline" size="sm" onClick={checkWebhookStatus}>
-                <RefreshCw className="h-4 w-4 mr-1" /> Testar
-              </Button>
-              <Button variant="outline" size="sm" onClick={runDiagnosis} disabled={diagnosing} className="border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30">
-                {diagnosing ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Aguarde...</> : <><Zap className="h-4 w-4 mr-1" /> Diagnosticar</>}
-              </Button>
-            </div>
-
-            {/* Diagnosis Panel */}
-            {diagnosis && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Diagnóstico</span>
-                  {diagnosis.status === 'healthy' && <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Tudo OK</Badge>}
-                  {diagnosis.status === 'degraded' && <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Atenção</Badge>}
-                  {diagnosis.status === 'broken' && <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Problemas</Badge>}
-                </div>
-                <div className="rounded-lg border space-y-1.5 p-3 bg-muted/30">
-                  {diagnosis.checks.map((check: any, i: number) => (
-                    <div key={i} className="flex items-start gap-2 text-xs">
-                      {check.status === 'ok' && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mt-0.5 flex-shrink-0" />}
-                      {check.status === 'warn' && <Zap className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />}
-                      {check.status === 'error' && <Circle className="h-3.5 w-3.5 text-red-500 mt-0.5 flex-shrink-0" />}
-                      {check.status === 'skip' && <Circle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
-                      <div className="min-w-0">
-                        <span className="font-medium">{check.name}: </span>
-                        <span className={check.status === 'error' ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}>{check.details}</span>
-                        {check.fix && <p className="text-amber-600 dark:text-amber-400 mt-0.5">Solução: {check.fix}</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Tutorial */}
-            <details className="group">
-              <summary className="text-xs font-medium text-blue-600 dark:text-blue-400 cursor-pointer hover:underline flex items-center gap-1">
-                Como configurar no Meta Ads
-              </summary>
-              <ol className="mt-2 text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
-                <li>Acesse o <span className="text-blue-600 dark:text-blue-400 font-medium cursor-pointer inline-flex items-center gap-0.5" onClick={() => window.open('https://developers.facebook.com/apps/', '_blank')}>Meta for Developers <ExternalLink className="h-2.5 w-2.5" /></span> e crie/abra seu App</li>
-                <li>Vá em <strong>Settings → Basic</strong> e copie o <strong>App Secret</strong></li>
-                <li>No menu lateral, vá em <strong>Webhooks → Adicionar</strong></li>
-                <li>Cole a <strong>URL do Webhook</strong> (acima) no campo Callback URL</li>
-                <li>Cole o <strong>Token de Verificação</strong> no campo Verify Token</li>
-                <li>Em &quot;Subscribe to&quot;, selecione <strong>leadgen</strong> (Lead Ads)</li>
-                <li>No <strong>Ads Manager</strong>, crie um formulário de Lead Ads</li>
-                <li>Ao publicar o anúncio, os leads serão criados automaticamente no CRM com stage <strong>LEAD</strong></li>
-              </ol>
-            </details>
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* ═══════════════════════════════════════════════════════
-            SEÇÃO 3: Importação por Polling Global (formulários sem conta)
-            ═══════════════════════════════════════════════════════ */}
-        {isAdmin && (
-          <AccordionItem value="polling" className="border rounded-xl overflow-hidden data-[state=open]:border-violet-200 dark:data-[state=open]:border-violet-800/50 data-[state=open]:shadow-sm transition-all">
-            <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
-              <div className="flex items-center gap-3 text-left">
-                <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${hasPollActive ? 'bg-violet-100 dark:bg-violet-900/30' : 'bg-muted'}`}>
-                  <RefreshCw className={`h-4 w-4 ${hasPollActive ? 'text-violet-600 dark:text-violet-400' : 'text-muted-foreground'}`} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm">Polling Global (formulários sem conta)</span>
-                    {hasPollActive ? (
-                      <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 text-[10px] gap-1"><CheckCircle2 className="h-2.5 w-2.5" /> Ativo</Badge>
-                    ) : (
-                      <Badge className="bg-muted text-muted-foreground text-[10px]">Inativo</Badge>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">Busca leads periodicamente com o token global — alternativo ao webhook e ao polling das contas (Seção 1)</p>
-                </div>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="px-4 pb-4 space-y-4">
-              {/* O que faz */}
-              <div className="rounded-lg bg-violet-50/50 dark:bg-violet-950/10 border border-violet-100 dark:border-violet-900/20 p-3 space-y-2">
-                <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">O que esta seção faz</p>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Em vez de esperar o Meta enviar leads via webhook, o sistema <strong>busca ativamente</strong> novos leads nos formulários configurados a cada 5 minutos usando a Meta Graph API. O resultado é o mesmo: criação de cliente, atribuição à fila e notificação Telegram. <strong>Os formulários de contas cadastradas (Seção 1) são consultados separadamente</strong>, com o token de cada conta — aqui ficam apenas os formulários sem conta.
-                </p>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  <strong>Quando usar:</strong> Use como <strong>alternativa ao Webhook</strong> (Seção 2) quando não puder receber webhooks — por exemplo, no plano Hobby da Vercel que não permite execução contínua do servidor. <strong>Não é necessário ativar os dois.</strong>
-                </p>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  <strong>Depende de:</strong> Form IDs dos formulários de lead do Meta (configurados abaixo, com o token global). Formulários de contas ficam na Seção 1.
-                </p>
-              </div>
-
-              {/* Aviso de alternativa */}
-              {webhookReady && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
-                  <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                  <div className="text-[11px] text-amber-700 dark:text-amber-300">
-                    <strong>O Webhook já está ativo.</strong> O polling é uma alternativa — geralmente não é necessário ter os dois ao mesmo tempo. Use o polling apenas se o webhook não estiver recebendo leads corretamente.
-                  </div>
-                </div>
-              )}
-
-              {pollLoading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Carregando configuração...
-                </div>
-              ) : (
-                <>
-                  {/* Toggle + Instruções cron-job.org */}
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm cursor-pointer">
-                      {pollEnabled ? 'Polling ativado' : 'Ativar polling'}
-                    </Label>
-                    <Switch checked={pollEnabled} onCheckedChange={setPollEnabled} aria-label="Ativar polling automático" />
-                  </div>
-
-                  {pollEnabled && (
-                    <div className="p-3 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800/30 space-y-2">
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
-                        <span className="text-xs font-semibold text-violet-700 dark:text-violet-300">Configurar execução automática (a cada 5 min)</span>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed">
-                        O plano Hobby da Vercel não permite cron com intervalo menor que 1 dia.
-                        Use o <strong>cron-job.org</strong> (gratuito) para chamar o endpoint automaticamente:
-                      </p>
-                      <ol className="text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
-                        <li>Acesse <strong>cron-job.org</strong> e crie uma conta gratuita</li>
-                        <li>Clique em <strong>&quot;Create cronjob&quot;</strong></li>
-                        <li>No campo <strong>URL</strong>, cole:
-                          <code className="ml-1.5 bg-white dark:bg-zinc-800 px-1.5 py-0.5 rounded font-mono text-[10px] text-violet-600 dark:text-violet-400 select-all cursor-pointer"
-                            onClick={() => copyToClipboard(pollingEndpointUrl + '?secret=SEU_CRON_SECRET', 'Endpoint URL')}
-                            title="Clique para copiar">
-                            {pollingEndpointUrl}<span className="text-amber-600 dark:text-amber-400">?secret=SEU_CRON_SECRET</span>
-                          </code>
-                        </li>
-                        <li>Em <strong>Schedule</strong>, selecione <strong>&quot;Every 5 minutes&quot;</strong></li>
-                        <li>Salve. O endpoint será chamado automaticamente a cada 5 minutos.</li>
-                      </ol>
-                      <p className="text-[10px] text-muted-foreground">
-                        Substitua <code className="font-mono">SEU_CRON_SECRET</code> pelo valor da env var <code className="font-mono">CRON_SECRET</code> configurada na Vercel.
-                        Ou use o botão &quot;Executar Agora&quot; abaixo (não precisa de CRON_SECRET, usa sua sessão).
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Form IDs */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-sm font-medium">IDs dos Formulários Meta</Label>
-                      <Button variant="ghost" size="sm" onClick={addPollFormId} className="text-violet-600 hover:text-violet-700 h-7 px-2">
-                        <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Cole os Form IDs dos formulários de lead do Facebook. Encontre em Meta Business Suite → Formulários de Leads → Configurações.
-                    </p>
-                    <div className="space-y-2">
-                      {pollFormIds.map((formId, index) => (
-                        <div key={index} className="flex gap-2 items-center">
-                          <Input placeholder="Ex: 123456789012345" value={formId} onChange={(e) => updatePollFormId(index, e.target.value)} className="font-mono text-sm" disabled={pollSaving} inputMode="numeric" maxLength={30} />
-                          {pollFormIds.length > 1 && (
-                            <Button variant="ghost" size="icon" onClick={() => removePollFormId(index)} disabled={pollSaving} className="text-destructive hover:text-destructive h-9 w-9 flex-shrink-0">
-                              <X className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Última execução */}
-                  {pollLastRun && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Clock className="h-3.5 w-3.5" />
-                      Última execução: {new Date(pollLastRun).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
-                      {pollLastResult && (
-                        <span className="ml-2">
-                          ({pollLastResult.totalFetched ?? 0} encontrados, {pollLastResult.totalImported ?? 0} importados{pollLastResult.errorCount ? `, ${pollLastResult.errorCount} erros` : ''}, {pollLastResult.elapsed ?? '?'})
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Erros */}
-                  {(pollLastResult?.errorCount ?? 0) > 0 && (
-                    <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
-                      <div className="flex items-center gap-1.5">
-                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                        <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">{pollLastResult.errorCount} erro{(pollLastResult.errorCount ?? 0) > 1 ? 's' : ''} na última execução</span>
-                      </div>
-                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Verifique os logs do servidor (Vercel Dashboard → Logs) para detalhes.</p>
-                    </div>
-                  )}
-
-                  <Separator />
-
-                  {/* Ações */}
-                  <div className="flex items-center gap-3">
-                    <Button onClick={savePollConfig} disabled={pollSaving} className="bg-violet-600 hover:bg-violet-700 text-white">
-                      {pollSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando...</> : <><Save className="h-4 w-4 mr-2" /> Salvar Polling</>}
-                    </Button>
-                    <Button variant="outline" onClick={triggerPollNow} disabled={pollTriggering || !pollEnabled}>
-                      {pollTriggering ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Executando...</> : <><RefreshCw className="h-4 w-4 mr-2" /> Executar Agora</>}
-                    </Button>
-                  </div>
-                </>
-              )}
-            </AccordionContent>
-          </AccordionItem>
-        )}
-
-        {/* ═══════════════════════════════════════════════════════
-            SEÇÃO 4: API de Conversões (CAPI Multi-cliente)
+            SEÇÃO 2: API de Conversões (CAPI Multi-cliente)
             ═══════════════════════════════════════════════════════ */}
         <AccordionItem value="capi" className="border rounded-xl overflow-hidden data-[state=open]:border-purple-200 dark:data-[state=open]:border-purple-800/50 data-[state=open]:shadow-sm transition-all">
           <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
@@ -1962,7 +1410,7 @@ function ConfigTab() {
         </AccordionItem>
 
         {/* ═══════════════════════════════════════════════════════
-            SEÇÃO 5: Mapeamento de Formulários
+            SEÇÃO 3: Mapeamento de Formulários
             ═══════════════════════════════════════════════════════ */}
         <AccordionItem value="form-mappings" className="border rounded-xl overflow-hidden data-[state=open]:border-success/30 data-[state=open]:shadow-sm transition-all">
           <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
@@ -1997,10 +1445,10 @@ function ConfigTab() {
                 Essa vinculação garante que quando o lead muda de stage, o evento de conversão seja enviado para o <strong>dataset correto</strong> do cliente.
               </p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                <strong>Depende de:</strong> Os formulários são detectados automaticamente quando chegam leads via <strong>Webhook</strong> (Seção 2) ou <strong>Polling</strong> (Seção 3). Você também pode importá-los manualmente com o botão &quot;Importar&quot;.
+                <strong>Depende de:</strong> Os formulários são detectados automaticamente quando chegam leads via <strong>Webhook</strong> ou <strong>Polling</strong> das contas (Seção 1). Você também pode importá-los manualmente com o botão &quot;Importar&quot;.
               </p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                <strong>É usado por:</strong> <strong>CAPI</strong> (Seção 4) usa essas vinculações para rotear eventos de conversão.
+                <strong>É usado por:</strong> <strong>CAPI</strong> (Seção 2) usa essas vinculações para rotear eventos de conversão.
               </p>
             </div>
 
@@ -2101,7 +1549,7 @@ function ConfigTab() {
         </AccordionItem>
 
         {/* ═══════════════════════════════════════════════════════
-            SEÇÃO 6: Importação Manual de Leads
+            SEÇÃO 4: Importação Manual de Leads
             ═══════════════════════════════════════════════════════ */}
         <AccordionItem value="manual-import" className="border rounded-xl overflow-hidden data-[state=open]:border-red-200 dark:data-[state=open]:border-red-800/50 data-[state=open]:shadow-sm transition-all">
           <AccordionTrigger className="px-4 py-3.5 hover:no-underline">

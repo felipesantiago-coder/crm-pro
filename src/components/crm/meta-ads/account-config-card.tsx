@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -32,11 +33,13 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  MinusCircle,
   Pencil,
   Plus,
   RefreshCw,
   Save,
   Trash2,
+  XCircle,
   Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -136,7 +139,7 @@ function parseLines(raw: string | null | undefined): string[] {
   return [];
 }
 
-type AccountTab = 'webhook' | 'polling' | 'campaigns' | 'forms' | 'capi';
+type AccountTab = 'webhook' | 'polling' | 'campaigns' | 'forms' | 'capi' | 'tests';
 
 export function AccountConfigCard({ account, queues, capiConfigs, bindings, mappings, onChanged, onEdit, onDelete }: AccountConfigCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -161,6 +164,12 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
   const [newCapi, setNewCapi] = useState({ name: '', datasetId: '', accessToken: '' });
   const [savingCapi, setSavingCapi] = useState(false);
   const [testingCapiId, setTestingCapiId] = useState<string | null>(null);
+
+  // ── Testes & Diagnóstico (por conta) ──
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagResult, setDiagResult] = useState<any>(null);
+  const [pollingNow, setPollingNow] = useState(false);
+  const [pollNowResult, setPollNowResult] = useState<any>(null);
 
   // Re-sincroniza os drafts com a conta ao expandir o card
   useEffect(() => {
@@ -373,6 +382,64 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
     }
   }
 
+  async function runDiagnostics() {
+    setDiagnosing(true);
+    setDiagResult(null);
+    try {
+      const res = await fetch(`/api/meta-ad-accounts/${account.id}/diagnose`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error || 'Erro ao executar diagnóstico da conta');
+        return;
+      }
+      setDiagResult(data);
+      const errs = data.summary?.errors ?? 0;
+      const warns = data.summary?.warnings ?? 0;
+      if (errs > 0) toast.error(`Diagnóstico de "${account.name}": ${errs} erro(s)`);
+      else if (warns > 0) toast.warning(`Diagnóstico de "${account.name}": ${warns} aviso(s)`);
+      else toast.success(`Diagnóstico de "${account.name}": tudo OK!`);
+    } catch {
+      toast.error('Falha de conexão ao executar diagnóstico');
+    } finally {
+      setDiagnosing(false);
+    }
+  }
+
+  async function pollAccountNow() {
+    setPollingNow(true);
+    setPollNowResult(null);
+    try {
+      const res = await fetch(`/api/cron/fetch-meta-leads?accountId=${account.id}`);
+      const data = await res.json().catch(() => ({}));
+      setPollNowResult(data);
+      if (res.status === 401) {
+        toast.error('Sessão expirada. Faça login novamente.');
+      } else if (res.status === 404 || res.status === 400) {
+        toast.error(data?.message || data?.error || 'Erro ao executar polling da conta');
+      } else if (data?.status === 'idle') {
+        toast.info(data?.message || 'Nada para consultar nesta conta');
+      } else if (res.ok) {
+        toast.success(`Polling da conta executado: ${data.totalFetched ?? 0} encontrados, ${data.totalImported ?? 0} importados (${data.elapsed ?? '?'})`);
+        onChanged();
+      } else {
+        toast.error(data?.message || data?.error || 'Erro ao executar polling da conta');
+      }
+    } catch {
+      toast.error('Falha de conexão ao executar polling da conta');
+    } finally {
+      setPollingNow(false);
+    }
+  }
+
+  async function copyWebhookUrl() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/api/webhooks/meta-leads`);
+      toast.success('URL do webhook copiada!');
+    } catch {
+      toast.error('Falha ao copiar');
+    }
+  }
+
   // Dados DESTE account (agrupamento sem mistura)
   const accountBindings = bindings.filter((b) => b.adAccountId === account.id);
   const accountMappings = mappings.filter((m) => m.adAccountId === account.id);
@@ -464,6 +531,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                 <TabsTrigger value="campaigns" className="text-xs gap-1.5 flex-1">Campanhas ({accountBindings.length})</TabsTrigger>
                 <TabsTrigger value="forms" className="text-xs gap-1.5 flex-1">Formulários ({accountMappings.length})</TabsTrigger>
                 <TabsTrigger value="capi" className="text-xs gap-1.5 flex-1">CAPI ({accountCapiConfigs.length})</TabsTrigger>
+                <TabsTrigger value="tests" className="text-xs gap-1.5 flex-1">Testes</TabsTrigger>
               </TabsList>
 
               {/* ══════════ WEBHOOK DA CONTA ══════════ */}
@@ -481,12 +549,12 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                 </div>
 
                 <p className="text-[11px] text-muted-foreground">
-                  Endpoint do webhook é o mesmo para todas as contas (URL global). O que muda por conta: <strong>verify token</strong>, <strong>app secret</strong> e as <strong>page IDs</strong> — cada conta assina e valida o webhook com os próprios valores.
+                  Não existe webhook global: <strong>cada conta usa os próprios</strong> <strong>verify token</strong>, <strong>app secret</strong> e <strong>page IDs</strong> — todos obrigatórios para esta conta receber leads. O endpoint é único: <code className="font-mono text-[10px]">/api/webhooks/meta-leads</code>.
                 </p>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <Label className="text-xs font-medium">Verify Token desta conta (opcional)</Label>
+                    <Label className="text-xs font-medium">Verify Token desta conta (obrigatório)</Label>
                     {account.hasVerifyToken && <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> configurado</Badge>}
                     {account.hasVerifyToken && (
                       <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground" onClick={() => clearField('verifyToken')} title="Remover verify token desta conta">
@@ -504,7 +572,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
 
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <Label className="text-xs font-medium">App Secret desta conta (opcional)</Label>
+                    <Label className="text-xs font-medium">App Secret desta conta (obrigatório)</Label>
                     {account.hasAppSecret && <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> configurado</Badge>}
                     {account.hasAppSecret && (
                       <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground" onClick={() => clearField('appSecret')} title="Remover app secret desta conta">
@@ -593,7 +661,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                       </div>
                     ))}
                   </div>
-                  <p className="text-[10px] text-muted-foreground">A cadência do polling (ex.: a cada 5 min via cron) é global; o que é por conta: os formulários consultados e o token usado.</p>
+                  <p className="text-[10px] text-muted-foreground">Consultados com o token DESTA conta pelo polling automático (cron). Não existe polling global — o que não estiver aqui não é consultado. Teste com &quot;Executar polling agora&quot; na aba Testes.</p>
                 </div>
 
                 <Button onClick={saveForms} disabled={savingForms || patching} size="sm" className="bg-teal-600 hover:bg-teal-700 text-white">
@@ -601,14 +669,76 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                 </Button>
               </TabsContent>
 
-              {/* ══════════ CAMPANHAS DA CONTA ══════════ */}
-              <TabsContent value="campaigns" className="mt-3">
-                <CampaignBindingsSection
-                  adAccountId={account.id}
-                  hideAccountSelect
-                  compact
-                  onChanged={onChanged}
-                />
+              {/* ══════════ TESTES & DIAGNÓSTICO DA CONTA ══════════ */}
+              <TabsContent value="tests" className="space-y-3 mt-3">
+                <div className="rounded-lg border p-2.5 bg-background space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs font-medium">URL do webhook (para o Meta desta conta)</Label>
+                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]" onClick={() => copyWebhookUrl()}>
+                      Copiar
+                    </Button>
+                  </div>
+                  <code className="block text-[10px] font-mono break-all text-muted-foreground">
+                    {typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/meta-leads
+                  </code>
+                  <p className="text-[10px] text-muted-foreground">No Meta for Developers, use esta URL + o verify token DESTA conta (aba Webhook) e inscreva as páginas dela no campo leadgen.</p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={runDiagnostics} disabled={diagnosing} size="sm" className="bg-teal-600 hover:bg-teal-700 text-white">
+                    {diagnosing ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Diagnosticando...</> : <><Zap className="h-3.5 w-3.5 mr-1.5" /> Diagnóstico completo</>}
+                  </Button>
+                  <Button onClick={pollAccountNow} disabled={pollingNow} size="sm" variant="outline">
+                    {pollingNow ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Executando...</> : <><RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Executar polling agora (só esta conta)</>}
+                  </Button>
+                </div>
+
+                {diagResult && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                      <Badge className={diagResult.summary?.errors > 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-[9px] px-1.5 py-0' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[9px] px-1.5 py-0'}>
+                        {diagResult.summary?.errors ?? 0} erro(s)
+                      </Badge>
+                      <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] px-1.5 py-0">{diagResult.summary?.warnings ?? 0} aviso(s)</Badge>
+                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[9px] px-1.5 py-0">{diagResult.summary?.ok ?? 0} OK</Badge>
+                      {diagResult.evaluation?.webhookReady && <Badge className="bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 text-[9px] px-1.5 py-0">webhook pronto</Badge>}
+                      {diagResult.evaluation?.pollingReady && <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 text-[9px] px-1.5 py-0">polling pronto</Badge>}
+                    </div>
+                    <div className="space-y-1 max-h-72 overflow-y-auto">
+                      {(diagResult.checks || []).map((check: any) => (
+                        <div key={check.key} className="rounded-md border p-2 text-[11px] bg-background flex items-start gap-2">
+                          <span className="flex-shrink-0 mt-0.5">
+                            {check.status === 'ok' ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> :
+                             check.status === 'error' ? <XCircle className="h-3.5 w-3.5 text-red-500" /> :
+                             check.status === 'warn' ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> :
+                             <MinusCircle className="h-3.5 w-3.5 text-muted-foreground" />}
+                          </span>
+                          <span className="min-w-0">
+                            <span className={check.status === 'error' ? 'text-red-600 dark:text-red-400' : check.status === 'warn' ? 'text-amber-600 dark:text-amber-400' : ''}>{check.details}</span>
+                            {check.fix && <span className="block text-[10px] text-muted-foreground mt-0.5">→ {check.fix}</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {pollNowResult && (
+                  <div className="rounded-md border p-2 text-[11px] bg-background space-y-1">
+                    <p className="font-medium">Resultado do polling desta conta</p>
+                    {pollNowResult.status && pollNowResult.status !== 'ok' && (
+                      <p className="text-amber-600 dark:text-amber-400">{pollNowResult.message || pollNowResult.error}</p>
+                    )}
+                    {pollNowResult.status === 'ok' && (
+                      <>
+                        <p className="text-muted-foreground">{pollNowResult.totalFetched ?? 0} lead(s) encontrados · {pollNowResult.totalImported ?? 0} importado(s) · {pollNowResult.formsChecked ?? 0} form(s) · {pollNowResult.elapsed ?? ''}</p>
+                        {(pollNowResult.perForm || []).map((f: any) => (
+                          <p key={f.formId} className="text-muted-foreground font-mono text-[10px]">{f.formId}: {f.fetched} buscado(s), {f.imported} importado(s){f.error ? ` — ${f.error}` : ''}</p>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
               </TabsContent>
 
               {/* ══════════ FORMULÁRIOS DA CONTA ══════════ */}
@@ -717,6 +847,15 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                 <Button size="sm" variant="outline" className="border-teal-300 dark:border-teal-800 text-teal-700 dark:text-teal-300" onClick={() => setShowNewCapi(true)}>
                   <Plus className="h-3.5 w-3.5 mr-1" /> Novo config CAPI nesta conta
                 </Button>
+              </TabsContent>
+              {/* ══════════ CAMPANHAS DA CONTA ══════════ */}
+              <TabsContent value="campaigns" className="mt-3">
+                <CampaignBindingsSection
+                  adAccountId={account.id}
+                  hideAccountSelect
+                  compact
+                  onChanged={onChanged}
+                />
               </TabsContent>
             </Tabs>
           </div>

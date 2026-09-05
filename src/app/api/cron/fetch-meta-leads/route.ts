@@ -26,9 +26,12 @@ export const maxDuration = 10;
 // conta de origem (meta-lead-routing), igual ao webhook — assim webhook
 // e polling podem rodar simultaneamente sem confundir fontes.
 //
-// MULTI-TOKEN: cada conta de anúncios (MetaAdAccount) é consultada
-// com o PRÓPRIO access token, usando os formIds vinculados a ela.
-// Formulários sem conta continuam usando o token global (legado).
+// MULTI-TOKEN (configuração EXCLUSIVAMENTE por conta): cada conta de
+// anúncios (MetaAdAccount) é consultada com o PRÓPRIO access token,
+// usando os formIds vinculados a ela. NÃO existe polling global.
+//
+// ESCOPO POR CONTA: ?accountId=<id> restringe a execução a UMA conta
+// (usado pelo botão "Executar polling agora" dentro do card da conta).
 //
 // Autenticação (qualquer UMA das formas):
 //   - Sessão NextAuth com role ADMIN (botão "Executar Agora")
@@ -103,7 +106,7 @@ async function authenticate(request: NextRequest): Promise<boolean> {
 
 async function getConfig() {
   const settings = await db.userSettings.findMany({
-    where: { key: { in: ['meta_polling_enabled', 'meta_polling_form_ids', 'meta_page_access_token', 'meta_polling_last_run', 'meta_polling_form_watermarks'] } },
+    where: { key: { in: ['meta_polling_last_run', 'meta_polling_form_watermarks'] } },
     select: { key: true, value: true },
   });
   const map: Record<string, string> = {};
@@ -114,9 +117,6 @@ async function getConfig() {
   try { formWatermarks = JSON.parse(map['meta_polling_form_watermarks'] || '{}') || {}; } catch { formWatermarks = {}; }
 
   return {
-    enabled: map['meta_polling_enabled'] === 'true',
-    formIds: (() => { try { return JSON.parse(map['meta_polling_form_ids'] || '[]'); } catch { return []; } })(),
-    pageAccessToken: map['meta_page_access_token'] || null,
     lastRun: map['meta_polling_last_run'] || null,
     formWatermarks,
   };
@@ -271,22 +271,32 @@ export async function GET(request: NextRequest) {
   isRunning = true;
 
   try {
-    // 3. Config
+    // 3. Escopo por conta (?accountId=<id> — botão "Executar agora" do card)
+    const accountIdFilter = new URL(request.url).searchParams.get('accountId');
+
+    // 3b. Config técnica (watermarks/last_run — estado por formulário)
     const config = await getConfig();
-    if (!config.enabled) {
-      return NextResponse.json({ status: 'disabled', message: 'Polling desativado' });
+
+    // 3c. MULTI-TOKEN (configuração EXCLUSIVAMENTE por conta): contas de
+    //     anúncios habilitadas com o POLLING PRÓPRIO ativo + alvos por
+    //     conta. Não existe polling global/formulários globais.
+    const adAccounts = (await fetchEnabledAdAccounts('polling')).filter((a) =>
+      accountIdFilter ? a.id === accountIdFilter : true,
+    );
+    if (accountIdFilter && adAccounts.length === 0) {
+      return NextResponse.json({ status: 'error', message: 'Conta não encontrada, inativa ou com polling próprio desligado' }, { status: 404 });
     }
 
-    // 3b. MULTI-TOKEN (settings por conta): contas de anúncios habilitadas
-    //     com o POLLING PRÓPRIO ativo + alvos por conta. Conta com
-    //     pollingEnabled=false é ignorada neste canal — as demais contas
-    //     seguem sendo consultadas normalmente.
-    const adAccounts = await fetchEnabledAdAccounts('polling');
     const targets: PollTarget[] = [];
     const claimedForms = new Set<string>();
     for (const account of adAccounts) {
       const forms = parseJsonArray(account.formIds);
-      if (forms.length === 0) continue;
+      if (forms.length === 0) {
+        if (accountIdFilter) {
+          return NextResponse.json({ status: 'idle', message: `A conta "${account.name}" não tem form IDs configurados — use o Sync Forms na aba Polling do card dela` });
+        }
+        continue;
+      }
       if (!account.accessToken) {
         console.warn(`[Meta Polling] Conta "${account.name}" sem access token — ${forms.length} form(s) dela pulados`);
         continue;
@@ -298,23 +308,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Legado: forms globais consultados com o token global (sem conta)
-    if (config.pageAccessToken) {
-      for (const formId of config.formIds as string[]) {
-        if (claimedForms.has(formId)) continue;
-        claimedForms.add(formId);
-        targets.push({ formId, token: config.pageAccessToken, adAccountId: null, accountName: null });
-      }
-    }
-
-    if (!config.pageAccessToken && targets.length === 0) {
-      return NextResponse.json({ status: 'error', message: 'Nenhum token configurado (global ou em contas de anúncios)' });
-    }
     if (targets.length === 0) {
-      return NextResponse.json({ status: 'idle', message: 'Nenhum form ID configurado (nem global nem em contas de anúncios)' });
+      return NextResponse.json({ status: 'idle', message: 'Nenhuma conta de anúncios com polling ativo e form IDs configurados — cadastre contas em Contas de Anúncio e use o Sync Forms' });
     }
     if (targets.length > MAX_FORM_IDS) {
-      return NextResponse.json({ status: 'error', message: `Máximo de ${MAX_FORM_IDS} formulários permitidos (somando contas + globais)` });
+      return NextResponse.json({ status: 'error', message: `Máximo de ${MAX_FORM_IDS} formulários permitidos (somando as contas)` });
     }
 
     // 4. Janela de busca: watermark INDIVIDUAL por formulário.
@@ -323,7 +321,7 @@ export async function GET(request: NextRequest) {
     const nowIso = new Date().toISOString();
 
     const accountCount = new Set(targets.map(t => t.accountName).filter(Boolean)).size;
-    console.log(`[Meta Polling] Iniciando: alvos=${targets.length} (contas=${accountCount}, legados=${targets.length - targets.filter(t => t.adAccountId).length}), watermarks=${Object.keys(config.formWatermarks).length || 'nenhum (usando last_run global)'}`);
+    console.log(`[Meta Polling] Iniciando: alvos=${targets.length} (contas=${accountCount}${accountIdFilter ? ', escopo=1 conta' : ''}), watermarks=${Object.keys(config.formWatermarks).length || 'nenhum (usando last_run global)'}`);
 
     // 5. Buscar creator UMA vez
     const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true }, orderBy: { createdAt: 'asc' } });
@@ -438,6 +436,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       status: 'ok', elapsed: `${elapsed}ms`,
+      scope: accountIdFilter ? 'single_account' : 'all_accounts',
       formsChecked: targets.length,
       accountsChecked: accountCount,
       totalFetched, totalImported,

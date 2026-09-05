@@ -221,23 +221,30 @@ export async function GET() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    // 8. Status do webhook
-    const webhookSettings = await db.userSettings.findMany({
-      where: {
-        key: {
-          in: ['meta_webhook_enabled', 'meta_webhook_verify_token', 'meta_app_secret', 'meta_page_access_token', 'meta_lead_count'],
-        },
-      },
-    });
-    const settingsMap: Record<string, string> = {};
-    webhookSettings.forEach((s) => { settingsMap[s.key] = s.value; });
+    // 8. Status da integração — CONFIGURAÇÃO POR CONTA (não há webhook
+    //    global): resumo de quantas contas estão prontas por canal
+    type AccountRow = { enabled: boolean; webhookEnabled: boolean | null; pollingEnabled: boolean | null; verifyToken: string | null; appSecret: string | null; pageIds: string | null; formIds: string | null };
+    let accountRows: AccountRow[] = [];
+    try {
+      accountRows = (await db.metaAdAccount.findMany({
+        select: { enabled: true, webhookEnabled: true, pollingEnabled: true, verifyToken: true, appSecret: true, pageIds: true, formIds: true },
+      })) as AccountRow[];
+    } catch { /* migration pendente — mantém vazio */ }
+
+    const leadCountSetting = await db.userSettings
+      .findUnique({ where: { key: 'meta_lead_count' } })
+      .catch(() => null);
 
     const webhookConfig = {
-      enabled: settingsMap['meta_webhook_enabled'] === 'true',
-      hasVerifyToken: !!settingsMap['meta_webhook_verify_token'],
-      hasAppSecret: !!settingsMap['meta_app_secret'],
-      hasPageAccessToken: !!settingsMap['meta_page_access_token'],
-      totalLeadCount: parseInt(settingsMap['meta_lead_count'] || '0', 10),
+      accountsTotal: accountRows.length,
+      accountsEnabled: accountRows.filter((a) => a.enabled).length,
+      accountsWebhookReady: accountRows.filter((a) =>
+        a.enabled && a.webhookEnabled !== false && !!a.verifyToken && !!a.appSecret && (a.pageIds || '').length > 2,
+      ).length,
+      accountsPollingReady: accountRows.filter((a) =>
+        a.enabled && a.pollingEnabled !== false && !!a.formIds && a.formIds.length > 2,
+      ).length,
+      totalLeadCount: parseInt(leadCountSetting?.value || '0', 10),
     };
 
     // 9. Tempo médio de conversão (LEAD → FECHADO_GANHO) em dias
