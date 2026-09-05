@@ -332,7 +332,7 @@ export async function GET(request: NextRequest) {
     const quota = { remaining: MAX_LEADS_PER_RUN };
 
     // Resultado por alvo (observabilidade)
-    const perForm: Array<{ formId: string; account?: string | null; fetched: number; imported: number; error?: string }> = [];
+    const perForm: Array<{ formId: string; account?: string | null; fetched: number; imported: number; deduped?: number; error?: string }> = [];
     const newWatermarks: Record<string, string> = { ...config.formWatermarks };
     const errors: string[] = [];
 
@@ -366,6 +366,7 @@ export async function GET(request: NextRequest) {
         leads.sort((a, b) => (a.created_time ? new Date(a.created_time).getTime() : 0) - (b.created_time ? new Date(b.created_time).getTime() : 0));
 
         let imported = 0;
+        let deduped = 0;
 
         // Leads do mesmo formulário em paralelo (concorrência limitada)
         const settledLeads = await mapWithConcurrency(leads, LEAD_CONCURRENCY, async (lead) => {
@@ -374,6 +375,10 @@ export async function GET(request: NextRequest) {
           if (result.imported) {
             quota.remaining--;
             imported++;
+          } else if (result.reason === 'já_existente' || result.reason === 'cliente_existente_atualizado') {
+            // Já estava no CRM (importado antes por webhook/polling) —
+            // dedupe correto, não é erro (observabilidade na UI).
+            deduped++;
           }
           return { skipped: false, imported: result.imported };
         });
@@ -389,7 +394,7 @@ export async function GET(request: NextRequest) {
           errors.push(`Limite de ${MAX_LEADS_PER_RUN} leads atingido. Os demais serão importados na próxima execução.`);
         }
 
-        perForm.push({ formId, account: accountName, fetched: leads.length, imported });
+        perForm.push({ formId, account: accountName, fetched: leads.length, imported, deduped });
 
         // Sucesso na busca: avança o watermark DESTE formulário
         newWatermarks[formId] = nowIso;
@@ -405,6 +410,7 @@ export async function GET(request: NextRequest) {
 
     const totalFetched = perForm.reduce((acc, f) => acc + f.fetched, 0);
     const totalImported = perForm.reduce((acc, f) => acc + f.imported, 0);
+    const totalDeduped = perForm.reduce((acc, f) => acc + (f.deduped || 0), 0);
 
     // 7. Atualizar last_run global (compatibilidade com a UI)
     await db.userSettings.upsert({
@@ -422,7 +428,7 @@ export async function GET(request: NextRequest) {
 
     // Salvar resultado do último run (sem expor errors crusos no log)
     const lastResult = JSON.stringify({
-      timestamp: nowIso, totalFetched, totalImported, errorCount: errors.length,
+      timestamp: nowIso, totalFetched, totalImported, totalDeduped, errorCount: errors.length,
       forms: targets.length, accounts: accountCount, elapsed: Date.now() - startTime, perForm,
     });
     await db.userSettings.upsert({
@@ -439,7 +445,7 @@ export async function GET(request: NextRequest) {
       scope: accountIdFilter ? 'single_account' : 'all_accounts',
       formsChecked: targets.length,
       accountsChecked: accountCount,
-      totalFetched, totalImported,
+      totalFetched, totalImported, totalDeduped,
       perForm,
       errors: errors.length > 0 ? errors : undefined,
     });

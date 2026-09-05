@@ -419,7 +419,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
       } else if (data?.status === 'idle') {
         toast.info(data?.message || 'Nada para consultar nesta conta');
       } else if (res.ok) {
-        toast.success(`Polling da conta executado: ${data.totalFetched ?? 0} encontrados, ${data.totalImported ?? 0} importados (${data.elapsed ?? '?'})`);
+        toast.success(`Polling da conta executado: ${data.totalFetched ?? 0} encontrados, ${data.totalImported ?? 0} importados, ${data.totalDeduped ?? 0} já existentes (${data.elapsed ?? '?'})`);
         onChanged();
       } else {
         toast.error(data?.message || data?.error || 'Erro ao executar polling da conta');
@@ -731,9 +731,9 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                     )}
                     {pollNowResult.status === 'ok' && (
                       <>
-                        <p className="text-muted-foreground">{pollNowResult.totalFetched ?? 0} lead(s) encontrados · {pollNowResult.totalImported ?? 0} importado(s) · {pollNowResult.formsChecked ?? 0} form(s) · {pollNowResult.elapsed ?? ''}</p>
+                        <p className="text-muted-foreground">{pollNowResult.totalFetched ?? 0} lead(s) encontrados · {pollNowResult.totalImported ?? 0} importado(s) · {pollNowResult.totalDeduped ?? 0} já existente(s) · {pollNowResult.formsChecked ?? 0} form(s) · {pollNowResult.elapsed ?? ''}</p>
                         {(pollNowResult.perForm || []).map((f: any) => (
-                          <p key={f.formId} className="text-muted-foreground font-mono text-[10px]">{f.formId}: {f.fetched} buscado(s), {f.imported} importado(s){f.error ? ` — ${f.error}` : ''}</p>
+                          <p key={f.formId} className="text-muted-foreground font-mono text-[10px]">{f.formId}: {f.fetched} buscado(s), {f.imported} importado(s){f.deduped ? `, ${f.deduped} já existente(s)` : ''}{f.error ? ` — ${f.error}` : ''}</p>
                         ))}
                       </>
                     )}

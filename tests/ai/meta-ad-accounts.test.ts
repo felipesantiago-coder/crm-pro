@@ -13,6 +13,8 @@ import {
   buildWebhookSecretCandidates,
   resolveAccountByVerifyToken,
   resolvePageToken,
+  parsePageTokens,
+  mergePageTokens,
   evaluateAccountConnection,
   filterAccountsByChannel,
   type AdAccountRef,
@@ -184,12 +186,57 @@ test('filterAccountsByChannel: canal all mantém todas (toggles não filtram)', 
   assert.equal(filterAccountsByChannel(accounts, 'all').length, 2);
 });
 
-// ── resolvePageToken (exclusivamente por conta) ────────────────
+// ── resolvePageToken (exclusivamente por conta; page token salvo
+//    da página tem prioridade sobre o token bruto da conta) ─────
 
 test('resolvePageToken: retorna o token da conta resolvida', () => {
   assert.equal(resolvePageToken({ accessToken: 'token-conta' }), 'token-conta');
   assert.equal(resolvePageToken(null), null);
   assert.equal(resolvePageToken({ accessToken: '' }), null);
+});
+
+test('resolvePageToken: PAGE TOKEN salvo da página tem prioridade (pageId conhecido)', () => {
+  const account = {
+    accessToken: 'token-conta',
+    pageTokens: JSON.stringify({ '1433999': 'page-token-1433', '111222': 'page-token-111' }),
+  };
+  assert.equal(resolvePageToken(account, '1433999'), 'page-token-1433');
+  assert.equal(resolvePageToken(account, '111222'), 'page-token-111');
+  // Página SEM token salvo → cai para o token da conta
+  assert.equal(resolvePageToken(account, '999888'), 'token-conta');
+  // Sem pageId → token da conta
+  assert.equal(resolvePageToken(account), 'token-conta');
+  assert.equal(resolvePageToken(account, null), 'token-conta');
+});
+
+// ── parsePageTokens / mergePageTokens (map pageId → page token) ──
+
+test('parsePageTokens: JSON map válido → objeto pageId → token', () => {
+  assert.deepEqual(
+    parsePageTokens('{"143":"EAAG1","222":"EAAG2"}'),
+    { '143': 'EAAG1', '222': 'EAAG2' },
+  );
+});
+
+test('parsePageTokens: defensivo — null, vazio, inválido, array e valores não-string → {}', () => {
+  assert.deepEqual(parsePageTokens(null), {});
+  assert.deepEqual(parsePageTokens(undefined), {});
+  assert.deepEqual(parsePageTokens(''), {});
+  assert.deepEqual(parsePageTokens('{inválido'), {});
+  assert.deepEqual(parsePageTokens('["143"]'), {});
+  assert.deepEqual(parsePageTokens('{"143":"tok","vazia":"","ruim":123}'), { '143': 'tok' });
+});
+
+test('mergePageTokens: adiciona novas páginas e preserva as existentes', () => {
+  const merged = JSON.parse(mergePageTokens('{"143":"tok-antigo"}', { '222': 'tok-novo' }));
+  assert.equal(merged['143'], 'tok-antigo');
+  assert.equal(merged['222'], 'tok-novo');
+});
+
+test('mergePageTokens: token novo SOBRESCREVE o da mesma página e parte de existente vazio', () => {
+  const merged = JSON.parse(mergePageTokens('{"143":"tok-antigo"}', { '143': 'tok-rotacionado' }));
+  assert.equal(merged['143'], 'tok-rotacionado');
+  assert.deepEqual(JSON.parse(mergePageTokens(null, { '143': 'tok' })), { '143': 'tok' });
 });
 
 // ── evaluateAccountConnection (checklist por conta) ────────────

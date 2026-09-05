@@ -33,6 +33,11 @@ export interface AdAccountRef {
   appSecret?: string | null;
   pageIds?: string | null;
   formIds?: string | null;
+  /** JSON map pageId → page access token (extraído automaticamente do
+   *  token da conta pelo diagnóstico — via GET /{page-id} ou /me/accounts).
+   *  Page tokens derivados de token de longa duração NÃO expiram; são
+   *  usados preferencialmente nas operações page-scoped. */
+  pageTokens?: string | null;
   queueId?: string | null;
   /** Toggle de webhook DESTA conta (settings por conta). */
   webhookEnabled?: boolean;
@@ -72,6 +77,34 @@ export function parseJsonArray(raw: string | null | undefined): string[] {
   } catch {
     return [];
   }
+}
+
+/** Parse defensivo do JSON map pageId → page access token. */
+export function parsePageTokens(raw: string | null | undefined): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const map: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (key && typeof value === 'string' && value.length > 0) map[key] = value;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Mescla tokens de página novos no map existente da conta (JSON).
+ * Tokens novos sobrescrevem os antigos para a MESMA página; as demais
+ * páginas preservam seus tokens.
+ */
+export function mergePageTokens(
+  existing: string | null | undefined,
+  additions: Record<string, string>,
+): string {
+  return JSON.stringify({ ...parsePageTokens(existing), ...additions });
 }
 
 /**
@@ -138,13 +171,122 @@ export function resolveAccountByVerifyToken<T extends AdAccountRef>(
 }
 
 /**
- * Token a usar para buscar dados do lead (field_data): EXCLUSIVAMENTE
- * o token da conta resolvida — não há mais token global de fallback.
+ * Token a usar para buscar dados do lead (field_data) e demais
+ * operações page-scoped: EXCLUSIVAMENTE a conta resolvida — não há
+ * mais token global de fallback. Dentro da conta, quando o pageId é
+ * conhecido (webhook: entry[].id), o PAGE TOKEN salvo para aquela
+ * página tem prioridade sobre o token bruto da conta: page tokens
+ * extraídos via /me/accounts não expiram junto com o user token.
  */
 export function resolvePageToken(
-  account: Pick<AdAccountRef, 'accessToken'> | null | undefined,
+  account: (Pick<AdAccountRef, 'accessToken'> & { pageTokens?: string | null }) | null | undefined,
+  pageId?: string | null,
 ): string | null {
-  return account?.accessToken || null;
+  if (!account) return null;
+  if (pageId) {
+    const perPage = parsePageTokens(account.pageTokens)[String(pageId)];
+    if (perPage) return perPage;
+  }
+  return account.accessToken || null;
+}
+
+// ============================================================
+// Extração automática de PAGE ACCESS TOKEN (por conta)
+// ============================================================
+// Comportamento restaurado do antigo diagnóstico global: tokens de
+// USUÁRIO expiram (~60 dias) e podem falhar em GET /{page-id} direto
+// ("Unsupported get request") mesmo lendo leads com sucesso; o page
+// token derivado do user token (via /me/accounts) não expira quando
+// derivado de token de longa duração e habilita operações page-scoped.
+
+export type DerivePageTokenResult =
+  | { ok: true; pageId: string; pageName: string | null; pageToken: string; via: 'direct' | 'me_accounts' }
+  | { ok: false; pageId: string; reason: 'no_token_in_response' | 'me_accounts_error' | 'page_not_listed'; error?: string };
+
+/**
+ * Extrai o PAGE ACCESS TOKEN de uma página a partir do token da conta.
+ *
+ * Estratégia:
+ *   1. GET /{page-id}?fields=name,access_token direto (funciona para
+ *      System User/page tokens e user tokens com pages_show_list).
+ *   2. Fallback: GET /me/accounts?fields=id,name,access_token com o
+ *      token de usuário — se a página aparecer na lista, extrai o page
+ *      token dela (mesmo que o GET direto tenha falhado). Percorre até
+ *      3 rodadas de paginação.
+ */
+export async function derivePageTokenForPage(
+  accessToken: string,
+  pageId: string,
+  timeoutMs = 8_000,
+): Promise<DerivePageTokenResult> {
+  const call = async (url: string): Promise<{ ok: boolean; data: any }> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { method: 'GET', signal: controller.signal });
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok, data };
+    } catch {
+      return { ok: false, data: null };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  // 1. Tentativa direta na página
+  const direct = await call(
+    `${GRAPH_API_BASE}/${pageId}?fields=name,access_token&access_token=${encodeURIComponent(accessToken)}`,
+  );
+  const directToken = direct.ok ? direct.data?.access_token : undefined;
+  if (direct.ok && typeof directToken === 'string' && directToken.length > 0) {
+    return {
+      ok: true,
+      pageId,
+      pageName: typeof direct.data?.name === 'string' ? direct.data.name : null,
+      pageToken: directToken,
+      via: 'direct',
+    };
+  }
+
+  // 2. Fallback /me/accounts (token de USUÁRIO — varre as páginas dele)
+  let url = `${GRAPH_API_BASE}/me/accounts?fields=id,name,access_token&limit=100&access_token=${encodeURIComponent(accessToken)}`;
+  let meAccountsFailed = false;
+  let meAccountsError: string | undefined;
+  for (let round = 0; round < 3 && url; round++) {
+    const res = await call(url);
+    if (!res.ok) {
+      meAccountsFailed = true;
+      meAccountsError = res.data?.error?.message || 'HTTP error em /me/accounts';
+      break;
+    }
+    const pages: Array<{ id?: string; name?: string; access_token?: string }> = Array.isArray(res.data?.data)
+      ? res.data.data
+      : [];
+    const found = pages.find(
+      (p) => p.id === pageId && typeof p.access_token === 'string' && p.access_token.length > 0,
+    );
+    if (found) {
+      return {
+        ok: true,
+        pageId,
+        pageName: typeof found.name === 'string' ? found.name : null,
+        pageToken: found.access_token as string,
+        via: 'me_accounts',
+      };
+    }
+    url = typeof res.data?.paging?.next === 'string' ? res.data.paging.next : '';
+  }
+
+  if (meAccountsFailed) {
+    return { ok: false, pageId, reason: 'me_accounts_error', error: meAccountsError };
+  }
+  if (!direct.ok) {
+    // GET direto falhou E a página não veio no /me/accounts →
+    // sem permissão de página no token (ou ID errado).
+    return { ok: false, pageId, reason: 'page_not_listed', error: direct.data?.error?.message };
+  }
+  // GET direto ok sem access_token e página não listada no /me/accounts
+  return { ok: false, pageId, reason: 'no_token_in_response' };
 }
 
 // ============================================================
@@ -353,13 +495,14 @@ export async function fetchEnabledAdAccounts(
     try {
       const accounts = await db.metaAdAccount.findMany({
         where: { enabled: true },
-        select: { ...baseSelect, webhookEnabled: true, pollingEnabled: true },
+        select: { ...baseSelect, pageTokens: true, webhookEnabled: true, pollingEnabled: true },
         orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
       });
       return filterAccountsByChannel(accounts, channel);
     } catch {
-      // Migration pendente: colunas webhookEnabled/pollingEnabled ausentes —
-      // cai para o select legado (toggles tratados como ligados).
+      // Migration pendente: colunas novas (pageTokens/webhookEnabled/
+      // pollingEnabled) ausentes — cai para o select legado (toggles
+      // tratados como ligados e sem page tokens salvos).
       const accounts = await db.metaAdAccount.findMany({
         where: { enabled: true },
         select: baseSelect,

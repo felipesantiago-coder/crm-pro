@@ -4,6 +4,8 @@ import { requireAdmin } from '@/lib/api-auth';
 import {
   evaluateAccountConnection,
   parseJsonArray,
+  mergePageTokens,
+  derivePageTokenForPage,
   type AdAccountRef,
 } from '@/lib/meta-ad-accounts';
 
@@ -119,30 +121,77 @@ export async function GET(
     }
   }
 
-  // ── 3. Pages da conta: acesso + assinatura leadgen ───────────
+  // ── 3. Pages da conta: acesso + EXTRAÇÃO AUTOMÁTICA de page token
+  //      + assinatura leadgen ──────────────────────────────────────────
+  // Comportamento RESTAURADO (era feito pelo diagnóstico global): se o
+  // GET direto na página falhar ou não retornar access_token (token de
+  // USUÁRIO), o page token é derivado via /me/accounts e SALVO na conta
+  // (pageTokens) — não expira com o user token e passa a ser usado pelo
+  // webhook ao buscar field_data dos leads da página.
   const pageIds = parseJsonArray(account.pageIds).slice(0, 10);
   for (const pageId of pageIds) {
     const page = await graphGet(`${pageId}?fields=name,access_token`, account.accessToken);
-    if (!page.ok) {
-      checks.push({
-        key: `page_${pageId}`,
-        status: 'error',
-        details: `Page ${pageId}: SEM acesso com o token desta conta — ${page.error}`,
-        fix: 'Conceda acesso da página ao System User desta conta (pages_show_list/pages_manage_metadata) ou confira o ID.',
-      });
-      continue;
-    }
-    const pageName = page.data?.name || pageId;
-    const pageToken: string | undefined = page.data?.access_token;
+    let pageName: string = page.ok ? page.data?.name || pageId : pageId;
+    let pageToken: string | undefined = page.ok ? page.data?.access_token : undefined;
+    let pageTokenNote = '';
+
     if (!pageToken) {
-      checks.push({
-        key: `page_${pageId}`,
-        status: 'warn',
-        details: `Page "${pageName}": acessível, mas o token não retorna o page access token — não foi possível verificar a assinatura do webhook.`,
-        fix: 'Use um token com permissão pages_manage_metadata/pages_read_engagement.',
-      });
-      continue;
+      // Extração automática: token de usuário → /me/accounts → page token
+      const derived = await derivePageTokenForPage(account.accessToken, pageId);
+      if (derived.ok) {
+        pageToken = derived.pageToken;
+        if (derived.pageName) pageName = derived.pageName;
+        pageTokenNote =
+          derived.via === 'me_accounts'
+            ? ' — page access token EXTRAÍDO AUTOMATICAMENTE do token de usuário (/me/accounts) e salvo nesta conta'
+            : ' — page access token extraído e salvo nesta conta';
+        // Persistir POR CONTA (falha não derruba o diagnóstico)
+        await db.metaAdAccount
+          .update({
+            where: { id: account.id },
+            data: { pageTokens: mergePageTokens(account.pageTokens, { [pageId]: derived.pageToken }) },
+          })
+          .catch((err: unknown) => {
+            console.warn(`[Diagnóstico] Falha ao salvar page token da página ${pageId} na conta:`, err instanceof Error ? err.message : err);
+          });
+      } else if (derived.reason === 'me_accounts_error') {
+        checks.push({
+          key: `page_${pageId}`,
+          status: 'error',
+          details: `Page ${pageId}: SEM acesso direto com o token desta conta — ${page.error || 'erro desconhecido'}. O fallback /me/accounts também falhou: ${derived.error || 'erro desconhecido'}`,
+          fix: 'Confirme que o access token da conta é válido e tem pages_show_list/pages_manage_metadata, depois reexecute o diagnóstico.',
+        });
+        continue;
+      } else if (derived.reason === 'page_not_listed') {
+        checks.push({
+          key: `page_${pageId}`,
+          status: 'error',
+          details: `Page ${pageId}: SEM acesso com o token desta conta — ${page.error || 'erro desconhecido'}. A página também NÃO aparece em /me/accounts com este token (a extração automática do page token não foi possível).`,
+          fix: 'Conceda acesso da página ao token desta conta (pages_show_list/pages_manage_metadata; em System User, adicione a página como ativo do usuário) ou confira o ID.',
+        });
+        continue;
+      } else {
+        // no_token_in_response: página acessível, mas nenhum page token
+        checks.push({
+          key: `page_${pageId}`,
+          status: 'warn',
+          details: `Page "${pageName}": acessível, mas o token não retornou o page access token e a extração via /me/accounts não o encontrou — não foi possível verificar a assinatura do webhook.`,
+          fix: 'Use um token com permissão pages_manage_metadata/pages_manage_pages.',
+        });
+        continue;
+      }
+    } else if (pageToken !== account.accessToken) {
+      // GET direto retornou um page token DISTINTO do token da conta —
+      // salva também (mesma persistência do fluxo de extração).
+      pageTokenNote = ' — page access token obtido e salvo nesta conta';
+      await db.metaAdAccount
+        .update({
+          where: { id: account.id },
+          data: { pageTokens: mergePageTokens(account.pageTokens, { [pageId]: pageToken }) },
+        })
+        .catch(() => {});
     }
+
     const subs = await graphGet(`${pageId}/subscribed_apps?fields=subscribed_fields`, pageToken);
     if (!subs.ok) {
       checks.push({
@@ -162,8 +211,8 @@ export async function GET(
       key: `page_${pageId}`,
       status: hasLeadgen ? 'ok' : 'error',
       details: hasLeadgen
-        ? `Page "${pageName}": webhook de LEADS assinado neste app (campos: ${fields.join(', ')})`
-        : `Page "${pageName}": o app NÃO está inscrito no campo leadgen desta página — leads NÃO chegam via webhook`,
+        ? `Page "${pageName}": webhook de LEADS assinado neste app (campos: ${fields.join(', ')})${pageTokenNote}`
+        : `Page "${pageName}": o app NÃO está inscrito no campo leadgen desta página — leads NÃO chegam via webhook${pageTokenNote}`,
       fix: hasLeadgen
         ? undefined
         : 'Inscreva a página no campo leadgen: POST /{page-id}/subscribed_apps?subscribed_fields=leadgen (ou Page Settings → Webhooks).',

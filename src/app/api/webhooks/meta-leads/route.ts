@@ -344,6 +344,10 @@ export async function POST(request: NextRequest) {
     interface LeadChangeWithAccount {
       change: MetaWebhookChange;
       adAccount: AdAccountRef;
+      /** Page id da entry (entry[].id) — prioriza o PAGE TOKEN salvo
+       *  da página (extraído automaticamente pelo diagnóstico) ao
+       *  buscar field_data; page tokens não expiram com o user token. */
+      pageId: string | null;
     }
 
     const leadChanges: LeadChangeWithAccount[] = [];
@@ -377,7 +381,7 @@ export async function POST(request: NextRequest) {
       console.log(`[Meta Webhook] Entry ${entry.id} → conta "${entryAccount.name}" (${entryAccount.adAccountId})`);
       for (const change of entryChanges) {
         if (change.value?.leadgen_id) {
-          leadChanges.push({ change, adAccount: entryAccount });
+          leadChanges.push({ change, adAccount: entryAccount, pageId: entry?.id || null });
         } else {
           console.warn(`[Meta Webhook] ⚠ Change field="${change.field}" sem leadgen_id no value — ignorado`);
         }
@@ -412,7 +416,7 @@ export async function POST(request: NextRequest) {
     // 6. Processar leads EM PARALELO (concorrência limitada)
     //    Cada lead é independente: dedup, criação, fila (round-robin
     //    atômico por fila) e notificações rodam isolados por lead.
-    const processLeadChange = async ({ change, adAccount }: LeadChangeWithAccount): Promise<LeadProcessResult> => {
+    const processLeadChange = async ({ change, adAccount, pageId }: LeadChangeWithAccount): Promise<LeadProcessResult> => {
       const leadData = change.value;
       const changeLeadgenId = leadData?.leadgen_id;
       const accountLabel = `${adAccount.name} (${adAccount.adAccountId})`;
@@ -506,9 +510,11 @@ export async function POST(request: NextRequest) {
 
       // O Meta envia apenas o ID — buscar dados via Graph API.
       // MULTI-CONTA: usa EXCLUSIVAMENTE o token da conta resolvida pela
-      // página (não existe token global). Conta sem token + payload sem
-      // field_data → lead salvo como perdido (recuperável via importação).
-      const pageToken = resolvePageToken(adAccount);
+      // página (não existe token global). Dentro da conta, o PAGE TOKEN
+      // salvo para ESTA página tem prioridade (extraído automaticamente
+      // pelo diagnóstico via /me/accounts — não expira). Conta sem
+      // token + payload sem field_data → lead salvo como perdido.
+      const pageToken = resolvePageToken(adAccount, pageId);
       if (fieldData.length === 0 && pageToken) {
         console.log(`[Meta Webhook] Buscando dados do lead ${leadgenId} via Graph API (field_data vazio no webhook, token da conta "${adAccount.name}")`);
         const fetched = await fetchLeadData(leadgenId, pageToken);

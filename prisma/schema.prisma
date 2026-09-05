@@ -651,6 +651,12 @@ model MetaAdAccount {
   pageIds     String?  @map("pageIds")          // JSON: ["111","222"]
   /** JSON array de form_ids capturados por polling com o token desta conta. */
   formIds     String?  @map("formIds")          // JSON: ["123","456"]
+  /** JSON map pageId → page access token desta conta. O diagnóstico
+   *  extrai automaticamente o page token do token de usuário (via
+   *  GET /{page-id} ou /me/accounts) e salva aqui: page tokens não
+   *  expiram e são usados preferencialmente nas operações page-scoped
+   *  (field_data no webhook, subscribed_apps no diagnóstico). */
+  pageTokens  String?  @map("pageTokens")       // JSON: {"1433...":"EAAG..."}
   enabled     Boolean  @default(true) @map("enabled")
   isDefault   Boolean  @default(false) @map("isDefault")
   /** Webhook desta conta ativo: quando false, verify token/app secret
