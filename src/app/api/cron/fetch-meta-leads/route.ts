@@ -7,6 +7,7 @@ import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { resolveQueueForMetaLead, mapWithConcurrency } from '@/lib/meta-lead-routing';
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
+import { fetchEnabledAdAccounts, parseJsonArray, upsertCampaignBindingAuto } from '@/lib/meta-ad-accounts';
 
 // maxDuration=10s no Hobby (Vercel impõe). Pro permite até 300s.
 export const maxDuration = 10;
@@ -17,13 +18,17 @@ export const maxDuration = 10;
 // Cron job que busca novos leads no Meta a cada 5 minutos.
 // Chamado pelo Vercel Cron, serviço externo ou botão admin.
 //
-// MULTI-ANÚNCIO: todos os formulários são consultados EM PARALELO
+// MULTI-ANÚNCIO + MULTI-CONTA: todos os formulários são consultados EM PARALELO
 // com watermark individual por formulário — se a busca de um form
 // falha, os demais avançam normalmente e o form com falha repete
 // a janela na próxima execução (nenhum lead é pulado). Cada lead
-// é roteado para a fila de atendimento do seu formulário/config
-// de origem (meta-lead-routing), igual ao webhook — assim webhook
+// é roteado para a fila de atendimento do seu formulário/campanha/
+// conta de origem (meta-lead-routing), igual ao webhook — assim webhook
 // e polling podem rodar simultaneamente sem confundir fontes.
+//
+// MULTI-TOKEN: cada conta de anúncios (MetaAdAccount) é consultada
+// com o PRÓPRIO access token, usando os formIds vinculados a ela.
+// Formulários sem conta continuam usando o token global (legado).
 //
 // Autenticação (qualquer UMA das formas):
 //   - Sessão NextAuth com role ADMIN (botão "Executar Agora")
@@ -34,8 +39,9 @@ export const maxDuration = 10;
 // Timeout conservador para chamadas externas (Graph API)
 const GRAPH_API_TIMEOUT_MS = 8_000;
 
-// Limite máximo de form IDs por execução (evita abuso)
-const MAX_FORM_IDS = 20;
+// Limite máximo de form IDs por execução (evita abuso).
+// Multi-conta: o total soma forms de todas as contas + globais.
+const MAX_FORM_IDS = 50;
 
 // Limite máximo de leads processados por execução
 const MAX_LEADS_PER_RUN = 50;
@@ -61,6 +67,14 @@ interface MetaLead {
   form_id?: string;
   form_name?: string;
   created_time?: string;
+}
+
+/** Alvo de polling: um form consultado com o token da sua conta (ou global). */
+interface PollTarget {
+  formId: string;
+  token: string;
+  adAccountId: string | null;
+  accountName: string | null;
 }
 
 async function authenticate(request: NextRequest): Promise<boolean> {
@@ -136,17 +150,25 @@ async function importSingleLead(
   creatorId: string,
   queueId: string | undefined,
   quota: { remaining: number },
+  adAccountId: string | null,
 ): Promise<{ leadgenId: string; imported: boolean; clientName?: string; reason?: string; assignedTo?: string }> {
   const leadgenId = lead.id;
   const fieldData = lead.field_data;
   const formId = lead.form_id || '';
   const adName = lead.ad_name || 'Meta Ads';
   const campaignName = lead.campaign_name || '';
+  const campaignId = lead.campaign_id || '';
   const formName = lead.form_name || '';
 
   // 1. Dedup por metaLeadgenId
   const existing = await db.client.findUnique({ where: { metaLeadgenId: leadgenId }, select: { id: true, name: true } });
   if (existing) return { leadgenId, imported: false, clientName: existing.name, reason: 'já_existente' };
+
+  // 1b. Auto-registro campanha → conta (fire-and-forget; fila específica
+  //     por campanha via MetaCampaignBinding — igual ao webhook)
+  if (campaignId) {
+    upsertCampaignBindingAuto({ campaignId, campaignName, adAccountId });
+  }
 
   // 2. Extrair campos
   const rawName = getMetaFieldValue(fieldData, 'full_name') || getMetaFieldValue(fieldData, 'name') || getMetaFieldValue(fieldData, 'nome') || getMetaFieldValue(fieldData, 'nome_completo') || 'Lead Meta Ads';
@@ -254,14 +276,42 @@ export async function GET(request: NextRequest) {
     if (!config.enabled) {
       return NextResponse.json({ status: 'disabled', message: 'Polling desativado' });
     }
-    if (!config.pageAccessToken) {
-      return NextResponse.json({ status: 'error', message: 'Page Access Token não configurado' });
+
+    // 3b. MULTI-TOKEN: contas de anúncios habilitadas + alvos por conta
+    const adAccounts = await fetchEnabledAdAccounts();
+    const targets: PollTarget[] = [];
+    const claimedForms = new Set<string>();
+    for (const account of adAccounts) {
+      const forms = parseJsonArray(account.formIds);
+      if (forms.length === 0) continue;
+      if (!account.accessToken) {
+        console.warn(`[Meta Polling] Conta "${account.name}" sem access token — ${forms.length} form(s) dela pulados`);
+        continue;
+      }
+      for (const formId of forms) {
+        if (claimedForms.has(formId)) continue;
+        claimedForms.add(formId);
+        targets.push({ formId, token: account.accessToken, adAccountId: account.id, accountName: account.name });
+      }
     }
-    if (config.formIds.length === 0) {
-      return NextResponse.json({ status: 'idle', message: 'Nenhum form ID configurado' });
+
+    // Legado: forms globais consultados com o token global (sem conta)
+    if (config.pageAccessToken) {
+      for (const formId of config.formIds as string[]) {
+        if (claimedForms.has(formId)) continue;
+        claimedForms.add(formId);
+        targets.push({ formId, token: config.pageAccessToken, adAccountId: null, accountName: null });
+      }
     }
-    if (config.formIds.length > MAX_FORM_IDS) {
-      return NextResponse.json({ status: 'error', message: `Máximo de ${MAX_FORM_IDS} formulários permitidos` });
+
+    if (!config.pageAccessToken && targets.length === 0) {
+      return NextResponse.json({ status: 'error', message: 'Nenhum token configurado (global ou em contas de anúncios)' });
+    }
+    if (targets.length === 0) {
+      return NextResponse.json({ status: 'idle', message: 'Nenhum form ID configurado (nem global nem em contas de anúncios)' });
+    }
+    if (targets.length > MAX_FORM_IDS) {
+      return NextResponse.json({ status: 'error', message: `Máximo de ${MAX_FORM_IDS} formulários permitidos (somando contas + globais)` });
     }
 
     // 4. Janela de busca: watermark INDIVIDUAL por formulário.
@@ -269,7 +319,8 @@ export async function GET(request: NextRequest) {
     const globalFallback = config.lastRun ? new Date(config.lastRun).getTime() : Date.now() - 30 * 60 * 1000;
     const nowIso = new Date().toISOString();
 
-    console.log(`[Meta Polling] Iniciando: forms=[${config.formIds.join(', ')}], watermarks=${Object.keys(config.formWatermarks).length || 'nenhum (usando last_run global)'}`);
+    const accountCount = new Set(targets.map(t => t.accountName).filter(Boolean)).size;
+    console.log(`[Meta Polling] Iniciando: alvos=${targets.length} (contas=${accountCount}, legados=${targets.length - targets.filter(t => t.adAccountId).length}), watermarks=${Object.keys(config.formWatermarks).length || 'nenhum (usando last_run global)'}`);
 
     // 5. Buscar creator UMA vez
     const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true }, orderBy: { createdAt: 'asc' } });
@@ -279,23 +330,26 @@ export async function GET(request: NextRequest) {
     // Quota compartilhada entre todos os formulários paralelos
     const quota = { remaining: MAX_LEADS_PER_RUN };
 
-    // Resultado por formulário (observabilidade)
-    const perForm: Array<{ formId: string; fetched: number; imported: number; error?: string }> = [];
+    // Resultado por alvo (observabilidade)
+    const perForm: Array<{ formId: string; account?: string | null; fetched: number; imported: number; error?: string }> = [];
     const newWatermarks: Record<string, string> = { ...config.formWatermarks };
     const errors: string[] = [];
 
-    // 6. Processar formulários EM PARALELO (cada form é independente)
-    await mapWithConcurrency(config.formIds as string[], FORM_CONCURRENCY, async (formId) => {
+    // 6. Processar alvos EM PARALELO (cada form é independente;
+    //    cada conta usa o PRÓPRIO token — isolamento entre contas)
+    await mapWithConcurrency(targets, FORM_CONCURRENCY, async (target) => {
+      const { formId, token, adAccountId, accountName } = target;
       if (!creatorId || quota.remaining <= 0) {
-        perForm.push({ formId, fetched: 0, imported: 0, error: 'pulando (sem usuário ou quota esgotada)' });
+        perForm.push({ formId, account: accountName, fetched: 0, imported: 0, error: 'pulando (sem usuário ou quota esgotada)' });
         return;
       }
 
-      // Roteamento multi-anúncio: fila dedicada deste formulário
-      // (uma resolução por formulário — aplica-se a todos os leads dele)
-      const route = await resolveQueueForMetaLead({ formId });
+      // Roteamento multi-anúncio/multi-conta: fila dedicada desta
+      // campanha/formulário/conta (uma resolução por alvo — aplica-se
+      // a todos os leads dele)
+      const route = await resolveQueueForMetaLead({ formId, adAccountId: adAccountId || undefined });
       if (route.routeSource !== 'default') {
-        console.log(`[Meta Polling] Form ${formId} → fila "${route.queueName ?? route.queueId}" (${route.routeSource})`);
+        console.log(`[Meta Polling] Form ${formId}${accountName ? ` (conta: ${accountName})` : ''} → fila "${route.queueName ?? route.queueId}" (${route.routeSource})`);
       }
 
       // Watermark individual: usa a última execução BEM-SUCEDIDA deste form
@@ -304,8 +358,8 @@ export async function GET(request: NextRequest) {
       const since = new Date(sinceMs - 60 * 1000).toISOString();
 
       try {
-        const leads = await fetchRecentLeads(formId, config.pageAccessToken!, since);
-        console.log(`[Meta Polling] Form ${formId}: ${leads.length} leads encontrados (since=${since})`);
+        const leads = await fetchRecentLeads(formId, token, since);
+        console.log(`[Meta Polling] Form ${formId}${accountName ? ` (conta: ${accountName})` : ''}: ${leads.length} leads encontrados (since=${since})`);
 
         // Ordenar por created_time ASC
         leads.sort((a, b) => (a.created_time ? new Date(a.created_time).getTime() : 0) - (b.created_time ? new Date(b.created_time).getTime() : 0));
@@ -315,7 +369,7 @@ export async function GET(request: NextRequest) {
         // Leads do mesmo formulário em paralelo (concorrência limitada)
         const settledLeads = await mapWithConcurrency(leads, LEAD_CONCURRENCY, async (lead) => {
           if (quota.remaining <= 0) return { skipped: true, imported: false };
-          const result = await importSingleLead(lead, creatorId, route.queueId, quota);
+          const result = await importSingleLead(lead, creatorId, route.queueId, quota, adAccountId);
           if (result.imported) {
             quota.remaining--;
             imported++;
@@ -334,17 +388,17 @@ export async function GET(request: NextRequest) {
           errors.push(`Limite de ${MAX_LEADS_PER_RUN} leads atingido. Os demais serão importados na próxima execução.`);
         }
 
-        perForm.push({ formId, fetched: leads.length, imported });
+        perForm.push({ formId, account: accountName, fetched: leads.length, imported });
 
         // Sucesso na busca: avança o watermark DESTE formulário
         newWatermarks[formId] = nowIso;
       } catch (e) {
         // Falha na busca do form: NÃO avança o watermark deste form —
         // a próxima execução repete a janela e nenhum lead é perdido
-        const msg = `Form ${formId}: ${e instanceof Error ? e.message : String(e)}`;
+        const msg = `Form ${formId}${accountName ? ` (conta: ${accountName})` : ''}: ${e instanceof Error ? e.message : String(e)}`;
         console.error(`[Meta Polling] ${msg}`);
         errors.push(msg);
-        perForm.push({ formId, fetched: 0, imported: 0, error: msg });
+        perForm.push({ formId, account: accountName, fetched: 0, imported: 0, error: msg });
       }
     });
 
@@ -368,7 +422,7 @@ export async function GET(request: NextRequest) {
     // Salvar resultado do último run (sem expor errors crusos no log)
     const lastResult = JSON.stringify({
       timestamp: nowIso, totalFetched, totalImported, errorCount: errors.length,
-      forms: config.formIds.length, elapsed: Date.now() - startTime, perForm,
+      forms: targets.length, accounts: accountCount, elapsed: Date.now() - startTime, perForm,
     });
     await db.userSettings.upsert({
       where: { key: 'meta_polling_last_result' },
@@ -381,7 +435,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       status: 'ok', elapsed: `${elapsed}ms`,
-      formsChecked: config.formIds.length,
+      formsChecked: targets.length,
+      accountsChecked: accountCount,
       totalFetched, totalImported,
       perForm,
       errors: errors.length > 0 ? errors : undefined,

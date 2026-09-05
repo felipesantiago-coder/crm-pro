@@ -38,6 +38,8 @@ import { format, parseISO } from 'date-fns';
 import { TrackingTab } from './tracking-tab';
 import { LandingPagesTab } from './landing-pages-tab';
 import { QueuesTab } from './queues-tab';
+import { AdAccountsSection } from './meta-ads/ad-accounts-section';
+import { CampaignBindingsSection } from './meta-ads/campaign-bindings-section';
 import { LostLeadsTab } from './lost-leads-view';
 import { ptBR } from 'date-fns/locale';
 
@@ -1813,7 +1815,30 @@ function ConfigTab() {
         )}
 
         {/* ═══════════════════════════════════════════════════════
-            SEÇÃO 3: API de Conversões (CAPI Multi-cliente)
+            SEÇÃO 3: Contas de Anúncio (Multi-conta Meta Ads)
+            ═══════════════════════════════════════════════════════ */}
+        <AccordionItem value="ad-accounts" className="border rounded-xl overflow-hidden data-[state=open]:border-teal-200 dark:data-[state=open]:border-teal-800/50 data-[state=open]:shadow-sm transition-all">
+          <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
+            <div className="flex items-center gap-3 text-left">
+              <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-teal-100 dark:bg-teal-900/30">
+                <Building2 className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-sm">Contas de Anúncio (Multi-conta)</span>
+                  <Badge className="bg-muted text-muted-foreground text-[10px]">Opcional</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">Tokens por conta para capturar leads de contas de anúncios diferentes de forma independente</p>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <AdAccountsSection />
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* ═══════════════════════════════════════════════════════
+            SEÇÃO 4: API de Conversões (CAPI Multi-cliente)
             ═══════════════════════════════════════════════════════ */}
         <AccordionItem value="capi" className="border rounded-xl overflow-hidden data-[state=open]:border-purple-200 dark:data-[state=open]:border-purple-800/50 data-[state=open]:shadow-sm transition-all">
           <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
@@ -1927,7 +1952,7 @@ function ConfigTab() {
         </AccordionItem>
 
         {/* ═══════════════════════════════════════════════════════
-            SEÇÃO 4: Mapeamento de Formulários
+            SEÇÃO 5: Mapeamento de Formulários
             ═══════════════════════════════════════════════════════ */}
         <AccordionItem value="form-mappings" className="border rounded-xl overflow-hidden data-[state=open]:border-success/30 data-[state=open]:shadow-sm transition-all">
           <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
@@ -1965,7 +1990,7 @@ function ConfigTab() {
                 <strong>Depende de:</strong> Os formulários são detectados automaticamente quando chegam leads via <strong>Webhook</strong> (Seção 1) ou <strong>Polling</strong> (Seção 2). Você também pode importá-los manualmente com o botão &quot;Importar&quot;.
               </p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                <strong>É usado por:</strong> <strong>CAPI</strong> (Seção 3) usa essas vinculações para rotear eventos de conversão.
+                <strong>É usado por:</strong> <strong>CAPI</strong> (Seção 4) usa essas vinculações para rotear eventos de conversão.
               </p>
             </div>
 
@@ -2051,11 +2076,16 @@ function ConfigTab() {
             )}
 
             <p className="text-[10px] text-muted-foreground">Form IDs detectados automaticamente via webhook e polling. Vincule cada formulário a um config CAPI (eventos de conversão) e a uma fila de atendimento (distribuição de leads por anúncio).</p>
+
+            {/* FILA POR CAMPANHA (campaignId) — prioridade máxima no roteamento */}
+            <div className="pt-2 border-t">
+              <CampaignBindingsSection />
+            </div>
           </AccordionContent>
         </AccordionItem>
 
         {/* ═══════════════════════════════════════════════════════
-            SEÇÃO 5: Importação Manual de Leads
+            SEÇÃO 6: Importação Manual de Leads
             ═══════════════════════════════════════════════════════ */}
         <AccordionItem value="manual-import" className="border rounded-xl overflow-hidden data-[state=open]:border-red-200 dark:data-[state=open]:border-red-800/50 data-[state=open]:shadow-sm transition-all">
           <AccordionTrigger className="px-4 py-3.5 hover:no-underline">

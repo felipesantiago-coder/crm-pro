@@ -10,14 +10,21 @@ import { db } from '@/lib/db';
 // sejam confundidos entre si.
 //
 // Ordem de prioridade:
-//   1. LeadFormMapping.queueId  — vínculo manual por formulário
-//   2. MetaCapConfig.queueId    — fila preferencial do config CAPI
-//                                 (por capiConfigId resolvido ou
-//                                  pelos formIds do config)
-//   3. undefined                — fila default (isDefault=true),
-//                                 comportamento legado preservado
+//   1. MetaCampaignBinding.queueId — vínculo manual por CAMPAIGN id
+//                                    (fila específica da campanha;
+//                                    binding auto-registrada a cada
+//                                    lead com campaign_id)
+//   2. LeadFormMapping.queueId    — vínculo manual por formulário
+//   3. MetaAdAccount.queueId      — fila default da conta de anúncios
+//                                    (quando a conta de origem é
+//                                     conhecida — multi-conta)
+//   4. MetaCapConfig.queueId      — fila preferencial do config CAPI
+//                                    (por capiConfigId resolvido ou
+//                                     pelos formIds do config)
+//   5. undefined                  — fila default (isDefault=true),
+//                                    comportamento legado preservado
 //
-// Degradacão graciosa: se as colunas de roteamento ainda não
+// Degradacão graciosa: se as colunas/tabelas de roteamento ainda não
 // existirem no banco (migration pendente), qualquer falha é
 // tratada e o lead cai na fila default — nunca é perdido.
 // ============================================================
@@ -25,15 +32,20 @@ import { db } from '@/lib/db';
 export interface MetaLeadRouteInput {
   /** Form ID do lead (webhook e polling sempre enviam). */
   formId?: string;
+  /** Campaign ID do lead (webhook e polling enviam quando disponível).
+   *  Permite fila ESPECÍFICA por campanha (MetaCampaignBinding). */
+  campaignId?: string;
   /** CAPI config já resolvido para o lead (opcional). */
   capiConfigId?: string | null;
+  /** Conta de anúncios já resolvida para o lead (multi-conta; opcional). */
+  adAccountId?: string | null;
 }
 
 export interface ResolvedLeadRoute {
   queueId?: string;
   queueName?: string;
   /** De onde veio o roteamento (para logs/observabilidade). */
-  routeSource: 'form_mapping' | 'capi_config' | 'capi_config_by_form' | 'default';
+  routeSource: 'campaign_binding' | 'form_mapping' | 'ad_account' | 'capi_config' | 'capi_config_by_form' | 'default';
 }
 
 /** Cache em memória curto (10s) para não consultar roteamento a cada lead em bursts. */
@@ -78,37 +90,80 @@ async function getActiveQueue(queueId: string): Promise<{ id: string; name: stri
  * await assignLeadToUser({ leadId, queueId, source });
  */
 export async function resolveQueueForMetaLead(input: MetaLeadRouteInput): Promise<ResolvedLeadRoute> {
-  const { formId, capiConfigId } = input;
+  const { formId, campaignId, capiConfigId, adAccountId } = input;
 
-  // Sem formId não há como rotear por fonte — fila default
-  if (!formId) return { queueId: undefined, routeSource: 'default' };
+  // Sem formId nem campaignId não há como rotear por fonte — fila default
+  if (!formId && !campaignId) return { queueId: undefined, routeSource: 'default' };
 
-  const cacheKey = `${formId}|${capiConfigId || ''}`;
+  const cacheKey = `${campaignId || ''}|${formId || ''}|${capiConfigId || ''}|${adAccountId || ''}`;
   const cached = getCache(cacheKey);
   if (cached) return cached;
 
   try {
-    // 1. Vínculo manual por formulário (mais específico)
-    try {
-      const mapping = await db.leadFormMapping.findFirst({
-        where: { formId, queueId: { not: null } },
-        select: { queueId: true },
-        orderBy: { lastSeenAt: 'desc' },
-      });
-      if (mapping?.queueId) {
-        const queue = await getActiveQueue(mapping.queueId);
-        if (queue) {
-          const value: ResolvedLeadRoute = { queueId: queue.id, queueName: queue.name, routeSource: 'form_mapping' };
-          setCache(cacheKey, value);
-          return value;
+    // 1. Vínculo manual por CAMPAIGN (mais específico — fila da campanha)
+    if (campaignId) {
+      try {
+        const binding = await db.metaCampaignBinding.findUnique({
+          where: { campaignId },
+          select: { queueId: true },
+        });
+        if (binding?.queueId) {
+          const queue = await getActiveQueue(binding.queueId);
+          if (queue) {
+            const value: ResolvedLeadRoute = { queueId: queue.id, queueName: queue.name, routeSource: 'campaign_binding' };
+            setCache(cacheKey, value);
+            return value;
+          }
         }
+      } catch (err) {
+        // Tabela pode não existir ainda (migration pendente)
+        console.warn('[Meta Lead Routing] campaign_binding lookup falhou (migration pendente?):', err instanceof Error ? err.message : err);
       }
-    } catch (err) {
-      // Coluna queueId pode não existir ainda (migration pendente)
-      console.warn('[Meta Lead Routing] form_mapping lookup falhou (migration pendente?):', err instanceof Error ? err.message : err);
     }
 
-    // 2a. Fila preferencial do config CAPI já resolvido para o lead
+    // 2. Vínculo manual por formulário
+    if (formId) {
+      try {
+        const mapping = await db.leadFormMapping.findFirst({
+          where: { formId, queueId: { not: null } },
+          select: { queueId: true },
+          orderBy: { lastSeenAt: 'desc' },
+        });
+        if (mapping?.queueId) {
+          const queue = await getActiveQueue(mapping.queueId);
+          if (queue) {
+            const value: ResolvedLeadRoute = { queueId: queue.id, queueName: queue.name, routeSource: 'form_mapping' };
+            setCache(cacheKey, value);
+            return value;
+          }
+        }
+      } catch (err) {
+        // Coluna queueId pode não existir ainda (migration pendente)
+        console.warn('[Meta Lead Routing] form_mapping lookup falhou (migration pendente?):', err instanceof Error ? err.message : err);
+      }
+    }
+
+    // 3. Fila default da conta de anúncios (multi-conta)
+    if (adAccountId) {
+      try {
+        const account = await db.metaAdAccount.findFirst({
+          where: { id: adAccountId, enabled: true, queueId: { not: null } },
+          select: { queueId: true },
+        });
+        if (account?.queueId) {
+          const queue = await getActiveQueue(account.queueId);
+          if (queue) {
+            const value: ResolvedLeadRoute = { queueId: queue.id, queueName: queue.name, routeSource: 'ad_account' };
+            setCache(cacheKey, value);
+            return value;
+          }
+        }
+      } catch (err) {
+        console.warn('[Meta Lead Routing] ad_account lookup falhou (migration pendente?):', err instanceof Error ? err.message : err);
+      }
+    }
+
+    // 4a. Fila preferencial do config CAPI já resolvido para o lead
     if (capiConfigId) {
       try {
         const config = await db.metaCapConfig.findFirst({
@@ -128,14 +183,14 @@ export async function resolveQueueForMetaLead(input: MetaLeadRouteInput): Promis
       }
     }
 
-    // 2b. Config com o formId no JSON formIds que tenha fila preferencial
+    // 4b. Config com o formId no JSON formIds que tenha fila preferencial
     try {
       const enabledConfigs = await db.metaCapConfig.findMany({
         where: { enabled: true, queueId: { not: null } },
         select: { id: true, queueId: true, formIds: true },
       });
       for (const config of enabledConfigs) {
-        if (!config.formIds) continue;
+        if (!config.formIds || !formId) continue;
         try {
           const ids: string[] = JSON.parse(config.formIds);
           if (Array.isArray(ids) && ids.includes(formId) && config.queueId) {

@@ -21,6 +21,8 @@ export async function GET() {
         formIds: true,
         queueId: true,
         queue: { select: { id: true, name: true, isActive: true } },
+        adAccountId: true,
+        adAccount: { select: { id: true, name: true, adAccountId: true, enabled: true } },
         createdAt: true,
         updatedAt: true,
         // Only show first/last 8 chars of token
@@ -57,7 +59,7 @@ export async function POST(request: NextRequest) {
     await requireAdmin();
 
     const body = await request.json();
-    const { name, accessToken, datasetId, isDefault, formIds, queueId } = body;
+    const { name, accessToken, datasetId, isDefault, formIds, queueId, adAccountId } = body;
 
     if (!name || !accessToken || !datasetId) {
       return NextResponse.json(
@@ -71,6 +73,14 @@ export async function POST(request: NextRequest) {
       const queueExists = await db.leadQueue.findUnique({ where: { id: queueId }, select: { id: true } });
       if (!queueExists) {
         return NextResponse.json({ error: 'Fila não encontrada' }, { status: 400 });
+      }
+    }
+
+    // Valida conta de anúncios (multi-conta, opcional)
+    if (adAccountId) {
+      const accountExists = await db.metaAdAccount.findUnique({ where: { id: adAccountId }, select: { id: true } });
+      if (!accountExists) {
+        return NextResponse.json({ error: 'Conta de anúncios não encontrada' }, { status: 400 });
       }
     }
 
@@ -90,6 +100,7 @@ export async function POST(request: NextRequest) {
         isDefault: !!isDefault,
         formIds: formIds ? JSON.stringify(formIds) : null,
         queueId: queueId || null,
+        adAccountId: adAccountId || null,
       },
     });
 

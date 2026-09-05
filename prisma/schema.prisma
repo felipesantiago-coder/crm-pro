@@ -422,6 +422,8 @@ model LeadQueue {
   assignments LeadQueueAssignment[]
   capiConfigs MetaCapConfig[]
   formMappings LeadFormMapping[] @relation("LeadFormMappingQueue")
+  adAccounts  MetaAdAccount[]
+  campaignBindings MetaCampaignBinding[]
 
   @@map("lead_queues")
 }
@@ -564,15 +566,20 @@ model MetaCapConfig {
   formIds     String?  @map("formIds")          // JSON: ["123","456"]
   /** Fila de atendimento preferencial para leads dos formIds deste config.
    *  Roteamento multi-anúncio: cada anúncio/campanha pode ter sua própria fila.
-   *  Prioridade de roteamento: LeadFormMapping.queueId > este campo > fila default. */
+   *  Prioridade: MetaCampaignBinding.queueId > LeadFormMapping.queueId >
+   *  MetaAdAccount.queueId > este campo > fila default. */
   queueId     String?  @map("queueId")
+  /** Conta de anúncios à qual este config pertence (multi-conta). */
+  adAccountId String?  @map("adAccountId")
   createdAt   DateTime @default(now()) @map("createdAt")
   updatedAt   DateTime @updatedAt @map("updatedAt")
 
   clients     Client[]
   formMappings LeadFormMapping[]
   queue       LeadQueue? @relation(fields: [queueId], references: [id], onDelete: SetNull)
+  adAccount   MetaAdAccount? @relation(fields: [adAccountId], references: [id], onDelete: SetNull)
 
+  @@index([adAccountId])
   @@map("meta_cap_configs")
 }
 
@@ -600,16 +607,92 @@ model LeadFormMapping {
    *  Roteamento multi-anúncio: leads de forms diferentes podem ir para
    *  filas diferentes (round-robin independente por fila). */
   queueId      String?  @map("queueId")
+  /** Conta de anúncios de origem (auto-aprendida via webhook/polling). */
+  adAccountId  String?  @map("adAccountId")
 
   capiConfig   MetaCapConfig?  @relation(fields: [capiConfigId], references: [id], onDelete: SetNull)
   queue        LeadQueue?      @relation("LeadFormMappingQueue", fields: [queueId], references: [id], onDelete: SetNull)
+  adAccount    MetaAdAccount?  @relation(fields: [adAccountId], references: [id], onDelete: SetNull)
 
   @@unique([formId, campaignId])
   @@index([formId])
   @@index([capiConfigId])
   @@index([campaignName])
   @@index([queueId])
+  @@index([adAccountId])
   @@map("lead_form_mappings")
+}
+
+// ============================================================
+// META AD ACCOUNT — Conta de anúncios dedicada (multi-conta)
+// Cada conta tem seu próprio access token (System User/Page),
+// verify token e app secret opcionais para webhook, page IDs e
+// form IDs para captação por polling multi-token e fila default.
+// Assim campanhas de contas DIFERENTES são capturadas e geridas
+// de forma independente.
+// ============================================================
+model MetaAdAccount {
+  id          String   @id @default(cuid()) @map("id")
+  name        String   @map("name")             // ex: "Porto - Conta Principal"
+  /** ID da conta de anúncios normalizado com prefixo act_ (ex: act_123456789). */
+  adAccountId String   @unique @map("adAccountId")
+  /** Access token (System User/Page) usado na captação deste conta:
+   *  polling (leads) e fetch de field_data no webhook. */
+  accessToken String   @map("accessToken")
+  /** Verify token dedicado do webhook desta conta (opcional —
+   *  se null, o verify token global também é aceito). */
+  verifyToken String?  @map("verifyToken")
+  /** App Secret dedicado para validar HMAC do webhook desta conta
+   *  (opcional — se null, o secret global também é aceito). */
+  appSecret   String?  @map("appSecret")
+  /** JSON array de page_ids do Facebook vinculados a esta conta.
+   *  O webhook usa entry[].id para resolver a conta de origem. */
+  pageIds     String?  @map("pageIds")          // JSON: ["111","222"]
+  /** JSON array de form_ids capturados por polling com o token desta conta. */
+  formIds     String?  @map("formIds")          // JSON: ["123","456"]
+  enabled     Boolean  @default(true) @map("enabled")
+  isDefault   Boolean  @default(false) @map("isDefault")
+  /** Fila default para leads desta conta (menos específico que
+   *  campanha/formulário; mais específico que a fila global default). */
+  queueId     String?  @map("queueId")
+  createdAt   DateTime @default(now()) @map("createdAt")
+  updatedAt   DateTime @updatedAt @map("updatedAt")
+
+  queue            LeadQueue?            @relation(fields: [queueId], references: [id], onDelete: SetNull)
+  campaignBindings MetaCampaignBinding[]
+  formMappings     LeadFormMapping[]
+  capiConfigs      MetaCapConfig[]
+
+  @@map("meta_ad_accounts")
+}
+
+// ============================================================
+// META CAMPAIGN BINDING — Vínculo campanha → fila (por campaignId)
+// Auto-registrado quando um lead chega com campaign_id (webhook ou
+// polling). Permite atribuir uma fila ESPECÍFICA para cada campanha
+// Meta Ads, com prioridade máxima no roteamento (acima de formId).
+// ============================================================
+model MetaCampaignBinding {
+  id           String   @id @default(cuid()) @map("id")
+  /** Campaign ID da Meta (único — uma binding por campanha). */
+  campaignId   String   @unique @map("campaignId")
+  campaignName String?  @map("campaignName")
+  /** Conta de anúncios de origem (auto-aprendida; admin pode corrigir). */
+  adAccountId  String?  @map("adAccountId")
+  /** Fila de atendimento dedicada a esta campanha.
+   *  Prioridade máxima no roteamento multi-anúncio. */
+  queueId      String?  @map("queueId")
+  leadCount    Int      @default(0) @map("leadCount")
+  firstSeenAt  DateTime @default(now()) @map("firstSeenAt")
+  lastSeenAt   DateTime @updatedAt @map("lastSeenAt")
+  createdAt    DateTime @default(now()) @map("createdAt")
+
+  account MetaAdAccount? @relation(fields: [adAccountId], references: [id], onDelete: SetNull)
+  queue   LeadQueue?     @relation(fields: [queueId], references: [id], onDelete: SetNull)
+
+  @@index([queueId])
+  @@index([adAccountId])
+  @@map("meta_campaign_bindings")
 }
 
 // ============================================================

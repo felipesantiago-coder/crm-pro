@@ -40,7 +40,7 @@ export async function PATCH(
     await requireAdmin();
     const { id } = await params;
     const body = await request.json();
-    const { name, accessToken, datasetId, enabled, isDefault, formIds, queueId } = body;
+    const { name, accessToken, datasetId, enabled, isDefault, formIds, queueId, adAccountId } = body;
 
     const existing = await db.metaCapConfig.findUnique({ where: { id } });
     if (!existing) {
@@ -52,6 +52,14 @@ export async function PATCH(
       const queueExists = await db.leadQueue.findUnique({ where: { id: queueId }, select: { id: true } });
       if (!queueExists) {
         return NextResponse.json({ error: 'Fila não encontrada' }, { status: 400 });
+      }
+    }
+
+    // Valida conta de anúncios (multi-conta, opcional)
+    if (adAccountId) {
+      const accountExists = await db.metaAdAccount.findUnique({ where: { id: adAccountId }, select: { id: true } });
+      if (!accountExists) {
+        return NextResponse.json({ error: 'Conta de anúncios não encontrada' }, { status: 400 });
       }
     }
 
@@ -75,6 +83,7 @@ export async function PATCH(
           ? { formIds: formIds ? JSON.stringify(formIds) : null }
           : {}),
         ...(queueId !== undefined ? { queueId: queueId || null } : {}),
+        ...(adAccountId !== undefined ? { adAccountId: adAccountId || null } : {}),
       },
     });
 

@@ -6,6 +6,14 @@ import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { resolveQueueForMetaLead, mapWithConcurrency } from '@/lib/meta-lead-routing';
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
+import {
+  fetchEnabledAdAccounts,
+  resolveAccountByPageId,
+  resolvePageToken,
+  buildWebhookSecretCandidates,
+  upsertCampaignBindingAuto,
+  type AdAccountRef,
+} from '@/lib/meta-ad-accounts';
 
 export const maxDuration = 30;
 
@@ -75,6 +83,25 @@ async function getMetaConfig() {
     enabled: map['meta_webhook_enabled'] === 'true',
     pageAccessToken: map['meta_page_access_token'] || null,
   };
+}
+
+/**
+ * Verifica se o hub.verify_token corresponde ao token global OU ao
+ * verify token dedicado de alguma conta de anúncios (multi-conta).
+ * Retorna a conta casada (ou null quando casou com o global).
+ */
+async function matchVerifyToken(token: string): Promise<{ account: AdAccountRef | null; matched: boolean }> {
+  const config = await getMetaConfig();
+  if (config.verifyToken && token === config.verifyToken) {
+    return { account: null, matched: true };
+  }
+  try {
+    const accounts = await fetchEnabledAdAccounts();
+    const account = accounts.find((a) => a.verifyToken && a.verifyToken === token) || null;
+    return { account, matched: !!account };
+  } catch {
+    return { account: null, matched: false };
+  }
 }
 
 /**
@@ -198,28 +225,26 @@ export async function GET(request: NextRequest) {
   const reqId = crypto.randomBytes(4).toString('hex');
   console.log(`[Meta Webhook][${reqId}] GET recebido — mode=${mode}, token=${token ? '***' + token.slice(-6) : 'null'}, challenge=${challenge ? 'present' : 'null'}, IP=${request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'}`);
 
-  // Verificação padrão do Meta
+  // Verificação padrão do Meta — aceita o verify token global OU o
+  // verify token dedicado de qualquer conta de anúncios (multi-conta).
   if (mode === 'subscribe' && token && challenge) {
-    const config = await getMetaConfig();
+    const { account, matched } = await matchVerifyToken(token);
 
-    if (!config.verifyToken) {
-      console.error(`[Meta Webhook][${reqId}] GET rejeitado — verifyToken não configurado`);
+    if (!matched) {
+      const config = await getMetaConfig();
+      const hasAny = !!config.verifyToken;
+      console.error(`[Meta Webhook][${reqId}] GET rejeitado — token inválido${hasAny ? '' : ' (nenhum verifyToken configurado)'}`);
       return NextResponse.json(
         { error: 'Forbidden' },
         { status: 403 }
       );
     }
 
-    if (token === config.verifyToken) {
-      console.log(`[Meta Webhook][${reqId}] GET hub.challenge VERIFICADO com sucesso — Meta está assinando o webhook`);
-      return new NextResponse(challenge, {
-        status: 200,
-        headers: { 'Content-Type': 'text/plain' },
-      });
-    }
-
-    console.warn(`[Meta Webhook][${reqId}] GET rejeitado — token inválido (esperado ***${config.verifyToken.slice(-6)}, recebido ***${token.slice(-6)})`);
-    return NextResponse.json({ error: 'Token inválido' }, { status: 403 });
+    console.log(`[Meta Webhook][${reqId}] GET hub.challenge VERIFICADO com sucesso${account ? ` (conta: "${account.name}")` : ' (token global)'} — Meta está assinando o webhook`);
+    return new NextResponse(challenge, {
+      status: 200,
+      headers: { 'Content-Type': 'text/plain' },
+    });
   }
 
   // Non-verification GET — log e return generic response
@@ -244,7 +269,11 @@ export async function POST(request: NextRequest) {
 
     // 1. Verificar se o webhook está ativado
     const config = await getMetaConfig();
-  console.log(`[Meta Webhook][${reqId}] Config: enabled=${config.enabled}, hasAppSecret=${!!config.appSecret}, hasPageAccessToken=${!!config.pageAccessToken}, hasVerifyToken=${!!config.verifyToken}, bodyLen=${rawBody.length}`);
+  // MULTI-CONTA: contas habilitadas fornecem secrets próprios para
+  // validação HMAC e tokens próprios para buscar dados dos leads.
+  const adAccounts = await fetchEnabledAdAccounts();
+  const accountsWithSecret = adAccounts.filter((a) => a.appSecret);
+  console.log(`[Meta Webhook][${reqId}] Config: enabled=${config.enabled}, hasAppSecret=${!!config.appSecret}, hasPageAccessToken=${!!config.pageAccessToken}, hasVerifyToken=${!!config.verifyToken}, adAccounts=${adAccounts.length} (com secret: ${accountsWithSecret.length}), bodyLen=${rawBody.length}`);
 
     if (!config.enabled) {
       // WEBHOOK DESABILITADO — Salvar o lead perdido ANTES de rejeitar
@@ -281,15 +310,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Validar assinatura HMAC
-    if (!config.appSecret) {
-      console.error('[Meta Webhook] ⚠ APP_SECRET não configurado — impossível validar assinatura. Configure meta_app_secret nas configurações.');
+    // 2. Validar assinatura HMAC — aceita o App Secret global OU o
+    //    app secret dedicado de qualquer conta de anúncios (multi-conta).
+    const secretCandidates = buildWebhookSecretCandidates(config.appSecret, adAccounts);
+    if (secretCandidates.length === 0) {
+      console.error('[Meta Webhook] ⚠ APP_SECRET não configurado (nem global nem por conta) — impossível validar assinatura.');
       return NextResponse.json({ error: 'App Secret não configurado' }, { status: 403 });
     }
 
-    if (!isValidSignature(rawBody, signature, config.appSecret)) {
+    const signatureValid = !!signature && secretCandidates.some((secret) => isValidSignature(rawBody, signature, secret));
+
+    if (!signatureValid) {
       // ASSINATURA INVÁLIDA — Log detalhado + salvar payload para diagnóstico
-      console.error(`[Meta Webhook] ⚠ ASSINATURA INVÁLIDA — header=${signature?.slice(0, 20)}... bodyLen=${rawBody.length}. Verifique se o App Secret está correto.`);
+      console.error(`[Meta Webhook] ⚠ ASSINATURA INVÁLIDA — header=${signature?.slice(0, 20)}... bodyLen=${rawBody.length}, candidatos testados=${secretCandidates.length}. Verifique o App Secret global ou da conta de origem.`);
       try {
         let parsedPayload: any = {};
         try { parsedPayload = JSON.parse(rawBody); } catch {}
@@ -325,17 +358,28 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Coletar TODOS os changes com leadgen_id (multi-anúncio: um
-    //    único payload pode trazer leads de formulários diferentes)
+    //    único payload pode trazer leads de formulários diferentes).
+    //    MULTI-CONTA: entry[].id é o page id — resolve a conta de
+    //    origem de cada entrada (token/fila/observabilidade da conta).
     const entries = body.entry || [];
 
     const allFields = entries.flatMap(e => (e.changes || []).map(c => c.field));
     console.log(`[Meta Webhook] Payload: object=${body.object}, entries=${entries.length}, fields=[${allFields.join(', ')}]`);
 
-    const leadChanges: MetaWebhookChange[] = [];
+    interface LeadChangeWithAccount {
+      change: MetaWebhookChange;
+      adAccount: AdAccountRef | null;
+    }
+
+    const leadChanges: LeadChangeWithAccount[] = [];
     for (const entry of entries) {
+      const entryAccount = resolveAccountByPageId(adAccounts, entry?.id);
+      if (entryAccount) {
+        console.log(`[Meta Webhook] Entry ${entry.id} → conta "${entryAccount.name}" (${entryAccount.adAccountId})`);
+      }
       for (const change of (entry.changes || []) as MetaWebhookChange[]) {
         if (change.value?.leadgen_id) {
-          leadChanges.push(change);
+          leadChanges.push({ change, adAccount: entryAccount });
         } else {
           console.warn(`[Meta Webhook] ⚠ Change field="${change.field}" sem leadgen_id no value — ignorado`);
         }
@@ -370,10 +414,11 @@ export async function POST(request: NextRequest) {
     // 6. Processar leads EM PARALELO (concorrência limitada)
     //    Cada lead é independente: dedup, criação, fila (round-robin
     //    atômico por fila) e notificações rodam isolados por lead.
-    const processLeadChange = async (change: MetaWebhookChange): Promise<LeadProcessResult> => {
+    const processLeadChange = async ({ change, adAccount }: LeadChangeWithAccount): Promise<LeadProcessResult> => {
       const leadData = change.value;
       const changeLeadgenId = leadData?.leadgen_id;
-      console.log(`[Meta Webhook] Change: field="${change.field}", leadgen_id=${changeLeadgenId ?? 'none'}, ad=${leadData?.ad_name || 'none'}, campaign=${leadData?.campaign_name || 'none'}`);
+      const accountLabel = adAccount ? `${adAccount.name} (${adAccount.adAccountId})` : 'global';
+      console.log(`[Meta Webhook] Change: field="${change.field}", leadgen_id=${changeLeadgenId ?? 'none'}, ad=${leadData?.ad_name || 'none'}, campaign=${leadData?.campaign_name || 'none'}, conta=${accountLabel}`);
 
       const leadgenId = String(leadData.leadgen_id || 'unknown');
       let fieldData = leadData.field_data || [];
@@ -383,8 +428,16 @@ export async function POST(request: NextRequest) {
       const formId = leadData.form_id || '';
       const adId = String(leadData.ad_id || '');
       const campaignId = String(leadData.campaign_id || '');
+      const adAccountId = adAccount?.id || null;
 
-      console.log(`[Meta Webhook] Processando leadgen_id=${leadgenId}, formId=${formId}, ad="${adName}", campaign="${campaignName}"`);
+      console.log(`[Meta Webhook] Processando leadgen_id=${leadgenId}, formId=${formId}, ad="${adName}", campaign="${campaignName}"${campaignId ? ` (id=${campaignId})` : ''}`);
+
+      // Auto-registro do vínculo campanha → conta (fire-and-forget):
+      // permite fila ESPECÍFICA por campanha (MetaCampaignBinding) e
+      // gestão independente das campanhas de cada conta.
+      if (campaignId) {
+        upsertCampaignBindingAuto({ campaignId, campaignName, adAccountId });
+      }
 
       // Auto-populate lead_form_mappings (fire-and-forget, non-critical)
       if (formId) {
@@ -397,18 +450,22 @@ export async function POST(request: NextRequest) {
             adName: adName !== 'Anúncio Meta Ads' ? adName : null,
             campaignId: campaignId || null,
             campaignName: campaignName || null,
+            adAccountId: adAccountId || null,
           },
           update: {
             leadCount: { increment: 1 },
             formName: formName || undefined,
             adName: adName !== 'Anúncio Meta Ads' ? adName : undefined,
+            adAccountId: adAccountId || undefined,
           },
         }).catch((err: any) => {
           console.warn(`[Meta Webhook] Falha ao upsert form mapping ${formId}:`, err?.message || err);
         });
       }
 
-      // Buscar CAPI config por form_id (para multi-client CAPI)
+      // Buscar CAPI config por form_id (para multi-client CAPI).
+      // MULTI-CONTA: se o form não está mapeado, usa um config CAPI
+      // pertencente à conta de origem (dataset correto por conta).
       let capiConfigId: string | undefined;
       if (formId) {
         try {
@@ -420,26 +477,49 @@ export async function POST(request: NextRequest) {
           console.warn(`[Meta Webhook] Falha ao buscar CAPI config para form ${formId}:`, capiErr);
         }
       }
+      if (!capiConfigId && adAccountId) {
+        try {
+          const accConfig = await db.metaCapConfig.findFirst({
+            where: { adAccountId, enabled: true },
+            select: { id: true },
+            orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+          });
+          if (accConfig) {
+            capiConfigId = accConfig.id;
+            console.log(`[Meta Webhook] CAPI config ${accConfig.id} resolvido pela conta ${accountLabel}`);
+          }
+        } catch (err) {
+          console.warn('[Meta Webhook] Falha ao buscar CAPI config da conta (migration pendente?):', err instanceof Error ? err.message : err);
+        }
+      }
 
-      // ROTEAMENTO MULTI-ANÚNCIO: fila dedicada ao formulário/config
-      // de origem do lead (fonte única: meta-lead-routing, usada
-      // também pelo polling). Sem vínculo → fila default.
-      const route = await resolveQueueForMetaLead({ formId, capiConfigId });
+      // ROTEAMENTO MULTI-ANÚNCIO/MULTI-CONTA: prioridade
+      // campanha (campaignId) > formulário (formId) > conta >
+      // config CAPI > fila default. Sem vínculo → fila default.
+      const route = await resolveQueueForMetaLead({
+        formId,
+        campaignId: campaignId || undefined,
+        capiConfigId,
+        adAccountId: adAccountId || undefined,
+      });
       if (route.routeSource !== 'default') {
         console.log(`[Meta Webhook][${reqId}] Fila roteada para lead ${leadgenId}: "${route.queueName ?? route.queueId}" (${route.routeSource})`);
       }
 
-      // O Meta envia apenas o ID — buscar dados via Graph API
-      if (fieldData.length === 0 && config.pageAccessToken) {
-        console.log(`[Meta Webhook] Buscando dados do lead ${leadgenId} via Graph API (field_data vazio no webhook)`);
-        const fetched = await fetchLeadData(leadgenId, config.pageAccessToken);
+      // O Meta envia apenas o ID — buscar dados via Graph API.
+      // MULTI-CONTA: usa o token da conta resolvida pela página;
+      // cai para o token global quando a conta não tem vínculo.
+      const pageToken = resolvePageToken(adAccount, config.pageAccessToken);
+      if (fieldData.length === 0 && pageToken) {
+        console.log(`[Meta Webhook] Buscando dados do lead ${leadgenId} via Graph API (field_data vazio no webhook, token=${adAccount ? 'da conta' : 'global'})`);
+        const fetched = await fetchLeadData(leadgenId, pageToken);
         if (fetched) {
           fieldData = fetched;
         } else {
           console.error(`[Meta Webhook] ⚠ Não foi possível buscar dados do lead ${leadgenId} via Graph API — lead será criado com dados mínimos`);
         }
       } else if (fieldData.length === 0) {
-        console.error(`[Meta Webhook] ⚠ Sem field_data e sem pageAccessToken para lead ${leadgenId} — lead será criado com dados mínimos`);
+        console.error(`[Meta Webhook] ⚠ Sem field_data e sem page access token (global ou da conta) para lead ${leadgenId} — lead será criado com dados mínimos`);
       } else {
         console.log(`[Meta Webhook] field_data presente no webhook com ${fieldData.length} campos para lead ${leadgenId}`);
       }
@@ -721,8 +801,8 @@ export async function POST(request: NextRequest) {
     const settled = await mapWithConcurrency(leadChanges, 4, processLeadChange);
     const results: LeadProcessResult[] = settled.map((r, i) => {
       if (r.status === 'fulfilled') return r.value;
-      console.error(`[Meta Webhook] ⚠ Erro não tratado no lead ${leadChanges[i]?.value?.leadgen_id}:`, r.reason);
-      return { success: false, reason: 'processing_error', leadId: String(leadChanges[i]?.value?.leadgen_id || 'unknown') };
+      console.error(`[Meta Webhook] ⚠ Erro não tratado no lead ${leadChanges[i]?.change?.value?.leadgen_id}:`, r.reason);
+      return { success: false, reason: 'processing_error', leadId: String(leadChanges[i]?.change?.value?.leadgen_id || 'unknown') };
     });
 
     // Log resumo final
