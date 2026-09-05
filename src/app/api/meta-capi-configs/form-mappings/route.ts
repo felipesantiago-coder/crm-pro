@@ -25,6 +25,9 @@ export async function GET(request: NextRequest) {
           queue: {
             select: { id: true, name: true, isActive: true },
           },
+          adAccount: {
+            select: { id: true, name: true, adAccountId: true, enabled: true },
+          },
         },
       });
 
@@ -39,6 +42,8 @@ export async function GET(request: NextRequest) {
         capiConfig: { id: string; name: string; enabled: boolean } | null;
         queueId: string | null;
         queue: { id: string; name: string; isActive: boolean } | null;
+        adAccountId: string | null;
+        adAccount: { id: string; name: string; adAccountId: string; enabled: boolean } | null;
         campaigns: Array<{ campaignId: string | null; campaignName: string | null; adName: string | null; leadCount: number }>;
       }>();
 
@@ -55,6 +60,10 @@ export async function GET(request: NextRequest) {
           if (!existing.queueId && m.queueId) {
             existing.queueId = m.queueId;
             existing.queue = m.queue;
+          }
+          if (!existing.adAccountId && m.adAccountId) {
+            existing.adAccountId = m.adAccountId;
+            existing.adAccount = m.adAccount;
           }
           existing.campaigns.push({
             campaignId: m.campaignId,
@@ -73,6 +82,8 @@ export async function GET(request: NextRequest) {
             capiConfig: m.capiConfig,
             queueId: m.queueId,
             queue: m.queue,
+            adAccountId: m.adAccountId,
+            adAccount: m.adAccount,
             campaigns: [{
               campaignId: m.campaignId,
               campaignName: m.campaignName,
@@ -95,6 +106,9 @@ export async function GET(request: NextRequest) {
         },
         queue: {
           select: { id: true, name: true, isActive: true },
+        },
+        adAccount: {
+          select: { id: true, name: true, adAccountId: true, enabled: true },
         },
       },
     });

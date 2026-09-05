@@ -18,7 +18,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { name, adAccountId, accessToken, verifyToken, appSecret, pageIds, formIds, queueId, enabled, isDefault } = body;
+    const { name, adAccountId, accessToken, verifyToken, appSecret, pageIds, formIds, queueId, enabled, isDefault, webhookEnabled, pollingEnabled } = body;
 
     const existing = await db.metaAdAccount.findUnique({ where: { id }, select: { id: true } });
     if (!existing) {
@@ -75,6 +75,12 @@ export async function PATCH(
 
     if (enabled !== undefined) data.enabled = !!enabled;
 
+    // Toggles de canal por conta (settings agrupadas): webhook e
+    // polling desta conta podem ser ligados/desligados de forma
+    // independente das demais contas.
+    if (webhookEnabled !== undefined) data.webhookEnabled = !!webhookEnabled;
+    if (pollingEnabled !== undefined) data.pollingEnabled = !!pollingEnabled;
+
     if (isDefault !== undefined) {
       if (isDefault) {
         await db.metaAdAccount.updateMany({
@@ -92,7 +98,7 @@ export async function PATCH(
     const updated = await db.metaAdAccount.update({
       where: { id },
       data,
-      select: { id: true, name: true, adAccountId: true, enabled: true, isDefault: true },
+      select: { id: true, name: true, adAccountId: true, enabled: true, isDefault: true, webhookEnabled: true, pollingEnabled: true },
     });
 
     return NextResponse.json(updated);

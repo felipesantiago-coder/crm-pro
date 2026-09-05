@@ -87,7 +87,8 @@ async function getMetaConfig() {
 
 /**
  * Verifica se o hub.verify_token corresponde ao token global OU ao
- * verify token dedicado de alguma conta de anúncios (multi-conta).
+ * verify token dedicado de alguma conta de anúncios com o webhook
+ * PRÓPRIO ativo (multi-conta, settings agrupadas por conta).
  * Retorna a conta casada (ou null quando casou com o global).
  */
 async function matchVerifyToken(token: string): Promise<{ account: AdAccountRef | null; matched: boolean }> {
@@ -96,7 +97,7 @@ async function matchVerifyToken(token: string): Promise<{ account: AdAccountRef 
     return { account: null, matched: true };
   }
   try {
-    const accounts = await fetchEnabledAdAccounts();
+    const accounts = await fetchEnabledAdAccounts('webhook');
     const account = accounts.find((a) => a.verifyToken && a.verifyToken === token) || null;
     return { account, matched: !!account };
   } catch {
@@ -269,11 +270,14 @@ export async function POST(request: NextRequest) {
 
     // 1. Verificar se o webhook está ativado
     const config = await getMetaConfig();
-  // MULTI-CONTA: contas habilitadas fornecem secrets próprios para
-  // validação HMAC e tokens próprios para buscar dados dos leads.
-  const adAccounts = await fetchEnabledAdAccounts();
+  // MULTI-CONTA (settings por conta): contas habilitadas com o WEBHOOK
+  // PRÓPRIO ativo fornecem secrets próprios para validação HMAC, verify
+  // tokens dedicados e resolvem a conta pela page (entry[].id) para usar
+  // o token delas na busca dos leads. Conta com webhookEnabled=false é
+  // ignorada neste canal — sem afetar as demais contas.
+  const adAccounts = await fetchEnabledAdAccounts('webhook');
   const accountsWithSecret = adAccounts.filter((a) => a.appSecret);
-  console.log(`[Meta Webhook][${reqId}] Config: enabled=${config.enabled}, hasAppSecret=${!!config.appSecret}, hasPageAccessToken=${!!config.pageAccessToken}, hasVerifyToken=${!!config.verifyToken}, adAccounts=${adAccounts.length} (com secret: ${accountsWithSecret.length}), bodyLen=${rawBody.length}`);
+  console.log(`[Meta Webhook][${reqId}] Config: enabled=${config.enabled}, hasAppSecret=${!!config.appSecret}, hasPageAccessToken=${!!config.pageAccessToken}, hasVerifyToken=${!!config.verifyToken}, adAccounts=${adAccounts.length} (webhook ativo, com secret: ${accountsWithSecret.length}), bodyLen=${rawBody.length}`);
 
     if (!config.enabled) {
       // WEBHOOK DESABILITADO — Salvar o lead perdido ANTES de rejeitar
@@ -311,7 +315,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Validar assinatura HMAC — aceita o App Secret global OU o
-    //    app secret dedicado de qualquer conta de anúncios (multi-conta).
+    //    app secret dedicado de contas com webhook próprio ativo.
+    //    buildWebhookSecretCandidates também ignora contas com
+    //    webhookEnabled=false (defesa em profundidade).
     const secretCandidates = buildWebhookSecretCandidates(config.appSecret, adAccounts);
     if (secretCandidates.length === 0) {
       console.error('[Meta Webhook] ⚠ APP_SECRET não configurado (nem global nem por conta) — impossível validar assinatura.');

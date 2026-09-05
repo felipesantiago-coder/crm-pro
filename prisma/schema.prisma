@@ -625,11 +625,12 @@ model LeadFormMapping {
 
 // ============================================================
 // META AD ACCOUNT — Conta de anúncios dedicada (multi-conta)
-// Cada conta tem seu próprio access token (System User/Page),
-// verify token e app secret opcionais para webhook, page IDs e
-// form IDs para captação por polling multi-token e fila default.
-// Assim campanhas de contas DIFERENTES são capturadas e geridas
-// de forma independente.
+// Cada conta tem o seu próprio access token (System User/Page),
+// configurações de WEBHOOK (verify token, app secret, page IDs e
+// toggle próprio) e de POLLING (form IDs e toggle próprios), além
+// de fila default. Assim cada conta AGRUPA as suas configurações de
+// captação sem se misturar com as demais — campanhas de contas
+// DIFERENTES são capturadas e geridas de forma independente.
 // ============================================================
 model MetaAdAccount {
   id          String   @id @default(cuid()) @map("id")
@@ -652,6 +653,13 @@ model MetaAdAccount {
   formIds     String?  @map("formIds")          // JSON: ["123","456"]
   enabled     Boolean  @default(true) @map("enabled")
   isDefault   Boolean  @default(false) @map("isDefault")
+  /** Webhook desta conta ativo: quando false, verify token/app secret
+   *  próprios deixam de valer e pages da conta não resolvem conta.
+   *  Cada conta controla o próprio webhook sem afetar as outras. */
+  webhookEnabled Boolean @default(true) @map("webhookEnabled")
+  /** Polling desta conta ativo: quando false, os formIds da conta não
+   *  são consultados (o polling das demais contas segue normal). */
+  pollingEnabled Boolean @default(true) @map("pollingEnabled")
   /** Fila default para leads desta conta (menos específico que
    *  campanha/formulário; mais específico que a fila global default). */
   queueId     String?  @map("queueId")

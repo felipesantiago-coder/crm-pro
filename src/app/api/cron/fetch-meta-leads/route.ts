@@ -277,8 +277,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ status: 'disabled', message: 'Polling desativado' });
     }
 
-    // 3b. MULTI-TOKEN: contas de anúncios habilitadas + alvos por conta
-    const adAccounts = await fetchEnabledAdAccounts();
+    // 3b. MULTI-TOKEN (settings por conta): contas de anúncios habilitadas
+    //     com o POLLING PRÓPRIO ativo + alvos por conta. Conta com
+    //     pollingEnabled=false é ignorada neste canal — as demais contas
+    //     seguem sendo consultadas normalmente.
+    const adAccounts = await fetchEnabledAdAccounts('polling');
     const targets: PollTarget[] = [];
     const claimedForms = new Set<string>();
     for (const account of adAccounts) {

@@ -22,6 +22,13 @@ import { toast } from 'sonner';
 // polling). Aqui o admin atribui a fila de cada campanha e corrige a
 // conta de anúncios de origem — campanhas de contas diferentes ficam
 // independentes entre si. Prioridade máxima no roteamento.
+//
+// Uso duplo (settings agrupadas por conta):
+//   • Global (sem props): todas as campanhas, com select de conta e
+//     registro manual — mostra contagem total no grupo global/fallback.
+//   • Dentro do card da conta (adAccountId + hideAccountSelect +
+//     compact): mostra SOMENTE as campanhas desta conta, sem misturar
+//     com as demais.
 // ============================================================
 
 interface CampaignBindingItem {
@@ -49,7 +56,20 @@ interface AdAccountOption {
   enabled: boolean;
 }
 
-export function CampaignBindingsSection() {
+interface CampaignBindingsSectionProps {
+  /** Modo "dentro da conta": mostra somente campanhas desta conta. */
+  adAccountId?: string;
+  /** Esconde o select de conta de anúncios (contexto do card da conta). */
+  hideAccountSelect?: boolean;
+  /** Modo compacto: sem caixa explicativa e sem registro manual. */
+  compact?: boolean;
+  /** Modo global: mostra somente campanhas sem conta associada. */
+  unassignedOnly?: boolean;
+  /** Recarrega dados do pai após salvar (usado pelo card da conta). */
+  onChanged?: () => void;
+}
+
+export function CampaignBindingsSection({ adAccountId, hideAccountSelect, compact, unassignedOnly, onChanged }: CampaignBindingsSectionProps = {}) {
   const [bindings, setBindings] = useState<CampaignBindingItem[]>([]);
   const [queues, setQueues] = useState<QueueOption[]>([]);
   const [accounts, setAccounts] = useState<AdAccountOption[]>([]);
@@ -105,6 +125,7 @@ export function CampaignBindingsSection() {
       }
       toast.success('Vínculo salvo — leads desta campanha usarão a fila definida');
       await load();
+      onChanged?.();
     } catch {
       toast.error('Erro ao salvar vínculo');
     } finally {
@@ -136,6 +157,7 @@ export function CampaignBindingsSection() {
       setNewCampaignId('');
       setNewCampaignName('');
       await load();
+      onChanged?.();
     } catch {
       toast.error('Erro ao registrar campanha');
     } finally {
@@ -143,26 +165,39 @@ export function CampaignBindingsSection() {
     }
   };
 
+  // Agrupamento por conta: filtra as campanhas exibidas conforme o modo.
+  const visibleBindings = bindings.filter((b) => {
+    if (adAccountId) return b.adAccountId === adAccountId;
+    if (unassignedOnly) return !b.adAccountId;
+    return true;
+  });
+
   return (
     <div className="space-y-3">
-      <div className="rounded-lg bg-accent/40 dark:bg-accent/20 border border-accent p-3 space-y-2">
-        <p className="text-xs font-semibold text-accent-foreground">Fila por campanha (campaignId)</p>
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          Campanhas são detectadas <strong>automaticamente</strong> quando leads chegam (webhook ou polling). Vincule a <strong>fila de atendimento de cada campanha</strong> — tem <strong>prioridade</strong> sobre o vínculo por formulário e sobre a fila da conta. Assim campanhas de contas diferentes podem ser atendidas por equipes diferentes, de forma independente.
-        </p>
-      </div>
+      {!compact && (
+        <div className="rounded-lg bg-accent/40 dark:bg-accent/20 border border-accent p-3 space-y-2">
+          <p className="text-xs font-semibold text-accent-foreground">Fila por campanha (campaignId)</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Campanhas são detectadas <strong>automaticamente</strong> quando leads chegam (webhook ou polling). Vincule a <strong>fila de atendimento de cada campanha</strong> — tem <strong>prioridade</strong> sobre o vínculo por formulário e sobre a fila da conta. Assim campanhas de contas diferentes podem ser atendidas por equipes diferentes, de forma independente.
+          </p>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Carregando campanhas...
         </div>
-      ) : bindings.length === 0 ? (
+      ) : visibleBindings.length === 0 ? (
         <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-          Nenhuma campanha detectada ainda. Assim que o primeiro lead chegar com campaign_id, ela aparece aqui automaticamente. Você também pode registrar uma campanha manualmente abaixo.
+          {adAccountId
+            ? 'Nenhuma campanha desta conta ainda. Assim que leads chegarem com campaign_id de páginas desta conta, elas aparecem aqui automaticamente.'
+            : unassignedOnly
+              ? 'Nenhuma campanha sem conta. Campanhas com conta aparecem dentro do card da conta correspondente.'
+              : 'Nenhuma campanha detectada ainda. Assim que o primeiro lead chegar com campaign_id, ela aparece aqui automaticamente. Você também pode registrar uma campanha manualmente abaixo.'}
         </div>
       ) : (
         <div className="space-y-2">
-          {bindings.map((binding) => (
+          {visibleBindings.map((binding) => (
             <Card key={binding.id}>
               <CardContent className="p-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -183,26 +218,28 @@ export function CampaignBindingsSection() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-[10px] text-muted-foreground">Conta de anúncios</Label>
-                      <Select
-                        value={binding.adAccountId || 'none'}
-                        onValueChange={(v) => updateBinding(binding, { adAccountId: v === 'none' ? null : v })}
-                        disabled={savingId === binding.id}
-                      >
-                        <SelectTrigger className="h-8 w-[170px] text-xs">
-                          <SelectValue placeholder="Sem conta" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Sem conta</SelectItem>
-                          {accounts.map((a) => (
-                            <SelectItem key={a.id} value={a.id}>
-                              {a.name}{!a.enabled ? ' (inativa)' : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {!hideAccountSelect && (
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground">Conta de anúncios</Label>
+                        <Select
+                          value={binding.adAccountId || 'none'}
+                          onValueChange={(v) => updateBinding(binding, { adAccountId: v === 'none' ? null : v })}
+                          disabled={savingId === binding.id}
+                        >
+                          <SelectTrigger className="h-8 w-[170px] text-xs">
+                            <SelectValue placeholder="Sem conta" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Sem conta</SelectItem>
+                            {accounts.map((a) => (
+                              <SelectItem key={a.id} value={a.id}>
+                                {a.name}{!a.enabled ? ' (inativa)' : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Fila da campanha</Label>
                       <Select
@@ -232,28 +269,30 @@ export function CampaignBindingsSection() {
         </div>
       )}
 
-      {/* Registro manual */}
-      <div className="rounded-lg border p-3 space-y-2">
-        <p className="text-xs font-medium">Registrar campanha manualmente</p>
-        <div className="flex flex-wrap gap-2">
-          <Input
-            className="h-8 flex-1 min-w-[160px] text-xs font-mono"
-            placeholder="Campaign ID (ex: 120210456789012345)"
-            value={newCampaignId}
-            onChange={(e) => setNewCampaignId(e.target.value)}
-          />
-          <Input
-            className="h-8 flex-1 min-w-[160px] text-xs"
-            placeholder="Nome da campanha (opcional)"
-            value={newCampaignName}
-            onChange={(e) => setNewCampaignName(e.target.value)}
-          />
-          <Button size="sm" onClick={createBinding} disabled={creating}>
-            {creating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
-            Registrar
-          </Button>
+      {/* Registro manual — só no modo global (fora do card da conta) */}
+      {!compact && !adAccountId && (
+        <div className="rounded-lg border p-3 space-y-2">
+          <p className="text-xs font-medium">Registrar campanha manualmente</p>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              className="h-8 flex-1 min-w-[160px] text-xs font-mono"
+              placeholder="Campaign ID (ex: 120210456789012345)"
+              value={newCampaignId}
+              onChange={(e) => setNewCampaignId(e.target.value)}
+            />
+            <Input
+              className="h-8 flex-1 min-w-[160px] text-xs"
+              placeholder="Nome da campanha (opcional)"
+              value={newCampaignName}
+              onChange={(e) => setNewCampaignName(e.target.value)}
+            />
+            <Button size="sm" onClick={createBinding} disabled={creating}>
+              {creating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+              Registrar
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

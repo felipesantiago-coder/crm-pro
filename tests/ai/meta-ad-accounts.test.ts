@@ -11,6 +11,8 @@ import {
   resolveAccountByPageId,
   buildWebhookSecretCandidates,
   resolvePageToken,
+  filterAccountsByChannel,
+  type AdAccountRef,
 } from '../../src/lib/meta-ad-accounts.ts';
 
 // ── parseJsonArray ─────────────────────────────────────────────
@@ -106,6 +108,55 @@ test('buildWebhookSecretCandidates: contas desativadas não entram', () => {
 test('buildWebhookSecretCandidates: nenhum secret → lista vazia (403 no webhook)', () => {
   assert.deepEqual(buildWebhookSecretCandidates(null, [{ appSecret: null, enabled: true }]), []);
   assert.deepEqual(buildWebhookSecretCandidates(undefined, []), []);
+});
+
+test('buildWebhookSecretCandidates: contas com webhook próprio desligado não entram (settings por conta)', () => {
+  const candidates = buildWebhookSecretCandidates('global-secret', [
+    { appSecret: 'secret-webhook-off', enabled: true, webhookEnabled: false },
+    { appSecret: 'secret-webhook-on', enabled: true, webhookEnabled: true },
+    { appSecret: 'secret-legado', enabled: true }, // sem toggle = ligado (compat)
+  ]);
+  assert.deepEqual(candidates, ['global-secret', 'secret-webhook-on', 'secret-legado']);
+});
+
+// ── filterAccountsByChannel (settings agrupadas por conta) ─────
+
+function channelAcc(overrides: Partial<AdAccountRef>): AdAccountRef {
+  return {
+    id: 'x',
+    name: 'Conta X',
+    adAccountId: 'act_x',
+    accessToken: 'token-x',
+    ...overrides,
+  };
+}
+
+test('filterAccountsByChannel: canal webhook exclui contas com webhookEnabled=false', () => {
+  const accounts = [
+    channelAcc({ id: 'a', webhookEnabled: true }),
+    channelAcc({ id: 'b', webhookEnabled: false }),
+    channelAcc({ id: 'c' }), // sem toggle = ligado (compat legado)
+  ];
+  const ids = filterAccountsByChannel(accounts, 'webhook').map((a) => a.id);
+  assert.deepEqual(ids, ['a', 'c']);
+});
+
+test('filterAccountsByChannel: canal polling exclui contas com pollingEnabled=false', () => {
+  const accounts = [
+    channelAcc({ id: 'a', pollingEnabled: false }),
+    channelAcc({ id: 'b', pollingEnabled: true }),
+    channelAcc({ id: 'c' }),
+  ];
+  const ids = filterAccountsByChannel(accounts, 'polling').map((a) => a.id);
+  assert.deepEqual(ids, ['b', 'c']);
+});
+
+test('filterAccountsByChannel: canal all mantém todas (toggles não filtram)', () => {
+  const accounts = [
+    channelAcc({ id: 'a', webhookEnabled: false, pollingEnabled: false }),
+    channelAcc({ id: 'b' }),
+  ];
+  assert.equal(filterAccountsByChannel(accounts, 'all').length, 2);
 });
 
 // ── resolvePageToken ────────────────────────────────────────────

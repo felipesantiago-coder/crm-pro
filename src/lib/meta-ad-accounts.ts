@@ -33,6 +33,32 @@ export interface AdAccountRef {
   pageIds?: string | null;
   formIds?: string | null;
   queueId?: string | null;
+  /** Toggle de webhook DESTA conta (settings por conta). */
+  webhookEnabled?: boolean;
+  /** Toggle de polling DESTA conta (settings por conta). */
+  pollingEnabled?: boolean;
+}
+
+/**
+ * Canal de captação usado para filtrar as contas pelos toggles
+ * PRÓPRIOS de cada conta (settings agrupadas por conta):
+ *   all     → todas as contas habilitadas (enabled)
+ *   webhook → somente contas com webhookEnabled !== false
+ *   polling → somente contas com pollingEnabled !== false
+ */
+export type AdAccountChannel = 'all' | 'webhook' | 'polling';
+
+/**
+ * Filtra as contas pelo canal de captação usando os toggles próprios
+ * de cada conta. undefined/null conta como ligado (compatibilidade
+ * com registros criados antes da migration). */
+export function filterAccountsByChannel<T extends AdAccountRef>(
+  accounts: T[],
+  channel: AdAccountChannel,
+): T[] {
+  if (channel === 'webhook') return accounts.filter((a) => a.webhookEnabled !== false);
+  if (channel === 'polling') return accounts.filter((a) => a.pollingEnabled !== false);
+  return accounts;
 }
 
 /** Parse defensivo de JSON array de IDs (retorna [] em qualquer falha). */
@@ -79,11 +105,12 @@ export function resolveAccountByPageId<T extends AdAccountRef>(
 /**
  * Candidatos de App Secret para validar a assinatura HMAC do webhook:
  * secret global primeiro (comportamento legado), depois os secrets
- * das contas habilitadas. Sem duplicatas.
+ * das contas habilitadas com webhook PRÓPRIO ativo (settings por
+ * conta). Sem duplicatas.
  */
 export function buildWebhookSecretCandidates(
   globalSecret: string | null | undefined,
-  accounts: Array<{ appSecret?: string | null; enabled?: boolean }>,
+  accounts: Array<{ appSecret?: string | null; enabled?: boolean; webhookEnabled?: boolean }>,
 ): string[] {
   const candidates: string[] = [];
   const push = (secret?: string | null) => {
@@ -92,6 +119,7 @@ export function buildWebhookSecretCandidates(
   push(globalSecret || null);
   for (const account of accounts) {
     if (account.enabled === false) continue;
+    if (account.webhookEnabled === false) continue; // webhook da conta desligado
     push(account.appSecret);
   }
   return candidates;
@@ -114,27 +142,46 @@ export function resolvePageToken(
 // ============================================================
 
 /**
- * Lista as contas de anúncios habilitadas para a captação.
- * Retorna [] em qualquer falha (migration pendente, banco offline…).
+ * Lista as contas de anúncios habilitadas para a captação, filtradas
+ * pelo canal (toggles webhookEnabled/pollingEnabled próprios de cada
+ * conta — settings agrupadas por conta).
+ *
+ * Degradação graciosa: se a migration dos toggles ainda não rodou,
+ * repete a consulta sem as colunas novas (todas tratadas como ativas);
+ * retorna [] se a tabela/entidade nem existir.
  */
-export async function fetchEnabledAdAccounts(): Promise<AdAccountRef[]> {
+export async function fetchEnabledAdAccounts(
+  channel: AdAccountChannel = 'all',
+): Promise<AdAccountRef[]> {
+  const baseSelect = {
+    id: true,
+    name: true,
+    adAccountId: true,
+    accessToken: true,
+    verifyToken: true,
+    appSecret: true,
+    pageIds: true,
+    formIds: true,
+    queueId: true,
+  } as const;
   try {
-    const accounts = await db.metaAdAccount.findMany({
-      where: { enabled: true },
-      select: {
-        id: true,
-        name: true,
-        adAccountId: true,
-        accessToken: true,
-        verifyToken: true,
-        appSecret: true,
-        pageIds: true,
-        formIds: true,
-        queueId: true,
-      },
-      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
-    });
-    return accounts;
+    try {
+      const accounts = await db.metaAdAccount.findMany({
+        where: { enabled: true },
+        select: { ...baseSelect, webhookEnabled: true, pollingEnabled: true },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      });
+      return filterAccountsByChannel(accounts, channel);
+    } catch {
+      // Migration pendente: colunas webhookEnabled/pollingEnabled ausentes —
+      // cai para o select legado (toggles tratados como ligados).
+      const accounts = await db.metaAdAccount.findMany({
+        where: { enabled: true },
+        select: baseSelect,
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      });
+      return filterAccountsByChannel(accounts, channel);
+    }
   } catch (err) {
     console.warn('[Meta Ad Accounts] Falha ao listar contas (migration pendente?):', err instanceof Error ? err.message : err);
     return [];
@@ -143,13 +190,14 @@ export async function fetchEnabledAdAccounts(): Promise<AdAccountRef[]> {
 
 /**
  * Resolve a conta de anúncios por page_id direto no banco (webhook).
+ * Considera somente contas com o webhook PRÓPRIO ativo (canal webhook).
  */
 export async function resolveAdAccountForPage(
   pageId: string | null | undefined,
 ): Promise<AdAccountRef | null> {
   if (!pageId) return null;
   try {
-    const accounts = await fetchEnabledAdAccounts();
+    const accounts = await fetchEnabledAdAccounts('webhook');
     return resolveAccountByPageId(accounts, pageId);
   } catch (err) {
     console.warn('[Meta Ad Accounts] Falha ao resolver conta por page:', err instanceof Error ? err.message : err);

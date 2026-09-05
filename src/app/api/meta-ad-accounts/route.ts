@@ -25,6 +25,8 @@ export async function GET() {
         formIds: true,
         enabled: true,
         isDefault: true,
+        webhookEnabled: true,
+        pollingEnabled: true,
         queueId: true,
         queue: { select: { id: true, name: true, isActive: true } },
         createdAt: true,
@@ -59,14 +61,15 @@ export async function GET() {
 // POST /api/meta-ad-accounts
 // Cria uma conta de anúncios com token dedicado (multi-conta).
 // Body: { name, adAccountId, accessToken, verifyToken?, appSecret?,
-//         pageIds?: string[], formIds?: string[], queueId?, enabled?, isDefault? }
+//         pageIds?: string[], formIds?: string[], queueId?, enabled?,
+//         isDefault?, webhookEnabled?, pollingEnabled? }
 // ============================================================
 export async function POST(request: NextRequest) {
   try {
     await requireAdmin();
 
     const body = await request.json();
-    const { name, adAccountId, accessToken, verifyToken, appSecret, pageIds, formIds, queueId, enabled, isDefault } = body;
+    const { name, adAccountId, accessToken, verifyToken, appSecret, pageIds, formIds, queueId, enabled, isDefault, webhookEnabled, pollingEnabled } = body;
 
     if (!name || !adAccountId || !accessToken) {
       return NextResponse.json(
@@ -117,6 +120,8 @@ export async function POST(request: NextRequest) {
         queueId: queueId || null,
         enabled: enabled === undefined ? true : !!enabled,
         isDefault: !!isDefault,
+        webhookEnabled: webhookEnabled === undefined ? true : !!webhookEnabled,
+        pollingEnabled: pollingEnabled === undefined ? true : !!pollingEnabled,
       },
     });
 

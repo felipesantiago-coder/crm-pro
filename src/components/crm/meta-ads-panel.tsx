@@ -38,7 +38,7 @@ import { format, parseISO } from 'date-fns';
 import { TrackingTab } from './tracking-tab';
 import { LandingPagesTab } from './landing-pages-tab';
 import { QueuesTab } from './queues-tab';
-import { AdAccountsSection } from './meta-ads/ad-accounts-section';
+import { AdAccountsGroup } from './meta-ads/ad-accounts-group';
 import { CampaignBindingsSection } from './meta-ads/campaign-bindings-section';
 import { LostLeadsTab } from './lost-leads-view';
 import { ptBR } from 'date-fns/locale';
@@ -862,10 +862,11 @@ function ConfigTab() {
 
   // CAPI Multi-config states
   const [capiConfigs, setCapiConfigs] = useState<any[]>([]);
+  const [adAccounts, setAdAccounts] = useState<Array<{ id: string; name: string; adAccountId: string; enabled: boolean }>>([]);
   const [loadingCapi, setLoadingCapi] = useState(false);
   const [showCapiDialog, setShowCapiDialog] = useState(false);
   const [editingCapi, setEditingCapi] = useState<any>(null);
-  const [capiForm, setCapiForm] = useState({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true, queueId: '' });
+  const [capiForm, setCapiForm] = useState({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true, queueId: '', adAccountId: '' });
   const [savingCapi, setSavingCapi] = useState(false);
   const [testingCapId, setTestingCapId] = useState<string | null>(null);
   const [showCapiTokenDialog, setShowCapiTokenDialog] = useState(false);
@@ -942,6 +943,11 @@ function ConfigTab() {
     loadCapiConfigs();
     loadFormMappings();
     loadQueues();
+    // Contas de anúncios (para atribuir configs CAPI a uma conta no dialog)
+    fetch('/api/meta-ad-accounts')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setAdAccounts(Array.isArray(d) ? d : []))
+      .catch(() => {});
   }
 
   async function checkWebhookStatus() {
@@ -1047,7 +1053,7 @@ function ConfigTab() {
 
   function openNewCapiDialog() {
     setEditingCapi(null);
-    setCapiForm({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true, queueId: '' });
+    setCapiForm({ name: '', accessToken: '', datasetId: '', isDefault: false, formIds: '', enabled: true, queueId: '', adAccountId: '' });
     setShowCapiDialog(true);
   }
 
@@ -1066,6 +1072,7 @@ function ConfigTab() {
           formIds: full.formIds ? JSON.parse(full.formIds).join(', ') : '',
           enabled: full.enabled,
           queueId: full.queueId || '',
+          adAccountId: full.adAccountId || '',
         });
       }
     } catch {
@@ -1077,6 +1084,7 @@ function ConfigTab() {
         formIds: '',
         enabled: config.enabled,
         queueId: config.queueId || '',
+        adAccountId: config.adAccountId || '',
       });
     }
     setShowCapiDialog(true);
@@ -1100,6 +1108,7 @@ function ConfigTab() {
         enabled: capiForm.enabled,
         formIds: capiForm.formIds ? capiForm.formIds.split(/[,\s]+/).filter(Boolean) : [],
         queueId: capiForm.queueId || null,
+        adAccountId: capiForm.adAccountId || null,
       };
       if (capiForm.accessToken) body.accessToken = capiForm.accessToken;
 
@@ -1430,7 +1439,7 @@ function ConfigTab() {
       <div>
         <h2 className="text-lg font-semibold">Configurações dos Anúncios Meta</h2>
         <p className="text-sm text-muted-foreground">
-          Centralize todas as configurações da integração com Meta Ads em um só lugar
+          Configurações agrupadas por conta de anúncios (Seção 1) + configuração global de fallback — cada conta com webhook, polling, campanhas e CAPI próprios, sem se misturar com as demais
         </p>
       </div>
 
@@ -1472,17 +1481,38 @@ function ConfigTab() {
             </div>
           </div>
           <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
-            <strong>Fluxo:</strong> O Meta envia leads via <strong>Webhook</strong> → o CRM detecta o <strong>Form ID</strong> → busca dados do lead → cria o cliente → envia evento de conversão via <strong>CAPI</strong> (se configurado).
-            Use <strong>Polling</strong> como alternativa ao webhook.
+            <strong>Fluxo:</strong> O Meta envia leads via <strong>Webhook</strong> (ou <strong>Polling</strong> busca a cada 5 min) → cada conta de anúncio (Seção 1) usa os próprios token/verify/secret → o CRM detecta <strong>Form ID + Campanha</strong> → cria o cliente na fila da origem → envia evento de conversão via <strong>CAPI</strong> (se configurado). Contas sem valor próprio usam a configuração global como fallback.
           </p>
         </CardContent>
       </Card>
 
       {/* ═══ Accordion de Configurações ═══ */}
-      <Accordion type="multiple" defaultValue={['webhook', 'capi']} className="space-y-3">
+      <Accordion type="multiple" defaultValue={['ad-accounts', 'webhook']} className="space-y-3">
+
+        {/* SEÇÃO 1: Contas de Anúncio — cada conta agrupa as PRÓPRIAS
+            configurações (webhook, polling, campanhas, formulários, CAPI) */}
+        <AccordionItem value="ad-accounts" className="border rounded-xl overflow-hidden data-[state=open]:border-teal-200 dark:data-[state=open]:border-teal-800/50 data-[state=open]:shadow-sm transition-all">
+          <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
+            <div className="flex items-center gap-3 text-left">
+              <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-teal-100 dark:bg-teal-900/30">
+                <Building2 className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-sm">Contas de Anúncio — configurações por conta</span>
+                  <Badge className="bg-muted text-muted-foreground text-[10px]">Recomendado</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">Cada conta agrupa webhook, polling, campanhas, formulários e CAPI próprios — sem se misturar com as demais</p>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <AdAccountsGroup />
+          </AccordionContent>
+        </AccordionItem>
 
         {/* ═══════════════════════════════════════════════════════
-            SEÇÃO 1: Webhook de Lead Ads (Recepção de Leads)
+            SEÇÃO 2: Webhook Global (fallback) — Recepção de Leads
             ═══════════════════════════════════════════════════════ */}
         <AccordionItem value="webhook" className="border rounded-xl overflow-hidden data-[state=open]:border-blue-200 dark:data-[state=open]:border-blue-800/50 data-[state=open]:shadow-sm transition-all">
           <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
@@ -1492,7 +1522,7 @@ function ConfigTab() {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-sm">Webhook de Lead Ads</span>
+                  <span className="font-semibold text-sm">Webhook Global (fallback)</span>
                   {webhookReady ? (
                     <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] gap-1"><CheckCircle2 className="h-2.5 w-2.5" /> Ativo</Badge>
                   ) : enabled ? (
@@ -1502,7 +1532,7 @@ function ConfigTab() {
                   )}
                   {leadCount > 0 && <span className="text-[10px] text-muted-foreground">{leadCount} leads recebidos</span>}
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Recebe leads automaticamente quando alguém preenche um formulário no Facebook/Instagram</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Base da integração — vale para leads sem conta e para contas sem verify/secret/página próprios (Seção 1)</p>
               </div>
             </div>
           </AccordionTrigger>
@@ -1511,13 +1541,13 @@ function ConfigTab() {
             <div className="rounded-lg bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/20 p-3 space-y-2">
               <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">O que esta seção faz</p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Quando alguém preenche um formulário de Lead Ads no Facebook ou Instagram, o Meta envia uma notificação para seu servidor (webhook). O CRM então busca os dados completos do lead e cria automaticamente um cliente com stage <strong>LEAD</strong>, atribuído à fila de distribuição e com notificação via Telegram.
+                Quando alguém preenche um formulário de Lead Ads no Facebook ou Instagram, o Meta envia uma notificação para seu servidor (webhook). O CRM então busca os dados completos do lead e cria automaticamente um cliente com stage <strong>LEAD</strong>, atribuído à fila de distribuição e com notificação via Telegram. O endpoint é <strong>único</strong> — contas com webhook próprio (Seção 1) usam o mesmo URL, mas com verify token, app secret e página próprios.
               </p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 <strong>Depende de:</strong> Nada — é a configuração base da integração.
               </p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                <strong>É usado por:</strong> Seções 2 (Formulários) e 3 (CAPI) dependem dos dados que chegam por aqui.
+                <strong>É usado por:</strong> CAPI (Seção 4) e Formulários (Seção 5) dependem dos dados que chegam por aqui. Contas com webhook próprio (Seção 1) complementam este webhook sem substituí-lo.
               </p>
             </div>
 
@@ -1657,7 +1687,7 @@ function ConfigTab() {
         </AccordionItem>
 
         {/* ═══════════════════════════════════════════════════════
-            SEÇÃO 2: Importação por Polling (Alternativa ao Webhook)
+            SEÇÃO 3: Importação por Polling Global (formulários sem conta)
             ═══════════════════════════════════════════════════════ */}
         {isAdmin && (
           <AccordionItem value="polling" className="border rounded-xl overflow-hidden data-[state=open]:border-violet-200 dark:data-[state=open]:border-violet-800/50 data-[state=open]:shadow-sm transition-all">
@@ -1668,14 +1698,14 @@ function ConfigTab() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm">Importação por Polling</span>
+                    <span className="font-semibold text-sm">Polling Global (formulários sem conta)</span>
                     {hasPollActive ? (
                       <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 text-[10px] gap-1"><CheckCircle2 className="h-2.5 w-2.5" /> Ativo</Badge>
                     ) : (
                       <Badge className="bg-muted text-muted-foreground text-[10px]">Inativo</Badge>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">Busca leads periodicamente via Meta Graph API (alternativa ao webhook)</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Busca leads periodicamente com o token global — alternativo ao webhook e ao polling das contas (Seção 1)</p>
                 </div>
               </div>
             </AccordionTrigger>
@@ -1684,13 +1714,13 @@ function ConfigTab() {
               <div className="rounded-lg bg-violet-50/50 dark:bg-violet-950/10 border border-violet-100 dark:border-violet-900/20 p-3 space-y-2">
                 <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">O que esta seção faz</p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Em vez de esperar o Meta enviar leads via webhook, o sistema <strong>busca ativamente</strong> novos leads nos formulários configurados a cada 5 minutos usando a Meta Graph API. O resultado é o mesmo: criação de cliente, atribuição à fila e notificação Telegram.
+                  Em vez de esperar o Meta enviar leads via webhook, o sistema <strong>busca ativamente</strong> novos leads nos formulários configurados a cada 5 minutos usando a Meta Graph API. O resultado é o mesmo: criação de cliente, atribuição à fila e notificação Telegram. <strong>Os formulários de contas cadastradas (Seção 1) são consultados separadamente</strong>, com o token de cada conta — aqui ficam apenas os formulários sem conta.
                 </p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  <strong>Quando usar:</strong> Use como <strong>alternativa ao Webhook</strong> (Seção 1) quando não puder receber webhooks — por exemplo, no plano Hobby da Vercel que não permite execução contínua do servidor. <strong>Não é necessário ativar os dois.</strong>
+                  <strong>Quando usar:</strong> Use como <strong>alternativa ao Webhook</strong> (Seção 2) quando não puder receber webhooks — por exemplo, no plano Hobby da Vercel que não permite execução contínua do servidor. <strong>Não é necessário ativar os dois.</strong>
                 </p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  <strong>Depende de:</strong> Form IDs dos formulários de lead do Meta (configurados abaixo). Não depende do Webhook (Seção 1).
+                  <strong>Depende de:</strong> Form IDs dos formulários de lead do Meta (configurados abaixo, com o token global). Formulários de contas ficam na Seção 1.
                 </p>
               </div>
 
@@ -1815,29 +1845,6 @@ function ConfigTab() {
         )}
 
         {/* ═══════════════════════════════════════════════════════
-            SEÇÃO 3: Contas de Anúncio (Multi-conta Meta Ads)
-            ═══════════════════════════════════════════════════════ */}
-        <AccordionItem value="ad-accounts" className="border rounded-xl overflow-hidden data-[state=open]:border-teal-200 dark:data-[state=open]:border-teal-800/50 data-[state=open]:shadow-sm transition-all">
-          <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
-            <div className="flex items-center gap-3 text-left">
-              <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-teal-100 dark:bg-teal-900/30">
-                <Building2 className="h-4 w-4 text-teal-600 dark:text-teal-400" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-sm">Contas de Anúncio (Multi-conta)</span>
-                  <Badge className="bg-muted text-muted-foreground text-[10px]">Opcional</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Tokens por conta para capturar leads de contas de anúncios diferentes de forma independente</p>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-4 pb-4">
-            <AdAccountsSection />
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* ═══════════════════════════════════════════════════════
             SEÇÃO 4: API de Conversões (CAPI Multi-cliente)
             ═══════════════════════════════════════════════════════ */}
         <AccordionItem value="capi" className="border rounded-xl overflow-hidden data-[state=open]:border-purple-200 dark:data-[state=open]:border-purple-800/50 data-[state=open]:shadow-sm transition-all">
@@ -1855,7 +1862,7 @@ function ConfigTab() {
                     <Badge className="bg-muted text-muted-foreground text-[10px]">Nenhum</Badge>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Envia eventos de conversão para o Meta otimizar suas campanhas (multi-cliente)</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Datasets de conversão — os de cada conta aparecem no card dela (Seção 1); aqui ficam os globais</p>
               </div>
             </div>
           </AccordionTrigger>
@@ -1902,6 +1909,9 @@ function ConfigTab() {
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                           <span className="font-mono">ID: {config.datasetId}</span>
+                          {config.adAccount?.name && (
+                            <Badge variant="outline" className="text-[9px] px-1 py-0">{config.adAccount.name}</Badge>
+                          )}
                           {config._count?.clients > 0 && <span>{config._count.clients} lead{config._count.clients !== 1 ? 's' : ''}</span>}
                         </div>
                       </div>
@@ -1969,7 +1979,7 @@ function ConfigTab() {
                     <Badge className="bg-muted text-muted-foreground text-[10px]">Nenhum</Badge>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Conecta formulários Meta às configs CAPI e às filas de atendimento</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Formulários SEM conta de anúncios — os das contas aparecem no card de cada conta (Seção 1)</p>
               </div>
             </div>
           </AccordionTrigger>
@@ -1987,17 +1997,17 @@ function ConfigTab() {
                 Essa vinculação garante que quando o lead muda de stage, o evento de conversão seja enviado para o <strong>dataset correto</strong> do cliente.
               </p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                <strong>Depende de:</strong> Os formulários são detectados automaticamente quando chegam leads via <strong>Webhook</strong> (Seção 1) ou <strong>Polling</strong> (Seção 2). Você também pode importá-los manualmente com o botão &quot;Importar&quot;.
+                <strong>Depende de:</strong> Os formulários são detectados automaticamente quando chegam leads via <strong>Webhook</strong> (Seção 2) ou <strong>Polling</strong> (Seção 3). Você também pode importá-los manualmente com o botão &quot;Importar&quot;.
               </p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 <strong>É usado por:</strong> <strong>CAPI</strong> (Seção 4) usa essas vinculações para rotear eventos de conversão.
               </p>
             </div>
 
-            {/* Lista de mappings */}
+            {/* Lista de mappings — somente formulários SEM conta (agrupamento por conta: Seção 1) */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold">Formulários Detectados</span>
+                <span className="text-sm font-semibold">Formulários Detectados (sem conta)</span>
                 {formMappings.length > 0 && <Badge variant="secondary" className="text-[10px]">{formMappings.reduce((acc: number, m: any) => acc + (m.totalLeads || m.leadCount || 0), 0)} leads</Badge>}
               </div>
               <div className="flex items-center gap-1.5">
@@ -2012,14 +2022,18 @@ function ConfigTab() {
 
             {loadingMappings ? (
               <div className="flex items-center justify-center py-6"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
-            ) : formMappings.length === 0 ? (
+            ) : formMappings.filter((m: any) => !m.adAccountId).length === 0 ? (
               <div className="text-center py-6 space-y-1.5">
-                <p className="text-xs text-muted-foreground">Nenhum formulário detectado ainda. Os Form IDs aparecem automaticamente quando chegam leads via webhook.</p>
+                <p className="text-xs text-muted-foreground">
+                  {formMappings.length > 0
+                    ? 'Todos os formulários detectados pertencem a contas de anúncios — eles aparecem dentro do card da conta correspondente (Seção 1).'
+                    : 'Nenhum formulário detectado ainda. Os Form IDs aparecem automaticamente quando chegam leads via webhook.'}
+                </p>
                 <p className="text-[11px] text-muted-foreground">Ou use o botão <strong>Importar</strong> para buscar formulários diretamente da conta de anúncios do cliente.</p>
               </div>
             ) : (
               <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                {formMappings.map((mapping: any) => {
+                {formMappings.filter((m: any) => !m.adAccountId).map((mapping: any) => {
                   const campaigns = mapping.campaigns || [];
                   const linkedConfig = mapping.capiConfig;
                   const isMapped = !!mapping.capiConfigId;
@@ -2077,9 +2091,11 @@ function ConfigTab() {
 
             <p className="text-[10px] text-muted-foreground">Form IDs detectados automaticamente via webhook e polling. Vincule cada formulário a um config CAPI (eventos de conversão) e a uma fila de atendimento (distribuição de leads por anúncio).</p>
 
-            {/* FILA POR CAMPANHA (campaignId) — prioridade máxima no roteamento */}
+            {/* FILA POR CAMPANHA (campaignId) — prioridade máxima no roteamento.
+                No grupo global mostramos apenas campanhas SEM conta; as das
+                contas aparecem dentro do card de cada conta (Seção 1). */}
             <div className="pt-2 border-t">
-              <CampaignBindingsSection />
+              <CampaignBindingsSection unassignedOnly />
             </div>
           </AccordionContent>
         </AccordionItem>
@@ -2163,6 +2179,23 @@ function ConfigTab() {
                   </SelectContent>
                 </Select>
                 <p className="text-[10px] text-muted-foreground">Leads dos Form IDs deste config entram nessa fila. O vínculo por formulário (Mapeamento de Formulários) tem prioridade sobre este.</p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Conta de anúncios (opcional)</Label>
+                <Select value={capiForm.adAccountId || '__global__'} onValueChange={(val) => setCapiForm({ ...capiForm, adAccountId: val === '__global__' ? '' : val })}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Global (sem conta)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__global__">Global (sem conta)</SelectItem>
+                    {adAccounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}{!a.enabled ? ' (inativa)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">Vincule a uma conta para que ela apareça agrupada no card dela (Seção 1) e sirva de fallback CAPI para os leads da conta.</p>
               </div>
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-medium cursor-pointer" onClick={() => setCapiForm({ ...capiForm, isDefault: !capiForm.isDefault })}>Configuração padrão (fallback)</Label>
