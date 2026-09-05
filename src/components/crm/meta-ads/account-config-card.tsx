@@ -152,6 +152,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
   const [pagesDraft, setPagesDraft] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [savingWebhook, setSavingWebhook] = useState(false);
+  const [subscribingPageId, setSubscribingPageId] = useState<string | null>(null);
 
   // ── Polling (drafts) ──
   const [formDrafts, setFormDrafts] = useState<string[]>(['']);
@@ -440,6 +441,27 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
     }
   }
 
+  async function subscribePageLeadgen(pageId: string) {
+    setSubscribingPageId(pageId);
+    try {
+      const res = await fetch(`/api/meta-ad-accounts/${account.id}/subscribe-page`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok) {
+        toast.success(data.message || `App inscrito no campo leadgen da página ${pageId}`);
+      } else {
+        toast.error(data?.error || `Falha ao inscrever o app na página ${pageId}`);
+      }
+    } catch {
+      toast.error('Falha de conexão ao inscrever o app na página');
+    } finally {
+      setSubscribingPageId(null);
+    }
+  }
+
   // Dados DESTE account (agrupamento sem mistura)
   const accountBindings = bindings.filter((b) => b.adAccountId === account.id);
   const accountMappings = mappings.filter((m) => m.adAccountId === account.id);
@@ -605,6 +627,29 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                   />
                   <p className="text-[10px] text-muted-foreground">O webhook usa o ID da página (entry) para saber se o lead veio desta conta e usar o token dela.</p>
                 </div>
+
+                {pageCount > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Inscrição do webhook (campo leadgen) por página</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {parseLines(account.pageIds).map((pid) => (
+                        <Button
+                          key={pid}
+                          size="sm"
+                          variant="outline"
+                          className="h-7 font-mono text-[10px]"
+                          disabled={subscribingPageId !== null}
+                          onClick={() => subscribePageLeadgen(pid)}
+                          title="Inscreve o app desta conta no campo leadgen desta página (exige pages_manage_metadata no token)"
+                        >
+                          {subscribingPageId === pid ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Zap className="h-3 w-3 mr-1" />}
+                          {pid}
+                        </Button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Inscreve o app DESTA conta no campo leadgen da página (POST subscribed_apps) — o webhook de leads só dispara com essa inscrição. Exige token com pages_manage_metadata; sem ela, inscreva manualmente em Page Settings → Advanced Messaging → Webhooks.</p>
+                  </div>
+                )}
 
                 <Button onClick={saveWebhook} disabled={savingWebhook || patching} size="sm" className="bg-teal-600 hover:bg-teal-700 text-white">
                   {savingWebhook ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Salvando...</> : <><Save className="h-3.5 w-3.5 mr-1.5" /> Salvar Webhook da conta</>}

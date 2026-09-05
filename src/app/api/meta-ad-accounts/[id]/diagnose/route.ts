@@ -6,6 +6,7 @@ import {
   parseJsonArray,
   mergePageTokens,
   derivePageTokenForPage,
+  needsPagesManageMetadata,
   type AdAccountRef,
 } from '@/lib/meta-ad-accounts';
 
@@ -338,12 +339,24 @@ export async function GET(
 
     const subs = await graphGet(`${pageId}/subscribed_apps?fields=subscribed_fields`, pageToken);
     if (!subs.ok) {
-      checks.push({
-        key: `page_${pageId}`,
-        status: 'warn',
-        details: `Page "${pageName}": não foi possível consultar subscribed_apps — ${subs.error}`,
-        fix: 'Verifique a assinatura manualmente: Page Settings → Advanced Messaging → Webhooks (campo leadgen).',
-      });
+      if (needsPagesManageMetadata(subs.error)) {
+        // Page token em mãos, mas SEM pages_manage_metadata: o CRM não
+        // consegue VERIFICAR nem criar a inscrição leadgen. A assinatura
+        // pode já existir — nesse caso o webhook funciona mesmo assim.
+        checks.push({
+          key: `page_${pageId}`,
+          status: 'warn',
+          details: `Page "${pageName}": página ACESSÍVEL e page token em mãos, mas o token NÃO tem a permissão pages_manage_metadata — por isso o CRM não consegue VERIFICAR nem criar a inscrição leadgen do webhook (ler e escrever subscribed_apps exigem essa permissão). Se a assinatura já existir na página, o webhook funciona mesmo assim.${pageTokenNote}`,
+          fix: 'Opção A (recomendada): regenere o token desta conta concedendo pages_manage_metadata — a identidade do token precisa ter CONTROLE TOTAL da página — salve no card, reexecute o diagnóstico e, se faltar, use o botão do Page ID (aba Webhook) para inscrever. Opção B (manual): Page Settings → Advanced Messaging → Webhooks → inscreva o app no campo leadgen.',
+        });
+      } else {
+        checks.push({
+          key: `page_${pageId}`,
+          status: 'warn',
+          details: `Page "${pageName}": não foi possível consultar subscribed_apps — ${subs.error}`,
+          fix: 'Verifique a assinatura manualmente: Page Settings → Advanced Messaging → Webhooks (campo leadgen).',
+        });
+      }
       continue;
     }
     const ownApp = Array.isArray(subs.data?.data)

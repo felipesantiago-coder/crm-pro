@@ -17,6 +17,7 @@ import {
   mergePageTokens,
   evaluateAccountConnection,
   filterAccountsByChannel,
+  needsPagesManageMetadata,
   type AdAccountRef,
 } from '../../src/lib/meta-ad-accounts.ts';
 
@@ -280,4 +281,21 @@ test('evaluateAccountConnection: canais desligados derrubam o readiness correspo
   assert.equal(evaluation.pollingReady, false);
   assert.equal(evaluation.checks.find((c) => c.key === 'webhookEnabled')?.ok, false);
   assert.equal(evaluation.checks.find((c) => c.key === 'pollingEnabled')?.ok, false);
+});
+
+// ── needsPagesManageMetadata (erro #200 do subscribed_apps) ────
+
+test('needsPagesManageMetadata: erro #200 de pages_manage_metadata → true', () => {
+  assert.equal(
+    needsPagesManageMetadata('(#200) Requires pages_manage_metadata permission to manage the object'),
+    true,
+  );
+});
+
+test('needsPagesManageMetadata: outros erros e ausência de erro → false', () => {
+  assert.equal(needsPagesManageMetadata('Unsupported get request. Object with ID does not exist'), false);
+  assert.equal(needsPagesManageMetadata('(190) Error validating access token'), false);
+  assert.equal(needsPagesManageMetadata(undefined), false);
+  assert.equal(needsPagesManageMetadata(null), false);
+  assert.equal(needsPagesManageMetadata(''), false);
 });

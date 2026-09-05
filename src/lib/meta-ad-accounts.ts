@@ -290,6 +290,83 @@ export async function derivePageTokenForPage(
 }
 
 // ============================================================
+// Inscrição do app na página (webhook leadgen) — por conta
+// ============================================================
+// O webhook de leads só dispara se o app dono do token estiver
+// inscrito no campo "leadgen" da página. Ler (GET subscribed_apps)
+// e escrever (POST subscribed_apps) EXIGEM pages_manage_metadata —
+// é exatamente essa permissão que falta quando a Graph responde
+// "(#200) Requires pages_manage_metadata permission to manage the
+// object" (o page token herda as permissões do user token que o
+// gerou; se ele foi gerado sem essa permissão, o token da página
+// também não a terá).
+
+/**
+ * Detecta o erro (#200) "Requires pages_manage_metadata permission":
+ * o token não pode ler nem criar a inscrição leadgen do webhook da
+ * página (não é falha de rede nem de ID — é permissão do token).
+ */
+export function needsPagesManageMetadata(error?: string | null): boolean {
+  return !!error && error.includes('pages_manage_metadata');
+}
+
+export type SubscribePageLeadgenResult =
+  | { ok: true; subscribedFields: string[]; confirmed: boolean }
+  | { ok: false; error: string; code?: number; missingPermission: boolean };
+
+/**
+ * Inscreve o app na página no campo leadgen via
+ * POST /{page-id}/subscribed_apps?subscribed_fields=leadgen com o
+ * token informado (preferir o PAGE TOKEN — resolvePageToken). Em
+ * sucesso confirma lendo de volta os campos assinados (GET exige a
+ * mesma permissão do POST, então se o POST passou o GET passa).
+ */
+export async function subscribePageLeadgenWebhook(
+  pageToken: string,
+  pageId: string,
+  timeoutMs = 8_000,
+): Promise<SubscribePageLeadgenResult> {
+  const call = async (method: 'GET' | 'POST', url: string): Promise<{ ok: boolean; data: any }> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { method, signal: controller.signal });
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok, data };
+    } catch {
+      return { ok: false, data: null };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  const post = await call(
+    'POST',
+    `${GRAPH_API_BASE}/${pageId}/subscribed_apps?subscribed_fields=leadgen&access_token=${encodeURIComponent(pageToken)}`,
+  );
+  if (!post.ok) {
+    const message: string = post.data?.error?.message || 'HTTP error ao inscrever o app na página';
+    return {
+      ok: false,
+      error: message,
+      code: typeof post.data?.error?.code === 'number' ? post.data.error.code : undefined,
+      missingPermission: needsPagesManageMetadata(message),
+    };
+  }
+
+  // Confirmação: lê de volta a inscrição e lista os campos assinados
+  const get = await call(
+    'GET',
+    `${GRAPH_API_BASE}/${pageId}/subscribed_apps?fields=subscribed_fields&access_token=${encodeURIComponent(pageToken)}`,
+  );
+  const own = Array.isArray(get.data?.data)
+    ? get.data.data.find((s: { subscribed_fields?: unknown }) => Array.isArray(s?.subscribed_fields))
+    : null;
+  const fields: string[] = own?.subscribed_fields || [];
+  return { ok: true, subscribedFields: fields, confirmed: get.ok && fields.includes('leadgen') };
+}
+
+// ============================================================
 // Diagnóstico de conexão POR CONTA (puro — sem rede, sem banco)
 // ============================================================
 
