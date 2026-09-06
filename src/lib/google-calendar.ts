@@ -53,6 +53,42 @@ export function getAuthUrl(state: string): string {
   return `${GOOGLE_AUTH_URL}?${params.toString()}`;
 }
 
+export interface CalendarConsentUrlOptions {
+  clientId: string;
+  redirectUri: string;
+  state: string;
+}
+
+/**
+ * Monta a URL da tela de consentimento do Google Calendar usada pela rota
+ * GET /api/google-calendar/auth.
+ *
+ * Escopos solicitados: calendar.readonly (ler agenda) + calendar.events
+ * (criar/editar eventos). access_type=offline + prompt=consent garantem que
+ * o Google devolve um refresh_token no callback. O `state` (formato
+ * `userId:randomHex`) é percent-encoded pelo URLSearchParams — a validação
+ * anti-CSRF acontece no callback.
+ */
+export function buildCalendarConsentUrl({
+  clientId,
+  redirectUri,
+  state,
+}: CalendarConsentUrlOptions): string {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: [
+      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/calendar.events',
+    ].join(' '),
+    access_type: 'offline',
+    prompt: 'consent', // garante que recebemos refresh_token
+    state,
+  });
+  return `${GOOGLE_AUTH_URL}?${params.toString()}`;
+}
+
 // ─── Token Exchange ───────────────────────────────────────────
 
 interface TokenResponse {
