@@ -7,6 +7,7 @@ import { notifyAssignedMetaLead } from '@/lib/lead-notify/service';
 import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, extractRawAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
+import { buildLeadTemperatureFields } from '@/lib/lead-temperature';
 
 // ============================================================
 // POST /api/webhooks/meta-leads/import-manual
@@ -207,6 +208,11 @@ export async function POST(request: NextRequest) {
       // Todas as respostas com todos os valores e ordem original (cartão)
       const rawAnswers = extractRawAnswers(fieldData);
 
+      // TEMPERATURA DO LEAD (por formulário): pontuação com a config do
+      // próprio formulário — metaFormId/metaFormData sempre gravados;
+      // metaScore/metaTemperature somente com config ativa.
+      const temperatureFields = await buildLeadTemperatureFields(formId || undefined, rawAnswers);
+
       // 3. Verificar duplicata por telefone/email
       const existingByContact = await db.client.findFirst({
         where: {
@@ -326,6 +332,7 @@ export async function POST(request: NextRequest) {
             createdBy: creatorId,
             metaLeadgenId: leadgenId,
             metaCapConfigId: capiConfigId,
+            ...temperatureFields,
             notes: `[Meta Ads] Lead importado manualmente.\nLead ID: ${leadgenId}${formId ? `\nForm ID: ${formId}` : ''}${campaignId ? `\nCampaign ID: ${campaignId}` : ''}${leadData.created_time ? `\nCriado em: ${leadData.created_time}` : ''}${customAnswersText}`,
           },
         });

@@ -9,6 +9,7 @@ import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { resolveQueueForMetaLead, mapWithConcurrency } from '@/lib/meta-lead-routing';
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, extractRawAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
+import { buildLeadTemperatureFields } from '@/lib/lead-temperature';
 import { fetchEnabledAdAccounts, parseJsonArray, upsertCampaignBindingAuto } from '@/lib/meta-ad-accounts';
 
 // maxDuration=10s no Hobby (Vercel impõe). Pro permite até 300s.
@@ -185,6 +186,11 @@ async function importSingleLead(
   const customAnswersText = formatCustomAnswersText(customAnswers);
   // Todas as respostas com todos os valores e ordem original (cartão)
   const rawAnswers = extractRawAnswers(fieldData);
+
+  // TEMPERATURA DO LEAD (por formulário): pontuação com a config do
+  // próprio formulário — metaFormId/metaFormData sempre gravados;
+  // metaScore/metaTemperature somente com config ativa.
+  const temperatureFields = await buildLeadTemperatureFields(formId || undefined, rawAnswers);
   // Horário REAL do cadastro no Meta — exibido no cartão em vez do
   // horário de processamento (§15)
   const submittedAt = lead.created_time ? new Date(lead.created_time) : null;
@@ -209,6 +215,7 @@ async function importSingleLead(
     data: {
       name, email: email || undefined, phone: phone || undefined, region: region || undefined,
       stage: 'LEAD', updatePeriod: 1, createdBy: creatorId, metaLeadgenId: leadgenId, metaCapConfigId: capiConfigId,
+      ...temperatureFields,
       notes: `[Meta Ads] Lead importado por polling automático.\nAnúncio: ${adName}${campaignName ? `\nCampanha: ${campaignName}` : ''}\nFormulário: ${formName}${formId ? ` (ID: ${formId})` : ''}\nLead ID: ${leadgenId}${lead.created_time ? `\nCriado em: ${lead.created_time}` : ''}${capiConfigId ? `\nCAPI Config: ${capiConfigId}` : ''}${customAnswersText}`,
     },
   });

@@ -256,7 +256,6 @@ export function DashboardView() {
   // Classify schedules
   const { pastSchedules, futureSchedules, todaySchedules } = useMemo(() => {
     const now = new Date();
-    const today = todaySchedules;
     const past: ScheduleItem[] = [];
     const future: ScheduleItem[] = [];
     const todayList: ScheduleItem[] = [];

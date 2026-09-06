@@ -36,6 +36,19 @@ model Client {
   utmTerm           String?   @map("utmTerm")
   metaLeadgenId     String?   @unique @map("metaLeadgenId")
   metaCapConfigId   String?   @map("metaCapConfigId")
+  /** Form ID do Meta de origem deste lead (webhook/importação). Preenchido
+   *  SEMPRE que o lead chega de um formulário Meta — mesmo sem pontuação
+   *  configurada — permitindo configurar a temperatura depois e reclassificar. */
+  metaFormId        String?   @map("metaFormId")
+  /** JSON: RawLeadAnswer[] — todas as perguntas/respostas customizadas do
+   *  formulário (mesma estrutura de extractRawAnswers), matéria-prima da
+   *  pontuação e da reclassificação retroativa. */
+  metaFormData      String?   @map("metaFormData")
+  /** Soma das notas das respostas (config por formulário). null = sem config
+   *  ativa no momento da captura ou lead sem respostas pontuáveis. */
+  metaScore         Int?      @map("metaScore")
+  /** FRIO | MORNO | QUENTE — classificação pelo limiar do formulário de origem. */
+  metaTemperature   String?   @map("metaTemperature")
 
   tags         ClientTag[]
   reminders    Reminder[]
@@ -56,6 +69,9 @@ model Client {
   @@index([phone])
   @@index([email])
   @@index([metaCapConfigId])
+  @@index([metaFormId])
+  @@index([metaTemperature])
+  @@index([metaScore])
   @@map("clients")
 }
 
@@ -640,6 +656,55 @@ model LeadFormMapping {
   @@index([adAccountId])
   @@index([enterpriseId])
   @@map("lead_form_mappings")
+}
+
+// ============================================================
+// LEAD FORM SCORING — Temperatura do lead POR FORMULÁRIO
+// Configuração exclusiva do ADMINISTRADOR, específica por
+// formulário Meta (formId) — nunca genérica. O admin atribui
+// um valor inteiro a cada resposta de cada pergunta do
+// formulário; ao chegar um lead, o sistema SOMA as notas das
+// respostas e classifica pelo limiar do próprio formulário:
+//   score >= hotMin  → QUENTE
+//   score >= warmMin → MORNO
+//   score <  warmMin → FRIO
+// Estruturas (JSON em String — padrão do schema):
+//   config = JSON { questions: Array<{
+//     key: string            — nome do campo no field_data do Meta
+//     label?: string         — rótulo legível (igual ao key por padrão)
+//     questionScore?: number — nota aplicada a QUALQUER resposta
+//                              (perguntas dissertativas)
+//     answers: Array<{ text: string, score: number }>
+//   }> }
+// Respostas não configuradas pontuam 0 — o painel mostra as
+// novas respostas observadas nos leads para o admin pontuar.
+// Reclassificação retroativa: recomputar metaScore/metaTemperature
+// dos clients com metaFormId = formId a partir de metaFormData.
+// Rollback: DROP TABLE "lead_form_scorings";
+// ============================================================
+model LeadFormScoring {
+  id        String   @id @default(cuid()) @map("id")
+  /** Meta leadgen form ID — UMA config por formulário. */
+  formId    String   @unique @map("formId")
+  /** Nome do formulário no Meta (espelho de LeadFormMapping). */
+  formName  String?  @map("formName")
+  /** Pontuação ativa: leads novos deste formulário são pontuados
+   *  na entrada. false = config guardada mas sem efeito. */
+  enabled   Boolean  @default(false) @map("enabled")
+  /** Limiares de classificação (específicos deste formulário):
+   *  score >= hotMin → QUENTE; score >= warmMin → MORNO; senão FRIO. */
+  warmMin   Int      @default(5) @map("warmMin")
+  hotMin    Int      @default(10) @map("hotMin")
+  /** JSON com as perguntas e as notas inteiras por resposta — ver bloco acima. */
+  config    String?  @map("config")
+  /** Última reclassificação retroativa concluída (auditoria do painel). */
+  reclassifiedAt DateTime? @map("reclassifiedAt")
+  createdBy String?  @map("createdBy")  // userId do admin que configurou
+  createdAt DateTime @default(now()) @map("createdAt")
+  updatedAt DateTime @updatedAt @map("updatedAt")
+
+  @@index([enabled])
+  @@map("lead_form_scorings")
 }
 
 // ============================================================

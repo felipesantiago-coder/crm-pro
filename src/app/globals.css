@@ -398,3 +398,19 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Scrollbar compacta da aba Temperatura (Anúncios Meta) */
+.therm-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.therm-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.therm-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 9999px;
+}
+.therm-scroll::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}

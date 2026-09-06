@@ -140,6 +140,8 @@ export async function GET(request: Request) {
     const stageFilter = searchParams.get('stage') || '';
     const period = searchParams.get('period') || '30';
     const source = (searchParams.get('source') || 'all') as LeadSource;
+    // Filtro de temperatura: QUENTE | MORNO | FRIO | NONE (sem classificação)
+    const temperatureFilter = (searchParams.get('temperature') || '').toUpperCase();
 
     const daysAgo = parseInt(period, 10) || 30;
     const since = new Date();
@@ -224,6 +226,13 @@ export async function GET(request: Request) {
     if (stageFilter && stageFilter !== 'all') {
       conditions.push({ stage: stageFilter });
     }
+    if (['QUENTE', 'MORNO', 'FRIO', 'NONE'].includes(temperatureFilter)) {
+      conditions.push(
+        temperatureFilter === 'NONE'
+          ? { metaTemperature: null }
+          : { metaTemperature: temperatureFilter },
+      );
+    }
     const whereClause: Prisma.ClientWhereInput = conditions.length > 1 ? { AND: conditions } : baseFilter;
 
     const [clients, totalFiltered] = await Promise.all([
@@ -233,9 +242,12 @@ export async function GET(request: Request) {
           id: true, name: true, phone: true, email: true, region: true,
           stage: true, notes: true, createdAt: true, lastInteractionAt: true,
           enterprise: true, utmSource: true, utmCampaign: true,
+          metaScore: true, metaTemperature: true,
           _count: { select: { interactions: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: temperatureFilter === 'QUENTE' || temperatureFilter === 'MORNO' || temperatureFilter === 'FRIO'
+          ? [{ metaScore: 'desc' as const }, { createdAt: 'desc' as const }]
+          : { createdAt: 'desc' as const },
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -278,6 +290,23 @@ export async function GET(request: Request) {
         slug,
       };
     });
+
+    // 4b. Contagem de temperatura para as pílulas de filtro (fonte meta/all)
+    // Temperatura só existe para leads Meta — mesmo no "all", conta apenas
+    // os leads de anúncio no período.
+    let temperatureCounts: Record<string, number> | null = null;
+    if (source === 'meta_webhook' || source === 'all') {
+      const tempGroups = await db.client.groupBy({
+        by: ['metaTemperature'],
+        where: { AND: [META_WEBHOOK_FILTER, { createdAt: { gte: since } }] },
+        _count: true,
+      });
+      temperatureCounts = { QUENTE: 0, MORNO: 0, FRIO: 0, NONE: 0 };
+      for (const g of tempGroups) {
+        const key = (g.metaTemperature || 'NONE') as string;
+        temperatureCounts[key] = (temperatureCounts[key] || 0) + g._count;
+      }
+    }
 
     // 5. Top campaigns
     const allFilteredClients = await db.client.findMany({
@@ -341,6 +370,7 @@ export async function GET(request: Request) {
       },
       topCampaigns,
       topRegions,
+      temperatureCounts,
       sourceCounts: {
         meta_webhook: metaCount,
         landing_form: landingCount,

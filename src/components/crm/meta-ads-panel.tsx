@@ -8,7 +8,7 @@ import {
   ChevronDown, ChevronUp, Phone, Mail, MapPin, Calendar,
   AlertTriangle, Download, ChevronLeft, ChevronRight,
   UserPlus, Activity, PieChart, Crosshair, Globe, UsersRound,
-  HeartHandshake, Building2, Clock, Plus, X, Info,
+  HeartHandshake, Building2, Clock, Plus, X, Info, Thermometer,
 } from 'lucide-react';
 import {
   Accordion,
@@ -40,6 +40,8 @@ import { QueuesTab } from './queues-tab';
 import { AdAccountsGroup } from './meta-ads/ad-accounts-group';
 import { CampaignBindingsSection } from './meta-ads/campaign-bindings-section';
 import { LostLeadsTab } from './lost-leads-view';
+import { TemperatureTab, TemperatureBadge, TEMPERATURE_BADGE } from './meta-ads/temperature-tab';
+import type { Temperature } from './meta-ads/temperature-tab';
 import { ptBR } from 'date-fns/locale';
 
 // ============================================================
@@ -71,6 +73,9 @@ interface LeadItem {
   leadSource: 'meta_webhook' | 'landing_form' | 'whatsapp_click';
   slug: string | null;
   whatsappSource: string | null;
+  /** Temperatura do lead (por formulário Meta) — null = sem classificação */
+  metaTemperature: 'QUENTE' | 'MORNO' | 'FRIO' | null;
+  metaScore: number | null;
   _count: { interactions: number };
 }
 
@@ -516,6 +521,8 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
   const [period, setPeriod] = useState('30');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [sourceCounts, setSourceCounts] = useState<SourceCounts | null>(null);
+  const [temperatureFilter, setTemperatureFilter] = useState('all');
+  const [temperatureCounts, setTemperatureCounts] = useState<Record<string, number> | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchLeads = useCallback(async (p = 1) => {
@@ -529,6 +536,7 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
       if (search) params.set('search', search);
       if (stageFilter && stageFilter !== 'all') params.set('stage', stageFilter);
       if (sourceFilter && sourceFilter !== 'all') params.set('source', sourceFilter);
+      if (temperatureFilter && temperatureFilter !== 'all') params.set('temperature', temperatureFilter);
 
       const res = await fetch(`/api/meta-ads/leads?${params}`);
       if (res.ok) {
@@ -536,6 +544,8 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
         setLeads(data.leads);
         setPagination(data.pagination);
         if (data.sourceCounts) setSourceCounts(data.sourceCounts);
+        if (data.temperatureCounts) setTemperatureCounts(data.temperatureCounts);
+        else setTemperatureCounts(null);
       } else {
         toast.error('Erro ao buscar leads');
       }
@@ -544,7 +554,7 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
     } finally {
       setLoading(false);
     }
-  }, [search, stageFilter, period, sourceFilter]);
+  }, [search, stageFilter, period, sourceFilter, temperatureFilter]);
 
   useEffect(() => {
     onLeadsNeeded();
@@ -626,6 +636,28 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
             </SelectContent>
           </Select>
         )}
+        {sourceFilter !== 'whatsapp_click' && temperatureCounts && (
+          <Select value={temperatureFilter} onValueChange={(v) => setTemperatureFilter(v)}>
+            <SelectTrigger className="w-full sm:w-[170px] h-9 text-sm">
+              <SelectValue placeholder="Temperatura" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toda temperatura</SelectItem>
+              <SelectItem value="QUENTE">
+                Quente ({temperatureCounts.QUENTE ?? 0})
+              </SelectItem>
+              <SelectItem value="MORNO">
+                Morno ({temperatureCounts.MORNO ?? 0})
+              </SelectItem>
+              <SelectItem value="FRIO">
+                Frio ({temperatureCounts.FRIO ?? 0})
+              </SelectItem>
+              <SelectItem value="NONE">
+                Sem classificação ({temperatureCounts.NONE ?? 0})
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         <Select value={period} onValueChange={(v) => setPeriod(v)}>
           <SelectTrigger className="w-full sm:w-[140px] h-9 text-sm">
             <SelectValue />
@@ -703,6 +735,7 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
                         <span className="text-sm font-semibold truncate">{displayName}</span>
                         <SourceBadge source={lead.leadSource} />
                         {lead.stage && <StageBadge stage={lead.stage} />}
+                        <TemperatureBadge temperature={lead.metaTemperature} score={lead.metaScore} />
                         {isWhatsApp && lead.whatsappSource && (
                           <Badge variant="outline" className="text-[10px] h-5 px-1.5">
                             {WHATSAPP_SOURCE_LABELS[lead.whatsappSource] || lead.whatsappSource}
@@ -756,6 +789,15 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
                               <div>
                                 <span className="text-muted-foreground">Formulário: </span>
                                 <span className="font-medium">{lead.formName}</span>
+                              </div>
+                            )}
+                            {lead.metaTemperature && (
+                              <div>
+                                <span className="text-muted-foreground">Temperatura: </span>
+                                <span className="font-medium">
+                                  {TEMPERATURE_BADGE[lead.metaTemperature as Temperature]?.label || lead.metaTemperature}
+                                  {typeof lead.metaScore === 'number' ? ` (nota ${lead.metaScore})` : ''}
+                                </span>
                               </div>
                             )}
                             {lead.leadId && (
@@ -1887,13 +1929,14 @@ export function MetaAdsPanel() {
               <SelectItem value="tracking"><span className="flex items-center gap-2"><Crosshair className="h-4 w-4" />Tracking</span></SelectItem>
               <SelectItem value="landing"><span className="flex items-center gap-2"><Globe className="h-4 w-4" />Landing Pages</span></SelectItem>
               <SelectItem value="queues"><span className="flex items-center gap-2"><UsersRound className="h-4 w-4" />Filas</span></SelectItem>
+              <SelectItem value="temperature"><span className="flex items-center gap-2"><Thermometer className="h-4 w-4" />Temperatura</span></SelectItem>
               <SelectItem value="lost-leads"><span className="flex items-center gap-2"><HeartHandshake className="h-4 w-4" />Leads Perdidos</span></SelectItem>
               <SelectItem value="config"><span className="flex items-center gap-2"><Zap className="h-4 w-4" />Config</span></SelectItem>
             </SelectContent>
           </Select>
         </div>
         {/* Desktop tabs */}
-        <TabsList className="hidden lg:grid lg:grid-cols-7 lg:max-w-4xl w-full gap-1 p-0.5">
+        <TabsList className="hidden lg:grid lg:grid-cols-8 lg:max-w-5xl w-full gap-1 p-0.5">
           <TabsTrigger value="overview" className="text-sm gap-1.5 whitespace-nowrap">
             <BarChart3 className="h-3.5 w-3.5" />
             Visão Geral
@@ -1913,6 +1956,10 @@ export function MetaAdsPanel() {
           <TabsTrigger value="queues" className="text-sm gap-1.5 whitespace-nowrap">
             <UsersRound className="h-3.5 w-3.5" />
             Filas
+          </TabsTrigger>
+          <TabsTrigger value="temperature" className="text-sm gap-1.5 whitespace-nowrap">
+            <Thermometer className="h-3.5 w-3.5" />
+            Temperatura
           </TabsTrigger>
           <TabsTrigger value="lost-leads" className="text-sm gap-1.5 whitespace-nowrap">
             <HeartHandshake className="h-3.5 w-3.5" />
@@ -1948,6 +1995,10 @@ export function MetaAdsPanel() {
 
         <TabsContent value="queues">
           <QueuesTab />
+        </TabsContent>
+
+        <TabsContent value="temperature">
+          <TemperatureTab />
         </TabsContent>
 
         <TabsContent value="lost-leads">

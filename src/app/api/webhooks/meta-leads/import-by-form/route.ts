@@ -6,6 +6,7 @@ import { notifyAssignedMetaLead } from '@/lib/lead-notify/service';
 import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, extractRawAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
+import { buildLeadTemperatureFields } from '@/lib/lead-temperature';
 import { fetchEnabledAdAccounts } from '@/lib/meta-ad-accounts';
 
 // ============================================================
@@ -143,6 +144,11 @@ async function processLead(
   // Todas as respostas com todos os valores e ordem original (cartão)
   const rawAnswers = extractRawAnswers(fieldData);
 
+  // TEMPERATURA DO LEAD (por formulário): pontuação com a config do
+  // próprio formulário — metaFormId/metaFormData sempre gravados;
+  // metaScore/metaTemperature somente com config ativa.
+  const temperatureFields = await buildLeadTemperatureFields(formId || undefined, rawAnswers);
+
   // 1. Verificar duplicata por metaLeadgenId
   try {
     const existing = await db.client.findUnique({
@@ -268,6 +274,7 @@ async function processLead(
         createdBy: creatorId,
         metaLeadgenId: leadgenId,
         metaCapConfigId: capiConfigId,
+        ...temperatureFields,
         notes: `[Meta Ads] Lead importado por formulário e período.\nLead ID: ${leadgenId}${formId ? `\nForm ID: ${formId}` : ''}${campaignId ? `\nCampaign ID: ${campaignId}` : ''}${lead.created_time ? `\nCriado em: ${lead.created_time}` : ''}${customAnswersText}`,
       },
     });

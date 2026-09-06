@@ -8,6 +8,7 @@ import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { resolveQueueForMetaLead, mapWithConcurrency } from '@/lib/meta-lead-routing';
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, extractRawAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
+import { buildLeadTemperatureFields } from '@/lib/lead-temperature';
 import {
   fetchEnabledAdAccounts,
   resolveAccountByPageId,
@@ -576,6 +577,13 @@ export async function POST(request: NextRequest) {
       // matéria-prima do cartão de notificação
       const rawAnswers = extractRawAnswers(fieldData);
 
+      // TEMPERATURA DO LEAD (por formulário): soma as notas das respostas
+      // com a config DO PRÓPRIO formulário (Anúncios Meta > Temperatura) e
+      // classifica frio/morno/quente pelo limiar dele. Grava metaFormId/
+      // metaFormData SEMPRE (permite configurar depois + reclassificar);
+      // metaScore/metaTemperature somente com config ativa.
+      const temperatureFields = await buildLeadTemperatureFields(formId || undefined, rawAnswers);
+
       // Resolução do empreendimento pela precedência de vínculos EXPLÍCITOS
       // (anúncio > form+campanha > campanha > formulário > cliente) — nunca
       // por similaridade de nome. Lazy: uma resolução por lead, compartilhada
@@ -741,6 +749,7 @@ export async function POST(request: NextRequest) {
             createdBy: creatorId,
             metaLeadgenId: leadgenId,
             metaCapConfigId: capiConfigId,
+            ...temperatureFields,
             notes: `[Meta Ads] Lead recebido automaticamente.\nAnúncio: ${adName}${campaignName ? `\nCampanha: ${campaignName}` : ''}\nFormulário: ${formName}${formId ? ` (ID: ${formId})` : ''}\nLead ID: ${leadgenId}${capiConfigId ? `\nCAPI Config: ${capiConfigId}` : ''}${customAnswersText}`,
           },
         });
