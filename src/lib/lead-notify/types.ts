@@ -72,6 +72,13 @@ export interface TelegramLeadNotificationInput {
   source: MetaLeadSourceContext;
   /** Perguntas e respostas do formulário — ordem original preservada. */
   rawAnswers: RawLeadAnswer[];
+  /**
+   * Temperatura do lead (classificação por formulário Meta). Opcional:
+   * quando ausente, o serviço resolve via clientId (metaScore/metaTemperature
+   * do Client) — a exibição no cartão nunca quebra a notificação.
+   */
+  leadScore?: number | null;
+  leadTemperature?: LeadTemperatureValue | string | null;
 }
 
 // ── Resolução de empreendimento ────────────────────────────────
@@ -129,6 +136,18 @@ export interface LeadSourceSummary {
   form?: string;
 }
 
+/** Classificações produzidas pelo sistema de temperatura de leads. */
+export type LeadTemperatureValue = 'QUENTE' | 'MORNO' | 'FRIO';
+
+/** Bloco de temperatura do cartão — já pronto para exibição. */
+export interface LeadPresentationTemperature {
+  classification: LeadTemperatureValue;
+  label: string;
+  emoji: string;
+  /** Pontuação do lead (soma das notas do formulário), quando conhecida. */
+  score?: number;
+}
+
 export interface TelegramLeadPresentation {
   title: string;
   /** Abertura personalizada com o atendente — já finalizada. */
@@ -137,6 +156,8 @@ export interface TelegramLeadPresentation {
   contact: LeadPresentationContact;
   enterprise: LeadPresentationEnterprise | null;
   answers: HumanizedAnswer[];
+  /** Temperatura do lead — ausente quando o formulário não tem config ativa. */
+  temperature?: LeadPresentationTemperature | null;
   sourceSummary: LeadSourceSummary;
   submittedAt?: Date;
   receivedAt: Date;

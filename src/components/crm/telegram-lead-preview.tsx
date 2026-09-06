@@ -28,6 +28,10 @@ export function TelegramLeadPreview() {
           atendimento está com você.
         </p>
 
+        <p>
+          🌡️ <b>Temperatura:</b> 🔥 Quente · 12 pts
+        </p>
+
         <div className="space-y-0.5">
           <p>👤 <b>Contato</b></p>
           <p><b>Mariana Alves</b></p>

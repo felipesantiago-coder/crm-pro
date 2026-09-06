@@ -3,13 +3,15 @@
  * entrada e do empreendimento resolvido. Função PURA — sem rede, sem DB.
  *
  * Ordem visual reflete a tarefa do atendente (§11):
- *   evento/atribuição → empreendimento → pessoa → respostas → origem → tempo → ações.
+ *   evento/atribuição → empreendimento → temperatura → pessoa → respostas → origem → tempo → ações.
  */
 
 import {
   type HumanizedAnswer,
   type LeadPresentationContact,
+  type LeadPresentationTemperature,
   type LeadSourceSummary,
+  type LeadTemperatureValue,
   type RawLeadAnswer,
   type ResolvedEnterprise,
   type TelegramLeadEventKind,
@@ -49,6 +51,13 @@ const CHANNEL_LABELS: Record<string, string> = {
   landing: 'Landing page',
   recovery: 'Recuperação de lead',
   test: 'Prévia',
+};
+
+/** Exibição da temperatura no cartão (alinhada aos badges do painel). */
+const TEMPERATURE_DISPLAY: Record<LeadTemperatureValue, { label: string; emoji: string }> = {
+  QUENTE: { label: 'Quente', emoji: '🔥' },
+  MORNO: { label: 'Morno', emoji: '🌤️' },
+  FRIO: { label: 'Frio', emoji: '❄️' },
 };
 
 function buildIntro(
@@ -132,6 +141,24 @@ function buildSourceSummary(input: TelegramLeadNotificationInput): LeadSourceSum
 }
 
 /**
+ * Temperatura exibível do lead — null quando o formulário não tem
+ * config ativa (sem classificação, o cartão não mostra a seção).
+ * Nunca lança: entrada inesperada é tratada como ausência.
+ */
+function buildTemperature(input: TelegramLeadNotificationInput): LeadPresentationTemperature | null {
+  const raw = String(input.leadTemperature || '').toUpperCase() as LeadTemperatureValue;
+  const display = TEMPERATURE_DISPLAY[raw];
+  if (!display) return null;
+
+  const score =
+    typeof input.leadScore === 'number' && Number.isFinite(input.leadScore)
+      ? Math.trunc(input.leadScore)
+      : undefined;
+
+  return { classification: raw, label: display.label, emoji: display.emoji, ...(score !== undefined ? { score } : {}) };
+}
+
+/**
  * Monta a apresentação completa. `resolved` pode ser null (sem vínculo) —
  * nesse caso a mensagem usa texto neutro, sem inventar empreendimento.
  */
@@ -186,6 +213,7 @@ export function buildLeadPresentation(
     contact,
     enterprise,
     answers,
+    temperature: buildTemperature(input),
     sourceSummary: buildSourceSummary(input),
     submittedAt: input.source.submittedAt || undefined,
     receivedAt: input.source.receivedAt,

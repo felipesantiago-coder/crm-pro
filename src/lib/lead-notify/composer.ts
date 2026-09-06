@@ -57,6 +57,18 @@ function renderHeader(p: TelegramLeadPresentation, withEnterpriseLine: boolean):
   return `${title}${enterpriseLine}\n${escapeHtml(p.intro)}`;
 }
 
+function renderTemperature(p: TelegramLeadPresentation): string | null {
+  if (!p.temperature) return null;
+  const { score } = p.temperature;
+  const scoreText =
+    typeof score === 'number'
+      ? score === 1
+        ? ' · 1 pt'
+        : ` · ${score} pts`
+      : '';
+  return `🌡️ <b>Temperatura:</b> ${p.temperature.emoji} ${escapeHtml(p.temperature.label)}${scoreText}`;
+}
+
 function renderContact(p: TelegramLeadPresentation): string {
   const lines: string[] = ['👤 <b>Contato</b>'];
 
@@ -173,6 +185,7 @@ export function composeLeadMessageParts(
   const keyboard = buildActionKeyboard(p);
 
   const contactSection = renderContact(p);
+  const temperatureSection = renderTemperature(p);
   const answersSection = renderAnswers(p);
   const sourceSection = renderSource(p);
   const timeSection = renderTime(p);
@@ -183,6 +196,7 @@ export function composeLeadMessageParts(
   if (image) {
     const fullCaption = [
       renderHeader(p, true),
+      temperatureSection,
       contactSection,
       answersSection,
       sourceSection,
@@ -207,7 +221,7 @@ export function composeLeadMessageParts(
     const shortCaption = renderHeader(p, true);
     const bodyChunks = withContinuationMarkers(
       packSections(
-        [contactSection, answersSection, sourceSection, timeSection].filter(
+        [temperatureSection, contactSection, answersSection, sourceSection, timeSection].filter(
           (s): s is string => !!s,
         ),
       ),
@@ -239,6 +253,7 @@ export function composeLeadMessageParts(
   // ── Sem imagem: texto único ou conjunto numerado ──
   const sections = [
     renderHeader(p, !!p.enterprise),
+    temperatureSection,
     contactSection,
     answersSection,
     sourceSection,

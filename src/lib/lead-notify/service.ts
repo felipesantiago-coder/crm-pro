@@ -21,6 +21,59 @@ import { deliverParts, isTelegramReady, sendTextMessage, skippedDelivery } from 
 import { acquireDeliverySlot, finalizeDelivery } from './idempotency';
 import { resolveLeadEnterprise } from './resolver';
 import { escapeHtml } from './composer';
+import { db } from '@/lib/db';
+
+// ── Temperatura do lead (exibida no cartão) ───────────────
+
+const VALID_TEMPERATURES = new Set(['QUENTE', 'MORNO', 'FRIO']);
+
+interface ResolvedLeadTemperature {
+  score: number | null;
+  temperature: string | null;
+}
+
+/**
+ * Temperatura a exibir no cartão. Prioridade: valor informado pelo
+ * chamador → metaScore/metaTemperature do Client (via clientId).
+ * QUALQUER falha de leitura é silenciosa — a notificação nunca
+ * depende da temperatura (§6.15).
+ */
+async function resolveLeadTemperature(
+  input: TelegramLeadNotificationInput,
+): Promise<ResolvedLeadTemperature> {
+  const provided = String(input.leadTemperature || '').toUpperCase();
+  if (VALID_TEMPERATURES.has(provided)) {
+    return {
+      score:
+        typeof input.leadScore === 'number' && Number.isFinite(input.leadScore)
+          ? Math.trunc(input.leadScore)
+          : null,
+      temperature: provided,
+    };
+  }
+
+  if (!input.clientId) return { score: null, temperature: null };
+
+  try {
+    const client = await db.client.findUnique({
+      where: { id: input.clientId },
+      select: { metaScore: true, metaTemperature: true },
+    });
+    const temperature = client?.metaTemperature
+      ? String(client.metaTemperature).toUpperCase()
+      : null;
+    if (temperature && VALID_TEMPERATURES.has(temperature)) {
+      return {
+        score: typeof client?.metaScore === 'number' ? client.metaScore : null,
+        temperature,
+      };
+    }
+  } catch {
+    // sem temperatura no cartão — segue a notificação normalmente
+  }
+
+  return { score: null, temperature: null };
+}
 
 // ── Serviço principal ──────────────────────────────────────────
 
@@ -66,7 +119,17 @@ export async function notifyAssignedMetaLead(
         clientId: input.clientId,
       }));
 
-    const presentation = buildLeadPresentation(input, resolved);
+    // Temperatura do lead (config por formulário) — falha nunca bloqueia o cartão
+    const leadTemperature = await resolveLeadTemperature(input);
+
+    const presentation = buildLeadPresentation(
+      {
+        ...input,
+        leadScore: leadTemperature.score,
+        leadTemperature: leadTemperature.temperature,
+      },
+      resolved,
+    );
     const parts = composeLeadMessageParts(presentation);
     const result = await deliverParts(input.recipientChatId, parts);
 
@@ -118,6 +181,9 @@ export function buildTestNotificationInput(
     leadPhoneE164: '+5561999990000',
     leadEmail: 'mariana.exemplo@email.com',
     leadRegion: 'Águas Claras',
+    // Prévia ilustrativa da classificação por formulário (dados fictícios)
+    leadScore: 12,
+    leadTemperature: 'QUENTE',
     resolvedEnterprise: {
       name: FICTIONAL_TEST_ENTERPRISE,
       imageAlt: FICTIONAL_TEST_ENTERPRISE,
