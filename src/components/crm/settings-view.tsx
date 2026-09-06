@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
 import { useAssistantContextStore, initProactivityPreference } from '@/components/ai-assistant/assistant-context-store';
 import { getAssistantMessages } from '@/components/ai-assistant/assistant-messages';
+import { TelegramLeadPreview } from '@/components/crm/telegram-lead-preview';
 
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
@@ -49,9 +50,17 @@ export function SettingsView() {
   const [notifLoading, setNotifLoading] = useState(true);
   const [tgConfigured, setTgConfigured] = useState(false);
   const [tgConnected, setTgConnected] = useState(false);
-  const [tgChatId, setTgChatId] = useState('');
+  const [tgMaskedChatId, setTgMaskedChatId] = useState('');
   const [tgTesting, setTgTesting] = useState(false);
   const [tgSaving, setTgSaving] = useState(false);
+  // Vinculação segura (§18.1): convite com token de uso único e TTL curto
+  const [tgLinking, setTgLinking] = useState(false);
+  const [tgDeepLink, setTgDeepLink] = useState<string | null>(null);
+  const [tgTokenExpiresAt, setTgTokenExpiresAt] = useState<string | null>(null);
+  const [tgPreviewOpen, setTgPreviewOpen] = useState(false);
+  // Fallback legado (convite indisponível): Chat ID digitado manualmente
+  const [tgLegacyFallback, setTgLegacyFallback] = useState(false);
+  const [tgChatId, setTgChatId] = useState('');
 
   useEffect(() => {
     // Verificar status da conexão Google Calendar
@@ -67,7 +76,7 @@ export function SettingsView() {
       .then((tgData) => {
         setTgConfigured(tgData.botConfigured === true);
         setTgConnected(tgData.configured === true);
-        setTgChatId(tgData.telegramChatId || '');
+        setTgMaskedChatId(tgData.maskedChatId || '');
       })
       .catch(() => {})
       .finally(() => setNotifLoading(false));
@@ -161,7 +170,53 @@ export function SettingsView() {
     }
   }
 
-  async function saveTelegramChatId() {
+  /**
+   * Vinculação SEGURA (§18.1): gera convite com token de uso único
+   * (TTL 15 min, só o hash é persistido) e abre o deep link do bot.
+   * A posse do chat é provada no bot — não por digitar um Chat ID.
+   */
+  async function linkTelegram() {
+    setTgLinking(true);
+    try {
+      const res = await fetch('/api/telegram/link-token', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setTgDeepLink(data.deepLink);
+        setTgTokenExpiresAt(data.expiresAt);
+        window.open(data.deepLink, '_blank', 'noopener');
+      } else if (res.status === 503) {
+        // Bot sem username resolvível — cai no fluxo legado de Chat ID
+        setTgLegacyFallback(true);
+        toast.info('Convite indisponível agora — vincule pelo Chat ID');
+      } else {
+        toast.error(data.error || 'Erro ao gerar convite');
+      }
+    } catch {
+      toast.error('Erro ao gerar convite de vinculação');
+    } finally {
+      setTgLinking(false);
+    }
+  }
+
+  async function refreshTelegramStatus() {
+    try {
+      const res = await fetch('/api/settings/telegram');
+      const data = await res.json();
+      if (data.configured === true) {
+        setTgConnected(true);
+        setTgMaskedChatId(data.maskedChatId || '');
+        setTgDeepLink(null);
+        toast.success('Telegram vinculado com sucesso!');
+      } else {
+        toast.info('Ainda não confirmado — abra o convite e envie a mensagem ao bot.');
+      }
+    } catch {
+      toast.error('Erro ao verificar vínculo');
+    }
+  }
+
+  /** Fallback legado (só quando o convite seguro não puder ser gerado). */
+  async function saveTelegramChatIdLegacy() {
     if (!tgChatId.trim()) {
       toast.error('Insira o Chat ID');
       return;
@@ -176,6 +231,7 @@ export function SettingsView() {
       const data = await res.json();
       if (res.ok) {
         setTgConnected(true);
+        setTgMaskedChatId(`••••${tgChatId.trim().slice(-3)}`);
         toast.success('Telegram vinculado com sucesso!');
       } else {
         toast.error(data.error || 'Erro ao vincular Telegram');
@@ -197,7 +253,7 @@ export function SettingsView() {
       });
       if (res.ok) {
         setTgConnected(false);
-        setTgChatId('');
+        setTgMaskedChatId('');
         toast.success('Notificações desativadas');
       }
     } catch {
@@ -480,17 +536,17 @@ export function SettingsView() {
               </div>
             ) : tgConnected ? (
               <div className="space-y-5">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
                       <Check className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     </div>
                     <div>
                       <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Telegram conectado</p>
-                      <p className="text-[10px] text-muted-foreground">Chat ID: <code className="font-mono">{tgChatId}</code></p>
+                      <p className="text-[10px] text-muted-foreground">Chat <code className="font-mono">{tgMaskedChatId || '•••••'}</code> — você receberá apenas leads atribuídos a você</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Button
                       variant="outline"
                       size="sm"
@@ -498,7 +554,14 @@ export function SettingsView() {
                       disabled={tgTesting}
                       className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800/50 dark:hover:bg-blue-950/30"
                     >
-                      {tgTesting ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Enviando...</> : <><Send className="h-4 w-4 mr-1.5" /> Testar</>}
+                      {tgTesting ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Enviando...</> : <><Send className="h-4 w-4 mr-1.5" /> Enviar teste</>}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTgPreviewOpen((v) => !v)}
+                    >
+                      {tgPreviewOpen ? 'Ocultar exemplo' : 'Visualizar exemplo'}
                     </Button>
                     <Button
                       variant="outline"
@@ -507,93 +570,148 @@ export function SettingsView() {
                       disabled={tgSaving}
                       className="text-destructive hover:text-destructive"
                     >
-                      {tgSaving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Desativando...</> : <><Unlink className="h-4 w-4 mr-1.5" /> Desativar</>}
+                      {tgSaving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Desvinculando...</> : <><Unlink className="h-4 w-4 mr-1.5" /> Desvincular</>}
                     </Button>
                   </div>
                 </div>
-                <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/20">
-                  <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-3">O que voce recebera</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {['Nome e telefone do lead', 'E-mail do lead', 'Nome do empreendimento', 'Campanha Meta Ads', 'Respostas do formulario'].map((item) => (
-                      <div key={item} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <CheckCircle2 className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                        <span>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                {tgPreviewOpen && <TelegramLeadPreview />}
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="tg-chat-id" className="text-sm font-medium">Seu Chat ID</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="tg-chat-id"
-                      placeholder="Ex: 123456789"
-                      value={tgChatId}
-                      onChange={(e) => setTgChatId(e.target.value)}
-                      className="font-mono text-sm"
-                    />
-                    <Button
-                      onClick={saveTelegramChatId}
-                      disabled={tgSaving || !tgChatId.trim()}
-                      className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
-                    >
-                      {tgSaving ? <><Loader2 className="h-4 w-4 animate-spin" /></> : <><Link2 className="h-4 w-4 mr-1.5" /> Vincular</>}
-                    </Button>
-                  </div>
-                </div>
-                <Separator />
-                <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
-                  <p className="text-sm font-semibold mb-4 flex items-center gap-2">
-                    <Smartphone className="h-4 w-4 text-blue-500" />
-                    Passo a passo para configurar
-                  </p>
+                {tgLegacyFallback ? (
                   <div className="space-y-4">
-                    <div className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">1</div>
-                        <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
-                      </div>
-                      <div className="pb-4">
-                        <p className="text-sm font-medium">Abra o Telegram e busque por <strong>@userinfobot</strong></p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Ele e um bot oficial que diz qual e o seu Chat ID</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">2</div>
-                        <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
-                      </div>
-                      <div className="pb-4">
-                        <p className="text-sm font-medium">Envie qualquer mensagem para ele</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Pode ser um “oi” — ele respondera automaticamente</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">3</div>
-                        <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
-                      </div>
-                      <div className="pb-4">
-                        <p className="text-sm font-medium">Copie o <strong>Chat ID</strong> que ele respondeu</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Sera um numero, por exemplo: <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-[11px]">7123456789</code></p>
+                    <div className="space-y-2">
+                      <Label htmlFor="tg-chat-id" className="text-sm font-medium">Seu Chat ID</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="tg-chat-id"
+                          placeholder="Ex: 123456789"
+                          value={tgChatId}
+                          onChange={(e) => setTgChatId(e.target.value)}
+                          className="font-mono text-sm"
+                        />
+                        <Button
+                          onClick={saveTelegramChatIdLegacy}
+                          disabled={tgSaving || !tgChatId.trim()}
+                          className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
+                        >
+                          {tgSaving ? <><Loader2 className="h-4 w-4 animate-spin" /></> : <><Link2 className="h-4 w-4 mr-1.5" /> Vincular</>}
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="w-8 h-8 rounded-full bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                          <Check className="h-4 w-4" />
+                    <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
+                      <p className="text-sm font-semibold mb-4 flex items-center gap-2">
+                        <Smartphone className="h-4 w-4 text-blue-500" />
+                        Passo a passo para configurar
+                      </p>
+                      <div className="space-y-4">
+                        <div className="flex gap-3">
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">1</div>
+                            <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
+                          </div>
+                          <div className="pb-4">
+                            <p className="text-sm font-medium">Abra o Telegram e busque por <strong>@userinfobot</strong></p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Ele é um bot oficial que diz qual é o seu Chat ID</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">2</div>
+                            <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
+                          </div>
+                          <div className="pb-4">
+                            <p className="text-sm font-medium">Envie qualquer mensagem para ele</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Pode ser um “oi” — ele responderá automaticamente</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm flex-shrink-0">3</div>
+                            <div className="w-px flex-1 bg-blue-200 dark:bg-blue-800/40 mt-1" />
+                          </div>
+                          <div className="pb-4">
+                            <p className="text-sm font-medium">Copie o <strong>Chat ID</strong> que ele respondeu</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Será um número, por exemplo: <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-[11px]">7123456789</code></p>
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-full bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                              <Check className="h-4 w-4" />
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">Cole o número acima e clique em <strong>Vincular</strong></p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Pronto! Você receberá todas as notificações por aqui</p>
+                          </div>
                         </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium">Cole o numero acima e clique em <strong>Vincular</strong></p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Pronto! Voce recebera todas as notificacoes por aqui</p>
-                      </div>
                     </div>
                   </div>
-                </div>
+                ) : tgDeepLink ? (
+                  <div className="p-4 rounded-xl bg-muted/30 border border-border/50 space-y-4">
+                    <p className="text-sm font-semibold flex items-center gap-2">
+                      <Smartphone className="h-4 w-4 text-blue-500" />
+                      Confirme no Telegram
+                    </p>
+                    <div className="space-y-3">
+                      <div className="flex gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-xs flex-shrink-0">1</div>
+                        <p className="text-sm">Toque em <strong>Abrir Telegram</strong> — o bot abre com a mensagem pronta</p>
+                      </div>
+                      <div className="flex gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-xs flex-shrink-0">2</div>
+                        <p className="text-sm">Envie a mensagem no bot (botão de envio do Telegram)</p>
+                      </div>
+                      <div className="flex gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">3</div>
+                        <p className="text-sm">Volte aqui e toque em <strong>Já confirmei</strong></p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <a href={tgDeepLink} target="_blank" rel="noopener noreferrer">
+                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+                          <Link2 className="h-4 w-4 mr-1.5" /> Abrir Telegram
+                        </Button>
+                      </a>
+                      <Button size="sm" variant="outline" onClick={refreshTelegramStatus} disabled={tgLinking}>
+                        {tgLinking ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Verificando...</> : 'Já confirmei'}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      O convite expira em 15 minutos{tgTokenExpiresAt ? ` (${new Date(tgTokenExpiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})` : ''} e vale para uso único.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <Button
+                      onClick={linkTelegram}
+                      disabled={tgLinking}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {tgLinking ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Gerando convite...</> : <><Link2 className="h-4 w-4 mr-1.5" /> Vincular Telegram</>}
+                    </Button>
+                    <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/20">
+                      <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-3">O que você receberá</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['Cartão do lead com foto do empreendimento', 'Nome, telefone e e-mail para contato', 'Respostas humanizadas do formulário', 'Origem: campanha, anúncio e formulário', 'Botões: WhatsApp e cliente no CRM', 'Apenas leads atribuídos a você'].map((item) => (
+                          <div key={item} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <CheckCircle2 className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                            <span>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setTgPreviewOpen((v) => !v)}>
+                      {tgPreviewOpen ? 'Ocultar exemplo' : 'Visualizar exemplo do cartão'}
+                    </Button>
+                    {tgPreviewOpen && <TelegramLeadPreview />}
+                    <p className="text-[11px] text-muted-foreground">
+                      A vinculação confirma que o Telegram é seu (convite de uso único) — o canal carrega dados de clientes e é tratado como privado.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
 import { fetchEnabledAdAccounts } from '@/lib/meta-ad-accounts';
-import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
+import { notifyQueueUpdate } from '@/lib/telegram';
+import { notifyAssignedMetaLead } from '@/lib/lead-notify/service';
 import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
-import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
+import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, extractRawAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 
 // ============================================================
 // POST /api/webhooks/meta-leads/import-manual
@@ -176,6 +177,9 @@ export async function POST(request: NextRequest) {
       const fieldData = leadData.field_data;
       const formId = leadData.form_id || '';
       const campaignId = String(leadData.campaign_id || '');
+      const adId = String(leadData.ad_id || '');
+      // Horário REAL do cadastro no Meta (§15)
+      const submittedAt = leadData.created_time ? new Date(leadData.created_time) : null;
 
       // 2. Extrair campos
       const rawName = getMetaFieldValue(fieldData, 'full_name')
@@ -200,6 +204,8 @@ export async function POST(request: NextRequest) {
       // Extrair respostas customizadas (perguntas extras do formulário)
       const customAnswers = extractCustomAnswers(fieldData);
       const customAnswersText = formatCustomAnswersText(customAnswers);
+      // Todas as respostas com todos os valores e ordem original (cartão)
+      const rawAnswers = extractRawAnswers(fieldData);
 
       // 3. Verificar duplicata por telefone/email
       const existingByContact = await db.client.findFirst({
@@ -239,41 +245,53 @@ export async function POST(request: NextRequest) {
             assignedUserId = assignResult.userId;
             assignedQueueId = assignResult.queueId;
             await db.client.update({ where: { id: existingByContact.id }, data: { createdBy: assignResult.userId! } }).catch(() => {});
-            db.user.findUnique({ where: { id: assignResult.userId }, select: { telegramChatId: true, name: true } }).then((user) => {
+            // Notificar agente com o cartão novo (await — serverless-safe,
+            // sem promessa solta §17.3)
+            try {
+              const user = await db.user.findUnique({ where: { id: assignResult.userId }, select: { telegramChatId: true, name: true } });
               if (user?.telegramChatId) {
-                notifyNewLead(user.telegramChatId, {
+                await notifyAssignedMetaLead({
+                  eventId: leadgenId,
+                  eventKind: 'returning_lead',
+                  clientId: existingByContact.id,
+                  recipientChatId: user.telegramChatId,
+                  recipientUserId: assignResult.userId,
+                  recipientFirstName: assignResult.userName || null,
                   leadName: existingByContact.name,
-                  leadPhone: phone || existingByContact.phone || '',
-                  leadEmail: email || existingByContact.email || '',
-                  enterpriseName: undefined,
-                  utmCampaign: 'import_manual',
-                  utmSource: 'meta_ads',
-                  slug: undefined,
-                  assignedUserName: assignResult.userName,
-                  customAnswers,
+                  leadPhoneE164: phone || existingByContact.phone || null,
+                  leadEmail: email || existingByContact.email || null,
+                  leadRegion: region,
+                  source: {
+                    campaignId: campaignId || null,
+                    adId: adId || null,
+                    formId: formId || null,
+                    leadgenId,
+                    ingestionMethod: 'manual',
+                    submittedAt,
+                    receivedAt: new Date(),
+                  },
+                  rawAnswers,
                 }).catch((err) => console.warn('[Import Manual] Falha na notificação (lead existente, nova atribuição):', err));
               }
-            }).catch(() => {});
+            } catch (err) {
+              console.warn('[Import Manual] Falha na notificação do agente (existente):', err instanceof Error ? err.message : err);
+            }
             // Notify admin
             if (assignResult.queueId) {
-              const capturedQueueId = assignResult.queueId;
-              const capturedUserName = assignResult.userName;
-              (async () => {
-                try {
-                  const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
-                  if (!adminUser?.telegramChatId) return;
-                  const nextUser = await peekNextUser({ queueId: capturedQueueId });
+              try {
+                const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+                if (adminUser?.telegramChatId) {
+                  const nextUser = await peekNextUser({ queueId: assignResult.queueId });
                   await notifyQueueUpdate(adminUser.telegramChatId, {
                     source: 'meta_ads:import_manual',
-                    assignedUserName: capturedUserName || 'Desconhecido',
+                    assignedUserName: assignResult.userName || 'Desconhecido',
                     nextUserName: nextUser?.userName || null,
                     leadName: existingByContact.name,
-                    leadPhone: phone || undefined,
                   });
-                } catch (err) {
-                  console.warn('[Import Manual] Admin queue notification failed (existing):', err instanceof Error ? err.message : err);
                 }
-              })();
+              } catch (err) {
+                console.warn('[Import Manual] Admin queue notification failed (existing):', err instanceof Error ? err.message : err);
+              }
             }
           } else if (assignResult.assigned) {
             // already_assigned — no notification needed, queue didn't advance
@@ -338,46 +356,55 @@ export async function POST(request: NextRequest) {
           console.error(`[Import Manual] Falha na fila para ${newClient.id}:`, queueErr);
         }
 
-        // 7. Notificação Telegram para o atendente
+        // 7. Notificação Telegram com o cartão novo (await — serverless-safe,
+        // sem promessa solta §17.3)
         const notifyId = assignedUserId || creatorId;
         if (notifyId) {
-          db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } }).then((user) => {
+          try {
+            const user = await db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } });
             if (user?.telegramChatId) {
-              notifyNewLead(user.telegramChatId, {
+              await notifyAssignedMetaLead({
+                eventId: leadgenId,
+                eventKind: 'imported_lead',
+                clientId: newClient.id,
+                recipientChatId: user.telegramChatId,
+                recipientUserId: notifyId,
+                recipientFirstName: assignedTo || null,
                 leadName: newClient.name,
-                leadPhone: newClient.phone || '',
-                leadEmail: newClient.email || '',
-                enterpriseName: undefined,
-                utmCampaign: 'import_manual',
-                utmSource: 'meta_ads',
-                slug: undefined,
-                assignedUserName: assignedTo,
-                customAnswers,
-              }).catch(() => {});
+                leadPhoneE164: newClient.phone || null,
+                leadEmail: newClient.email || null,
+                leadRegion: region,
+                source: {
+                  campaignId: campaignId || null,
+                  adId: adId || null,
+                  formId: formId || null,
+                  leadgenId,
+                  ingestionMethod: 'manual',
+                  submittedAt,
+                  receivedAt: new Date(),
+                },
+                rawAnswers,
+              });
             }
-          }).catch(() => {});
+          } catch (notifyErr) { console.warn('[Import Manual] Falha notificação agente:', notifyErr); }
         }
 
-        // 8. Notify admin about queue rotation (fire-and-forget)
+        // 8. Notify admin about queue rotation (await — serverless-safe)
         if (assignedUserId && assignedQueueId) {
-          const capturedQueueId = assignedQueueId;
-          const capturedUserName = assignedTo;
-          (async () => {
-            try {
-              const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
-              if (!adminUser?.telegramChatId) return;
-              const nextUser = await peekNextUser({ queueId: capturedQueueId });
+          try {
+            const adminUser = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
+            if (adminUser?.telegramChatId) {
+              const nextUser = await peekNextUser({ queueId: assignedQueueId });
               await notifyQueueUpdate(adminUser.telegramChatId, {
                 source: 'meta_ads:import_manual',
-                assignedUserName: capturedUserName || 'Desconhecido',
+                assignedUserName: assignedTo || 'Desconhecido',
                 nextUserName: nextUser?.userName || null,
                 leadName: newClient.name,
-                leadPhone: newClient.phone || undefined,
               });
-            } catch (err) {
-              console.warn('[Import Manual] Admin queue notification failed:', err instanceof Error ? err.message : err);
             }
-          })();
+          } catch (err) {
+            console.warn('[Import Manual] Admin queue notification failed:', err instanceof Error ? err.message : err);
+          }
         }
 
         results.push({ leadgenId, success: true, clientName: name, clientId: newClient.id, assignedTo });

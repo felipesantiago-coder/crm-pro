@@ -150,6 +150,9 @@ model Enterprise {
   resaleProperties ResaleProperty[]
   extractionRuns   EnterpriseExtractionRun[]
   infoVersions     EnterpriseInfoVersion[]
+  campaignBindings MetaCampaignBinding[]
+  leadFormMappings LeadFormMapping[]
+  metaAdBindings   MetaAdBinding[]
 
   // ── Extração v2 (Fase 3) — draft nunca é público; verificado alimenta CRM;
   // publicado alimenta landing pages. cachedInfo permanece como legado de
@@ -320,6 +323,7 @@ model User {
   googleCalendarToken GoogleCalendarToken?
   queueMemberships    LeadQueueMember[]
   queueAssignments    LeadQueueAssignment[]
+  telegramLinkTokens  TelegramLinkToken[]
   @@map("users")
 }
 
@@ -619,8 +623,12 @@ model LeadFormMapping {
   queueId      String?  @map("queueId")
   /** Conta de anúncios de origem (auto-aprendida via webhook/polling). */
   adAccountId  String?  @map("adAccountId")
+  /** Empreendimento vinculado EXPLICITAMENTE a este formulário (admin).
+   *  Fonte da imagem do cartão de notificação — nunca por similaridade de nome. */
+  enterpriseId String?  @map("enterpriseId")
 
   capiConfig   MetaCapConfig?  @relation(fields: [capiConfigId], references: [id], onDelete: SetNull)
+  enterprise   Enterprise?     @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
   queue        LeadQueue?      @relation("LeadFormMappingQueue", fields: [queueId], references: [id], onDelete: SetNull)
   adAccount    MetaAdAccount?  @relation(fields: [adAccountId], references: [id], onDelete: SetNull)
 
@@ -630,6 +638,7 @@ model LeadFormMapping {
   @@index([campaignName])
   @@index([queueId])
   @@index([adAccountId])
+  @@index([enterpriseId])
   @@map("lead_form_mappings")
 }
 
@@ -706,16 +715,21 @@ model MetaCampaignBinding {
   /** Fila de atendimento dedicada a esta campanha.
    *  Prioridade máxima no roteamento multi-anúncio. */
   queueId      String?  @map("queueId")
+  /** Empreendimento vinculado EXPLICITAMENTE a esta campanha (admin).
+   *  Fonte da imagem do cartão de notificação — nunca por similaridade de nome. */
+  enterpriseId String?  @map("enterpriseId")
   leadCount    Int      @default(0) @map("leadCount")
   firstSeenAt  DateTime @default(now()) @map("firstSeenAt")
   lastSeenAt   DateTime @updatedAt @map("lastSeenAt")
   createdAt    DateTime @default(now()) @map("createdAt")
 
-  account MetaAdAccount? @relation(fields: [adAccountId], references: [id], onDelete: SetNull)
-  queue   LeadQueue?     @relation(fields: [queueId], references: [id], onDelete: SetNull)
+  account    MetaAdAccount? @relation(fields: [adAccountId], references: [id], onDelete: SetNull)
+  queue      LeadQueue?     @relation(fields: [queueId], references: [id], onDelete: SetNull)
+  enterprise Enterprise?    @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
 
   @@index([queueId])
   @@index([adAccountId])
+  @@index([enterpriseId])
   @@map("meta_campaign_bindings")
 }
 
@@ -760,5 +774,88 @@ model ResaleProperty {
   @@index([price])
   @@index([bedrooms])
   @@map("resale_properties")
+}
+
+// ============================================================
+// META AD BINDING — Vínculo anúncio → empreendimento (por adId)
+// Nível mais específico da resolução de imagem do cartão de
+// notificação (precedência: anúncio > form+campanha > campanha >
+// formulário > cliente). Sempre criado EXPLICITAMENTE pelo admin —
+// nunca por similaridade de nome de anúncio. Identificador estável
+// do anúncio (adId) é a chave; onDelete SetNull preserva o histórico.
+// Rollback: DROP TABLE "meta_ad_bindings";
+// ============================================================
+model MetaAdBinding {
+  id           String   @id @default(cuid()) @map("id")
+  /** Ad ID da Meta (estável) — uma binding por anúncio. */
+  adId         String   @unique @map("adId")
+  adName       String?  @map("adName")
+  /** Empreendimento cuja imagem/nome alimentam o cartão de notificação. */
+  enterpriseId String?  @map("enterpriseId")
+  createdBy    String?  @map("createdBy")     // userId do admin que configurou
+  createdAt    DateTime @default(now()) @map("createdAt")
+  updatedAt    DateTime @updatedAt @map("updatedAt")
+
+  enterprise Enterprise? @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
+
+  @@index([enterpriseId])
+  @@map("meta_ad_bindings")
+}
+
+// ============================================================
+// TELEGRAM DELIVERY LOG — Auditoria e idempotência de entregas
+// Uma linha por tentativa lógica de notificação. Chave de
+// idempotência dedupKey = kind:ingestion:eventId:recipientUserId
+// impede duplicidade entre webhook e polling (corrida inclusiva:
+// o INSERT com status 'sending' funciona como lock cross-instance).
+// PRIVACIDADE: nenhum telefone, e-mail, resposta ou conteúdo de
+// mensagem é persistido aqui — apenas metadados operacionais.
+// Rollback: DROP TABLE "telegram_delivery_logs";
+// ============================================================
+model TelegramDeliveryLog {
+  id              String    @id @default(cuid()) @map("id")
+  dedupKey        String    @unique @map("dedupKey")
+  /// sending | delivered | partial | failed | skipped_duplicate
+  status          String    @default("sending") @map("status")
+  /** new_lead | returning_lead | recovered_lead | imported_lead | test | queue_update */
+  kind            String    @map("kind")
+  /// webhook | polling | import_by_form | manual | simulation | landing | recovery | test
+  ingestionMethod String?   @map("ingestionMethod")
+  recipientUserId String?   @map("recipientUserId")
+  clientId        String?   @map("clientId")
+  attempts        Int       @default(0) @map("attempts")
+  messageIds      String?   @map("messageIds")    // JSON: [123, 456]
+  errorCode       String?   @map("errorCode")
+  latencyMs       Int?      @map("latencyMs")
+  createdAt       DateTime  @default(now()) @map("createdAt")
+  updatedAt       DateTime  @updatedAt @map("updatedAt")
+
+  @@index([clientId])
+  @@index([createdAt])
+  @@map("telegram_delivery_logs")
+}
+
+// ============================================================
+// TELEGRAM LINK TOKEN — Vinculação segura de chat (prova de posse)
+// CRM gera token aleatório de uso único com TTL curto; só o HASH
+// é persistido (nunca o token em claro). O usuário confirma pelo
+// bot via deep link https://t.me/<bot>?start=<token> e o webhook
+// valida validade, uso único, chat privado e usuário esperado.
+// Rollback: DROP TABLE "telegram_link_tokens";
+// ============================================================
+model TelegramLinkToken {
+  id        String    @id @default(cuid()) @map("id")
+  /** SHA-256 hex do token opaco — o valor em claro nunca é armazenado. */
+  tokenHash String    @unique @map("tokenHash")
+  userId    String    @map("userId")
+  expiresAt DateTime  @map("expiresAt")
+  usedAt    DateTime? @map("usedAt")
+  createdAt DateTime  @default(now()) @map("createdAt")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("telegram_link_tokens")
 }
 

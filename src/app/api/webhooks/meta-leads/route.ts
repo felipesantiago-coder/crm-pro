@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import crypto from 'crypto';
-import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
+import { notifyQueueUpdate } from '@/lib/telegram';
+import { notifyAssignedMetaLead } from '@/lib/lead-notify/service';
+import { resolveLeadEnterprise } from '@/lib/lead-notify/resolver';
 import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { resolveQueueForMetaLead, mapWithConcurrency } from '@/lib/meta-lead-routing';
-import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
+import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, extractRawAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 import {
   fetchEnabledAdAccounts,
   resolveAccountByPageId,
@@ -50,6 +52,8 @@ interface MetaWebhookChange {
     campaign_id?: string;
     form_name?: string;
     form_id?: string;
+    /** Unix (segundos) do cadastro — horário REAL do lead (§15). */
+    created_time?: number;
   };
 }
 
@@ -166,20 +170,6 @@ async function findExistingClient(phone: string | null, email: string | null) {
     where: whereClause,
     orderBy: { createdAt: 'desc' },
   });
-}
-
-/**
- * Tenta encontrar o empreendimento associado ao anúncio pelo nome.
- * O adName do Meta geralmente coincide com o nome do empreendimento (ex: "Vitta").
- */
-async function findEnterpriseByAdName(adName: string): Promise<{ name: string; imageUrl: string | null } | null> {
-  if (!adName || adName === 'Anúncio Meta Ads') return null;
-  try {
-    return await db.enterprise.findFirst({
-      where: { name: { contains: adName, mode: 'insensitive' } },
-      select: { name: true, imageUrl: true },
-    });
-  } catch { return null; }
 }
 
 // ============================================================
@@ -423,6 +413,12 @@ export async function POST(request: NextRequest) {
       console.log(`[Meta Webhook] Change: field="${change.field}", leadgen_id=${changeLeadgenId ?? 'none'}, ad=${leadData?.ad_name || 'none'}, campaign=${leadData?.campaign_name || 'none'}, conta=${accountLabel}`);
 
       const leadgenId = String(leadData.leadgen_id || 'unknown');
+      // Leads de simulação (SIM_*) são prévias — o cartão nunca parece um lead real (§15)
+      const isSimulation = leadgenId.startsWith('SIM_');
+      // Horário REAL do cadastro no Meta (unix s) — não o horário do servidor
+      const submittedAt = typeof leadData.created_time === 'number' && leadData.created_time > 0
+        ? new Date(leadData.created_time * 1000)
+        : null;
       let fieldData = leadData.field_data || [];
       const adName = leadData.ad_name || 'Anúncio Meta Ads';
       const campaignName = leadData.campaign_name || '';
@@ -576,6 +572,21 @@ export async function POST(request: NextRequest) {
       // Extrair respostas customizadas (perguntas extras do formulário)
       const customAnswers = extractCustomAnswers(fieldData);
       const customAnswersText = formatCustomAnswersText(customAnswers);
+      // Todas as respostas, com todos os valores e ordem original —
+      // matéria-prima do cartão de notificação
+      const rawAnswers = extractRawAnswers(fieldData);
+
+      // Resolução do empreendimento pela precedência de vínculos EXPLÍCITOS
+      // (anúncio > form+campanha > campanha > formulário > cliente) — nunca
+      // por similaridade de nome. Lazy: uma resolução por lead, compartilhada
+      // entre a notificação do agente e a do administrador.
+      let resolvedEntPromise: ReturnType<typeof resolveLeadEnterprise> | null = null;
+      const getResolvedEnterprise = () =>
+        resolvedEntPromise ??= resolveLeadEnterprise({
+          adId: adId || null,
+          formId: formId || null,
+          campaignId: campaignId || null,
+        });
 
       console.log(`[Meta Webhook] Dados extraídos: name="${name}", email=${email || 'null'}, phone=${phone || 'null'}, city=${region || 'null'}`);
 
@@ -625,21 +636,34 @@ export async function POST(request: NextRequest) {
             try {
               const agentUser = await db.user.findUnique({ where: { id: assignResult.userId }, select: { telegramChatId: true, name: true } });
               if (agentUser?.telegramChatId) {
-                const ent = await findEnterpriseByAdName(adName);
-                console.log(`[Meta Webhook][${reqId}] Enviando notificação Telegram para agente "${agentUser.name}" (lead existente ${existing.id})`);
-                await notifyNewLead(agentUser.telegramChatId, {
+                console.log(`[Meta Webhook][${reqId}] Enviando cartão de lead para "${agentUser.name}" (lead existente ${existing.id})`);
+                await notifyAssignedMetaLead({
+                  eventId: leadgenId,
+                  eventKind: isSimulation ? 'test' : 'returning_lead',
+                  clientId: existing.id,
+                  recipientChatId: agentUser.telegramChatId,
+                  recipientUserId: assignResult.userId,
+                  recipientFirstName: assignResult.userName || null,
                   leadName: existing.name,
-                  leadPhone: phone || existing.phone || '',
-                  leadEmail: email || existing.email || '',
-                  enterpriseName: ent?.name,
-                  enterpriseImageUrl: ent?.imageUrl || undefined,
-                  utmCampaign: campaignName || null,
-                  utmSource: 'meta_ads',
-                  slug: undefined,
-                  assignedUserName: assignResult.userName,
-                  customAnswers,
+                  leadPhoneE164: phone || existing.phone || null,
+                  leadEmail: email || existing.email || null,
+                  leadRegion: region,
+                  source: {
+                    adAccountId: adAccountId || null,
+                    campaignId: campaignId || null,
+                    campaignName: campaignName || null,
+                    adId: adId || null,
+                    adName: adName || null,
+                    formId: formId || null,
+                    formName: formName || null,
+                    leadgenId,
+                    ingestionMethod: isSimulation ? 'simulation' : 'webhook',
+                    submittedAt,
+                    receivedAt: new Date(),
+                  },
+                  rawAnswers,
                 });
-                console.log(`[Meta Webhook][${reqId}] ✅ Notificação Telegram enviada ao agente "${agentUser.name}"`);
+                console.log(`[Meta Webhook][${reqId}] ✅ Cartão de lead enviado para "${agentUser.name}"`);
               } else {
                 console.warn(`[Meta Webhook][${reqId}] Usuário ${agentUser?.name || assignResult.userId} sem Telegram configurado. Lead existente ${existing.id} sem notificação.`);
               }
@@ -659,7 +683,7 @@ export async function POST(request: NextRequest) {
                     assignedUserName: assignResult.userName || 'Desconhecido',
                     nextUserName: nextUser?.userName || null,
                     leadName: existing.name,
-                    leadPhone: existing.phone || phone || undefined,
+                    enterpriseName: (await getResolvedEnterprise())?.name || undefined,
                   });
                   console.log(`[Meta Webhook][${reqId}] ✅ Notificação de fila enviada ao admin`);
                 } else {
@@ -765,21 +789,34 @@ export async function POST(request: NextRequest) {
           try {
             const agentUser = await db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } });
             if (agentUser?.telegramChatId) {
-              const ent = await findEnterpriseByAdName(adName);
-              console.log(`[Meta Webhook][${reqId}] Enviando notificação Telegram para agente "${agentUser.name}" (client ${newClient.id})`);
-              await notifyNewLead(agentUser.telegramChatId, {
+              console.log(`[Meta Webhook][${reqId}] Enviando cartão de lead para "${agentUser.name}" (client ${newClient.id})`);
+              await notifyAssignedMetaLead({
+                eventId: leadgenId,
+                eventKind: isSimulation ? 'test' : 'new_lead',
+                clientId: newClient.id,
+                recipientChatId: agentUser.telegramChatId,
+                recipientUserId: notifyId,
+                recipientFirstName: assignedUserName || null,
                 leadName: newClient.name,
-                leadPhone: newClient.phone || '',
-                leadEmail: newClient.email || '',
-                enterpriseName: ent?.name,
-                enterpriseImageUrl: ent?.imageUrl || undefined,
-                utmCampaign: campaignName || null,
-                utmSource: 'meta_ads',
-                slug: undefined,
-                assignedUserName: assignedUserName,
-                customAnswers,
+                leadPhoneE164: newClient.phone || null,
+                leadEmail: newClient.email || null,
+                leadRegion: region,
+                source: {
+                  adAccountId: adAccountId || null,
+                  campaignId: campaignId || null,
+                  campaignName: campaignName || null,
+                  adId: adId || null,
+                  adName: adName || null,
+                  formId: formId || null,
+                  formName: formName || null,
+                  leadgenId,
+                  ingestionMethod: isSimulation ? 'simulation' : 'webhook',
+                  submittedAt,
+                  receivedAt: new Date(),
+                },
+                rawAnswers,
               });
-              console.log(`[Meta Webhook][${reqId}] ✅ Notificação Telegram enviada ao agente "${agentUser.name}"`);
+              console.log(`[Meta Webhook][${reqId}] ✅ Cartão de lead enviado para "${agentUser.name}"`);
             } else {
               console.warn(`[Meta Webhook][${reqId}] Usuário ${agentUser?.name || notifyId} atribuído mas sem Telegram. Lead ${newClient.id} (${name}) sem notificação.`);
             }
@@ -800,7 +837,7 @@ export async function POST(request: NextRequest) {
                 assignedUserName: assignedUserName || 'Desconhecido',
                 nextUserName: nextUser?.userName || null,
                 leadName: newClient.name,
-                leadPhone: newClient.phone || undefined,
+                enterpriseName: (await getResolvedEnterprise())?.name || undefined,
               });
               console.log(`[Meta Webhook][${reqId}] ✅ Notificação de fila enviada ao admin`);
             } else {

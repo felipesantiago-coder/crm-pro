@@ -13,15 +13,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Megaphone, Loader2, Save } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { Megaphone, Loader2, Save, Building2, ChevronsUpDown, Check, ImageOff, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 // ============================================================
 // CampaignBindingsSection — Fila ESPECÍFICA por campanha (campaignId)
 // As campanhas são auto-registradas quando um lead chega (webhook ou
-// polling). Aqui o admin atribui a fila de cada campanha e corrige a
-// conta de anúncios de origem — campanhas de contas diferentes ficam
-// independentes entre si. Prioridade máxima no roteamento.
+// polling). Aqui o admin atribui a fila de cada campanha, corrige a
+// conta de anúncios de origem e define o EMPREENDIMENTO da campanha —
+// fonte da imagem do cartão de notificação (vínculo EXPLÍCITO; nunca
+// por similaridade de nome, §9 do redesign).
 //
 // Uso duplo (settings agrupadas por conta):
 //   • Global (sem props): todas as campanhas, com select de conta e
@@ -39,6 +49,8 @@ interface CampaignBindingItem {
   account?: { id: string; name: string; adAccountId: string; enabled: boolean } | null;
   queueId: string | null;
   queue?: { id: string; name: string; isActive: boolean } | null;
+  enterpriseId?: string | null;
+  enterprise?: { id: string; name: string; imageUrl: string | null } | null;
   leadCount: number;
   lastSeenAt: string;
 }
@@ -54,6 +66,12 @@ interface AdAccountOption {
   name: string;
   adAccountId: string;
   enabled: boolean;
+}
+
+interface EnterpriseOption {
+  id: string;
+  name: string;
+  imageUrl: string | null;
 }
 
 interface CampaignBindingsSectionProps {
@@ -73,8 +91,10 @@ export function CampaignBindingsSection({ adAccountId, hideAccountSelect, compac
   const [bindings, setBindings] = useState<CampaignBindingItem[]>([]);
   const [queues, setQueues] = useState<QueueOption[]>([]);
   const [accounts, setAccounts] = useState<AdAccountOption[]>([]);
+  const [enterprises, setEnterprises] = useState<EnterpriseOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [enterprisePopoverId, setEnterprisePopoverId] = useState<string | null>(null);
   const [newCampaignId, setNewCampaignId] = useState('');
   const [newCampaignName, setNewCampaignName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -82,19 +102,30 @@ export function CampaignBindingsSection({ adAccountId, hideAccountSelect, compac
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [bindRes, queueRes, accRes] = await Promise.all([
+      const [bindRes, queueRes, accRes, entRes] = await Promise.all([
         fetch('/api/meta-campaign-bindings'),
         fetch('/api/lead-queues'),
         fetch('/api/meta-ad-accounts'),
+        fetch('/api/enterprises'),
       ]);
-      const [bindData, queueData, accData] = await Promise.all([
+      const [bindData, queueData, accData, entData] = await Promise.all([
         bindRes.json(),
         queueRes.json(),
         accRes.json(),
+        entRes.json(),
       ]);
       setBindings(Array.isArray(bindData) ? bindData : []);
       setQueues(Array.isArray(queueData) ? queueData : []);
       setAccounts(Array.isArray(accData) ? accData : []);
+      setEnterprises(
+        Array.isArray(entData)
+          ? entData.map((e: { id: string; name: string; imageUrl?: string | null }) => ({
+              id: e.id,
+              name: e.name,
+              imageUrl: e.imageUrl ?? null,
+            }))
+          : [],
+      );
     } catch (err) {
       console.error('[Campaign Bindings UI] Falha ao carregar:', err);
       toast.error('Erro ao carregar vínculos de campanhas');
@@ -109,7 +140,7 @@ export function CampaignBindingsSection({ adAccountId, hideAccountSelect, compac
 
   const updateBinding = async (
     binding: CampaignBindingItem,
-    patch: { queueId?: string | null; adAccountId?: string | null }
+    patch: { queueId?: string | null; adAccountId?: string | null; enterpriseId?: string | null }
   ) => {
     setSavingId(binding.id);
     try {
@@ -123,7 +154,11 @@ export function CampaignBindingsSection({ adAccountId, hideAccountSelect, compac
         toast.error(data?.error || 'Erro ao salvar vínculo');
         return;
       }
-      toast.success('Vínculo salvo — leads desta campanha usarão a fila definida');
+      toast.success(
+        'enterpriseId' in patch
+          ? 'Empreendimento da campanha salvo — o cartão usará a imagem dele'
+          : 'Vínculo salvo — leads desta campanha usarão a fila definida',
+      );
       await load();
       onChanged?.();
     } catch {
@@ -131,6 +166,24 @@ export function CampaignBindingsSection({ adAccountId, hideAccountSelect, compac
     } finally {
       setSavingId(null);
     }
+  };
+
+  /** Troca de empreendimento exige confirmação quando já existe vínculo ativo (§9.3). */
+  const handleEnterpriseChange = (binding: CampaignBindingItem, nextEnterpriseId: string | null) => {
+    if (binding.enterpriseId && nextEnterpriseId !== binding.enterpriseId) {
+      const nextName = nextEnterpriseId
+        ? enterprises.find((e) => e.id === nextEnterpriseId)?.name || 'novo empreendimento'
+        : '(sem empreendimento)';
+      const confirmed = window.confirm(
+        `A campanha "${binding.campaignName || binding.campaignId}" já está vinculada a ` +
+        `"${binding.enterprise?.name || binding.enterpriseId}".\n\n` +
+        `Trocar o empreendimento altera a imagem enviada nos próximos cartões de lead. ` +
+        `Confirmar troca para "${nextName}"?`,
+      );
+      if (!confirmed) return;
+    }
+    setEnterprisePopoverId(null);
+    updateBinding(binding, { enterpriseId: nextEnterpriseId });
   };
 
   const createBinding = async () => {
@@ -180,6 +233,9 @@ export function CampaignBindingsSection({ adAccountId, hideAccountSelect, compac
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             Campanhas são detectadas <strong>automaticamente</strong> quando leads chegam (webhook ou polling). Vincule a <strong>fila de atendimento de cada campanha</strong> — tem <strong>prioridade</strong> sobre o vínculo por formulário e sobre a fila da conta. Assim campanhas de contas diferentes podem ser atendidas por equipes diferentes, de forma independente.
           </p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            <strong>Empreendimento:</strong> define a imagem do cartão de lead no Telegram. A precedência da imagem é: <strong>anúncio</strong> &gt; <strong>campanha</strong> (aqui) &gt; <strong>formulário</strong> &gt; cliente. Sem vínculo, o cartão sai sem foto — nunca com a imagem de outro empreendimento.
+          </p>
         </div>
       )}
 
@@ -201,6 +257,13 @@ export function CampaignBindingsSection({ adAccountId, hideAccountSelect, compac
             <Card key={binding.id}>
               <CardContent className="p-3">
                 <div className="flex flex-wrap items-center gap-2">
+                  {binding.enterprise?.imageUrl && (
+                    <img
+                      src={binding.enterprise.imageUrl}
+                      alt={binding.enterprise.name}
+                      className="h-9 w-9 rounded-md object-cover border"
+                    />
+                  )}
                   <div className="flex-1 min-w-[200px]">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Megaphone className="h-3.5 w-3.5 text-muted-foreground" />
@@ -212,6 +275,21 @@ export function CampaignBindingsSection({ adAccountId, hideAccountSelect, compac
                         </Badge>
                       )}
                       <Badge variant="secondary" className="text-[10px]">{binding.leadCount} lead(s)</Badge>
+                      {binding.enterprise ? (
+                        binding.enterprise.imageUrl ? (
+                          <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 className="h-3 w-3 mr-1" /> Pronto para notificar
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-600 dark:text-amber-400">
+                            <ImageOff className="h-3 w-3 mr-1" /> Empreendimento sem imagem
+                          </Badge>
+                        )
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                          Sem empreendimento
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-[10px] text-muted-foreground mt-1">
                       Último lead: {new Date(binding.lastSeenAt).toLocaleString('pt-BR')}
@@ -240,6 +318,58 @@ export function CampaignBindingsSection({ adAccountId, hideAccountSelect, compac
                         </Select>
                       </div>
                     )}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Empreendimento (imagem do cartão)</Label>
+                      <Popover
+                        open={enterprisePopoverId === binding.id}
+                        onOpenChange={(open) => setEnterprisePopoverId(open ? binding.id : null)}
+                      >
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-[190px] justify-between text-xs font-normal"
+                            disabled={savingId === binding.id}
+                          >
+                            <span className="truncate flex items-center gap-1">
+                              <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                              {binding.enterprise?.name || 'Sem empreendimento'}
+                            </span>
+                            <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="p-0 w-[260px]" align="end">
+                          <Command>
+                            <CommandInput placeholder="Buscar empreendimento..." />
+                            <CommandList>
+                              <CommandEmpty>Nenhum empreendimento encontrado.</CommandEmpty>
+                              <CommandGroup>
+                                <CommandItem
+                                  onSelect={() => handleEnterpriseChange(binding, null)}
+                                >
+                                  <span className="text-muted-foreground">Sem empreendimento</span>
+                                </CommandItem>
+                                {enterprises.map((e) => (
+                                  <CommandItem
+                                    key={e.id}
+                                    value={e.name}
+                                    onSelect={() => handleEnterpriseChange(binding, e.id)}
+                                  >
+                                    <Check
+                                      className={`mr-1 h-3.5 w-3.5 ${binding.enterpriseId === e.id ? 'opacity-100' : 'opacity-0'}`}
+                                    />
+                                    {e.imageUrl && (
+                                      <img src={e.imageUrl} alt="" className="h-5 w-5 rounded object-cover" />
+                                    )}
+                                    <span className="truncate">{e.name}</span>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Fila da campanha</Label>
                       <Select
