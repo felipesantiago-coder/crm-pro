@@ -21,9 +21,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useCRMStore } from '@/store/crm-store';
+import { describeLostLeadScope } from '@/lib/lost-leads';
 
 interface LostLeadItem {
   id: string;
@@ -45,11 +47,14 @@ interface LostLeadItem {
 }
 
 export function LostLeadsTab() {
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === 'ADMIN';
   const [items, setItems] = useState<LostLeadItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [recovering, setRecovering] = useState<string | null>(null);
+  const [discardingAll, setDiscardingAll] = useState(false);
   const [showRecovered, setShowRecovered] = useState(false);
   const [filterSlug, setFilterSlug] = useState('');
 
@@ -175,6 +180,37 @@ export function LostLeadsTab() {
     loadLeads();
   };
 
+  const handleDiscardAll = async () => {
+    if (total === 0) return;
+    const scope = describeLostLeadScope({ showRecovered, slug: filterSlug || null });
+    const ok = confirm(
+      `Apagar TODOS os ${total} registro(s) — ${scope}?\n\n` +
+        'Esta ação é permanente e não pode ser desfeita.'
+    );
+    if (!ok) return;
+    setDiscardingAll(true);
+    try {
+      const params = new URLSearchParams({
+        all: 'true',
+        ...(showRecovered ? { showRecovered: 'true' } : {}),
+        ...(filterSlug ? { slug: filterSlug } : {}),
+      });
+      const res = await fetch(`/api/leads/lost-leads?${params}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(`${data.deleted} registro(s) apagado(s) de uma vez`);
+        setPage(1);
+        loadLeads();
+      } else {
+        toast.error(data.error || 'Erro ao apagar registros');
+      }
+    } catch {
+      toast.error('Erro de conexão');
+    } finally {
+      setDiscardingAll(false);
+    }
+  };
+
   const sourceBadge = (source: string) => {
     if (source === 'beacon') {
       return <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 text-[10px]">Beacon</Badge>;
@@ -197,16 +233,32 @@ export function LostLeadsTab() {
             </p>
           </div>
         </div>
-        {items.length > 0 && (
-          <Button
-            onClick={handleRecoverAll}
-            disabled={recovering !== null}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground"
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            Recuperar todos da página
-          </Button>
-        )}
+        <div className="flex flex-col sm:flex-row gap-2">
+          {items.length > 0 && (
+            <Button
+              onClick={handleRecoverAll}
+              disabled={recovering !== null || discardingAll}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              Recuperar todos da página
+            </Button>
+          )}
+          {isAdmin && total > 0 && (
+            <Button
+              onClick={handleDiscardAll}
+              disabled={discardingAll || recovering !== null}
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              {discardingAll ? (
+                <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Apagando...</>
+              ) : (
+                <><Trash2 className="h-4 w-4 mr-2" /> Apagar todos</>
+              )}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}

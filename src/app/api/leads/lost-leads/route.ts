@@ -4,6 +4,8 @@ import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
+import { requireAdmin } from '@/lib/api-auth';
+import { buildLostLeadWhere, describeLostLeadScope } from '@/lib/lost-leads';
 
 export const maxDuration = 30;
 
@@ -26,8 +28,7 @@ export async function GET(request: NextRequest) {
     const showRecovered = searchParams.get('showRecovered') === 'true';
     const slug = searchParams.get('slug') || undefined;
 
-    const where: Prisma.LostLeadWhereInput = { isRecovered: showRecovered ? undefined : false };
-    if (slug) where.slug = slug;
+    const where: Prisma.LostLeadWhereInput = buildLostLeadWhere({ showRecovered, slug });
 
     const [items, total] = await Promise.all([
       db.lostLead.findMany({
@@ -252,16 +253,42 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE — discard a lost lead (mark as recovered without creating client)
+// DELETE — discard ONE lost lead (?id=) or wipe ALL at once (?all=true, admin-only).
+// O modo lote usa o MESMO filtro do GET (showRecovered/slug), então o total
+// exibido na UI é exatamente o número de registros apagados.
 export async function DELETE(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    const all = searchParams.get('all') === 'true';
+
+    if (!id && !all) {
+      return NextResponse.json({ error: 'id é obrigatório (ou all=true para apagar tudo)' }, { status: 400 });
+    }
+
+    // ── Modo lote: apagar TUDO de uma vez (exclusivo ADMIN) ──
+    if (all) {
+      const admin = await requireAdmin();
+      if (admin.error) return admin.error;
+
+      const showRecovered = searchParams.get('showRecovered') === 'true';
+      const slug = searchParams.get('slug') || undefined;
+
+      const where: Prisma.LostLeadWhereInput = buildLostLeadWhere({ showRecovered, slug });
+      const result = await db.lostLead.deleteMany({ where });
+
+      console.log(
+        `[Lost Leads] Admin "${admin.session?.user?.email || '?"'} apagou ${result.count} registro(s) em lote ` +
+          `(${describeLostLeadScope({ showRecovered, slug })})`
+      );
+      return NextResponse.json({ success: true, deleted: result.count, scope: describeLostLeadScope({ showRecovered, slug }) });
+    }
+
+    // ── Modo unitário: descartar um lead ──
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
-
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
 
     if (!id) {
       return NextResponse.json({ error: 'id é obrigatório' }, { status: 400 });
