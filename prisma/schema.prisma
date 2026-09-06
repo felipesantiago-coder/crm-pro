@@ -74,12 +74,21 @@ model Interaction {
 
 model Tag {
   id        String   @id @default(cuid()) @map("id")
-  name      String   @unique @map("name")
+  name      String   @map("name")
   color     String   @default("#6366f1") @map("color")
   createdAt DateTime @default(now()) @map("createdAt")
 
+  /// Autor da tag — isolamento por usuário: cada usuário lista/gerencia
+  /// apenas as tags que criou (ADMIN lista todas). null = tag LEGADA,
+  /// criada antes do isolamento — visível e gerenciável apenas por ADMIN.
+  createdById String?  @map("createdById")
+  createdBy   User?    @relation("TagCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
   clients ClientTag[]
 
+  /// Nome único POR AUTOR (não global). Tags legadas (createdById null)
+  /// não conflitam entre si: o Postgres trata NULLs como distintos.
+  @@unique([createdById, name])
   @@map("tags")
 }
 
@@ -305,6 +314,7 @@ model User {
 
   createdClients      Client[]              @relation("CreatedClients")
   createdSchedules    Schedule[]           @relation("CreatedSchedules")
+  createdTags         Tag[]                @relation("TagCreator")
   partnerOf           ClientPartner[]
   addedPartners       ClientPartner[]      @relation("AddedPartners")
   googleCalendarToken GoogleCalendarToken?
