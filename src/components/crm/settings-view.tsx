@@ -44,6 +44,8 @@ export function SettingsView() {
   const [gcLoading, setGcLoading] = useState(true);
   const [gcConnecting, setGcConnecting] = useState(false);
   const [gcDisconnecting, setGcDisconnecting] = useState(false);
+  const [gcRedirectUri, setGcRedirectUri] = useState<string | null>(null);
+  const [gcRedirectUriSource, setGcRedirectUriSource] = useState<string>('NEXTAUTH_URL');
 
   // Notificações (Telegram)
   const [notifLoading, setNotifLoading] = useState(true);
@@ -57,7 +59,11 @@ export function SettingsView() {
     // Verificar status da conexão Google Calendar
     fetch('/api/google-calendar/status')
       .then((r) => r.json())
-      .then((data) => setGcConnected(data.connected === true))
+      .then((data) => {
+        setGcConnected(data.connected === true);
+        setGcRedirectUri(data.redirectUri ?? null);
+        setGcRedirectUriSource(data.redirectUriSource || 'NEXTAUTH_URL');
+      })
       .catch(() => {})
       .finally(() => setGcLoading(false));
 
@@ -422,6 +428,15 @@ export function SettingsView() {
                     <><Link2 className="h-4 w-4 mr-2" /> Conectar Google Calendar</>
                   )}
                 </Button>
+                {gcRedirectUri && (
+                  <p className="text-[11px] text-muted-foreground/70 break-all">
+                    redirect_uri enviado ao Google:{' '}
+                    <code className="text-foreground/80">{gcRedirectUri}</code>{' '}
+                    (fonte: {gcRedirectUriSource}) — deve ser idêntico ao registrado em
+                    "URIs de redirecionamento autorizados" no Google Cloud Console,
+                    senão ocorre Erro 400: redirect_uri_mismatch
+                  </p>
+                )}
                 {!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && (
                   <div className="p-3 rounded-lg bg-amber-100/50 dark:bg-amber-900/20">
                     <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
