@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
-import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
+import { notifyQueueUpdate } from '@/lib/telegram';
+import { notifyAssignedMetaLead } from '@/lib/lead-notify/service';
+import { resolveLeadEnterprise } from '@/lib/lead-notify/resolver';
 import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
 import { resolveQueueForMetaLead, mapWithConcurrency } from '@/lib/meta-lead-routing';
-import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
+import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, extractRawAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 import { fetchEnabledAdAccounts, parseJsonArray, upsertCampaignBindingAuto } from '@/lib/meta-ad-accounts';
 
 // maxDuration=10s no Hobby (Vercel impõe). Pro permite até 300s.
@@ -181,6 +183,11 @@ async function importSingleLead(
   const region = city?.trim() || null;
   const customAnswers = extractCustomAnswers(fieldData);
   const customAnswersText = formatCustomAnswersText(customAnswers);
+  // Todas as respostas com todos os valores e ordem original (cartão)
+  const rawAnswers = extractRawAnswers(fieldData);
+  // Horário REAL do cadastro no Meta — exibido no cartão em vez do
+  // horário de processamento (§15)
+  const submittedAt = lead.created_time ? new Date(lead.created_time) : null;
 
   // 3. Dedup por telefone/email (soft)
   const existingByContact = await db.client.findFirst({
@@ -219,25 +226,48 @@ async function importSingleLead(
     }
   } catch (e) { console.error(`[Meta Polling] Falha fila ${newClient.id}:`, e); }
 
-  // 7. Notificar agente (await)
+  // 7. Notificar agente com o cartão novo (await — serverless-safe).
+  // Empreendimento vem EXCLUSIVAMENTE dos vínculos explícitos —
+  // nunca por similaridade de nome de anúncio (§9.1).
   const notifyId = assignedUserId || creatorId;
+  let resolvedEnt: Awaited<ReturnType<typeof resolveLeadEnterprise>> | null = null;
   if (notifyId) {
     try {
       const u = await db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } });
       if (u?.telegramChatId) {
-        // Try to find enterprise by ad name (adName usually matches enterprise name, e.g. "Vitta")
-        let entName: string | undefined;
-        let entImageUrl: string | undefined;
-        if (adName && adName !== 'Meta Ads') {
-          try {
-            const ent = await db.enterprise.findFirst({
-              where: { name: { contains: adName, mode: 'insensitive' } },
-              select: { name: true, imageUrl: true },
-            });
-            if (ent) { entName = ent.name; entImageUrl = ent.imageUrl || undefined; }
-          } catch {}
-        }
-        await notifyNewLead(u.telegramChatId, { leadName: newClient.name, leadPhone: newClient.phone || '', leadEmail: newClient.email || '', enterpriseName: entName, enterpriseImageUrl: entImageUrl, utmCampaign: campaignName || null, utmSource: 'meta_ads', slug: undefined, assignedUserName, customAnswers });
+        resolvedEnt = await resolveLeadEnterprise({
+          adId: lead.ad_id || null,
+          formId: formId || null,
+          campaignId: campaignId || null,
+          clientId: newClient.id,
+        });
+        await notifyAssignedMetaLead({
+          eventId: leadgenId,
+          eventKind: 'new_lead',
+          clientId: newClient.id,
+          recipientChatId: u.telegramChatId,
+          recipientUserId: notifyId,
+          recipientFirstName: assignedUserName || null,
+          leadName: newClient.name,
+          leadPhoneE164: newClient.phone || null,
+          leadEmail: newClient.email || null,
+          leadRegion: region,
+          resolvedEnterprise: resolvedEnt,
+          source: {
+            adAccountId: adAccountId,
+            campaignId: campaignId || null,
+            campaignName: campaignName || null,
+            adId: lead.ad_id || null,
+            adName: adName || null,
+            formId: formId || null,
+            formName: formName || null,
+            leadgenId,
+            ingestionMethod: 'polling',
+            submittedAt,
+            receivedAt: new Date(),
+          },
+          rawAnswers,
+        });
       }
     } catch (e) { console.warn('[Meta Polling] Falha notificação agente:', e); }
   }
@@ -248,7 +278,7 @@ async function importSingleLead(
       const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
       if (admin?.telegramChatId) {
         const next = await peekNextUser({ queueId: assignedQueueId });
-        await notifyQueueUpdate(admin.telegramChatId, { source: `meta_ads:polling:${campaignName || adName || ''}`, assignedUserName: assignedUserName || '?', nextUserName: next?.userName || null, leadName: newClient.name, leadPhone: newClient.phone || undefined });
+        await notifyQueueUpdate(admin.telegramChatId, { source: `meta_ads:polling:${campaignName || adName || ''}`, assignedUserName: assignedUserName || '?', nextUserName: next?.userName || null, leadName: newClient.name, enterpriseName: resolvedEnt?.name || undefined });
       }
     } catch (e) { console.warn('[Meta Polling] Falha notificação admin:', e); }
   }

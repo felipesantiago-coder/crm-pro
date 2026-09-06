@@ -4,13 +4,51 @@
  */
 
 // ── Campos padrão do Meta que mapeamos para colunas do Client ──
+// Normalizados da MESMA forma que os nomes dos campos (sem _, -, espaços)
+// para que a comparação funcione: "full_name" → "fullname".
 
-const STANDARD_FIELDS = new Set([
-  'full_name', 'name', 'nome', 'nome_completo',
-  'email', 'e_mail',
-  'phone_number', 'phone', 'celular', 'telefone',
-  'city', 'cidade',
-]);
+const STANDARD_FIELDS = new Set(
+  [
+    'full_name', 'name', 'nome', 'nome_completo',
+    'email', 'e_mail',
+    'phone_number', 'phone', 'celular', 'telefone',
+    'city', 'cidade',
+  ].map((f) => f.replace(/[_\s-]/g, '')),
+);
+
+export interface RawLeadAnswer {
+  key: string;
+  values: string[];
+}
+
+/**
+ * Extrai TODAS as perguntas/respostas customizadas preservando:
+ *   - a ordem original do formulário (field_data);
+ *   - TODOS os valores de múltipla escolha (values[]), nunca só o primeiro.
+ * Usado pelo cartão de notificação (contrato TelegramLeadNotificationInput).
+ */
+export function extractRawAnswers(
+  fieldData: Array<{ name: string; values?: string[] }>,
+): RawLeadAnswer[] {
+  const answers: RawLeadAnswer[] = [];
+
+  for (const field of fieldData) {
+    const normalizedName = field.name.toLowerCase().replace(/[_\s-]/g, '');
+
+    // Pular campos padrão que já são extraídos separadamente
+    if (STANDARD_FIELDS.has(normalizedName)) continue;
+
+    const values = (field.values || [])
+      .map((v) => String(v).trim())
+      .filter(Boolean);
+
+    if (values.length > 0) {
+      answers.push({ key: field.name, values });
+    }
+  }
+
+  return answers;
+}
 
 /**
  * Extrai o valor de um campo do array field_data do Meta.

@@ -5,9 +5,11 @@ import { requireAdmin } from '@/lib/api-auth';
 // ============================================================
 // GET /api/meta-campaign-bindings
 // Lista os vínculos campanha → fila (MetaCampaignBinding), com a
-// conta de anúncios e a fila de cada campanha. As bindings são
-// auto-registradas quando um lead chega com campaign_id (webhook
-// ou polling).
+// conta de anúncios, a fila e o EMPREENDIMENTO de cada campanha.
+// As bindings são auto-registradas quando um lead chega com
+// campaign_id (webhook ou polling); o empreendimento é sempre
+// configurado EXPLICITAMENTE pelo admin — alimenta a imagem do
+// cartão de notificação (§9).
 // ============================================================
 export async function GET() {
   try {
@@ -18,6 +20,7 @@ export async function GET() {
       include: {
         queue: { select: { id: true, name: true, isActive: true } },
         account: { select: { id: true, name: true, adAccountId: true, enabled: true } },
+        enterprise: { select: { id: true, name: true, imageUrl: true } },
       },
     });
 
@@ -38,6 +41,8 @@ export async function GET() {
         account: b.account,
         queueId: b.queueId,
         queue: b.queue,
+        enterpriseId: b.enterpriseId,
+        enterprise: b.enterprise,
         leadCount: countByCampaign.get(b.campaignId) ?? b.leadCount,
         firstSeenAt: b.firstSeenAt,
         lastSeenAt: b.lastSeenAt,
@@ -56,15 +61,16 @@ export async function GET() {
 // PATCH /api/meta-campaign-bindings
 // Vincula uma campanha a uma fila de atendimento (por campaignId) —
 // prioridade máxima no roteamento de leads. Também permite corrigir
-// a conta de anúncios da campanha.
-// Body: { campaignId: string, campaignName?: string, queueId?: string | null, adAccountId?: string | null }
+// a conta de anúncios e definir o EMPREENDIMENTO da campanha
+// (fonte da imagem do cartão de notificação — vínculo explícito §9).
+// Body: { campaignId: string, campaignName?: string, queueId?: string | null, adAccountId?: string | null, enterpriseId?: string | null }
 // ============================================================
 export async function PATCH(request: NextRequest) {
   try {
     await requireAdmin();
 
     const body = await request.json();
-    const { campaignId, campaignName, queueId, adAccountId } = body;
+    const { campaignId, campaignName, queueId, adAccountId, enterpriseId } = body;
 
     if (!campaignId) {
       return NextResponse.json({ error: 'campaignId é obrigatório' }, { status: 400 });
@@ -73,6 +79,7 @@ export async function PATCH(request: NextRequest) {
     // Normaliza: string vazia → null (remove vínculo)
     const nextQueueId = queueId === undefined ? undefined : (queueId || null);
     const nextAdAccountId = adAccountId === undefined ? undefined : (adAccountId || null);
+    const nextEnterpriseId = enterpriseId === undefined ? undefined : (enterpriseId || null);
 
     if (nextQueueId) {
       const queueExists = await db.leadQueue.findUnique({ where: { id: nextQueueId }, select: { id: true } });
@@ -88,6 +95,13 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    if (nextEnterpriseId) {
+      const enterpriseExists = await db.enterprise.findUnique({ where: { id: nextEnterpriseId }, select: { id: true } });
+      if (!enterpriseExists) {
+        return NextResponse.json({ error: 'Empreendimento não encontrado' }, { status: 400 });
+      }
+    }
+
     const existing = await db.metaCampaignBinding.findUnique({ where: { campaignId }, select: { id: true } });
 
     if (!existing) {
@@ -99,18 +113,20 @@ export async function PATCH(request: NextRequest) {
           campaignName: campaignName || null,
           queueId: nextQueueId ?? null,
           adAccountId: nextAdAccountId ?? null,
+          enterpriseId: nextEnterpriseId ?? null,
         },
       });
-      return NextResponse.json({ id: created.id, created: true, queueId: created.queueId });
+      return NextResponse.json({ id: created.id, created: true, queueId: created.queueId, enterpriseId: created.enterpriseId });
     }
 
-    const updateData: { queueId?: string | null; adAccountId?: string | null; campaignName?: string } = {};
+    const updateData: { queueId?: string | null; adAccountId?: string | null; enterpriseId?: string | null; campaignName?: string } = {};
     if (nextQueueId !== undefined) updateData.queueId = nextQueueId;
     if (nextAdAccountId !== undefined) updateData.adAccountId = nextAdAccountId;
+    if (nextEnterpriseId !== undefined) updateData.enterpriseId = nextEnterpriseId;
     if (campaignName) updateData.campaignName = campaignName;
 
     if (Object.keys(updateData).length === 0) {
-      return NextResponse.json({ error: 'Nada para atualizar (informe queueId e/ou adAccountId)' }, { status: 400 });
+      return NextResponse.json({ error: 'Nada para atualizar (informe queueId, adAccountId e/ou enterpriseId)' }, { status: 400 });
     }
 
     await db.metaCampaignBinding.update({

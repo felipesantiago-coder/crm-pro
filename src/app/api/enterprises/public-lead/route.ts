@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
-import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
+import { randomUUID } from 'node:crypto';
+import { notifyQueueUpdate } from '@/lib/telegram';
+import { notifyAssignedMetaLead } from '@/lib/lead-notify/service';
+import type { TelegramLeadNotificationInput } from '@/lib/lead-notify/types';
+import { formatMetaPhone } from '@/lib/meta-lead-utils';
 import { rateLimit } from '@/lib/rate-limit';
 import { assignLeadToUser, peekNextUser, type AssignResult } from '@/lib/lead-queue';
 
@@ -126,20 +130,38 @@ export async function POST(request: NextRequest) {
             select: { telegramChatId: true, name: true },
           });
           if (notifyUser?.telegramChatId) {
-            console.log(`[Public Lead] Enviando notificação Telegram para agente "${notifyUser.name}" (lead existente ${existingClient.id})`);
-            await notifyNewLead(notifyUser.telegramChatId, {
+            console.log(`[Public Lead] Enviando cartão de lead para "${notifyUser.name}" (lead existente ${existingClient.id})`);
+            await notifyAssignedMetaLead({
+              eventId: `landing:${metaEventId || randomUUID()}`,
+              eventKind: 'returning_lead',
+              clientId: existingClient.id,
+              recipientChatId: notifyUser.telegramChatId,
+              recipientUserId: assignedUser.userId,
+              recipientFirstName: assignedUser.userName || null,
               leadName: existingClient.name,
-              leadPhone: existingClient.phone || '',
-              leadEmail: existingClient.email || '',
-              enterpriseName,
-              enterpriseImageUrl: enterpriseImageUrl || undefined,
-              utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
-              utmSource: typeof utmSource === 'string' ? utmSource : null,
-              slug: slug || undefined,
-              assignedUserName: assignedUser.userName,
-              customAnswers: undefined,
+              leadPhoneE164: formatMetaPhone(existingClient.phone || null),
+              leadEmail: existingClient.email || null,
+              leadRegion: null,
+              resolvedEnterprise: enterpriseName || enterpriseImageUrl
+                ? {
+                    enterpriseId: enterpriseId || undefined,
+                    name: enterpriseName || 'Empreendimento',
+                    imageUrl: enterpriseImageUrl || undefined,
+                    imageAlt: enterpriseName || 'Empreendimento',
+                    source: 'explicit',
+                    diagnostics: [],
+                  }
+                : null,
+              source: {
+                campaignName: typeof utmCampaign === 'string' ? utmCampaign : null,
+                ingestionMethod: 'landing',
+                formName: slug || null,
+                submittedAt: null,
+                receivedAt: new Date(),
+              },
+              rawAnswers: [],
             });
-            console.log(`[Public Lead] ✅ Notificação Telegram enviada ao agente "${notifyUser.name}"`);
+            console.log(`[Public Lead] ✅ Cartão de lead enviado para "${notifyUser.name}"`);
           } else {
             console.warn(`[Public Lead] Usuário ${notifyUser?.name || assignedUser.userId} atribuído mas sem Telegram configurado. Lead ${existingClient.id} sem notificação.`);
           }
@@ -157,7 +179,6 @@ export async function POST(request: NextRequest) {
               assignedUserName: assignedUser.userName || 'Desconhecido',
               nextUserName: nextUser?.userName || null,
               leadName: existingClient.name,
-              leadPhone: existingClient.phone,
               enterpriseName,
             });
           }
@@ -214,16 +235,16 @@ export async function POST(request: NextRequest) {
     };
 
     // ── Helper: send Telegram notification to assigned agent (awaited) ──
-    const sendNotification = async (userId: string, leadData: Parameters<typeof notifyNewLead>[1], clientName: string) => {
+    const sendNotification = async (userId: string, input: TelegramLeadNotificationInput, clientName: string) => {
       try {
         const user = await db.user.findUnique({
           where: { id: userId },
           select: { telegramChatId: true, name: true },
         });
         if (user?.telegramChatId) {
-          console.log(`[Public Lead] Enviando notificação Telegram para agente "${user.name}" (lead ${clientName})`);
-          await notifyNewLead(user.telegramChatId, leadData);
-          console.log(`[Public Lead] ✅ Notificação Telegram enviada ao agente "${user.name}"`);
+          console.log(`[Public Lead] Enviando cartão de lead para "${user.name}" (lead ${clientName})`);
+          await notifyAssignedMetaLead({ ...input, recipientChatId: user.telegramChatId });
+          console.log(`[Public Lead] ✅ Cartão de lead enviado para "${user.name}"`);
         } else {
           console.warn(`[Public Lead] Usuário ${user?.name || userId} sem Telegram configurado. Lead ${clientName} sem notificação push.`);
         }
@@ -365,21 +386,46 @@ export async function POST(request: NextRequest) {
 
     // ── Send Telegram notification to assigned agent (awaited — serverless-safe) ──
     if (assignedUser?.assigned && assignedUser.userId && assignedUser.message !== 'already_assigned') {
+      // Todas as respostas do formulário, com todos os valores (cartão)
+      const landingRawAnswers: TelegramLeadNotificationInput['rawAnswers'] =
+        (customAnswers && typeof customAnswers === 'object')
+          ? Object.entries(customAnswers)
+              .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+              .map(([key, v]) => ({
+                key,
+                values: Array.isArray(v) ? v.map(String) : [String(v)],
+              }))
+          : [];
+
       await sendNotification(assignedUser.userId, {
+        eventId: `landing:${metaEventId || randomUUID()}`,
+        eventKind: isNew ? 'new_lead' : 'returning_lead',
+        clientId: client.id,
+        recipientChatId: '', // preenchido pelo helper com o chat do usuário
+        recipientUserId: assignedUser.userId,
+        recipientFirstName: assignedUser.userName || null,
         leadName: client.name,
-        leadPhone: client.phone || '',
-        leadEmail: client.email || '',
-        enterpriseName,
-        enterpriseImageUrl: enterpriseImageUrl || undefined,
-        utmCampaign: typeof utmCampaign === 'string' ? utmCampaign : null,
-        utmSource: typeof utmSource === 'string' ? utmSource : null,
-        slug: slug || undefined,
-        assignedUserName: assignedUser.userName,
-        customAnswers: (customAnswers && typeof customAnswers === 'object')
-          ? Object.fromEntries(
-              Object.entries(customAnswers).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== ''),
-            ) as Record<string, string>
-          : undefined,
+        leadPhoneE164: formatMetaPhone(client.phone || null),
+        leadEmail: client.email || null,
+        leadRegion: null,
+        resolvedEnterprise: enterpriseName || enterpriseImageUrl
+          ? {
+              enterpriseId: enterpriseId || undefined,
+              name: enterpriseName || 'Empreendimento',
+              imageUrl: enterpriseImageUrl || undefined,
+              imageAlt: enterpriseName || 'Empreendimento',
+              source: 'explicit',
+              diagnostics: [],
+            }
+          : null,
+        source: {
+          campaignName: typeof utmCampaign === 'string' ? utmCampaign : null,
+          ingestionMethod: 'landing',
+          formName: slug || null,
+          submittedAt: null,
+          receivedAt: new Date(),
+        },
+        rawAnswers: landingRawAnswers,
       }, client.name);
 
       // Notify admin about queue rotation (awaited — serverless-safe)
@@ -392,7 +438,6 @@ export async function POST(request: NextRequest) {
             assignedUserName: assignedUser.userName || 'Desconhecido',
             nextUserName: nextUser?.userName || null,
             leadName: client.name,
-            leadPhone: client.phone,
             enterpriseName,
           });
         }

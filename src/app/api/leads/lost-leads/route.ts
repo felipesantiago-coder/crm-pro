@@ -3,9 +3,11 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
-import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
+import { notifyQueueUpdate } from '@/lib/telegram';
+import { notifyAssignedMetaLead } from '@/lib/lead-notify/service';
 import { requireAdmin } from '@/lib/api-auth';
 import { buildLostLeadWhere, describeLostLeadScope } from '@/lib/lost-leads';
+import { formatMetaPhone } from '@/lib/meta-lead-utils';
 
 export const maxDuration = 30;
 
@@ -103,14 +105,16 @@ export async function POST(request: NextRequest) {
     // Find enterprise by slug for enterpriseId
     let enterpriseId: string | undefined;
     let enterpriseName: string | undefined;
+    let enterpriseImageUrl: string | undefined;
     if (lostLead.slug) {
       const ent = await db.enterprise.findUnique({
         where: { slug: lostLead.slug },
-        select: { id: true, name: true, region: true },
+        select: { id: true, name: true, region: true, imageUrl: true },
       });
       if (ent) {
         enterpriseId = ent.id;
         enterpriseName = ent.name;
+        enterpriseImageUrl = ent.imageUrl || undefined;
       }
     }
 
@@ -171,24 +175,45 @@ export async function POST(request: NextRequest) {
     } = { agent: { sent: false }, admin: { sent: false } };
 
     if (assignedUserId) {
-      // Notificação do agente atribuído
+      // Notificação do agente atribuído — cartão de RECUPERAÇÃO:
+      // horário exibido é o da captura original, nunca parece novo (§15)
       try {
         const agentUser = await db.user.findUnique({ where: { id: assignedUserId }, select: { telegramChatId: true, name: true } });
         if (agentUser?.telegramChatId) {
-          console.log(`[Lost Leads] Enviando notificação Telegram para agente "${agentUser.name}" (lead ${client.id})`);
-          const ok = await notifyNewLead(agentUser.telegramChatId, {
+          console.log(`[Lost Leads] Enviando cartão de recuperação para "${agentUser.name}" (lead ${client.id})`);
+          const result = await notifyAssignedMetaLead({
+            eventId: `recovered:${lostLead.id}`,
+            eventKind: 'recovered_lead',
+            clientId: client.id,
+            recipientChatId: agentUser.telegramChatId,
+            recipientUserId: assignedUserId,
+            recipientFirstName: assignedUserName || null,
             leadName: client.name,
-            leadPhone: client.phone || '',
-            leadEmail: client.email || '',
-            enterpriseName: enterpriseName || null,
-            utmCampaign: lostLead.utmCampaign || null,
-            utmSource: lostLead.utmSource || null,
-            slug: lostLead.slug || undefined,
-            assignedUserName: assignedUserName,
-            customAnswers: undefined,
+            leadPhoneE164: formatMetaPhone(client.phone || null),
+            leadEmail: client.email || null,
+            leadRegion: null,
+            resolvedEnterprise: enterpriseName || enterpriseImageUrl
+              ? {
+                  enterpriseId: enterpriseId,
+                  name: enterpriseName || 'Empreendimento',
+                  imageUrl: enterpriseImageUrl,
+                  imageAlt: enterpriseName || 'Empreendimento',
+                  source: 'explicit',
+                  diagnostics: [],
+                }
+              : null,
+            source: {
+              campaignName: lostLead.utmCampaign || null,
+              ingestionMethod: 'recovery',
+              formName: lostLead.slug || null,
+              submittedAt: lostLead.createdAt,
+              receivedAt: new Date(),
+            },
+            rawAnswers: [],
           });
-          notifications.agent = { sent: ok, userName: agentUser.name, reason: ok ? 'delivered' : 'Telegram API returned false' };
-          console.log(`[Lost Leads] ${ok ? '✅' : '❌'} Notificação agente "${agentUser.name}": ${ok ? 'enviada' : 'FALHOU'}`);
+          const ok = result.ok && result.status !== 'skipped_duplicate';
+          notifications.agent = { sent: ok, userName: agentUser.name, reason: ok ? `delivered (${result.status})` : result.messages[0]?.errorCode || result.status };
+          console.log(`[Lost Leads] ${ok ? '✅' : '❌'} Cartão de recuperação "${agentUser.name}": ${result.status}`);
         } else {
           notifications.agent = { sent: false, userName: agentUser?.name, reason: `telegramChatId não configurado para o usuário "${agentUser?.name || assignedUserId}"` };
           console.warn(`[Lost Leads] Usuário ${agentUser?.name || assignedUserId} sem Telegram. Lead ${client.id} sem notificação do agente.`);
@@ -211,7 +236,6 @@ export async function POST(request: NextRequest) {
               assignedUserName: assignedUserName,
               nextUserName: nextUser?.userName || null,
               leadName: client.name,
-              leadPhone: client.phone || undefined,
               enterpriseName: enterpriseName || undefined,
             });
             notifications.admin = { sent: ok, reason: ok ? 'delivered' : 'Telegram API returned false' };

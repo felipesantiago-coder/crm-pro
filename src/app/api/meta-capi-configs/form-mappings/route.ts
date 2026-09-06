@@ -28,6 +28,9 @@ export async function GET(request: NextRequest) {
           adAccount: {
             select: { id: true, name: true, adAccountId: true, enabled: true },
           },
+          enterprise: {
+            select: { id: true, name: true, imageUrl: true },
+          },
         },
       });
 
@@ -44,6 +47,8 @@ export async function GET(request: NextRequest) {
         queue: { id: string; name: string; isActive: boolean } | null;
         adAccountId: string | null;
         adAccount: { id: string; name: string; adAccountId: string; enabled: boolean } | null;
+        enterpriseId: string | null;
+        enterprise: { id: string; name: string; imageUrl: string | null } | null;
         campaigns: Array<{ campaignId: string | null; campaignName: string | null; adName: string | null; leadCount: number }>;
       }>();
 
@@ -65,6 +70,10 @@ export async function GET(request: NextRequest) {
             existing.adAccountId = m.adAccountId;
             existing.adAccount = m.adAccount;
           }
+          if (!existing.enterpriseId && m.enterpriseId) {
+            existing.enterpriseId = m.enterpriseId;
+            existing.enterprise = m.enterprise;
+          }
           existing.campaigns.push({
             campaignId: m.campaignId,
             campaignName: m.campaignName,
@@ -84,6 +93,8 @@ export async function GET(request: NextRequest) {
             queue: m.queue,
             adAccountId: m.adAccountId,
             adAccount: m.adAccount,
+            enterpriseId: m.enterpriseId,
+            enterprise: m.enterprise,
             campaigns: [{
               campaignId: m.campaignId,
               campaignName: m.campaignName,
@@ -110,6 +121,9 @@ export async function GET(request: NextRequest) {
         adAccount: {
           select: { id: true, name: true, adAccountId: true, enabled: true },
         },
+        enterprise: {
+          select: { id: true, name: true, imageUrl: true },
+        },
       },
     });
 
@@ -126,15 +140,16 @@ export async function GET(request: NextRequest) {
 // ============================================================
 // PATCH /api/meta-capi-configs/form-mappings
 // Vincula um form mapping a um CAPI config e/ou a uma fila de
-// atendimento (roteamento multi-anúncio).
-// Body: { formId: string, campaignId?: string, capiConfigId?: string | null, queueId?: string | null }
+// atendimento (roteamento multi-anúncio) e/ou a um EMPREENDIMENTO
+// (imagem do cartão de notificação — vínculo explícito §9).
+// Body: { formId: string, campaignId?: string, capiConfigId?: string | null, queueId?: string | null, enterpriseId?: string | null }
 // ============================================================
 export async function PATCH(request: NextRequest) {
   try {
     await requireAdmin();
 
     const body = await request.json();
-    const { formId, campaignId, capiConfigId, queueId } = body;
+    const { formId, campaignId, capiConfigId, queueId, enterpriseId } = body;
 
     if (!formId) {
       return NextResponse.json({ error: 'formId é obrigatório' }, { status: 400 });
@@ -143,6 +158,7 @@ export async function PATCH(request: NextRequest) {
     // Normaliza: string vazia → null (remove vínculo)
     const nextCapiConfigId = capiConfigId === undefined ? undefined : (capiConfigId || null);
     const nextQueueId = queueId === undefined ? undefined : (queueId || null);
+    const nextEnterpriseId = enterpriseId === undefined ? undefined : (enterpriseId || null);
 
     // Valida que a fila existe (evita FK inválida)
     if (nextQueueId) {
@@ -152,12 +168,20 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const updateData: { capiConfigId?: string | null; queueId?: string | null } = {};
+    if (nextEnterpriseId) {
+      const enterpriseExists = await db.enterprise.findUnique({ where: { id: nextEnterpriseId }, select: { id: true } });
+      if (!enterpriseExists) {
+        return NextResponse.json({ error: 'Empreendimento não encontrado' }, { status: 400 });
+      }
+    }
+
+    const updateData: { capiConfigId?: string | null; queueId?: string | null; enterpriseId?: string | null } = {};
     if (nextCapiConfigId !== undefined) updateData.capiConfigId = nextCapiConfigId;
     if (nextQueueId !== undefined) updateData.queueId = nextQueueId;
+    if (nextEnterpriseId !== undefined) updateData.enterpriseId = nextEnterpriseId;
 
     if (Object.keys(updateData).length === 0) {
-      return NextResponse.json({ error: 'Nada para atualizar (informe capiConfigId e/ou queueId)' }, { status: 400 });
+      return NextResponse.json({ error: 'Nada para atualizar (informe capiConfigId, queueId e/ou enterpriseId)' }, { status: 400 });
     }
 
     // Se campaignId foi fornecido, atualizar apenas aquele mapping específico

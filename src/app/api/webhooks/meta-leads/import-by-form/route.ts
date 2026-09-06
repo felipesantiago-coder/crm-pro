@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
-import { notifyNewLead, notifyQueueUpdate } from '@/lib/telegram';
+import { notifyQueueUpdate } from '@/lib/telegram';
+import { notifyAssignedMetaLead } from '@/lib/lead-notify/service';
 import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
 import { findCapConfigByFormId } from '@/lib/meta-conversions';
-import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
+import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, extractRawAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 import { fetchEnabledAdAccounts } from '@/lib/meta-ad-accounts';
 
 // ============================================================
@@ -112,6 +113,9 @@ async function processLead(
   const leadgenId = lead.id;
   const fieldData = lead.field_data;
   const campaignId = String(lead.campaign_id || '');
+  const adId = String(lead.ad_id || '');
+  // Horário REAL do cadastro no Meta (§15) — não o horário da importação
+  const submittedAt = lead.created_time ? new Date(lead.created_time) : null;
 
   // Extrair campos
   const rawName = getMetaFieldValue(fieldData, 'full_name')
@@ -136,6 +140,8 @@ async function processLead(
   // Extrair respostas customizadas (perguntas extras do formulário)
   const customAnswers = extractCustomAnswers(fieldData);
   const customAnswersText = formatCustomAnswersText(customAnswers);
+  // Todas as respostas com todos os valores e ordem original (cartão)
+  const rawAnswers = extractRawAnswers(fieldData);
 
   // 1. Verificar duplicata por metaLeadgenId
   try {
@@ -188,20 +194,31 @@ async function processLead(
         assignedUserId = assignResult.userId;
         assignedQueueId = assignResult.queueId;
         await db.client.update({ where: { id: existingByContact.id }, data: { createdBy: assignResult.userId! } }).catch(() => {});
-        // Notificar agente (await — serverless-safe)
+        // Notificar agente com o cartão novo (await — serverless-safe)
         try {
           const agentUser = await db.user.findUnique({ where: { id: assignResult.userId }, select: { telegramChatId: true, name: true } });
           if (agentUser?.telegramChatId) {
-            await notifyNewLead(agentUser.telegramChatId, {
+            await notifyAssignedMetaLead({
+              eventId: leadgenId,
+              eventKind: 'returning_lead',
+              clientId: existingByContact.id,
+              recipientChatId: agentUser.telegramChatId,
+              recipientUserId: assignResult.userId,
+              recipientFirstName: assignResult.userName || null,
               leadName: existingByContact.name,
-              leadPhone: phone || existingByContact.phone || '',
-              leadEmail: email || existingByContact.email || '',
-              enterpriseName: undefined,
-              utmCampaign: `import_by_form:${formId}`,
-              utmSource: 'meta_ads',
-              slug: undefined,
-              assignedUserName: assignResult.userName,
-              customAnswers,
+              leadPhoneE164: phone || existingByContact.phone || null,
+              leadEmail: email || existingByContact.email || null,
+              leadRegion: region,
+              source: {
+                campaignId: campaignId || null,
+                adId: adId || null,
+                formId: formId || null,
+                leadgenId,
+                ingestionMethod: 'import_by_form',
+                submittedAt,
+                receivedAt: new Date(),
+              },
+              rawAnswers,
             });
           }
         } catch (notifyErr) { console.warn('[Import by Form] Falha notificação agente (existente):', notifyErr); }
@@ -216,7 +233,6 @@ async function processLead(
                 assignedUserName: assignResult.userName || 'Desconhecido',
                 nextUserName: nextUser?.userName || null,
                 leadName: existingByContact.name,
-                leadPhone: phone || undefined,
               });
             }
           } catch (err) { console.warn('[Import by Form] Admin notification failed (existing):', err instanceof Error ? err.message : err); }
@@ -282,22 +298,33 @@ async function processLead(
       console.error(`[Import by Form] Falha na fila para ${newClient.id}:`, queueErr);
     }
 
-    // 6. Notificação Telegram para o atendente (await — serverless-safe)
+    // 6. Notificação Telegram com o cartão novo (await — serverless-safe)
     const notifyId = assignedUserId || creatorId;
     if (notifyId) {
       try {
         const agentUser = await db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } });
         if (agentUser?.telegramChatId) {
-          await notifyNewLead(agentUser.telegramChatId, {
+          await notifyAssignedMetaLead({
+            eventId: leadgenId,
+            eventKind: 'imported_lead',
+            clientId: newClient.id,
+            recipientChatId: agentUser.telegramChatId,
+            recipientUserId: notifyId,
+            recipientFirstName: assignedTo || null,
             leadName: newClient.name,
-            leadPhone: newClient.phone || '',
-            leadEmail: newClient.email || '',
-            enterpriseName: undefined,
-            utmCampaign: `import_by_form:${formId}`,
-            utmSource: 'meta_ads',
-            slug: undefined,
-            assignedUserName: assignedTo,
-            customAnswers,
+            leadPhoneE164: newClient.phone || null,
+            leadEmail: newClient.email || null,
+            leadRegion: region,
+            source: {
+              campaignId: campaignId || null,
+              adId: adId || null,
+              formId: formId || null,
+              leadgenId,
+              ingestionMethod: 'import_by_form',
+              submittedAt,
+              receivedAt: new Date(),
+            },
+            rawAnswers,
           });
         }
       } catch (notifyErr) { console.warn('[Import by Form] Falha notificação agente:', notifyErr); }
@@ -314,7 +341,6 @@ async function processLead(
             assignedUserName: assignedTo || 'Desconhecido',
             nextUserName: nextUser?.userName || null,
             leadName: newClient.name,
-            leadPhone: newClient.phone || undefined,
           });
         }
       } catch (err) { console.warn('[Import by Form] Admin notification failed:', err instanceof Error ? err.message : err); }

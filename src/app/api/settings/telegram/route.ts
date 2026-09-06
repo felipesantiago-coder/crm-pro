@@ -6,6 +6,7 @@ import { db } from '@/lib/db';
 /**
  * GET /api/settings/telegram
  * Returns the current user's telegram configuration status.
+ * O Chat ID completo NUNCA é exposto na UI — apenas versão mascarada (§18.2).
  */
 export async function GET() {
   try {
@@ -24,14 +25,19 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      telegramChatId: user.telegramChatId || null,
       configured: !!user.telegramChatId,
+      maskedChatId: user.telegramChatId ? maskChatId(user.telegramChatId) : null,
       botConfigured: !!process.env.TELEGRAM_BOT_TOKEN,
     });
   } catch (error) {
     console.error('[Telegram Settings] GET error:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
+}
+
+function maskChatId(chatId: string): string {
+  const visible = chatId.slice(-3);
+  return `••••${visible}`;
 }
 
 /**
