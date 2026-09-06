@@ -48,6 +48,7 @@ import {
   HelpCircle,
   Loader2,
   Plus,
+  History,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────
@@ -96,6 +97,25 @@ interface EditQuestion {
   count: number;
   questionScore: string; // '' = sem nota fixa
   answers: EditAnswer[];
+}
+
+// ── Backfill de formulários antigos (notes) ──
+interface LegacyFormInfo {
+  formId: string;
+  formName: string | null;
+  leadCount: number;
+  withAnswers: number;
+}
+interface DiscoveryResult {
+  forms: LegacyFormInfo[];
+  scanned: number;
+  truncated: boolean;
+}
+interface BackfillResult {
+  total: number;
+  linked: number;
+  withAnswers: number;
+  alreadyLinked: number;
 }
 
 // ─────────────────────────────────────────────
@@ -210,6 +230,11 @@ export function TemperatureTab() {
   const [saving, setSaving] = useState(false);
   const [reclassifying, setReclassifying] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  // Formulários antigos (leads recebidos antes do recurso de temperatura)
+  const [legacy, setLegacy] = useState<DiscoveryResult | null>(null);
+  const [loadingLegacy, setLoadingLegacy] = useState(false);
+  const [linkingFormId, setLinkingFormId] = useState<string | null>(null);
 
   // ── Lista de formulários ──
   const loadForms = useCallback(async (keepSelection = true) => {
@@ -336,6 +361,49 @@ export function TemperatureTab() {
       await Promise.all([loadForms(), loadDetail(selectedFormId)]);
     } catch {
       toast.error('Erro ao remover configuração');
+    }
+  }
+
+  // ── Formulários antigos: descobrir e vincular (backfill das notes) ──
+  async function handleDiscoverLegacy() {
+    setLoadingLegacy(true);
+    try {
+      const res = await fetch('/api/meta-ads/temperature/backfill');
+      if (!res.ok) throw new Error();
+      const data: DiscoveryResult = await res.json();
+      setLegacy(data);
+      if ((data.forms?.length || 0) === 0) {
+        toast.info(`Nenhum formulário antigo encontrado (${data.scanned} lead(s) analisado(s))`);
+      }
+    } catch {
+      toast.error('Erro ao buscar formulários em leads antigos');
+    } finally {
+      setLoadingLegacy(false);
+    }
+  }
+
+  async function handleLinkLegacy(formId: string) {
+    setLinkingFormId(formId);
+    try {
+      const res = await fetch('/api/meta-ads/temperature/backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao vincular');
+      const r: BackfillResult = data.result;
+      toast.success(
+        `Vinculação concluída — ${r.linked} lead(s) ligado(s) ao formulário` +
+          (r.withAnswers > 0 ? `, ${r.withAnswers} com perguntas/respostas recuperadas` : ''),
+      );
+      setLegacy((prev) => (prev ? { ...prev, forms: prev.forms.filter((f) => f.formId !== formId) } : prev));
+      await loadForms();
+      setSelectedFormId(formId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao vincular leads antigos');
+    } finally {
+      setLinkingFormId(null);
     }
   }
 
@@ -480,6 +548,75 @@ export function TemperatureTab() {
                 })}
               </div>
             )}
+
+            {/* Formulários antigos — backfill das notes (leads anteriores ao recurso) */}
+            <Separator className="my-2" />
+            <div className="p-2 pt-0">
+              {!legacy ? (
+                <button
+                  onClick={handleDiscoverLegacy}
+                  disabled={loadingLegacy}
+                  className="w-full flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground border rounded-md py-1.5 transition-colors disabled:opacity-60"
+                >
+                  {loadingLegacy ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <History className="h-3 w-3" />
+                  )}
+                  Buscar formulários em leads antigos
+                </button>
+              ) : legacy.forms.length === 0 ? (
+                <p className="text-[10px] text-muted-foreground text-center py-1">
+                  Nenhum formulário antigo encontrado em {legacy.scanned} lead(s) analisado(s).
+                </p>
+              ) : (
+                <div className="space-y-1.5 mt-1">
+                  <p className="text-[10px] text-muted-foreground px-1">
+                    Encontrados em leads recebidos antes da temperatura:
+                  </p>
+                  {legacy.forms.map((f) => (
+                    <div key={f.formId} className="rounded-md border p-2 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-medium truncate">
+                          {f.formName || `Formulário ${f.formId.slice(-6)}`}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                          {f.leadCount} lead{f.leadCount !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <p className="text-[9px] text-muted-foreground font-mono truncate">{f.formId}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[9px] text-muted-foreground">
+                          {f.withAnswers > 0
+                            ? `${f.withAnswers} com respostas recuperáveis`
+                            : 'sem respostas nas notas'}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-[10px] px-2"
+                          onClick={() => handleLinkLegacy(f.formId)}
+                          disabled={linkingFormId === f.formId}
+                        >
+                          {linkingFormId === f.formId ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <History className="h-3 w-3 mr-1" />
+                          )}
+                          Vincular
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {legacy.truncated && (
+                    <p className="text-[9px] text-amber-600 dark:text-amber-400 px-1">
+                      Varredura limitada aos primeiros {legacy.scanned} leads — vincule os formulários
+                      acima e busque novamente.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -667,6 +804,18 @@ export function TemperatureTab() {
                       As perguntas deste formulário aparecem aqui quando os primeiros leads com respostas
                       forem recebidos (webhook, importação por formulário ou por leadgen ID).
                     </p>
+                    <button
+                      onClick={() => selectedFormId && handleLinkLegacy(selectedFormId)}
+                      disabled={linkingFormId === selectedFormId}
+                      className="inline-flex items-center gap-1.5 text-[11px] text-primary hover:underline disabled:opacity-60 mt-1"
+                    >
+                      {linkingFormId === selectedFormId ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <History className="h-3 w-3" />
+                      )}
+                      Recuperar perguntas/respostas dos leads já recebidos deste formulário
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-3">
