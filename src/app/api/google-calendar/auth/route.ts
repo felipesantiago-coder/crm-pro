@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import crypto from 'crypto';
-import { buildCalendarConsentUrl } from '@/lib/google-calendar';
+import { buildCalendarConsentUrl, resolveGoogleRedirectUri } from '@/lib/google-calendar';
 
 // GET /api/google-calendar/auth — Inicia o fluxo OAuth do Google Calendar.
 //
@@ -25,7 +25,10 @@ export async function GET() {
     }
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
-    const redirectUri = `${process.env.NEXTAUTH_URL || ''}/api/google-calendar/callback`;
+    // Mesmo resolvedor do token exchange — o Google exige que o redirect_uri
+    // do consentimento seja IDÊNTICO ao do exchange e ao registrado no
+    // Google Cloud Console (senão: Erro 400 redirect_uri_mismatch)
+    const redirectUri = resolveGoogleRedirectUri();
 
     if (!clientId) {
       return errorRedirect('not_configured');

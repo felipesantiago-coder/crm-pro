@@ -33,9 +33,29 @@ function getClientSecret(): string {
 }
 
 function getRedirectUri(): string {
-  const uri = process.env.GOOGLE_REDIRECT_URI;
-  if (!uri) throw new Error('GOOGLE_REDIRECT_URI não configurada');
-  return uri;
+  return resolveGoogleRedirectUri();
+}
+
+/**
+ * Redirect URI canônico do fluxo OAuth do Google Calendar.
+ *
+ * Prioridade: GOOGLE_REDIRECT_URI (override explícito) →
+ * ${NEXTAUTH_URL}/api/google-calendar/callback.
+ *
+ * O MESMO valor deve ser usado na tela de consentimento (GET
+ * /api/google-calendar/auth) e no token exchange (exchangeCodeForTokens) —
+ * o Google exige correspondência EXATA entre eles e com a lista "URIs de
+ * redirecionamento autorizados" do OAuth Client no Google Cloud Console;
+ * qualquer divergência gera `Erro 400: redirect_uri_mismatch`.
+ */
+export function resolveGoogleRedirectUri(): string {
+  const override = process.env.GOOGLE_REDIRECT_URI;
+  if (override) return override.replace(/\/+$/, '');
+  const base = process.env.NEXTAUTH_URL;
+  if (!base) {
+    throw new Error('GOOGLE_REDIRECT_URI ou NEXTAUTH_URL não configurada');
+  }
+  return `${base.replace(/\/+$/, '')}/api/google-calendar/callback`;
 }
 
 // ─── OAuth URL ────────────────────────────────────────────────

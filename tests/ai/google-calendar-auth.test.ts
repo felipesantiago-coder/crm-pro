@@ -10,11 +10,35 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCalendarConsentUrl } from '../../src/lib/google-calendar.ts';
+import {
+  buildCalendarConsentUrl,
+  resolveGoogleRedirectUri,
+} from '../../src/lib/google-calendar.ts';
 
 const CLIENT_ID = '498896139293-test.apps.googleusercontent.com';
 const REDIRECT_URI = 'https://www.crm-pro.site/api/google-calendar/callback';
 const STATE = 'cmtp1rp590000js04uuhvvuo5:ab0f7c7d960fa73222490168408efed9';
+
+// ── helpers de env (save/restore) ──────────────────────────────
+
+const ENV_KEYS = ['GOOGLE_REDIRECT_URI', 'NEXTAUTH_URL'] as const;
+
+function withEnv(values: Record<string, string | undefined>, fn: () => void): void {
+  const saved: Record<string, string | undefined> = {};
+  for (const k of ENV_KEYS) saved[k] = process.env[k];
+  try {
+    for (const k of ENV_KEYS) {
+      if (values[k] === undefined) delete process.env[k];
+      else process.env[k] = values[k];
+    }
+    fn();
+  } finally {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+}
 
 function parsed(url: string): URLSearchParams {
   return new URL(url).searchParams;
@@ -117,4 +141,60 @@ test('buildCalendarConsentUrl: produz a mesma URL que a rota servia antes (contr
         state: STATE,
       }).toString()
   );
+});
+
+// ── resolveGoogleRedirectUri ───────────────────────────────────
+
+test('resolveGoogleRedirectUri: GOOGLE_REDIRECT_URI explícita tem prioridade', () => {
+  withEnv(
+    {
+      GOOGLE_REDIRECT_URI: 'https://crm-pro.site/api/google-calendar/callback',
+      NEXTAUTH_URL: 'https://www.crm-pro.site',
+    },
+    () => {
+      assert.equal(
+        resolveGoogleRedirectUri(),
+        'https://crm-pro.site/api/google-calendar/callback'
+      );
+    }
+  );
+});
+
+test('resolveGoogleRedirectUri: fallback deriva de NEXTAUTH_URL', () => {
+  withEnv({ GOOGLE_REDIRECT_URI: undefined, NEXTAUTH_URL: 'https://www.crm-pro.site' }, () => {
+    assert.equal(resolveGoogleRedirectUri(), REDIRECT_URI);
+  });
+});
+
+test('resolveGoogleRedirectUri: trailing slash de NEXTAUTH_URL não gera barra dupla', () => {
+  withEnv({ GOOGLE_REDIRECT_URI: undefined, NEXTAUTH_URL: 'https://www.crm-pro.site/' }, () => {
+    assert.equal(resolveGoogleRedirectUri(), REDIRECT_URI);
+  });
+});
+
+test('resolveGoogleRedirectUri: override com barra final também é normalizado', () => {
+  withEnv(
+    { GOOGLE_REDIRECT_URI: 'https://www.crm-pro.site/api/google-calendar/callback/', NEXTAUTH_URL: undefined },
+    () => {
+      assert.equal(resolveGoogleRedirectUri(), REDIRECT_URI);
+    }
+  );
+});
+
+test('resolveGoogleRedirectUri: sem nenhuma das envs lança erro explicativo', () => {
+  withEnv({ GOOGLE_REDIRECT_URI: undefined, NEXTAUTH_URL: undefined }, () => {
+    assert.throws(() => resolveGoogleRedirectUri(), /GOOGLE_REDIRECT_URI ou NEXTAUTH_URL/);
+  });
+});
+
+test('CONTRATO OAuth: redirect_uri do consentimento ≡ resolveGoogleRedirectUri (evita 400 mismatch)', () => {
+  // O Google exige que o redirect_uri enviado na tela de consentimento seja
+  // EXATAMENTE o mesmo do token exchange (e o ambos registrados no Console).
+  // Esta rota era a causa latente do "Erro 400: redirect_uri_mismatch".
+  withEnv({ GOOGLE_REDIRECT_URI: undefined, NEXTAUTH_URL: 'https://www.crm-pro.site' }, () => {
+    const redirectUri = resolveGoogleRedirectUri();
+    const url = buildCalendarConsentUrl({ clientId: CLIENT_ID, redirectUri, state: STATE });
+    assert.equal(parsed(url).get('redirect_uri'), redirectUri);
+    assert.equal(redirectUri, 'https://www.crm-pro.site/api/google-calendar/callback');
+  });
 });
