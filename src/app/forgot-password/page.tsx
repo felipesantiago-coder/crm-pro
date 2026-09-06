@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2, Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
-import { BrandLogo, BrandSymbol } from '@/components/brand';
+import { BrandLogo } from '@/components/brand';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -46,7 +46,6 @@ export default function ForgotPasswordPage() {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center bg-background px-4 py-10">
       <div className="mb-8 flex flex-col items-center gap-3">
-        <BrandSymbol size={44} priority />
         <BrandLogo width={176} priority />
       </div>
 

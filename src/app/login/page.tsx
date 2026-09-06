@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2, LogIn } from 'lucide-react';
 import Link from 'next/link';
-import { BrandLogo, BrandSymbol } from '@/components/brand';
+import { BrandLogo } from '@/components/brand';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -98,9 +98,8 @@ export default function LoginPage() {
 
       {/* Área do formulário */}
       <main className="relative flex flex-1 flex-col items-center justify-center px-4 py-10 sm:px-6">
-        {/* Marca compacta no mobile */}
+        {/* Marca compacta no mobile — BrandLogo horizontal já embute o símbolo */}
         <div className="mb-8 flex flex-col items-center gap-3 lg:hidden">
-          <BrandSymbol size={44} priority />
           <BrandLogo width={176} priority />
         </div>
 

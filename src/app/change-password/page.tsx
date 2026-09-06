@@ -96,7 +96,6 @@ export default function ChangePasswordPage() {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center bg-background px-4 py-10">
       <div className="mb-8 flex flex-col items-center gap-3">
-        <BrandSymbol size={44} priority />
         <BrandLogo width={176} priority />
       </div>
 
