@@ -155,6 +155,54 @@ export function parseScoringConfig(configJson: string | null | undefined): Parse
   }
 }
 
+// ─────────────────────────────────────────────
+// Sanitização compartilhada (API PUT + importação de regras .md)
+// ─────────────────────────────────────────────
+
+/** Limites aceitos na config — mesmos do painel e do importador markdown. */
+export const MAX_SCORING_QUESTIONS = 100;
+export const MAX_SCORING_ANSWERS_PER_QUESTION = 300;
+export const MAX_SCORING_TEXT_LENGTH = 500;
+
+/**
+ * Sanitiza a lista de perguntas recebida do painel (PUT) ou extraída do
+ * arquivo markdown de regras (importação):
+ *   - descarta entradas sem key válido e chaves de contato/rastreamento
+ *     (dados de contato do Meta nunca são perguntas);
+ *   - descarta respostas vazias e valores dinâmicos não resolvidos ("{{...}}");
+ *   - notas truncadas para inteiro (negativo/zero permitidos);
+ *   - aplica os limites MAX_SCORING_* (contagem de respostas, tamanho de texto).
+ */
+export function sanitizeScoringQuestions(questions: unknown): ScoringQuestion[] {
+  if (!Array.isArray(questions)) return [];
+  const sanitized: ScoringQuestion[] = [];
+  for (const question of questions) {
+    const q = question as Partial<ScoringQuestion> | null;
+    if (!q || typeof q.key !== 'string' || !q.key.trim()) continue;
+    if (isMetaContactField(q.key) || isMetaTrackingField(q.key)) continue;
+    const answers = Array.isArray(q.answers)
+      ? (q.answers as ScoringAnswer[])
+          .filter((a) => !!a && typeof a.text === 'string' && a.text.trim() && !isUnresolvedMetaParam(a.text))
+          .slice(0, MAX_SCORING_ANSWERS_PER_QUESTION)
+          .map((a) => ({
+            text: a.text.slice(0, MAX_SCORING_TEXT_LENGTH),
+            score: Math.trunc(Number(a.score) || 0),
+          }))
+      : [];
+    const hasQuestionScore =
+      q.questionScore !== undefined && q.questionScore !== null && Number.isFinite(Number(q.questionScore));
+    sanitized.push({
+      key: q.key.slice(0, MAX_SCORING_TEXT_LENGTH),
+      ...(typeof q.label === 'string' && q.label.trim()
+        ? { label: q.label.slice(0, MAX_SCORING_TEXT_LENGTH) }
+        : {}),
+      ...(hasQuestionScore ? { questionScore: Math.trunc(Number(q.questionScore)) } : {}),
+      answers,
+    });
+  }
+  return sanitized;
+}
+
 /** Classificação pelo limiar do formulário (puro — usado em testes). */
 export function classifyScore(score: number, warmMin: number, hotMin: number): LeadTemperature {
   if (score >= hotMin) return 'QUENTE';

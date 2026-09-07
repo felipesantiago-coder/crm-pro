@@ -16,7 +16,7 @@
  * "nova" para o admin pontuar.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,6 +66,10 @@ import {
   History,
   Download,
   FileX2,
+  FileUp,
+  AlertTriangle,
+  XCircle,
+  CheckCircle2,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────
@@ -159,6 +163,36 @@ interface AvailableFormsResponse {
   via: string | null;
   forms: AvailableForm[];
   message?: string;
+  error?: string;
+}
+
+// ── Importar regras de pontuação em markdown (um arquivo por formulário) ──
+interface MdIssue {
+  severity: 'error' | 'warning';
+  line?: number;
+  formName?: string;
+  message: string;
+}
+interface MdFormPreview {
+  formName: string;
+  warmMin: number | null;
+  hotMin: number | null;
+  questions: Array<{ key: string; questionScore?: number; answers: Array<{ text: string; score: number }> }>;
+  match: { status: 'target' | 'other' | 'not_found' | 'ambiguous'; formId: string | null };
+}
+interface MdReview {
+  available: boolean;
+  message: string | null;
+  unknownQuestions: string[];
+  unknownAnswers: Array<{ question: string; answers: string[] }>;
+}
+interface MdPreviewResponse {
+  ok: boolean;
+  forms: MdFormPreview[];
+  targetIndex: number | null;
+  issues: MdIssue[];
+  review: MdReview | null;
+  stats?: { errors: number; warnings: number; formsInFile: number };
   error?: string;
 }
 
@@ -294,6 +328,16 @@ export function TemperatureTab() {
   // Remover o FORMULÁRIO da seção (não só a config)
   const [removeFormOpen, setRemoveFormOpen] = useState(false);
   const [removingForm, setRemovingForm] = useState(false);
+
+  // Importar regras de pontuação em markdown (um arquivo por formulário)
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [rulesFile, setRulesFile] = useState<string | null>(null);
+  const [rulesPreview, setRulesPreview] = useState<MdPreviewResponse | null>(null);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [rulesImporting, setRulesImporting] = useState(false);
+  const [rulesEnabled, setRulesEnabled] = useState(false);
+  const [rulesReclassify, setRulesReclassify] = useState(true);
+  const rulesFileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Lista de formulários ──
   const loadForms = useCallback(async (keepSelection = true) => {
@@ -572,6 +616,74 @@ export function TemperatureTab() {
       toast.error(err instanceof Error ? err.message : 'Erro ao remover formulário');
     } finally {
       setRemovingForm(false);
+    }
+  }
+
+  // ── Importar regras de pontuação em markdown (preview → confirmar) ──
+  function openRulesDialog() {
+    setRulesOpen(true);
+    setRulesFile(null);
+    setRulesPreview(null);
+    setRulesEnabled(detail?.scoring?.enabled || false);
+    setRulesReclassify(true);
+  }
+
+  async function handleRulesFile(file: File) {
+    if (!selectedFormId) return;
+    setRulesFile(file.name);
+    setRulesLoading(true);
+    setRulesPreview(null);
+    try {
+      const content = await file.text();
+      const res = await fetch('/api/meta-ads/temperature/import-md', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, formId: selectedFormId }),
+      });
+      const data: MdPreviewResponse = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao analisar o arquivo');
+      setRulesPreview(data);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao ler o arquivo');
+      setRulesFile(null);
+    } finally {
+      setRulesLoading(false);
+    }
+  }
+
+  async function handleRulesImport() {
+    if (!selectedFormId || !rulesPreview || rulesPreview.targetIndex === null) return;
+    const target = rulesPreview.forms[rulesPreview.targetIndex];
+    if (!target) return;
+    setRulesImporting(true);
+    try {
+      const res = await fetch('/api/meta-ads/temperature/import-md/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          formId: selectedFormId,
+          formName: target.formName,
+          enabled: rulesEnabled,
+          warmMin: target.warmMin,
+          hotMin: target.hotMin,
+          questions: target.questions,
+          reclassify: rulesReclassify,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao importar regras');
+      const r = data.reclassifyResult;
+      toast.success(
+        `Regras importadas — ${target.questions.length} pergunta(s), limiar morno ≥ ${data.scoring.warmMin}, quente ≥ ${data.scoring.hotMin}` +
+          (rulesEnabled ? '' : ' (pontuação desativada)') +
+          (r ? ` · ${r.scored} lead(s) reclassificado(s)` : ''),
+      );
+      setRulesOpen(false);
+      await Promise.all([loadForms(), loadDetail(selectedFormId)]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao importar regras');
+    } finally {
+      setRulesImporting(false);
     }
   }
 
@@ -973,9 +1085,20 @@ export function TemperatureTab() {
             {/* Perguntas e respostas */}
             <Card>
               <CardHeader className="p-4 pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <HelpCircle className="h-4 w-4" /> Notas por pergunta e resposta
-                </CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <HelpCircle className="h-4 w-4" /> Notas por pergunta e resposta
+                  </CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px] flex-shrink-0"
+                    onClick={openRulesDialog}
+                    title="Importa notas e limiares de um arquivo markdown gerado com as regras deste formulário"
+                  >
+                    <FileUp className="h-3 w-3 mr-1" /> Importar regras (.md)
+                  </Button>
+                </div>
                 <CardDescription className="text-xs">
                   Valor inteiro para cada resposta observada nos leads. Respostas sem nota pontuam 0.
                   Para perguntas abertas (texto livre), use a nota da pergunta — aplicada a qualquer resposta.
@@ -1004,6 +1127,14 @@ export function TemperatureTab() {
                       )}
                       Recuperar perguntas/respostas dos leads já recebidos deste formulário
                     </button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px] mt-1"
+                      onClick={openRulesDialog}
+                    >
+                      <FileUp className="h-3 w-3 mr-1" /> Importar regras de um arquivo .md
+                    </Button>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -1258,6 +1389,218 @@ export function TemperatureTab() {
                 Importar selecionados
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Importar regras de pontuação em markdown (um arquivo por formulário) */}
+      <Dialog open={rulesOpen} onOpenChange={setRulesOpen}>
+        <DialogContent className="sm:max-w-xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <FileUp className="h-4 w-4" /> Importar regras de um arquivo .md
+            </DialogTitle>
+            <DialogDescription>
+              Envia o arquivo markdown com as regras do formulário{' '}
+              <strong>&quot;{detail?.form.formName || 'selecionado'}&quot;</strong>. O sistema analisa o arquivo,
+              mostra o que entendeu e só salva após sua confirmação.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Seleção do arquivo */}
+          <div className="flex items-center gap-2">
+            <input
+              ref={rulesFileInputRef}
+              type="file"
+              accept=".md,.markdown,.txt,text/markdown,text/plain"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleRulesFile(file);
+                e.target.value = '';
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs flex-shrink-0"
+              onClick={() => rulesFileInputRef.current?.click()}
+              disabled={rulesLoading || rulesImporting}
+            >
+              {rulesLoading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FileUp className="h-3.5 w-3.5 mr-1" />}
+              Escolher arquivo
+            </Button>
+            <span className="text-xs text-muted-foreground truncate">
+              {rulesFile || 'Nenhum arquivo selecionado'}
+            </span>
+          </div>
+
+          {/* Preview / validação */}
+          <div className="flex-1 min-h-0 overflow-y-auto therm-scroll border rounded-md p-3 space-y-3">
+            {!rulesFile && !rulesLoading ? (
+              <p className="text-xs text-muted-foreground text-center py-6 px-2">
+                Selecione o arquivo .md gerado para este formulário — um arquivo por formulário,
+                com o cabeçalho <code className="font-mono text-[10px]"># Formulário: nome</code>.
+              </p>
+            ) : rulesLoading ? (
+              <div className="space-y-2 p-1">
+                {[1, 2, 3].map((i) => <div key={i} className="h-10 rounded-md bg-muted animate-pulse" />)}
+              </div>
+            ) : rulesPreview ? (
+              (() => {
+                const target = rulesPreview.targetIndex !== null ? rulesPreview.forms[rulesPreview.targetIndex] : null;
+                const errors = rulesPreview.issues.filter((i) => i.severity === 'error');
+                const warnings = rulesPreview.issues.filter((i) => i.severity === 'warning');
+                const orderedIssues = [...errors, ...warnings];
+                const totalAnswers = target?.questions.reduce((acc, q) => acc + q.answers.length, 0) || 0;
+                return (
+                  <>
+                    {/* Resumo do formulário alvo */}
+                    {target ? (
+                      <div className="rounded-md border p-2.5 space-y-1.5 bg-muted/30">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-semibold">{target.formName}</span>
+                          <Badge variant="outline" className="text-[9px] h-4 px-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> confere com o formulário
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {target.warmMin !== null ? `Morno ≥ ${target.warmMin}` : `Morno: manter atual (${detail?.scoring?.warmMin ?? 5})`}
+                          {' · '}
+                          {target.hotMin !== null ? `Quente ≥ ${target.hotMin}` : `Quente: manter atual (${detail?.scoring?.hotMin ?? 10})`}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {target.questions.length} pergunta(s) · {totalAnswers} resposta(s) configurada(s)
+                          {target.questions.filter((q) => q.questionScore !== undefined).length > 0 &&
+                            ` · ${target.questions.filter((q) => q.questionScore !== undefined).length} com nota fixa`}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-red-200 dark:border-red-900/50 p-2.5 flex items-start gap-2">
+                        <XCircle className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-700 dark:text-red-400">
+                          Nenhum formulário do arquivo corresponde ao formulário selecionado —
+                          confira o cabeçalho <code className="font-mono text-[10px]"># Formulário:</code> no arquivo.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Validação cruzada com as perguntas observadas */}
+                    {rulesPreview.review && target && (
+                      <div className="space-y-1">
+                        {!rulesPreview.review.available && rulesPreview.review.message && (
+                          <p className="text-[11px] text-muted-foreground">{rulesPreview.review.message}</p>
+                        )}
+                        {rulesPreview.review.available && (
+                          <>
+                            <p className="text-[11px] font-medium">Conferência com as respostas reais dos leads:</p>
+                            {rulesPreview.review.unknownQuestions.length === 0 && rulesPreview.review.unknownAnswers.length === 0 ? (
+                              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                                <CheckCircle2 className="h-3 w-3" /> Todas as perguntas e respostas existem nos leads recebidos
+                              </p>
+                            ) : (
+                              <div className="space-y-1">
+                                {rulesPreview.review.unknownQuestions.slice(0, 8).map((q) => (
+                                  <p key={q} className="text-[11px] text-amber-700 dark:text-amber-400 flex items-start gap-1">
+                                    <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                                    Pergunta sem correspondência nos leads: &quot;{q}&quot;
+                                  </p>
+                                ))}
+                                {rulesPreview.review.unknownAnswers.slice(0, 5).map((group) => (
+                                  <p key={group.question} className="text-[11px] text-amber-700 dark:text-amber-400 flex items-start gap-1">
+                                    <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                                    Respostas não observadas em &quot;{group.question}&quot;: {group.answers.slice(0, 3).map((a) => `"${a}"`).join(', ')}
+                                    {group.answers.length > 3 ? ` +${group.answers.length - 3}` : ''}
+                                  </p>
+                                ))}
+                                <p className="text-[10px] text-muted-foreground">
+                                  Itens novos podem ser intencionais (formulário recém-editado) — pontuam quando o Meta enviar a resposta.
+                                </p>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Erros e avisos do parse */}
+                    {orderedIssues.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-medium">
+                          {errors.length > 0 ? `${errors.length} erro(s) — corriga no arquivo e reenvie` : 'Observações'}
+                        </p>
+                        {orderedIssues.slice(0, 12).map((issue, idx) => (
+                          <p
+                            key={`${idx}-${issue.message}`}
+                            className={`text-[11px] flex items-start gap-1 ${
+                              issue.severity === 'error'
+                                ? 'text-red-700 dark:text-red-400'
+                                : 'text-amber-700 dark:text-amber-400'
+                            }`}
+                          >
+                            {issue.severity === 'error' ? (
+                              <XCircle className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                            )}
+                            <span>
+                              {issue.line ? `Linha ${issue.line}: ` : ''}{issue.message}
+                            </span>
+                          </p>
+                        ))}
+                        {orderedIssues.length > 12 && (
+                          <p className="text-[10px] text-muted-foreground">
+                            +{orderedIssues.length - 12} observação(ões) não exibidas
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {orderedIssues.length === 0 && target && (
+                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" /> Arquivo analisado sem erros nem avisos
+                      </p>
+                    )}
+                  </>
+                );
+              })()
+            ) : null}
+          </div>
+
+          {/* Opções + ações */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <Label htmlFor="rulesEnabled" className="text-xs text-muted-foreground cursor-pointer">
+                Ativar pontuação após importar
+              </Label>
+              <Switch id="rulesEnabled" checked={rulesEnabled} onCheckedChange={setRulesEnabled} />
+            </div>
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <Label htmlFor="rulesReclassify" className="text-xs text-muted-foreground cursor-pointer">
+                Reclassificar leads já recebidos
+              </Label>
+              <Switch id="rulesReclassify" checked={rulesReclassify} onCheckedChange={setRulesReclassify} />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setRulesOpen(false)} disabled={rulesImporting}>
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 text-xs"
+              onClick={handleRulesImport}
+              disabled={
+                rulesLoading ||
+                rulesImporting ||
+                !rulesPreview ||
+                !rulesPreview.ok ||
+                rulesPreview.targetIndex === null
+              }
+            >
+              {rulesImporting ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
+              Confirmar importação
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

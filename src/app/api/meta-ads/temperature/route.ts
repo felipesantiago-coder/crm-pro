@@ -10,10 +10,12 @@ import {
   parseScoringConfig,
   reclassifyFormLeads,
   invalidateScoringCache,
+  sanitizeScoringQuestions,
+  MAX_SCORING_QUESTIONS,
   type ReclassifyResult,
   type ScoringQuestion,
 } from '@/lib/lead-temperature';
-import { isMetaContactField, isMetaTrackingField, isUnresolvedMetaParam } from '@/lib/meta-lead-utils';
+import { getObservedQuestions } from '@/lib/lead-form-observed';
 
 // ============================================================
 // GET/PUT/DELETE /api/meta-ads/temperature
@@ -33,15 +35,6 @@ import { isMetaContactField, isMetaTrackingField, isUnresolvedMetaParam } from '
 // ============================================================
 
 export const maxDuration = 60;
-
-/** Limite de perguntas/respostas aceitas na config (defesa contra payload gigante). */
-const MAX_QUESTIONS = 100;
-const MAX_ANSWERS_PER_QUESTION = 300;
-const MAX_TEXT_LENGTH = 500;
-/** Quantidade de respostas distintas devolvida por pergunta no GET (top mais comuns). */
-const MAX_OBSERVED_ANSWERS = 60;
-/** Leads examinados por formulário ao agregar perguntas/respostas observadas. */
-const MAX_OBSERVED_LEADS = 2000;
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -66,70 +59,6 @@ async function getTemperatureCounts(formId: string): Promise<TemperatureCounts> 
     if (key in counts) counts[key] = g._count;
   }
   return counts;
-}
-
-/**
- * Agrega PERGUNTAS/respostas observadas nos leads do formulário
- * (a partir de Client.metaFormData) para o admin pontuar com base
- * no que o formulário realmente pergunta. Dados de contato do Meta
- * (nome, e-mail, telefone, CEP...) gravados por versões anteriores
- * não aparecem — apenas perguntas são configuráveis.
- */
-async function getObservedQuestions(formId: string) {
-  const clients = await db.client.findMany({
-    where: { metaFormId: formId, metaFormData: { not: null } },
-    select: { metaFormData: true },
-    orderBy: { createdAt: 'desc' },
-    take: MAX_OBSERVED_LEADS,
-  });
-
-  interface ObservedAnswer { text: string; count: number }
-  interface ObservedQuestion { key: string; count: number; answers: Map<string, ObservedAnswer> }
-  const questions = new Map<string, ObservedQuestion>();
-
-  for (const client of clients) {
-    if (!client.metaFormData) continue;
-    let parsed: Array<{ key?: string; values?: string[] }>;
-    try {
-      parsed = JSON.parse(client.metaFormData);
-    } catch {
-      continue;
-    }
-    if (!Array.isArray(parsed)) continue;
-
-    for (const answer of parsed) {
-      // Dados de contato (nome, e-mail, telefone, CEP...) e rastreamento
-      // (utm_*, placement...) não são perguntas — leads gravados antes do
-      // filtro podem tê-los no metaFormData
-      if (!answer?.key || isMetaContactField(answer.key) || isMetaTrackingField(answer.key)) continue;
-      let question = questions.get(answer.key);
-      if (!question) {
-        question = { key: answer.key, count: 0, answers: new Map() };
-        questions.set(answer.key, question);
-      }
-      question.count += 1;
-      for (const value of answer.values || []) {
-        const text = String(value);
-        // "{{campaign.name}}" etc. = parâmetro dinâmico não resolvido — sem informação
-        if (!text || isUnresolvedMetaParam(text)) continue;
-        const existing = question.answers.get(text);
-        if (existing) existing.count += 1;
-        else question.answers.set(text, { text, count: 1 });
-      }
-    }
-  }
-
-  return Array.from(questions.values()).map((question) => {
-    const answers = Array.from(question.answers.values()).sort((a, b) => b.count - a.count);
-    const top = answers.slice(0, MAX_OBSERVED_ANSWERS);
-    const othersCount = answers.slice(MAX_OBSERVED_ANSWERS).reduce((acc, a) => acc + a.count, 0);
-    return {
-      key: question.key,
-      count: question.count,
-      answers: top,
-      othersCount,
-    };
-  });
 }
 
 // ─────────────────────────────────────────────
@@ -353,37 +282,13 @@ export async function PUT(request: NextRequest) {
         { status: 400 },
       );
     }
-    if (!Array.isArray(questions) || questions.length > MAX_QUESTIONS) {
-      return NextResponse.json({ error: `Envie no máximo ${MAX_QUESTIONS} perguntas` }, { status: 400 });
+    if (!Array.isArray(questions) || questions.length > MAX_SCORING_QUESTIONS) {
+      return NextResponse.json({ error: `Envie no máximo ${MAX_SCORING_QUESTIONS} perguntas` }, { status: 400 });
     }
 
     // Sanitização das perguntas/respostas — notas SEMPRE inteiras
-    const sanitizedQuestions: ScoringQuestion[] = [];
-    for (const question of questions) {
-      if (!question?.key || typeof question.key !== 'string' || !question.key.trim()) continue;
-      // Dados de contato e rastreamento do Meta nunca são perguntas —
-      // não são salvos na config
-      if (isMetaContactField(question.key) || isMetaTrackingField(question.key)) continue;
-      const answers = Array.isArray(question.answers)
-        ? question.answers
-            .filter((a) => a && typeof a.text === 'string' && a.text.trim() && !isUnresolvedMetaParam(a.text))
-            .slice(0, MAX_ANSWERS_PER_QUESTION)
-            .map((a) => ({
-              text: a.text.slice(0, MAX_TEXT_LENGTH),
-              score: Math.trunc(Number(a.score) || 0),
-            }))
-        : [];
-      const hasQuestionScore =
-        question.questionScore !== undefined && question.questionScore !== null && Number.isFinite(Number(question.questionScore));
-      sanitizedQuestions.push({
-        key: question.key.slice(0, MAX_TEXT_LENGTH),
-        ...(typeof question.label === 'string' && question.label.trim()
-          ? { label: question.label.slice(0, MAX_TEXT_LENGTH) }
-          : {}),
-        ...(hasQuestionScore ? { questionScore: Math.trunc(Number(question.questionScore)) } : {}),
-        answers,
-      });
-    }
+    // (mesma função usada pelo importador de regras em markdown)
+    const sanitizedQuestions = sanitizeScoringQuestions(questions);
 
     const saved = await db.leadFormScoring.upsert({
       where: { formId },
