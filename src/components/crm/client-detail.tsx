@@ -58,8 +58,12 @@ import {
   Link,
   Copy,
   CheckCheck,
+  Flame,
+  CloudSun,
+  Snowflake,
 } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
+import { formatLeadScoreLabel, getLeadTemperatureGuidance, type LeadTemperatureClassification } from '@/lib/lead-temperature-guidance';
 import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
 import { AIContextMemory } from './ai-context-memory';
 import {
@@ -138,6 +142,9 @@ interface ClientDetail {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  /** Classificação por formulário Meta (temperatura) — null = sem config ativa. */
+  metaTemperature?: string | null;
+  metaScore?: number | null;
   creator?: { id: string; name: string; email: string } | null;
   tags: Array<{ tagId: string; tag: { id: string; name: string; color: string } }>;
   interactions: Interaction[];
@@ -222,6 +229,37 @@ function getStageInfo(stageValue: string) {
   return STAGES.find((s) => s.value === stageValue) || STAGES[0];
 }
 
+/** Visual do card de classificação no perfil do lead (paridade com o painel de Temperatura). */
+const TEMPERATURE_CARD_STYLES: Record<
+  LeadTemperatureClassification,
+  { container: string; iconBox: string; icon: string; circle: string }
+> = {
+  QUENTE: {
+    container: 'border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-950/20',
+    iconBox: 'bg-red-100 dark:bg-red-900/30',
+    icon: 'text-red-600 dark:text-red-400',
+    circle: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  },
+  MORNO: {
+    container: 'border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/20',
+    iconBox: 'bg-amber-100 dark:bg-amber-900/30',
+    icon: 'text-amber-600 dark:text-amber-400',
+    circle: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  },
+  FRIO: {
+    container: 'border-sky-200 bg-sky-50 dark:border-sky-800/50 dark:bg-sky-950/20',
+    iconBox: 'bg-sky-100 dark:bg-sky-900/30',
+    icon: 'text-sky-600 dark:text-sky-400',
+    circle: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
+  },
+};
+
+const TEMPERATURE_CARD_ICONS: Record<LeadTemperatureClassification, typeof Flame> = {
+  QUENTE: Flame,
+  MORNO: CloudSun,
+  FRIO: Snowflake,
+};
+
 function DetailContent({
   client,
   onEdit,
@@ -269,6 +307,12 @@ function DetailContent({
   const phoneUrl = client.phone ? getPhoneCallUrl(client.phone) : null;
   const currentUserId = (session?.user as { id?: string })?.id;
   const isCreator = currentUserId === client.createdBy;
+
+  // Classificação do lead (temperatura por formulário Meta) + orientação de tratativa
+  const temperatureGuidance = getLeadTemperatureGuidance(client.metaTemperature);
+  const temperatureScoreLabel = temperatureGuidance
+    ? formatLeadScoreLabel(client.metaScore)
+    : null;
 
   // Sync stage from client prop
   useEffect(() => {
@@ -618,6 +662,44 @@ function DetailContent({
           </div>
         </div>
       </div>
+
+      {/* Classificação do lead (temperatura por formulário Meta) + tratativa */}
+      {temperatureGuidance && (() => {
+        const TempIcon = TEMPERATURE_CARD_ICONS[temperatureGuidance.classification];
+        const styles = TEMPERATURE_CARD_STYLES[temperatureGuidance.classification];
+        return (
+          <div className={`p-4 rounded-xl border ${styles.container}`}>
+            <div className="flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${styles.iconBox}`}>
+                <TempIcon className={`h-5 w-5 ${styles.icon}`} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Classificação do lead</p>
+                <p className="text-sm font-semibold">
+                  {temperatureGuidance.emoji} {temperatureGuidance.label}
+                  {temperatureScoreLabel && (
+                    <span className="font-normal text-muted-foreground"> · {temperatureScoreLabel}</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <p className="text-sm font-semibold mt-3">{temperatureGuidance.headline}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed mt-1">{temperatureGuidance.description}</p>
+            <ol className="mt-3 space-y-2">
+              {temperatureGuidance.steps.map((step, index) => (
+                <li key={index} className="flex items-start gap-2.5">
+                  <span
+                    className={`h-5 w-5 rounded-full text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5 ${styles.circle}`}
+                  >
+                    {index + 1}
+                  </span>
+                  <span className="text-sm leading-relaxed">{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        );
+      })()}
 
       {/* Update Status Card — hidden for closed stages */}
       {client.stage !== 'FECHADO_GANHO' && client.stage !== 'FECHADO_PERDIDO' && (

@@ -28,6 +28,7 @@ import {
   joinAnswerValues,
   phoneDigits,
 } from './humanize';
+import { getLeadTemperatureGuidance } from '@/lib/lead-temperature-guidance';
 
 /** Limite por resposta antes de exibir "… (continua no CRM)". */
 export const MAX_ANSWER_VALUE_LENGTH = 900;
@@ -53,13 +54,10 @@ const CHANNEL_LABELS: Record<string, string> = {
   test: 'Prévia',
 };
 
-/** Exibição da temperatura no cartão (alinhada aos badges do painel). */
-const TEMPERATURE_DISPLAY: Record<LeadTemperatureValue, { label: string; emoji: string }> = {
-  QUENTE: { label: 'Quente', emoji: '🔥' },
-  MORNO: { label: 'Morno', emoji: '🌤️' },
-  FRIO: { label: 'Frio', emoji: '❄️' },
-};
-
+/**
+ * Abertura personalizada — gramática PT-BR revisada: sujeito explícito,
+ * concordância com "o lead" e pontuação de frase completa.
+ */
 function buildIntro(
   eventKind: TelegramLeadEventKind,
   agentFirst: string,
@@ -69,18 +67,19 @@ function buildIntro(
   const agent = agentFirst ? `${agentFirst}, ` : '';
   const subject = leadFirst || 'um novo contato';
   const about = enterpriseName ? ` sobre ${enterpriseName}` : ' pelo anúncio';
+  const enterpriseAbout = enterpriseName ? ` do empreendimento ${enterpriseName}` : '';
 
   switch (eventKind) {
     case 'new_lead':
       return `${agent}${subject} acabou de pedir informações${about}. Este atendimento está com você.`;
     case 'returning_lead':
-      return `${agent}${subject} já é contato aqui no CRM e enviou um novo formulário${about}. Este atendimento está com você.`;
+      return `${agent}${subject} já é um contato cadastrado no CRM e enviou um novo formulário${about}. Este atendimento está com você.`;
     case 'recovered_lead':
-      return `${agent}o contato sobre ${enterpriseName || 'um empreendimento'} foi recuperado e atribuído a você.`;
+      return `${agent}o lead${enterpriseAbout} foi recuperado e atribuído a você.`;
     case 'imported_lead':
-      return `${agent}o contato sobre ${enterpriseName || 'um empreendimento'} foi importado e atribuído a você.`;
+      return `${agent}o lead${enterpriseAbout} foi importado e atribuído a você.`;
     case 'test':
-      return `${agent}isto é uma prévia do cartão que você recebe quando um lead chega. Nenhum lead real foi criado.`;
+      return `${agent}esta é uma prévia do cartão que você recebe quando um lead chega. Nenhum lead real foi criado.`;
   }
 }
 
@@ -144,18 +143,28 @@ function buildSourceSummary(input: TelegramLeadNotificationInput): LeadSourceSum
  * Temperatura exibível do lead — null quando o formulário não tem
  * config ativa (sem classificação, o cartão não mostra a seção).
  * Nunca lança: entrada inesperada é tratada como ausência.
+ * Rótulos e orientação de tratativa vêm da fonte única
+ * (lead-temperature-guidance) — paridade com o perfil do lead no CRM.
  */
 function buildTemperature(input: TelegramLeadNotificationInput): LeadPresentationTemperature | null {
   const raw = String(input.leadTemperature || '').toUpperCase() as LeadTemperatureValue;
-  const display = TEMPERATURE_DISPLAY[raw];
-  if (!display) return null;
+  const guidance = getLeadTemperatureGuidance(raw);
+  if (!guidance) return null;
 
   const score =
     typeof input.leadScore === 'number' && Number.isFinite(input.leadScore)
       ? Math.trunc(input.leadScore)
       : undefined;
 
-  return { classification: raw, label: display.label, emoji: display.emoji, ...(score !== undefined ? { score } : {}) };
+  return {
+    classification: raw,
+    label: guidance.label,
+    emoji: guidance.emoji,
+    headline: guidance.headline,
+    description: guidance.description,
+    steps: [...guidance.steps],
+    ...(score !== undefined ? { score } : {}),
+  };
 }
 
 /**

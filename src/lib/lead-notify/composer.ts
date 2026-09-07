@@ -24,6 +24,7 @@ import type {
   TelegramOutboundPart,
 } from './types';
 import { formatLeadTiming } from './humanize';
+import { formatLeadScoreLabel } from '@/lib/lead-temperature-guidance';
 
 /**
  * Limites oficiais: legenda 1.024 chars, mensagem 4.096 chars (após o
@@ -60,13 +61,27 @@ function renderHeader(p: TelegramLeadPresentation, withEnterpriseLine: boolean):
 function renderTemperature(p: TelegramLeadPresentation): string | null {
   if (!p.temperature) return null;
   const { score } = p.temperature;
-  const scoreText =
-    typeof score === 'number'
-      ? score === 1
-        ? ' · 1 pt'
-        : ` · ${score} pts`
-      : '';
+  const scoreText = typeof score === 'number' ? ` · ${formatLeadScoreLabel(score)}` : '';
   return `🌡️ <b>Temperatura:</b> ${p.temperature.emoji} ${escapeHtml(p.temperature.label)}${scoreText}`;
+}
+
+/**
+ * Orientação de tratativa conforme a classificação (§ do prompt mestre):
+ * título, explicação curta e passos numerados — o atendente sabe O QUE
+ * fazer assim que o cartão chega. Bloco atômico e opcional: só existe
+ * quando o lead tem classificação ativa.
+ */
+function renderTemperatureGuidance(p: TelegramLeadPresentation): string | null {
+  const guidance = p.temperature;
+  if (!guidance?.steps?.length) return null;
+
+  const lines: string[] = ['🎯 <b>Tratativa sugerida</b>'];
+  if (guidance.headline) lines.push(`<i>${escapeHtml(guidance.headline)}</i>`);
+  if (guidance.description) lines.push(escapeHtml(guidance.description));
+  guidance.steps.forEach((step, index) => {
+    lines.push(`${index + 1}. ${escapeHtml(step)}`);
+  });
+  return lines.join('\n');
 }
 
 function renderContact(p: TelegramLeadPresentation): string {
@@ -186,6 +201,7 @@ export function composeLeadMessageParts(
 
   const contactSection = renderContact(p);
   const temperatureSection = renderTemperature(p);
+  const guidanceSection = renderTemperatureGuidance(p);
   const answersSection = renderAnswers(p);
   const sourceSection = renderSource(p);
   const timeSection = renderTime(p);
@@ -197,6 +213,7 @@ export function composeLeadMessageParts(
     const fullCaption = [
       renderHeader(p, true),
       temperatureSection,
+      guidanceSection,
       contactSection,
       answersSection,
       sourceSection,
@@ -221,7 +238,7 @@ export function composeLeadMessageParts(
     const shortCaption = renderHeader(p, true);
     const bodyChunks = withContinuationMarkers(
       packSections(
-        [temperatureSection, contactSection, answersSection, sourceSection, timeSection].filter(
+        [temperatureSection, guidanceSection, contactSection, answersSection, sourceSection, timeSection].filter(
           (s): s is string => !!s,
         ),
       ),
@@ -254,6 +271,7 @@ export function composeLeadMessageParts(
   const sections = [
     renderHeader(p, !!p.enterprise),
     temperatureSection,
+    guidanceSection,
     contactSection,
     answersSection,
     sourceSection,

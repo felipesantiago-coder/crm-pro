@@ -3,14 +3,21 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { MessageCircle, ExternalLink } from 'lucide-react';
+import { getLeadTemperatureGuidance } from '@/lib/lead-temperature-guidance';
 
 /**
  * TelegramLeadPreview — prévia visual do cartão de lead (§19).
  * Reproduz a variante compacta com dados EXPLICITAMENTE FICTÍCIOS:
  * a notificação de teste real usa o mesmo compositor da produção,
  * mas a prévia na UI é apenas ilustrativa (não envia nada).
+ *
+ * Os textos de temperatura e tratativa vêm da MESMA fonte única da
+ * produção (lead-temperature-guidance) — a prévia nunca diverge do
+ * cartão real.
  */
 export function TelegramLeadPreview() {
+  const guidance = getLeadTemperatureGuidance('QUENTE');
+
   return (
     <div className="rounded-xl bg-[#17212b] p-4 space-y-3 text-[13px] leading-relaxed text-[#e8edf2] shadow-inner">
       <p className="text-[11px] text-amber-300/90 font-medium">
@@ -31,6 +38,21 @@ export function TelegramLeadPreview() {
         <p>
           🌡️ <b>Temperatura:</b> 🔥 Quente · 12 pts
         </p>
+
+        {guidance && (
+          <div className="space-y-0.5">
+            <p>
+              🎯 <b>Tratativa sugerida</b>
+            </p>
+            <p className="italic">{guidance.headline}</p>
+            <p>{guidance.description}</p>
+            {guidance.steps.map((step, index) => (
+              <p key={index}>
+                {index + 1}. {step}
+              </p>
+            ))}
+          </div>
+        )}
 
         <div className="space-y-0.5">
           <p>👤 <b>Contato</b></p>

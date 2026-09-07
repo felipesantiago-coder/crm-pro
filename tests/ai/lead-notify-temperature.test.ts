@@ -52,14 +52,40 @@ const ALL_TEXT = (parts: ReturnType<typeof composeLeadMessageParts>): string =>
 
 // ── present: input → apresentação ──────────────────────────────
 
-test('present: leadTemperature/leadScore viram bloco de temperatura pronto p/ exibição', () => {
+test('present: leadTemperature/leadScore viram bloco de temperatura + tratativa prontos p/ exibição', () => {
   const p = buildLeadPresentation(baseInput({ leadScore: 17, leadTemperature: 'QUENTE' }), null);
   assert.deepEqual(p.temperature, {
     classification: 'QUENTE',
     label: 'Quente',
     emoji: '🔥',
+    headline: 'Prioridade máxima: fale com o lead o quanto antes.',
+    description:
+      'Este lead demonstrou alto interesse e tem grandes chances de conversão. O primeiro contato em poucos minutos faz toda a diferença.',
+    steps: [
+      'Ligue para o lead ou inicie a conversa no WhatsApp agora.',
+      'Apresente as opções do empreendimento e convide o lead para uma visita.',
+      'Registre cada interação no CRM e atualize a etapa no mesmo dia.',
+    ],
     score: 17,
   });
+});
+
+test('present: tratativa difere POR classificação (o atendente lê a orientação certa)', () => {
+  const hot = buildLeadPresentation(baseInput({ leadTemperature: 'QUENTE' }), null);
+  const warm = buildLeadPresentation(baseInput({ leadTemperature: 'MORNO' }), null);
+  const cold = buildLeadPresentation(baseInput({ leadTemperature: 'FRIO' }), null);
+  const headlines = new Set([
+    hot.temperature!.headline,
+    warm.temperature!.headline,
+    cold.temperature!.headline,
+  ]);
+  assert.equal(hot.temperature!.emoji, '🔥');
+  assert.equal(warm.temperature!.emoji, '🌤️');
+  assert.equal(cold.temperature!.emoji, '❄️');
+  assert.equal(hot.temperature!.steps?.length, 3);
+  assert.equal(warm.temperature!.steps?.length, 3);
+  assert.equal(cold.temperature!.steps?.length, 3);
+  assert.equal(headlines.size, 3, 'cada classificação tem headline própria');
 });
 
 test('present: case-insensitive e sem score definido (score omitido, não zero)', () => {
@@ -139,4 +165,72 @@ test('formatação da pontuação: plural, singular e negativo', () => {
 test('sem temperatura → seção inteira omitida (leads de formulário sem config)', () => {
   const parts = composeLeadMessageParts({ ...WITH_TEMP, temperature: null });
   assert.ok(!ALL_TEXT(parts).includes('Temperatura'));
+});
+
+// ── composer: seção "Tratativa sugerida" ──────────────────────
+
+test('compacta: Tratativa sugerida logo após a Temperatura e antes do Contato', () => {
+  const parts = composeLeadMessageParts(WITH_TEMP);
+  const caption = parts[0].kind === 'photo' ? parts[0].caption : assert.fail('esperava foto');
+  assert.ok(caption.includes('🎯 <b>Tratativa sugerida</b>'), caption);
+  assert.ok(
+    caption.indexOf('🌡️ <b>Temperatura:</b>') <
+      caption.indexOf('🎯 <b>Tratativa sugerida</b>') &&
+      caption.indexOf('🎯 <b>Tratativa sugerida</b>') <
+      caption.indexOf('👤 <b>Contato</b>'),
+    'ordem: Temperatura → Tratativa → Contato',
+  );
+  // título, explicação e passos numerados — todos presentes
+  assert.ok(caption.includes('<i>Prioridade máxima: fale com o lead o quanto antes.</i>'));
+  assert.ok(caption.includes('Este lead demonstrou alto interesse'));
+  assert.ok(caption.includes('1. Ligue para o lead ou inicie a conversa no WhatsApp agora.'));
+  assert.ok(caption.includes('2. Apresente as opções do empreendimento'));
+  assert.ok(caption.includes('3. Registre cada interação no CRM'));
+});
+
+test('sem imagem: Tratativa presente no texto único (mesma fonte, mesmos textos)', () => {
+  const parts = composeLeadMessageParts({
+    ...WITH_TEMP,
+    enterprise: { ...WITH_TEMP.enterprise!, imageUrl: undefined },
+  });
+  const text = ALL_TEXT(parts);
+  assert.ok(text.includes('🎯 <b>Tratativa sugerida</b>'));
+  assert.ok(text.includes('1. Ligue para o lead'));
+  assert.ok(text.indexOf('🎯 <b>Tratativa sugerida</b>') < text.indexOf('👤 <b>Contato</b>'));
+});
+
+test('encadeada: Tratativa nunca se perde entre as partes', () => {
+  const long: TelegramLeadPresentation = {
+    ...WITH_TEMP,
+    enterprise: { ...WITH_TEMP.enterprise!, imageUrl: undefined },
+    answers: Array.from({ length: 40 }, (_, i) => ({
+      key: `campo_${i + 1}`,
+      label: `Campo ${i + 1}`,
+      displayValue: `Valor ${i + 1} — conteúdo suficientemente longo para forçar a quebra em múltiplas partes dentro do orçamento seguro do Telegram.`,
+      order: i,
+    })),
+  };
+  const parts = composeLeadMessageParts(long);
+  const text = ALL_TEXT(parts);
+  assert.ok(text.includes('🎯 <b>Tratativa sugerida</b>'));
+  assert.ok(text.includes('3. Registre cada interação no CRM'));
+});
+
+test('temperatura SEM steps (modelo antigo) → só a linha de temperatura, sem seção vazia', () => {
+  const legacy: TelegramLeadPresentation = {
+    ...WITH_TEMP,
+    temperature: { classification: 'QUENTE', label: 'Quente', emoji: '🔥', score: 9 },
+  };
+  const parts = composeLeadMessageParts(legacy);
+  const text = ALL_TEXT(parts);
+  assert.ok(text.includes('🌡️ <b>Temperatura:</b> 🔥 Quente · 9 pts'));
+  assert.ok(!text.includes('Tratativa sugerida'), 'não exibe bloco vazio');
+});
+
+test('tratativa renderizada é a mesma nos três níveis (conteúdo distinto por classificação)', () => {
+  const render = (t: 'QUENTE' | 'MORNO' | 'FRIO') =>
+    ALL_TEXT(composeLeadMessageParts({ ...WITH_TEMP, temperature: buildLeadPresentation(baseInput({ leadTemperature: t }), null).temperature }));
+  assert.ok(render('MORNO').includes('Qualifique o lead ainda no primeiro contato.'));
+  assert.ok(render('FRIO').includes('Cultive o relacionamento com paciência.'));
+  assert.ok(!render('QUENTE').includes('Cultive o relacionamento'));
 });

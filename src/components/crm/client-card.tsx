@@ -4,8 +4,9 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Phone, Mail, MapPin, Building2, Clock, AlertTriangle, MessageCircle, PhoneCall, Target, Eye, CalendarDays, CalendarCheck, FileText, Handshake, Trophy, Ban, Megaphone } from 'lucide-react';
+import { Phone, Mail, MapPin, Building2, Clock, AlertTriangle, MessageCircle, PhoneCall, Target, Eye, CalendarDays, CalendarCheck, FileText, Handshake, Trophy, Ban, Megaphone, Flame, CloudSun, Snowflake } from 'lucide-react';
 import { getWhatsAppUrl, getPhoneCallUrl } from '@/lib/phone-utils';
+import { getLeadTemperatureGuidance, type LeadTemperatureClassification } from '@/lib/lead-temperature-guidance';
 
 interface ClientTag {
   tag: {
@@ -53,11 +54,30 @@ interface ClientCardProps {
     utmSource?: string | null;
     utmMedium?: string | null;
     utmCampaign?: string | null;
+    /** Classificação por formulário Meta — null = sem config ativa. */
+    metaTemperature?: string | null;
+    metaScore?: number | null;
     createdAt: string;
     tags: ClientTag[];
   };
   onClick: (id: string) => void;
 }
+
+/** Badge compacto de classificação (mesmas cores do painel de Temperatura). */
+const TEMPERATURE_BADGE_STYLES: Record<LeadTemperatureClassification, { badge: string; icon: typeof Flame }> = {
+  QUENTE: {
+    badge: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800/50',
+    icon: Flame,
+  },
+  MORNO: {
+    badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800/50',
+    icon: CloudSun,
+  },
+  FRIO: {
+    badge: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400 border-sky-200 dark:border-sky-800/50',
+    icon: Snowflake,
+  },
+};
 
 const STAGE_BADGES: Record<string, { icon: typeof Target; color: string }> = {
   'LEAD': { icon: Target, color: 'bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300' },
@@ -85,6 +105,7 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
   const period = client.updatePeriod || 30;
   const isOverdue = needsUpdate(client.lastInteractionAt || null, client.createdAt, period, client.stage);
   const daysLeft = daysUntilUpdate(client.lastInteractionAt || null, client.createdAt, period, client.stage);
+  const temperatureGuidance = getLeadTemperatureGuidance(client.metaTemperature);
 
   const whatsappUrl = client.phone ? getWhatsAppUrl(client.phone) : null;
   const phoneUrl = client.phone ? getPhoneCallUrl(client.phone) : null;
@@ -180,15 +201,27 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
         </div>
         )}
 
-        {client.stage && STAGE_BADGES[client.stage] && (
-          <div className="flex items-center gap-1.5 mt-3">
-            {(() => {
+        {(client.stage && STAGE_BADGES[client.stage]) || temperatureGuidance ? (
+          <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+            {client.stage && STAGE_BADGES[client.stage] && (() => {
               const stageBadge = STAGE_BADGES[client.stage!];
               const StageIcon = stageBadge.icon;
               return (
                 <Badge className={`text-[10px] px-2 py-0.5 gap-1 ${stageBadge.color}`}>
                   <StageIcon className="h-3 w-3" />
                   {STAGE_LABELS[client.stage!] || client.stage}
+                </Badge>
+              );
+            })()}
+            {temperatureGuidance && (() => {
+              const TempIcon = TEMPERATURE_BADGE_STYLES[temperatureGuidance.classification].icon;
+              return (
+                <Badge
+                  className={`text-[10px] px-2 py-0.5 gap-1 border ${TEMPERATURE_BADGE_STYLES[temperatureGuidance.classification].badge}`}
+                  title={`Classificação do lead: ${temperatureGuidance.label}`}
+                >
+                  <TempIcon className="h-3 w-3" />
+                  {temperatureGuidance.label}
                 </Badge>
               );
             })()}
@@ -199,7 +232,7 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
               </Badge>
             )}
           </div>
-        )}
+        ) : null}
 
         {client.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-3">

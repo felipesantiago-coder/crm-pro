@@ -146,6 +146,10 @@ export interface LeadPresentationTemperature {
   emoji: string;
   /** Pontuação do lead (soma das notas do formulário), quando conhecida. */
   score?: number;
+  /** Orientação de tratativa (PT-BR revisado) — fonte: lead-temperature-guidance. */
+  headline?: string;
+  description?: string;
+  steps?: string[];
 }
 
 export interface TelegramLeadPresentation {
