@@ -13,6 +13,10 @@
  *   score >= hotMin  → QUENTE
  *   score >= warmMin → MORNO
  *   score <  warmMin → FRIO
+ * SOMENTE PERGUNTAS do formulário pontuam — dados de contato do Meta
+ * (nome, e-mail, telefone, cidade, CEP, estado, data de nascimento...)
+ * nunca são considerados, mesmo que apareçam no field_data ou numa
+ * config antiga salva antes desse filtro.
  * Nada aqui é genérico: sem configuração para o formulário, o lead
  * não recebe temperatura.
  *
@@ -22,6 +26,7 @@
  */
 
 import { db } from '@/lib/db';
+import { isMetaContactField } from '@/lib/meta-lead-utils';
 import type { RawLeadAnswer } from '@/lib/meta-lead-utils';
 
 // ─────────────────────────────────────────────
@@ -121,6 +126,9 @@ export function parseScoringConfig(configJson: string | null | undefined): Parse
     const questions: ScoringQuestion[] = [];
     for (const q of parsed.questions) {
       if (!q || typeof q.key !== 'string' || !q.key.trim()) continue;
+      // Dados de contato (nome, e-mail, telefone...) NUNCA são perguntas —
+      // configs antigas salvas com esses campos deixam de valer
+      if (isMetaContactField(q.key)) continue;
       const answers: ScoringAnswer[] = Array.isArray(q.answers)
         ? q.answers
             .filter((a: unknown): a is ScoringAnswer =>
@@ -155,6 +163,8 @@ export function classifyScore(score: number, warmMin: number, hotMin: number): L
 /**
  * Soma as notas das respostas de um lead a partir da config parseada.
  * Regras:
+ *   - dados de contato do Meta (nome, e-mail, telefone, cidade, CEP...)
+ *     são IGNORADOS — apenas perguntas do formulário pontuam;
  *   - match de pergunta por chave normalizada (igual meta-lead-utils);
  *   - match de resposta case-insensitive (trim);
  *   - múltipla escolha: TODOS os valores selecionados somam;
@@ -178,6 +188,9 @@ export function computeLeadScoreFromConfig(
   let score = 0;
 
   for (const raw of rawAnswers) {
+    // Dados de contato (nome, e-mail, telefone, cidade...) não são perguntas:
+    // nunca pontuam, não recebem questionScore e nem entram no detalhamento
+    if (isMetaContactField(raw.key)) continue;
     const question = questionIndex.get(normalizeQuestionKey(raw.key));
     // Pergunta sem configuração → resposta entra no breakdown como 0
     if (!question) {

@@ -8,6 +8,7 @@ import {
   type ReclassifyResult,
   type ScoringQuestion,
 } from '@/lib/lead-temperature';
+import { isMetaContactField } from '@/lib/meta-lead-utils';
 
 // ============================================================
 // GET/PUT/DELETE /api/meta-ads/temperature
@@ -59,9 +60,11 @@ async function getTemperatureCounts(formId: string): Promise<TemperatureCounts> 
 }
 
 /**
- * Agrega perguntas/respostas observadas nos leads do formulário
+ * Agrega PERGUNTAS/respostas observadas nos leads do formulário
  * (a partir de Client.metaFormData) para o admin pontuar com base
- * no que o formulário realmente pergunta.
+ * no que o formulário realmente pergunta. Dados de contato do Meta
+ * (nome, e-mail, telefone, CEP...) gravados por versões anteriores
+ * não aparecem — apenas perguntas são configuráveis.
  */
 async function getObservedQuestions(formId: string) {
   const clients = await db.client.findMany({
@@ -86,7 +89,9 @@ async function getObservedQuestions(formId: string) {
     if (!Array.isArray(parsed)) continue;
 
     for (const answer of parsed) {
-      if (!answer?.key) continue;
+      // Dados de contato (nome, e-mail, telefone, CEP...) não são perguntas —
+      // leads gravados antes do filtro podem tê-los no metaFormData
+      if (!answer?.key || isMetaContactField(answer.key)) continue;
       let question = questions.get(answer.key);
       if (!question) {
         question = { key: answer.key, count: 0, answers: new Map() };
@@ -327,6 +332,8 @@ export async function PUT(request: NextRequest) {
     const sanitizedQuestions: ScoringQuestion[] = [];
     for (const question of questions) {
       if (!question?.key || typeof question.key !== 'string' || !question.key.trim()) continue;
+      // Dados de contato do Meta nunca são perguntas — não são salvos na config
+      if (isMetaContactField(question.key)) continue;
       const answers = Array.isArray(question.answers)
         ? question.answers
             .filter((a) => a && typeof a.text === 'string' && a.text.trim())

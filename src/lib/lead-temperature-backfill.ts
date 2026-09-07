@@ -28,6 +28,7 @@
  */
 
 import { db } from '@/lib/db';
+import { isMetaContactField } from '@/lib/meta-lead-utils';
 import type { RawLeadAnswer } from '@/lib/meta-lead-utils';
 
 // ─────────────────────────────────────────────
@@ -61,13 +62,14 @@ export function parseNotesFormName(notes: string | null | undefined): string | n
 }
 
 /**
- * Extrai as respostas do bloco "Respostas do formulário:" das notes.
+ * Extrai as PERGUNTAS do bloco "Respostas do formulário:" das notes.
  *   - valor é o texto APÓS o primeiro ":" da linha (respostas podem conter ":");
  *   - chaves repetidas acumulam valores (defesa);
  *   - o bloco termina na primeira linha fora do padrão (nunca engole o resto
  *     das notes — cabeçalhos, Lead ID etc.);
- *   - campos padrão (nome/email/telefone/cidade) NUNCA aparecem no bloco
- *     (formatCustomAnswersText já os exclui na origem).
+ *   - dados de contato (nome, e-mail, telefone, CEP...) NUNCA são retornados —
+ *     leads antigos podem tê-los no bloco (filtro da origem era incompleto),
+ *     mas apenas perguntas participam da temperatura.
  */
 export function parseNotesAnswers(notes: string | null | undefined): RawLeadAnswer[] {
   if (!notes) return [];
@@ -87,6 +89,9 @@ export function parseNotesAnswers(notes: string | null | undefined): RawLeadAnsw
     const key = match[1].trim();
     const value = match[2].trim();
     if (!key || !value) continue;
+    // Dados de contato no bloco (leads antigos) não são perguntas —
+    // a temperatura só considera perguntas do formulário
+    if (isMetaContactField(key)) continue;
 
     const existing = byKey.get(key);
     if (existing) {
