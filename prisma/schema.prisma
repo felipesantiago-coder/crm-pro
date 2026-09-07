@@ -708,6 +708,23 @@ model LeadFormScoring {
 }
 
 // ============================================================
+// LEAD FORM HIDDEN — Formulário removido da seção Temperatura
+// "Remover formulário" NÃO apaga leads nem mapeamentos aprendidos:
+// marca o formulário como oculto para que ele não apareça mais na
+// lista da aba Temperatura (e não reapareça com novos leads).
+// Importar o formulário novamente (por conta de anúncios) remove a
+// marca e o restaura na seção com o histórico de leads intacto.
+// ============================================================
+model LeadFormHidden {
+  formId    String   @id @map("formId") // Meta leadgen form ID
+  reason    String?  @map("reason")     // ex: "removido pelo admin"
+  hiddenBy  String?  @map("hiddenBy")   // userId do admin que removeu
+  createdAt DateTime @default(now()) @map("createdAt")
+
+  @@map("lead_form_hidden")
+}
+
+// ============================================================
 // META AD ACCOUNT — Conta de anúncios dedicada (multi-conta)
 // Cada conta tem o seu próprio access token (System User/Page),
 // configurações de WEBHOOK (verify token, app secret, page IDs e

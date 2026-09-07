@@ -118,6 +118,62 @@ export function normalizeAdAccountId(raw: string): string {
   return trimmed.startsWith('act_') ? trimmed : `act_${trimmed}`;
 }
 
+// ============================================================
+// Formulários de lead (leadgen forms) — placeholders de importação
+// ============================================================
+// Formulários importados da conta de anúncios (Sync Forms ou aba
+// Temperatura) são registrados em LeadFormMapping com o campaignId
+// sintático "__account_<act_id>" — não representa campanha real,
+// apenas o vínculo formulário → conta. Mapeamentos APRENDIDOS de
+// leads (campaignId real ou "__no_campaign") nunca são confundidos
+// com placeholders.
+
+/** Prefixo do campaignId sintático dos formulários importados por conta. */
+export const PLACEHOLDER_CAMPAIGN_PREFIX = '__account_';
+
+/** campaignId sintático que registra o formulário como pertencente à conta. */
+export function buildAccountPlaceholderCampaignId(adAccountId: string): string {
+  return `${PLACEHOLDER_CAMPAIGN_PREFIX}${normalizeAdAccountId(adAccountId)}`;
+}
+
+/** True quando o campaignId é placeholder de importação (não é campanha real). */
+export function isPlaceholderCampaignId(campaignId: string | null | undefined): boolean {
+  return !!campaignId && String(campaignId).startsWith(PLACEHOLDER_CAMPAIGN_PREFIX);
+}
+
+/**
+ * Junta novos formIds no JSON array da conta (fonte do polling):
+ * preserva a ordem existente, ignora duplicatas/vazios. Retorna null
+ * quando o resultado fica vazio (coluna JSON vazia = null).
+ */
+export function mergeFormIdsIntoJson(
+  existing: string | null | undefined,
+  formIds: string[],
+): string | null {
+  const merged = parseJsonArray(existing);
+  const seen = new Set(merged);
+  for (const id of formIds) {
+    const value = String(id || '').trim();
+    if (value && !seen.has(value)) {
+      merged.push(value);
+      seen.add(value);
+    }
+  }
+  return merged.length > 0 ? JSON.stringify(merged) : null;
+}
+
+/**
+ * Remove um formId do JSON array da conta (desregistrar do polling).
+ * Retorna null quando não sobra nenhum id.
+ */
+export function removeFormIdFromJson(
+  existing: string | null | undefined,
+  formId: string,
+): string | null {
+  const remaining = parseJsonArray(existing).filter((id) => id !== String(formId));
+  return remaining.length > 0 ? JSON.stringify(remaining) : null;
+}
+
 /**
  * Resolve a conta de anúncios dona de uma page_id do Facebook.
  * O webhook envia entry[].id = page id — usamos o pageIds JSON de
@@ -539,6 +595,155 @@ export async function fetchLeadDataViaAccounts(
     if (fieldData) return { fieldData, accountId: account.id };
   }
   return { fieldData: null, accountId: null };
+}
+
+// ============================================================
+// Listagem de FORMULÁRIOS DE LEAD da conta (Graph API) — 3 vias
+// ============================================================
+// Usada pelo Sync Forms (aba Anúncios) e pela importação de
+// formulários da aba Temperatura. Estratégia, da mais específica
+// para a mais permissiva:
+//   1. act_<id>/leadgen_forms              → exige ads_read no token
+//   2. act_<id>/campaigns → leadgen_forms  → fallback ads_read
+//   3. {page-id}/leadgen_forms (páginas vinculadas, com o page token
+//      salvo) → exige só permissões de PÁGINA — cobre tokens SEM
+//      ads_read, para os quais a Graph oculta a edge da conta
+//      ("(#100) Tried accessing nonexisting field (leadgen_forms)").
+// Pura em rede: NÃO toca no banco — cada chamador persiste o que
+// precisar (upsert de mappings, formIds de polling etc.).
+
+export interface LeadgenFormSummary {
+  id: string;
+  name?: string;
+  status?: string;
+  created_time?: string;
+}
+
+export interface LeadgenFormsFetchResult {
+  forms: LeadgenFormSummary[];
+  /** Via que retornou os formulários (null quando nenhuma). */
+  via: 'account' | 'campaigns' | 'page' | null;
+  /** Último erro reportado pela Graph quando nenhuma via retornou nada. */
+  lastErrorMsg: string;
+}
+
+/**
+ * Lista os formulários de lead de uma conta de anúncios com o token
+ * DELA (multi-conta). Nunca lança: falhas viram `lastErrorMsg` e
+ * lista vazia para o chamador decidir a resposta.
+ */
+export async function fetchLeadgenFormsForAccount(account: {
+  adAccountId: string;
+  accessToken: string;
+  pageIds?: string | null;
+  pageTokens?: string | null;
+  name?: string;
+}): Promise<LeadgenFormsFetchResult> {
+  const accountId = normalizeAdAccountId(account.adAccountId);
+  const label = account.name || accountId;
+  const result: LeadgenFormsFetchResult = { forms: [], via: null, lastErrorMsg: '' };
+  if (!accountId || !account.accessToken) return result;
+
+  // Tentativa 1: edge direta leadgen_forms (requer ads_read no token).
+  // OK mas vazia NÃO encerra: a tentativa 3 (páginas) ainda roda —
+  // a edge da conta pode existir e não listar formulários que as
+  // páginas conhecem.
+  const directUrl = `https://graph.facebook.com/v22.0/${accountId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
+  let response: Response;
+  try {
+    response = await fetch(directUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${account.accessToken}` },
+    });
+  } catch (err) {
+    result.lastErrorMsg = err instanceof Error ? err.message : 'Falha de rede na Graph API';
+    console.warn(`[Leadgen Forms] Conta ${accountId}: tentativa 1 (direct) falhou — ${result.lastErrorMsg}`);
+    return result;
+  }
+
+  if (response.ok) {
+    const data = await response.json().catch(() => ({}));
+    result.forms = data.data || [];
+    if (result.forms.length > 0) result.via = 'account';
+  } else {
+    const errText = await response.text().catch(() => '');
+    let parsed: any = {};
+    try { parsed = JSON.parse(errText); } catch {}
+    result.lastErrorMsg = parsed?.error?.message || `HTTP ${response.status}`;
+    const errorCode = String(parsed?.error?.code || '');
+    console.warn(`[Leadgen Forms] Conta ${accountId}: tentativa 1 (direct) falhou — code=${errorCode} msg=${result.lastErrorMsg}`);
+
+    // Tentativa 2: via campaigns com leadgen_forms aninhado (fallback ads_read)
+    if (errorCode === '100' || errorCode === '200') {
+      const campaignsUrl = `https://graph.facebook.com/v22.0/${accountId}/campaigns?fields=leadgen_forms{id,name,status,created_time}&limit=100&effective_status=["ACTIVE","PAUSED"]`;
+      try {
+        const campResponse = await fetch(campaignsUrl, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${account.accessToken}` },
+        });
+        if (campResponse.ok) {
+          const campData = await campResponse.json();
+          const seen = new Set<string>();
+          for (const camp of campData.data || []) {
+            for (const form of camp.leadgen_forms?.data || []) {
+              if (form?.id && !seen.has(form.id)) {
+                seen.add(form.id);
+                result.forms.push(form);
+              }
+            }
+          }
+          if (result.forms.length > 0) {
+            result.via = 'campaigns';
+            console.log(`[Leadgen Forms] Conta ${accountId}: tentativa 2 (campaigns) encontrou ${result.forms.length} formulários`);
+          }
+        } else {
+          const err2Text = await campResponse.text().catch(() => '');
+          let parsed2: any = {};
+          try { parsed2 = JSON.parse(err2Text); } catch {}
+          result.lastErrorMsg = parsed2?.error?.message || `HTTP ${campResponse.status}`;
+          console.error(`[Leadgen Forms] Conta ${accountId}: tentativa 2 (campaigns) também falhou — ${result.lastErrorMsg}`);
+        }
+      } catch (err) {
+        result.lastErrorMsg = err instanceof Error ? err.message : 'Falha de rede na Graph API';
+        console.error(`[Leadgen Forms] Conta ${accountId}: tentativa 2 (campaigns) falhou — ${result.lastErrorMsg}`);
+      }
+    }
+  }
+
+  // Tentativa 3 (fallback SEM ads_read): edge leadgen_forms de cada
+  // página vinculada — usa o page token salvo quando existir
+  // (resolvePageToken); cobre tokens de papel de página.
+  const pageIds = parseJsonArray(account.pageIds).slice(0, 10);
+  for (const pageId of pageIds) {
+    const pageToken = resolvePageToken(account, pageId);
+    if (!pageToken) continue;
+    const pageUrl = `https://graph.facebook.com/v22.0/${pageId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
+    try {
+      const pageRes = await fetch(pageUrl, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${pageToken}` },
+      });
+      if (pageRes.ok) {
+        const pageData = await pageRes.json().catch(() => ({}));
+        const pageForms: LeadgenFormSummary[] = Array.isArray(pageData?.data) ? pageData.data : [];
+        if (pageForms.length > 0) {
+          result.forms = pageForms;
+          result.via = 'page';
+          console.log(`[Leadgen Forms] Conta ${accountId} (${label}): tentativa 3 (página ${pageId}) encontrou ${pageForms.length} formulários`);
+          return result;
+        }
+      } else {
+        const err3Text = await pageRes.text().catch(() => '');
+        let parsed3: any = {};
+        try { parsed3 = JSON.parse(err3Text); } catch {}
+        console.warn(`[Leadgen Forms] Conta ${accountId}: tentativa 3 (página ${pageId}) falhou — ${parsed3?.error?.message || `HTTP ${pageRes.status}`}`);
+      }
+    } catch (err) {
+      console.warn(`[Leadgen Forms] Conta ${accountId}: tentativa 3 (página ${pageId}) falhou —`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  return result;
 }
 
 // ============================================================

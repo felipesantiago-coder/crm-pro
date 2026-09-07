@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
 import {
+  parseJsonArray,
+  PLACEHOLDER_CAMPAIGN_PREFIX,
+  removeFormIdFromJson,
+} from '@/lib/meta-ad-accounts';
+import {
   parseScoringConfig,
   reclassifyFormLeads,
   invalidateScoringCache,
@@ -20,7 +25,11 @@ import { isMetaContactField, isMetaTrackingField, isUnresolvedMetaParam } from '
 // PUT            — salva a config do formulário (notas inteiras por
 //                  resposta + limiares) e, opcionalmente, reclassifica
 //                  os leads já capturados
-// DELETE ?formId=— remove a config (classificações existentes são mantidas)
+// DELETE ?formId= — remove a config (classificações existentes são mantidas)
+// DELETE ?formId=&scope=form — remove o FORMULÁRIO da seção: apaga a config,
+//                  os registros de importação (__account_*) e o desregistra do
+//                  polling das contas; leads e mapeamentos aprendidos ficam
+//                  intactos, e o formulário volta apenas se reimportado.
 // ============================================================
 
 export const maxDuration = 60;
@@ -137,6 +146,14 @@ export async function GET(request: NextRequest) {
 
     // ── Detalhe de um formulário ──
     if (formId) {
+      // Formulário removido da seção não é configurável (importar para restaurar)
+      const hiddenRow = await db.leadFormHidden.findUnique({ where: { formId } }).catch(() => null);
+      if (hiddenRow) {
+        return NextResponse.json(
+          { error: 'Formulário removido da seção Temperatura — importe-o novamente para restaurar' },
+          { status: 404 },
+        );
+      }
       const [scoring, mappings, observed, temperatureCounts, scoreGroups, formCount] = await Promise.all([
         db.leadFormScoring.findUnique({ where: { formId } }),
         db.leadFormMapping.findMany({ where: { formId }, orderBy: { lastSeenAt: 'desc' }, take: 1 }),
@@ -224,6 +241,16 @@ export async function GET(request: NextRequest) {
       const entry = formMap.get(row.formId);
       if (entry && !entry.formName && row.formName) entry.formName = row.formName;
       if (entry && !entry.lastSeenAt) entry.lastSeenAt = row.lastSeenAt;
+    }
+
+    // Formulários removidos da seção (LeadFormHidden) saem da lista —
+    // voltam somente quando reimportados em "Importar formulários"
+    try {
+      const hiddenRows = await db.leadFormHidden.findMany({ select: { formId: true } });
+      for (const row of hiddenRows) formMap.delete(row.formId);
+    } catch (err) {
+      // Migration pendente: sem tabela de ocultos, nada é filtrado
+      console.warn('[Meta Ads Temperature][GET] Falha ao carregar formulários ocultos:', err instanceof Error ? err.message : err);
     }
 
     const formIds = Array.from(formMap.keys());
@@ -411,12 +438,13 @@ export async function PUT(request: NextRequest) {
 // ─────────────────────────────────────────────
 
 export async function DELETE(request: NextRequest) {
-  const { error } = await requireAdmin();
+  const { error, session } = await requireAdmin();
   if (error) return error;
 
   try {
     const { searchParams } = new URL(request.url);
     const formId = searchParams.get('formId');
+    const scope = searchParams.get('scope') === 'form' ? 'form' : 'config';
     if (!formId) {
       return NextResponse.json({ error: 'formId é obrigatório' }, { status: 400 });
     }
@@ -424,7 +452,56 @@ export async function DELETE(request: NextRequest) {
     await db.leadFormScoring.deleteMany({ where: { formId } });
     invalidateScoringCache(formId);
 
-    return NextResponse.json({ ok: true });
+    if (scope !== 'form') {
+      return NextResponse.json({ ok: true, scope });
+    }
+
+    // ── scope=form: remover o FORMULÁRIO da seção ──
+    // 1. Registros de IMPORTAÇÃO (__account_*) saem; mapeamentos
+    //    aprendidos de leads (fila, empreendimento, CAPI) permanecem.
+    let removedMappings = 0;
+    try {
+      const removed = await db.leadFormMapping.deleteMany({
+        where: { formId, campaignId: { startsWith: PLACEHOLDER_CAMPAIGN_PREFIX } },
+      });
+      removedMappings = removed.count;
+    } catch (err) {
+      console.warn('[Meta Ads Temperature][DELETE] Falha ao remover registros de importação:', err instanceof Error ? err.message : err);
+    }
+
+    // 2. Desregistra do polling das contas (formIds) — importar novamente
+    //    volta a registrar.
+    let unregistered = 0;
+    try {
+      const accounts = await db.metaAdAccount.findMany({ select: { id: true, formIds: true } });
+      for (const account of accounts) {
+        const ids = parseJsonArray(account.formIds);
+        if (!ids.includes(formId)) continue;
+        await db.metaAdAccount.update({
+          where: { id: account.id },
+          data: { formIds: removeFormIdFromJson(account.formIds, formId) },
+        });
+        unregistered += 1;
+      }
+    } catch (err) {
+      console.warn('[Meta Ads Temperature][DELETE] Falha ao desregistrar do polling:', err instanceof Error ? err.message : err);
+    }
+
+    // 3. Oculta da seção: leads e classificações existentes ficam
+    //    intactos; o formulário reaparece apenas se reimportado.
+    let hidden = true;
+    try {
+      await db.leadFormHidden.upsert({
+        where: { formId },
+        create: { formId, reason: 'removido pelo admin', hiddenBy: session?.user?.id || null },
+        update: { hiddenBy: session?.user?.id || null },
+      });
+    } catch (err) {
+      hidden = false;
+      console.warn('[Meta Ads Temperature][DELETE] Falha ao ocultar formulário:', err instanceof Error ? err.message : err);
+    }
+
+    return NextResponse.json({ ok: true, scope, removedMappings, unregistered, hidden });
   } catch (err) {
     console.error('[Meta Ads Temperature][DELETE] Erro:', err);
     return NextResponse.json({ error: 'Erro ao remover configuração' }, { status: 500 });

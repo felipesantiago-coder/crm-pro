@@ -37,6 +37,21 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Thermometer,
   Flame,
   CloudSun,
@@ -49,6 +64,8 @@ import {
   Loader2,
   Plus,
   History,
+  Download,
+  FileX2,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────
@@ -116,6 +133,33 @@ interface BackfillResult {
   linked: number;
   withAnswers: number;
   alreadyLinked: number;
+}
+
+// ── Importar formulários das contas de anúncios (por conta) ──
+interface ImportAccount {
+  id: string;
+  name: string;
+  adAccountId: string;
+  enabled: boolean;
+}
+interface AvailableForm {
+  id: string;
+  name: string | null;
+  status: string | null;
+  createdTime: string | null;
+  inTemperature: boolean;
+  hidden: boolean;
+  configured: boolean;
+  scoringActive: boolean;
+  leadCount: number;
+  importedToThisAccount: boolean;
+}
+interface AvailableFormsResponse {
+  account: { id: string; name: string; adAccountId: string };
+  via: string | null;
+  forms: AvailableForm[];
+  message?: string;
+  error?: string;
 }
 
 // ─────────────────────────────────────────────
@@ -235,6 +279,21 @@ export function TemperatureTab() {
   const [legacy, setLegacy] = useState<DiscoveryResult | null>(null);
   const [loadingLegacy, setLoadingLegacy] = useState(false);
   const [linkingFormId, setLinkingFormId] = useState<string | null>(null);
+
+  // Importar formulários das contas de anúncios Meta (por conta)
+  const [importOpen, setImportOpen] = useState(false);
+  const [accounts, setAccounts] = useState<ImportAccount[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [importAccountId, setImportAccountId] = useState('');
+  const [availableForms, setAvailableForms] = useState<AvailableForm[]>([]);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
+  const [availableMessage, setAvailableMessage] = useState<string | null>(null);
+  const [selectedImportIds, setSelectedImportIds] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
+
+  // Remover o FORMULÁRIO da seção (não só a config)
+  const [removeFormOpen, setRemoveFormOpen] = useState(false);
+  const [removingForm, setRemovingForm] = useState(false);
 
   // ── Lista de formulários ──
   const loadForms = useCallback(async (keepSelection = true) => {
@@ -407,6 +466,115 @@ export function TemperatureTab() {
     }
   }
 
+  // ── Importar formulários das contas de anúncios Meta (por conta) ──
+  const loadAvailableForms = useCallback(async (accountId: string) => {
+    setLoadingAvailable(true);
+    setAvailableMessage(null);
+    setSelectedImportIds(new Set());
+    try {
+      const res = await fetch(`/api/meta-ads/temperature/forms?accountId=${encodeURIComponent(accountId)}`);
+      const data: AvailableFormsResponse = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Erro ao buscar formulários da conta');
+      setAvailableForms(data.forms || []);
+      if ((data.forms?.length || 0) === 0) {
+        setAvailableMessage(data.message || 'Nenhum formulário de lead encontrado nesta conta.');
+      } else {
+        // Pré-seleciona os formulários ATIVOS que ainda não estão na seção
+        setSelectedImportIds(new Set(
+          (data.forms || [])
+            .filter((f) => (!f.status || f.status === 'ACTIVE') && !f.inTemperature)
+            .map((f) => f.id),
+        ));
+      }
+    } catch (err) {
+      setAvailableForms([]);
+      setAvailableMessage(err instanceof Error ? err.message : 'Erro ao buscar formulários da conta');
+    } finally {
+      setLoadingAvailable(false);
+    }
+  }, []);
+
+  const openImportDialog = useCallback(async () => {
+    setImportOpen(true);
+    setLoadingAccounts(true);
+    setAccounts([]);
+    setAvailableForms([]);
+    setAvailableMessage(null);
+    setImportAccountId('');
+    try {
+      const res = await fetch('/api/meta-ad-accounts');
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const list: ImportAccount[] = Array.isArray(data) ? data : [];
+      setAccounts(list);
+      const firstEnabled = list.find((a) => a.enabled) || list[0];
+      if (firstEnabled) {
+        setImportAccountId(firstEnabled.id);
+        void loadAvailableForms(firstEnabled.id);
+      } else {
+        setAvailableMessage('Nenhuma conta de anúncios conectada — cadastre uma na aba Anúncios.');
+      }
+    } catch {
+      toast.error('Erro ao carregar contas de anúncios');
+    } finally {
+      setLoadingAccounts(false);
+    }
+  }, [loadAvailableForms]);
+
+  function toggleImportForm(formId: string, checked: boolean) {
+    setSelectedImportIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(formId);
+      else next.delete(formId);
+      return next;
+    });
+  }
+
+  async function handleImportSelected() {
+    if (!importAccountId || selectedImportIds.size === 0) return;
+    setImporting(true);
+    try {
+      const forms = availableForms
+        .filter((f) => selectedImportIds.has(f.id))
+        .map((f) => ({ id: f.id, name: f.name || undefined }));
+      const res = await fetch('/api/meta-ads/temperature/forms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: importAccountId, forms }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao importar');
+      toast.success(data?.message || 'Formulários importados');
+      await loadForms();
+      await loadAvailableForms(importAccountId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao importar formulários');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  // ── Remover o FORMULÁRIO da seção Temperatura (scope=form) ──
+  async function handleRemoveForm() {
+    if (!selectedFormId) return;
+    setRemovingForm(true);
+    try {
+      const res = await fetch(
+        `/api/meta-ads/temperature?formId=${encodeURIComponent(selectedFormId)}&scope=form`,
+        { method: 'DELETE' },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao remover');
+      toast.success('Formulário removido da seção Temperatura — importe novamente para restaurar.');
+      setRemoveFormOpen(false);
+      await loadForms();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao remover formulário');
+    } finally {
+      setRemovingForm(false);
+    }
+  }
+
   // ── Edição local ──
   function updateAnswer(questionIdx: number, answerIdx: number, patch: Partial<EditAnswer>) {
     setQuestions((prev) =>
@@ -478,10 +646,19 @@ export function TemperatureTab() {
               Formulários importados
             </CardTitle>
             <CardDescription className="text-xs">
-              Aprendidos automaticamente dos leads recebidos
+              Importados das contas Meta ou aprendidos dos leads recebidos
             </CardDescription>
           </CardHeader>
           <CardContent className="p-2 pt-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full h-7 text-[11px] mb-2"
+              onClick={openImportDialog}
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Importar formulários
+            </Button>
             {loadingForms ? (
               <div className="space-y-2 p-2">
                 {[1, 2, 3].map((i) => <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />)}
@@ -491,7 +668,9 @@ export function TemperatureTab() {
                 <Thermometer className="h-8 w-8 text-muted-foreground/40 mx-auto" />
                 <p className="text-xs font-medium text-muted-foreground">Nenhum formulário ainda</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Os formulários aparecem aqui automaticamente quando o primeiro lead chega (webhook ou importação).
+                  Importe os formulários das suas contas de anúncio Meta com o botão acima para
+                  configurar a temperatura antes do primeiro lead — ou aguarde: eles aparecem aqui
+                  automaticamente quando o primeiro lead chega.
                 </p>
               </div>
             ) : (
@@ -766,6 +945,15 @@ export function TemperatureTab() {
                         <Trash2 className="h-3.5 w-3.5 mr-1" /> Remover
                       </Button>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs text-red-600 hover:text-red-700 dark:text-red-400"
+                      onClick={() => setRemoveFormOpen(true)}
+                      title="Remove o formulário da seção Temperatura (importar novamente restaura)"
+                    >
+                      <FileX2 className="h-3.5 w-3.5 mr-1" /> Remover formulário
+                    </Button>
                     <Button size="sm" className="h-8 text-xs" onClick={handleSave} disabled={saving}>
                       {saving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
                       Salvar configuração
@@ -905,7 +1093,7 @@ export function TemperatureTab() {
         )}
       </div>
 
-      {/* Confirmação de remoção */}
+      {/* Confirmação de remoção (somente a config de notas) */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -927,6 +1115,152 @@ export function TemperatureTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Confirmação de remoção do FORMULÁRIO da seção */}
+      <AlertDialog open={removeFormOpen} onOpenChange={setRemoveFormOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover formulário da seção?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O formulário &quot;{detail?.form.formName || detail?.form.formId}&quot; sai da lista de Temperatura
+              e as notas/limiares salvos são apagados. Ele deixa de ser consultado no polling da conta
+              e não reaparece automaticamente quando novos leads chegarem. Os leads já recebidos mantêm
+              as classificações atuais. Para trazer de volta, use &quot;Importar formulários&quot;.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingForm}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveForm}
+              disabled={removingForm}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {removingForm && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+              Remover formulário
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Importar formulários das contas de anúncios Meta (por conta) */}
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Download className="h-4 w-4" /> Importar formulários da Meta
+            </DialogTitle>
+            <DialogDescription>
+              Busca os formulários de lead de cada conta de anúncios conectada —
+              configure a temperatura antes mesmo do primeiro lead.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Conta de anúncios</Label>
+            <Select
+              value={importAccountId || undefined}
+              onValueChange={(value) => {
+                setImportAccountId(value);
+                void loadAvailableForms(value);
+              }}
+              disabled={loadingAccounts || accounts.length === 0}
+            >
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder={loadingAccounts ? 'Carregando contas…' : 'Selecione a conta'} />
+              </SelectTrigger>
+              <SelectContent>
+                {accounts.map((account) => (
+                  <SelectItem key={account.id} value={account.id}>
+                    {account.name} ({account.adAccountId}){account.enabled ? '' : ' — desativada'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto therm-scroll border rounded-md p-2 space-y-1">
+            {loadingAvailable ? (
+              <div className="space-y-2 p-1">
+                {[1, 2, 3].map((i) => <div key={i} className="h-9 rounded-md bg-muted animate-pulse" />)}
+              </div>
+            ) : availableForms.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-6 px-2">
+                {availableMessage || 'Nenhum formulário disponível nesta conta.'}
+              </p>
+            ) : (
+              availableForms.map((form) => {
+                const isActive = !form.status || form.status === 'ACTIVE';
+                const selectable = isActive && !form.inTemperature;
+                return (
+                  <label
+                    key={form.id}
+                    className={`flex items-start gap-2 rounded-md p-2 ${selectable ? 'hover:bg-muted/60 cursor-pointer' : 'opacity-60'}`}
+                  >
+                    <Checkbox
+                      className="mt-0.5"
+                      checked={selectedImportIds.has(form.id)}
+                      onCheckedChange={(v) => toggleImportForm(form.id, v === true)}
+                      disabled={!selectable || importing}
+                      aria-label={`Importar ${form.name || form.id}`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate">{form.name || 'Formulário sem nome'}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono truncate">{form.id}</p>
+                      <div className="flex items-center gap-1 mt-1 flex-wrap">
+                        {isActive ? (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                            ativa
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1">
+                            {form.status === 'ARCHIVED' ? 'arquivado' : form.status?.toLowerCase() || 'inativo'}
+                          </Badge>
+                        )}
+                        {form.inTemperature && !form.hidden && (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1">na seção</Badge>
+                        )}
+                        {form.hidden && (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                            removido — importe para restaurar
+                          </Badge>
+                        )}
+                        {form.configured && (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1">
+                            {form.scoringActive ? 'pontuação ativa' : 'configurado (inativo)'}
+                          </Badge>
+                        )}
+                        {form.leadCount > 0 && (
+                          <span className="text-[9px] text-muted-foreground">{form.leadCount} lead(s)</span>
+                        )}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+            <span className="text-[11px] text-muted-foreground">
+              {selectedImportIds.size} selecionado(s)
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setImportOpen(false)}>
+                Fechar
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                onClick={handleImportSelected}
+                disabled={importing || selectedImportIds.size === 0}
+              >
+                {importing ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+                Importar selecionados
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
