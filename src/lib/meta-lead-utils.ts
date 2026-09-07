@@ -50,6 +50,50 @@ export function isMetaContactField(key: string): boolean {
   return STANDARD_FIELDS.has(String(key).toLowerCase().replace(/[_\s-]/g, ''));
 }
 
+// ── Campos de RASTREAMENTO (campos ocultos pré-preenchidos do formulário
+// Meta: utm_source, utm_medium, utm_campaign, utm_adset, utm_ad, placement,
+// ids de campanha/conjunto/anúncio...) — não são perguntas do lead: não
+// pontuam na temperatura (o CRM já registra a campanha real via API) ──
+
+/**
+ * true quando a chave é um campo de RASTREAMENTO do formulário Meta
+ * (utm_*, placement, ids/nomes de campanha, conjunto e anúncio).
+ * Campos de rastreamento NUNCA são perguntas — não participam da
+ * classificação de temperatura do lead.
+ */
+export function isMetaTrackingField(key: string): boolean {
+  if (!key) return false;
+  const normalized = String(key).toLowerCase().replace(/[_\s-]/g, '');
+  if (normalized.startsWith('utm')) return true; // utm_source, utm_medium, utm_campaign, utm_adset...
+  return [
+    'placement',
+    'campaignid', 'campaignname',
+    'adsetid', 'adsetname',
+    'adid', 'adname',
+    'pagename', 'pageid',
+    'formname',
+  ].includes(normalized);
+}
+
+// ── Parâmetros dinâmicos NÃO resolvidos pelo Meta ──
+// Campos ocultos pré-preenchidos com {{campaign.name}}, {{adset.name}} etc.
+// são expandidos PELO APLICATIVO Meta/Instagram no momento em que o
+// formulário abre — quando isso falha (acesso orgânico, navegador/webview,
+// versão do app, posicionamento sem suporte), o texto literal "{{...}}" é
+// enviado no field_data. Esse valor NÃO tem informação nenhuma.
+
+const RE_UNRESOLVED_META_PARAM = /\{\{[^}]*\}\}/;
+
+/**
+ * true quando o valor é um parâmetro dinâmico do Meta que NÃO foi
+ * resolvido (contém "{{...}}", ex.: "{{campaign.name}}") — não há
+ * informação real nele, então não deve ser armazenado/exibido.
+ */
+export function isUnresolvedMetaParam(value: string): boolean {
+  if (!value) return false;
+  return RE_UNRESOLVED_META_PARAM.test(String(value));
+}
+
 export interface RawLeadAnswer {
   key: string;
   values: string[];
@@ -59,9 +103,10 @@ export interface RawLeadAnswer {
  * Extrai as PERGUNTAS do formulário (field_data) preservando:
  *   - a ordem original do formulário;
  *   - TODOS os valores de múltipla escolha (values[]), nunca só o primeiro.
- * Campos de contato do Meta (nome, e-mail, telefone, cidade, CEP, estado,
- * data de nascimento...) são descartados — apenas perguntas seguem para o
- * cartão de notificação e para a temperatura do lead.
+ * Descarta:
+ *   - campos de contato do Meta (nome, e-mail, telefone, cidade, CEP...);
+ *   - valores de parâmetros dinâmicos NÃO resolvidos ("{{campaign.name}}" etc.)
+ *     — o app Meta não os expandiu, logo não há informação neles.
  * Usado pelo cartão de notificação (contrato TelegramLeadNotificationInput).
  */
 export function extractRawAnswers(
@@ -77,7 +122,9 @@ export function extractRawAnswers(
 
     const values = (field.values || [])
       .map((v) => String(v).trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      // Parâmetros dinâmicos não resolvidos ("{{campaign.name}}") não têm informação
+      .filter((v) => !isUnresolvedMetaParam(v));
 
     if (values.length > 0) {
       answers.push({ key: field.name, values });
@@ -140,7 +187,7 @@ export function extractCustomAnswers(
     if (STANDARD_FIELDS.has(normalizedName)) continue;
 
     const value = field.values?.[0];
-    if (value && String(value).trim() !== '') {
+    if (value && String(value).trim() !== '' && !isUnresolvedMetaParam(String(value))) {
       answers[field.name] = String(value).trim();
     }
   }

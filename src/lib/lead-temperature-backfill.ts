@@ -28,7 +28,7 @@
  */
 
 import { db } from '@/lib/db';
-import { isMetaContactField } from '@/lib/meta-lead-utils';
+import { isMetaContactField, isUnresolvedMetaParam } from '@/lib/meta-lead-utils';
 import type { RawLeadAnswer } from '@/lib/meta-lead-utils';
 
 // ─────────────────────────────────────────────
@@ -69,7 +69,9 @@ export function parseNotesFormName(notes: string | null | undefined): string | n
  *     das notes — cabeçalhos, Lead ID etc.);
  *   - dados de contato (nome, e-mail, telefone, CEP...) NUNCA são retornados —
  *     leads antigos podem tê-los no bloco (filtro da origem era incompleto),
- *     mas apenas perguntas participam da temperatura.
+ *     mas apenas perguntas participam da temperatura;
+ *   - valores "{{campaign.name}}" etc. (parâmetros dinâmicos que o app Meta
+ *     não resolveu) não têm informação e são descartados.
  */
 export function parseNotesAnswers(notes: string | null | undefined): RawLeadAnswer[] {
   if (!notes) return [];
@@ -92,6 +94,8 @@ export function parseNotesAnswers(notes: string | null | undefined): RawLeadAnsw
     // Dados de contato no bloco (leads antigos) não são perguntas —
     // a temperatura só considera perguntas do formulário
     if (isMetaContactField(key)) continue;
+    // "{{campaign.name}}" etc. = parâmetro dinâmico não resolvido — sem informação
+    if (isUnresolvedMetaParam(value)) continue;
 
     const existing = byKey.get(key);
     if (existing) {

@@ -15,8 +15,11 @@
  *   score <  warmMin → FRIO
  * SOMENTE PERGUNTAS do formulário pontuam — dados de contato do Meta
  * (nome, e-mail, telefone, cidade, CEP, estado, data de nascimento...)
+ * e campos de rastreamento (utm_*, placement, ids de campanha/anúncio)
  * nunca são considerados, mesmo que apareçam no field_data ou numa
- * config antiga salva antes desse filtro.
+ * config antiga salva antes desse filtro. Valores "{{...}}" (parâmetros
+ * dinâmicos que o app Meta não resolveu) também não têm informação e
+ * são ignorados.
  * Nada aqui é genérico: sem configuração para o formulário, o lead
  * não recebe temperatura.
  *
@@ -26,7 +29,7 @@
  */
 
 import { db } from '@/lib/db';
-import { isMetaContactField } from '@/lib/meta-lead-utils';
+import { isMetaContactField, isMetaTrackingField, isUnresolvedMetaParam } from '@/lib/meta-lead-utils';
 import type { RawLeadAnswer } from '@/lib/meta-lead-utils';
 
 // ─────────────────────────────────────────────
@@ -126,13 +129,16 @@ export function parseScoringConfig(configJson: string | null | undefined): Parse
     const questions: ScoringQuestion[] = [];
     for (const q of parsed.questions) {
       if (!q || typeof q.key !== 'string' || !q.key.trim()) continue;
-      // Dados de contato (nome, e-mail, telefone...) NUNCA são perguntas —
-      // configs antigas salvas com esses campos deixam de valer
-      if (isMetaContactField(q.key)) continue;
+      // Dados de contato (nome, e-mail, telefone...) e campos de rastreamento
+      // (utm_*, placement...) NUNCA são perguntas — configs antigas salvas com
+      // esses campos deixam de valer
+      if (isMetaContactField(q.key) || isMetaTrackingField(q.key)) continue;
       const answers: ScoringAnswer[] = Array.isArray(q.answers)
         ? q.answers
             .filter((a: unknown): a is ScoringAnswer =>
               !!a && typeof (a as ScoringAnswer).text === 'string' && !!(a as ScoringAnswer).text.trim())
+            // Parâmetros dinâmicos não resolvidos ("{{campaign.name}}") não são respostas reais
+            .filter((a: ScoringAnswer) => !isUnresolvedMetaParam(a.text))
             .map((a: ScoringAnswer) => ({ text: a.text, score: Math.trunc(Number(a.score) || 0) }))
         : [];
       const hasQuestionScore = q.questionScore !== undefined && q.questionScore !== null && Number.isFinite(Number(q.questionScore));
@@ -164,7 +170,10 @@ export function classifyScore(score: number, warmMin: number, hotMin: number): L
  * Soma as notas das respostas de um lead a partir da config parseada.
  * Regras:
  *   - dados de contato do Meta (nome, e-mail, telefone, cidade, CEP...)
- *     são IGNORADOS — apenas perguntas do formulário pontuam;
+ *     e campos de rastreamento (utm_*, placement...) são IGNORADOS —
+ *     apenas perguntas do formulário pontuam;
+ *   - valores "{{...}}" (parâmetros dinâmicos não resolvidos) não têm
+ *     informação e nunca pontuam;
  *   - match de pergunta por chave normalizada (igual meta-lead-utils);
  *   - match de resposta case-insensitive (trim);
  *   - múltipla escolha: TODOS os valores selecionados somam;
@@ -188,13 +197,17 @@ export function computeLeadScoreFromConfig(
   let score = 0;
 
   for (const raw of rawAnswers) {
-    // Dados de contato (nome, e-mail, telefone, cidade...) não são perguntas:
-    // nunca pontuam, não recebem questionScore e nem entram no detalhamento
-    if (isMetaContactField(raw.key)) continue;
+    // Dados de contato (nome, e-mail, telefone, cidade...) e rastreamento
+    // (utm_*, placement...) não são perguntas: nunca pontuam, não recebem
+    // questionScore e nem entram no detalhamento
+    if (isMetaContactField(raw.key) || isMetaTrackingField(raw.key)) continue;
+    // Valores "{{...}}" não resolvidos pelo app Meta não têm informação
+    const values = raw.values.filter((v) => !isUnresolvedMetaParam(v));
+    if (values.length === 0) continue;
     const question = questionIndex.get(normalizeQuestionKey(raw.key));
     // Pergunta sem configuração → resposta entra no breakdown como 0
     if (!question) {
-      breakdown.push({ key: raw.key, answer: raw.values.join(', '), matched: false, score: 0 });
+      breakdown.push({ key: raw.key, answer: values.join(', '), matched: false, score: 0 });
       continue;
     }
 
@@ -207,7 +220,7 @@ export function computeLeadScoreFromConfig(
     let anyMatched = false;
     const matchedValues: string[] = [];
 
-    for (const value of raw.values) {
+    for (const value of values) {
       const hit = answerIndex.get(normalizeAnswerText(value));
       if (hit !== undefined) {
         anyMatched = true;
@@ -220,12 +233,12 @@ export function computeLeadScoreFromConfig(
       // Resposta(s) configurada(s) casaram — nota delas vence o questionScore
       score += questionPoints;
       breakdown.push({ key: raw.key, answer: matchedValues.join(', '), matched: true, score: questionPoints });
-    } else if (question.questionScore !== undefined && raw.values.length > 0) {
+    } else if (question.questionScore !== undefined && values.length > 0) {
       // Dissertativa (ou fallback): qualquer resposta recebe a nota da pergunta
       score += question.questionScore;
-      breakdown.push({ key: raw.key, answer: raw.values.join(', '), matched: true, score: question.questionScore });
+      breakdown.push({ key: raw.key, answer: values.join(', '), matched: true, score: question.questionScore });
     } else {
-      breakdown.push({ key: raw.key, answer: raw.values.join(', '), matched: false, score: 0 });
+      breakdown.push({ key: raw.key, answer: values.join(', '), matched: false, score: 0 });
     }
   }
 

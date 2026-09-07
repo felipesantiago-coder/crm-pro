@@ -8,7 +8,7 @@ import {
   type ReclassifyResult,
   type ScoringQuestion,
 } from '@/lib/lead-temperature';
-import { isMetaContactField } from '@/lib/meta-lead-utils';
+import { isMetaContactField, isMetaTrackingField, isUnresolvedMetaParam } from '@/lib/meta-lead-utils';
 
 // ============================================================
 // GET/PUT/DELETE /api/meta-ads/temperature
@@ -89,9 +89,10 @@ async function getObservedQuestions(formId: string) {
     if (!Array.isArray(parsed)) continue;
 
     for (const answer of parsed) {
-      // Dados de contato (nome, e-mail, telefone, CEP...) não são perguntas —
-      // leads gravados antes do filtro podem tê-los no metaFormData
-      if (!answer?.key || isMetaContactField(answer.key)) continue;
+      // Dados de contato (nome, e-mail, telefone, CEP...) e rastreamento
+      // (utm_*, placement...) não são perguntas — leads gravados antes do
+      // filtro podem tê-los no metaFormData
+      if (!answer?.key || isMetaContactField(answer.key) || isMetaTrackingField(answer.key)) continue;
       let question = questions.get(answer.key);
       if (!question) {
         question = { key: answer.key, count: 0, answers: new Map() };
@@ -100,7 +101,8 @@ async function getObservedQuestions(formId: string) {
       question.count += 1;
       for (const value of answer.values || []) {
         const text = String(value);
-        if (!text) continue;
+        // "{{campaign.name}}" etc. = parâmetro dinâmico não resolvido — sem informação
+        if (!text || isUnresolvedMetaParam(text)) continue;
         const existing = question.answers.get(text);
         if (existing) existing.count += 1;
         else question.answers.set(text, { text, count: 1 });
@@ -332,11 +334,12 @@ export async function PUT(request: NextRequest) {
     const sanitizedQuestions: ScoringQuestion[] = [];
     for (const question of questions) {
       if (!question?.key || typeof question.key !== 'string' || !question.key.trim()) continue;
-      // Dados de contato do Meta nunca são perguntas — não são salvos na config
-      if (isMetaContactField(question.key)) continue;
+      // Dados de contato e rastreamento do Meta nunca são perguntas —
+      // não são salvos na config
+      if (isMetaContactField(question.key) || isMetaTrackingField(question.key)) continue;
       const answers = Array.isArray(question.answers)
         ? question.answers
-            .filter((a) => a && typeof a.text === 'string' && a.text.trim())
+            .filter((a) => a && typeof a.text === 'string' && a.text.trim() && !isUnresolvedMetaParam(a.text))
             .slice(0, MAX_ANSWERS_PER_QUESTION)
             .map((a) => ({
               text: a.text.slice(0, MAX_TEXT_LENGTH),
