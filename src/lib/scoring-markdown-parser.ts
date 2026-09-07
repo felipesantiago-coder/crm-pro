@@ -25,7 +25,8 @@
  *
  * §5 flexibilidade: níveis de título, ordem livre, linhas em branco.
  * §6 validação: notas inteiras (erro), hot >= warm (erro), textos exatos,
- * sem duplicatas de pergunta/resposta (erro), limites 100/300/500,
+ * sem duplicatas de pergunta/resposta (erro — mesma chave de match do
+ * motor, normalizeAnswerText), limites 100/300/500,
  * nunca incluir contato/rastreamento/{{...}} (aviso + descarte).
  *
  * Resultado: { ok, forms[], issues[] } — ok=false (há erros) BLOQUEIA a
@@ -36,7 +37,7 @@
  * Usado por: /api/meta-ads/temperature/import-md (preview e apply).
  */
 
-import { isMetaContactField, isMetaTrackingField, isUnresolvedMetaParam } from '@/lib/meta-lead-utils';
+import { isMetaContactField, isMetaTrackingField, isUnresolvedMetaParam, normalizeAnswerText } from '@/lib/meta-lead-utils';
 import {
   normalizeQuestionKey,
   sanitizeScoringQuestions,
@@ -115,10 +116,11 @@ function stripAccents(text: string): string {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-/** Casamento de resposta: trim + minúsculas (mantém acentos — igual ao motor). */
-function normAnswerText(text: string): string {
-  return String(text).trim().toLowerCase();
-}
+/** Casamento de resposta (dedup §6.5): MESMA normalização do motor de
+ *  pontuação (normalizeAnswerText em meta-lead-utils) — assim o parser
+ *  nunca aceita como distintas duas respostas que o motor não saberia
+ *  distinguir (caixa, acentos, underscores/espaços/hífens equivalentes). */
+const normAnswerText = normalizeAnswerText;
 
 function stripEmphasis(text: string): string {
   return text.replace(/\*\*|__/g, '').replace(/~~|`/g, '');

@@ -94,6 +94,35 @@ export function isUnresolvedMetaParam(value: string): boolean {
   return RE_UNRESOLVED_META_PARAM.test(String(value));
 }
 
+/**
+ * Chave de casamento de RESPOSTAS entre fontes diferentes: o texto
+ * configurado pelo admin (painel/regras markdown, escrito "à mão") e o
+ * valor REAL enviado pelo Meta no field_data (que pode vir em
+ * snake_case — "agendar_uma_visita_nesta_semana" — com/sem acentos,
+ * pontuação ou espaços diferentes).
+ *
+ * Normalização: minúsculas + sem acentos + qualquer sequência de
+ * caracteres fora de [a-z0-9] (underscore, hífen, pontuação, símbolos
+ * como R$, "/", "&") vira UM espaço + espaços colapsados. Assim
+ * "Agendar uma visita nesta semana", "agendar_uma_visita_nesta_semana"
+ * e "agendar-uma-visita-nesta-semana" produzem a MESMA chave.
+ *
+ * Usado por: motor de pontuação (lead-temperature), dedup do parser
+ * markdown (scoring-markdown-parser), validação cruzada do preview de
+ * importação (import-md) e merge config×observadas do painel
+ * (temperature-tab). TODOS os pontos que comparam textos de respostas
+ * DEVEM usar esta função — nunca comparação exata.
+ */
+export function normalizeAnswerText(text: string): string {
+  return String(text)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 export interface RawLeadAnswer {
   key: string;
   values: string[];

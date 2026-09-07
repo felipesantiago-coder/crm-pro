@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { normalizeAnswerText } from '@/lib/meta-lead-utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -236,7 +237,14 @@ export function TemperatureBadge({ temperature, score }: { temperature: string |
   );
 }
 
-/** Mescla a config salva com as perguntas/respostas observadas nos leads. */
+/** Mescla a config salva com as perguntas/respostas observadas nos leads.
+ *  O casamento de respostas usa normalizeAnswerText (a MESMA chave do
+ *  motor de pontuação): o valor real do field_data pode diferir do texto
+ *  configurado (markdown/painel) em caixa, acentos, underscores/espaços
+ *  — ex.: "agendar_uma_visita_nesta_semana" vs. "Agendar uma visita nesta
+ *  semana" — e ainda assim a nota importada aparece na linha certa.
+ *  Respostas configuradas que nenhuma resposta observada casou continuam
+ *  na lista (count 0) — salvar no painel nunca as perde. */
 function mergeQuestions(
   saved: DetailResponse['scoring'],
   observed: ObservedQuestion[],
@@ -251,18 +259,38 @@ function mergeQuestions(
   for (const obs of observed) {
     const savedQ = savedByNorm.get(normalizeKey(obs.key));
     const savedAnswers = new Map<string, number>();
-    for (const a of savedQ?.answers || []) savedAnswers.set(a.text.trim().toLowerCase(), a.score);
+    for (const a of savedQ?.answers || []) {
+      const norm = normalizeAnswerText(a.text);
+      if (norm && !savedAnswers.has(norm)) savedAnswers.set(norm, a.score);
+    }
+
+    const matchedSaved = new Set<string>();
+    const answerRows: EditAnswer[] = obs.answers.map((a) => {
+      const norm = normalizeAnswerText(a.text);
+      const hit = norm && savedAnswers.has(norm) ? savedAnswers.get(norm)! : undefined;
+      if (hit !== undefined) matchedSaved.add(norm);
+      return {
+        text: a.text,
+        count: a.count,
+        score: hit !== undefined ? String(hit) : '',
+        isNew: hit === undefined,
+      };
+    });
+
+    // Respostas configuradas mas ainda não observadas (ou sem variante
+    // equivalente nos leads): preservadas com count 0 — o salvar do painel
+    // reconstrói a config a partir destas linhas, então omiti-las as
+    // apagaria (as notas importadas do markdown se perderiam)
+    for (const a of savedQ?.answers || []) {
+      if (matchedSaved.has(normalizeAnswerText(a.text))) continue;
+      answerRows.push({ text: a.text, count: 0, score: String(a.score), isNew: false });
+    }
 
     editQuestions.push({
       key: savedQ?.key || obs.key,
       count: obs.count,
       questionScore: savedQ?.questionScore !== undefined ? String(savedQ.questionScore) : '',
-      answers: obs.answers.map((a) => ({
-        text: a.text,
-        count: a.count,
-        score: savedAnswers.has(a.text.trim().toLowerCase()) ? String(savedAnswers.get(a.text.trim().toLowerCase())) : '',
-        isNew: !savedAnswers.has(a.text.trim().toLowerCase()),
-      })),
+      answers: answerRows,
     });
     savedByNorm.delete(normalizeKey(obs.key));
   }

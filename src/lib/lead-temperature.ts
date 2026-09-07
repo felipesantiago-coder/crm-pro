@@ -29,7 +29,12 @@
  */
 
 import { db } from '@/lib/db';
-import { isMetaContactField, isMetaTrackingField, isUnresolvedMetaParam } from '@/lib/meta-lead-utils';
+import {
+  isMetaContactField,
+  isMetaTrackingField,
+  isUnresolvedMetaParam,
+  normalizeAnswerText,
+} from '@/lib/meta-lead-utils';
 import type { RawLeadAnswer } from '@/lib/meta-lead-utils';
 
 // ─────────────────────────────────────────────
@@ -105,11 +110,12 @@ export function normalizeQuestionKey(key: string): string {
   return String(key).toLowerCase().replace(/[_\s-]/g, '');
 }
 
-/** Chave de match de resposta: trim + minúsculas (mantém acentos —
- *  respostas do Meta são texto exibido ao usuário). */
-function normalizeAnswerText(text: string): string {
-  return String(text).trim().toLowerCase();
-}
+// Chave de match de resposta = normalizeAnswerText (meta-lead-utils,
+// fonte única): minúsculas, sem acentos, underscores/hífens/pontuação
+// equivalentes a espaço — o texto configurado pelo admin (painel/
+// markdown) e o valor REAL do field_data do Meta podem diferir nesses
+// detalhes (ex.: "Agendar uma visita nesta semana" vs.
+// "agendar_uma_visita_nesta_semana") e ainda assim casar.
 
 // ─────────────────────────────────────────────
 // Config (parse + validação)
@@ -223,7 +229,9 @@ export function classifyScore(score: number, warmMin: number, hotMin: number): L
  *   - valores "{{...}}" (parâmetros dinâmicos não resolvidos) não têm
  *     informação e nunca pontuam;
  *   - match de pergunta por chave normalizada (igual meta-lead-utils);
- *   - match de resposta case-insensitive (trim);
+ *   - match de resposta por normalizeAnswerText (minúsculas, sem acentos,
+ *     underscores/espaços/hífens equivalentes — o valor real do field_data
+ *     pode diferir do texto configurado nesses detalhes);
  *   - múltipla escolha: TODOS os valores selecionados somam;
  *   - questionScore aplica apenas quando NENHUMA resposta configurada casar;
  *   - respostas não configuradas somam 0 (aparecem no breakdown com matched=false).

@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
 import { parseScoringMarkdown } from '@/lib/scoring-markdown-parser';
 import { normalizeQuestionKey } from '@/lib/lead-temperature';
+import { normalizeAnswerText } from '@/lib/meta-lead-utils';
 import { getObservedQuestions } from '@/lib/lead-form-observed';
 
 // ============================================================
@@ -199,10 +200,13 @@ export async function POST(request: NextRequest) {
             unknownQuestions.push(question.key);
             continue;
           }
-          const observedAnswers = new Set(observedQuestion.answers.map((a) => a.text.trim().toLowerCase()));
+          // MESMA normalização do motor (normalizeAnswerText): o valor real
+          // do field_data pode diferir do texto do markdown (snake_case,
+          // acentos, pontuação) sem deixar de ser a mesma resposta
+          const observedAnswers = new Set(observedQuestion.answers.map((a) => normalizeAnswerText(a.text)));
           const missing = question.answers
             .map((a) => a.text)
-            .filter((text) => !observedAnswers.has(text.trim().toLowerCase()));
+            .filter((text) => !observedAnswers.has(normalizeAnswerText(text)));
           if (missing.length > 0) unknownAnswers.push({ question: question.key, answers: missing });
         }
         review = { available: true, message: null, unknownQuestions, unknownAnswers };
