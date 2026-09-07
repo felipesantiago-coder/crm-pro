@@ -30,14 +30,13 @@ export async function middleware(request: NextRequest) {
   // ── 0. Session Binding para rotas autenticadas ───────
   // Verifica se o JWT tem uaHash e se bate com o User-Agent atual.
   // Se não bater, redireciona para login (invalida sessão no cliente).
-  // Rotas públicas (landing pages, portal, auth) são ignoradas.
+  // Rotas públicas (landing pages, auth) são ignoradas.
   const isAuthRoute = pathname.startsWith('/api/auth');
   const isPublicApi =
     pathname.startsWith('/api/track/') ||
     pathname.startsWith('/api/enterprises/public') ||
     pathname.startsWith('/api/enterprises/catalog/') ||
     pathname.startsWith('/api/enterprises/list-public') ||
-    pathname.startsWith('/api/portal/') ||
     pathname.startsWith('/api/webhooks/meta-leads/route');
   const isLandingOrPublic =
     pathname.startsWith('/empreendimentos/') ||
@@ -45,8 +44,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/es/') ||
     pathname === '/login' ||
     pathname === '/forgot-password' ||
-    pathname === '/reset-password' ||
-    pathname.startsWith('/portal');
+    pathname === '/reset-password';
 
   if (!isAuthRoute && !isPublicApi && !isLandingOrPublic && pathname.startsWith('/api/')) {
     try {
@@ -134,8 +132,7 @@ export async function middleware(request: NextRequest) {
     pathname === '/login' ||
     pathname === '/change-password' ||
     pathname === '/reset-password' ||
-    pathname === '/forgot-password' ||
-    pathname.startsWith('/portal');
+    pathname === '/forgot-password';
 
   if (isOtherHtmlPage) {
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
@@ -164,7 +161,6 @@ export const config = {
     '/empreendimentos/:path*',
     '/en/:path*',
     '/es/:path*',
-    '/portal/:path*',
     '/api/:path*',
     '/_next/data/:path*',
   ],

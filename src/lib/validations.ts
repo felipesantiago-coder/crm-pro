@@ -95,15 +95,6 @@ export const updateSettingSchema = z.object({
   value: z.union([z.string().max(10000), z.number(), z.boolean()]),
 });
 
-// ── Portal Reschedule (public) ──
-export const portalRescheduleSchema = z.object({
-  token: z.string().min(1),
-  clientId: z.string().min(1),
-  scheduleId: z.string().min(1),
-  newDate: z.string().regex(dateRegex, 'Data inválida (YYYY-MM-DD)'),
-  newTime: z.string().regex(timeRegex, 'Hora inválida (HH:mm)'),
-});
-
 // ── Validation helper ──
 export function validateBody<T>(schema: z.ZodType<T>, body: unknown) {
   const result = schema.safeParse(body);
