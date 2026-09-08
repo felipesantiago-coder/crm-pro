@@ -328,6 +328,7 @@ model User {
   telegramChatId      String?   @unique @map("telegramChatId")
   passwordResetToken  String?   @map("passwordResetToken")
   passwordResetExpires DateTime? @map("passwordResetExpires")
+  teamId              String?   @map("teamId")
   createdAt           DateTime  @default(now()) @map("createdAt")
   updatedAt         DateTime  @updatedAt @map("updatedAt")
 
@@ -340,7 +341,23 @@ model User {
   queueMemberships    LeadQueueMember[]
   queueAssignments    LeadQueueAssignment[]
   telegramLinkTokens  TelegramLinkToken[]
+  team                Team?                @relation(fields: [teamId], references: [id], onDelete: SetNull)
   @@map("users")
+}
+
+// Equipe: agrupamento de usuários usado pelo admin para organizar a
+// visualização de leads (filtro por equipe) e a composição de filas de
+// atendimento (seleção equipe → membros). Administradores NÃO pertencem
+// a equipes (teamId null por design).
+model Team {
+  id        String   @id @default(cuid()) @map("id")
+  name      String   @unique @map("name")
+  createdAt DateTime @default(now()) @map("createdAt")
+  updatedAt DateTime @updatedAt @map("updatedAt")
+
+  members User[]
+
+  @@map("teams")
 }
 
 model ClientPartner {

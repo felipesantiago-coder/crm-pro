@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
+import { buildTeamLeadFilter } from '@/lib/teams';
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,6 +39,19 @@ export async function GET(request: NextRequest) {
 
     // ADMIN vê todos; USER vê apenas os que criou + os que é parceiro
     const isAdminUser = currentUser.role === 'ADMIN';
+
+    // Filtro por equipe (somente ADMIN): leads cujo responsável (createdBy)
+    // pertence à equipe — cobre leads manuais E automáticos (os automáticos
+    // são reatribuídos ao atendente no momento da distribuição da fila).
+    const teamId = searchParams.get('teamId') || '';
+    let teamFilter: { createdBy: { in: string[] } } | null = null;
+    if (teamId && isAdminUser) {
+      const team = await db.team.findUnique({
+        where: { id: teamId },
+        select: { members: { select: { id: true } } },
+      });
+      teamFilter = buildTeamLeadFilter(teamId, team?.members.map((m) => m.id) ?? []);
+    }
 
     const baseWhere: Record<string, unknown> = {};
 
@@ -103,6 +117,9 @@ export async function GET(request: NextRequest) {
     const andConditions: Record<string, unknown>[] = [];
     if (!isAdminUser) {
       andConditions.push(accessFilter);
+    }
+    if (teamFilter) {
+      andConditions.push(teamFilter);
     }
     if (tagFilters && tagFilters.length > 0) {
       andConditions.push(...tagFilters);

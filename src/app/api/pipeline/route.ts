@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
+import { buildTeamLeadFilter } from '@/lib/teams';
 
 const STAGES = [
   'LEAD',
@@ -33,6 +34,18 @@ export async function GET(request: NextRequest) {
     const isAdmin = currentUser.role === 'ADMIN';
     const search = request.nextUrl.searchParams.get('search') || '';
 
+    // Filtro por equipe (somente ADMIN): leads cujo responsável (createdBy)
+    // pertence à equipe — cobre leads manuais E automáticos.
+    const teamId = request.nextUrl.searchParams.get('teamId') || '';
+    let teamFilter: { createdBy: { in: string[] } } | null = null;
+    if (teamId && isAdmin) {
+      const team = await db.team.findUnique({
+        where: { id: teamId },
+        select: { members: { select: { id: true } } },
+      });
+      teamFilter = buildTeamLeadFilter(teamId, team?.members.map((m) => m.id) ?? []);
+    }
+
     const accessFilter = isAdmin
       ? {}
       : {
@@ -56,6 +69,7 @@ export async function GET(request: NextRequest) {
       where: {
         ...accessFilter,
         ...searchFilter,
+        ...(teamFilter ?? {}),
       },
       select: {
         id: true,

@@ -20,6 +20,7 @@ import {
   MessageSquare,
   CalendarDays,
   Bug,
+  UsersRound,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { EnterpriseManagement } from '@/components/crm/enterprise-management';
 import { ErrorLogsTab } from '@/components/crm/error-logs-view';
+import { TeamsTab } from '@/components/crm/teams-tab';
 import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
 
 interface UserItem {
@@ -63,6 +65,7 @@ interface UserItem {
   role: string;
   mustChangePassword: boolean;
   createdAt: string;
+  team?: { id: string; name: string } | null;
 }
 
 interface NotificationStatus {
@@ -260,10 +263,14 @@ export function AdminPanel() {
       </div>
 
       <Tabs defaultValue="users" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 max-w-lg">
+        <TabsList className="grid w-full grid-cols-4 max-w-xl">
           <TabsTrigger value="users" className="gap-2">
             <Users className="h-4 w-4" />
             Usuários
+          </TabsTrigger>
+          <TabsTrigger value="teams" className="gap-2">
+            <UsersRound className="h-4 w-4" />
+            Equipes
           </TabsTrigger>
           <TabsTrigger value="enterprises" className="gap-2">
             <Building2 className="h-4 w-4" />
@@ -271,7 +278,7 @@ export function AdminPanel() {
           </TabsTrigger>
           <TabsTrigger value="error-logs" className="gap-2">
             <Bug className="h-4 w-4" />
-            Erros do Cliente
+            Erros
           </TabsTrigger>
         </TabsList>
 
@@ -480,6 +487,12 @@ export function AdminPanel() {
                             <Badge variant={getRoleBadgeVariant(user.role)} className="text-xs">
                               {getRoleLabel(user.role)}
                             </Badge>
+                            {user.team && (
+                              <Badge variant="outline" className="text-xs gap-1">
+                                <UsersRound className="h-3 w-3" />
+                                {user.team.name}
+                              </Badge>
+                            )}
                             {user.mustChangePassword && (
                               <Badge variant="outline" className="text-xs border-amber-500 text-amber-600">
                                 <Lock className="h-3 w-3 mr-1" />
@@ -575,6 +588,10 @@ export function AdminPanel() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="teams">
+          <TeamsTab />
         </TabsContent>
 
         <TabsContent value="enterprises">

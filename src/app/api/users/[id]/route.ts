@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { isAdmin } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 
 export async function GET(
   _request: NextRequest,
@@ -35,6 +36,66 @@ export async function GET(
     return NextResponse.json(user);
   } catch (error) {
     console.error('Erro ao buscar usuário:', error);
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session || !isAdmin(session)) {
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const body = await request.json();
+    const teamId = typeof body?.teamId === 'string' && body.teamId !== '' ? body.teamId : null;
+
+    // Regra de negócio: administradores NÃO pertencem a equipes específicas.
+    const target = await db.user.findUnique({
+      where: { id },
+      select: { id: true, name: true, role: true },
+    });
+    if (!target) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+    if (target.role === 'ADMIN' && teamId !== null) {
+      return NextResponse.json(
+        { error: 'Administradores não fazem parte de equipes específicas' },
+        { status: 400 }
+      );
+    }
+
+    if (teamId !== null) {
+      const teamExists = await db.team.findUnique({ where: { id: teamId }, select: { id: true } });
+      if (!teamExists) {
+        return NextResponse.json({ error: 'Equipe não encontrada' }, { status: 400 });
+      }
+    }
+
+    const user = await db.user.update({
+      where: { id },
+      data: { teamId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        mustChangePassword: true,
+        createdAt: true,
+        team: { select: { id: true, name: true } },
+      },
+    });
+
+    return NextResponse.json(user);
+  } catch (error: unknown) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+    console.error('Erro ao atualizar usuário:', error);
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
   }
 }

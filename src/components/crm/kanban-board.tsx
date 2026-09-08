@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 import {
   Kanban,
   Search,
@@ -17,12 +18,14 @@ import {
   ChevronRight,
   Clock,
   MoveRight,
+  UsersRound,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCRMStore } from '@/store/crm-store';
 import { toast } from 'sonner';
 import { format, isPast, isToday } from 'date-fns';
@@ -60,17 +63,35 @@ export function KanbanBoard() {
   const [data, setData] = useState<PipelineData | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [filterTeam, setFilterTeam] = useState('');
+  const [teams, setTeams] = useState<Array<{ id: string; name: string; members: Array<{ id: string }> }>>([]);
   const [draggedClient, setDraggedClient] = useState<PipelineClient | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [updatingStage, setUpdatingStage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { setSelectedClientId, setCurrentView } = useCRMStore();
+  const { data: session } = useSession();
+  const isAdminUser = ((session?.user as { role?: string } | undefined)?.role) === 'ADMIN';
+
+  // Equipes: filtro admin (uma equipe por vez — leads dos usuários da equipe)
+  useEffect(() => {
+    if (!isAdminUser) return;
+    let cancelled = false;
+    fetch('/api/teams')
+      .then((r) => (r.ok ? r.json() : { teams: [] }))
+      .then((d) => { if (!cancelled) setTeams(Array.isArray(d?.teams) ? d.teams : []); })
+      .catch(() => { if (!cancelled) setTeams([]); });
+    return () => { cancelled = true; };
+  }, [isAdminUser]);
 
   const loadPipeline = useCallback(async () => {
     setLoading(true);
     try {
-      const params = search ? `?search=${encodeURIComponent(search)}` : '';
-      const res = await fetch(`/api/pipeline${params}`);
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      if (isAdminUser && filterTeam) params.set('teamId', filterTeam);
+      const qs = params.toString();
+      const res = await fetch(`/api/pipeline${qs ? `?${qs}` : ''}`);
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -80,7 +101,7 @@ export function KanbanBoard() {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, filterTeam, isAdminUser]);
 
   useEffect(() => {
     const timer = setTimeout(loadPipeline, search ? 400 : 0);
@@ -388,8 +409,8 @@ export function KanbanBoard() {
   return (
     <div className="space-y-4">
       {/* Header with search */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 max-w-sm min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar cliente, empresa ou região..."
@@ -398,6 +419,28 @@ export function KanbanBoard() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        {isAdminUser && (
+          <Select
+            value={filterTeam || 'all'}
+            onValueChange={(v) => setFilterTeam(v === 'all' ? '' : v)}
+          >
+            <SelectTrigger className="w-[190px] h-10">
+              <div className="flex items-center gap-1.5">
+                <UsersRound className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                <SelectValue placeholder="Equipe" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as Equipes</SelectItem>
+              {teams.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  <span className="truncate">{t.name}</span>
+                  <span className="ml-2 text-[10px] text-muted-foreground">({t.members.length})</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Button
           variant="outline"
           size="sm"

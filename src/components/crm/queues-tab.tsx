@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 import {
   Users, Plus, Trash2, Loader2, Save, GripVertical, Phone,
   CheckCircle2, XCircle, Star, Eye, EyeOff, RefreshCw,
   ChevronDown, ChevronUp, UserPlus, AlertTriangle, ArrowUp, ArrowDown,
-  Circle, Crown, SkipForward,
+  Circle, Crown, SkipForward, UsersRound,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,8 +15,15 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import {
+  pickQueueCandidates,
+  buildUserTeamNames,
+  ADMIN_TEAM_OPTION,
+  TEAMLESS_OPTION,
+} from '@/lib/teams';
 
 /* ================================================================
    Types
@@ -66,12 +74,36 @@ interface SystemUser {
   role: string;
 }
 
+interface TeamUser {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: string;
+}
+
+interface TeamWithMembers {
+  id: string;
+  name: string;
+  members: TeamUser[];
+}
+
+// Espelha GET /api/teams (payload admin)
+interface TeamsPayload {
+  teams: TeamWithMembers[];
+  teamless: TeamUser[];
+  admins: TeamUser[];
+}
+
 /* ================================================================
    Component
    ================================================================ */
 export function QueuesTab() {
+  const { data: session } = useSession();
+  const isAdminUser = ((session?.user as { role?: string } | undefined)?.role) === 'ADMIN';
   const [queues, setQueues] = useState<LeadQueue[]>([]);
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
+  const [teamsPayload, setTeamsPayload] = useState<TeamsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -84,6 +116,8 @@ export function QueuesTab() {
 
   // Add member dialog
   const [addingToQueue, setAddingToQueue] = useState<string | null>(null);
+  // Fluxo admin: equipe selecionada primeiro ('' = nada); depois os membros
+  const [addTeam, setAddTeam] = useState('');
 
   const fetchQueues = useCallback(async () => {
     setLoading(true);
@@ -98,7 +132,17 @@ export function QueuesTab() {
     finally { setLoading(false); }
   }, []);
 
+  // Equipes: payload admin (pseudo-opções: Administradores / Sem equipe)
+  const fetchTeams = useCallback(async () => {
+    try {
+      const res = await fetch('/api/teams');
+      if (res.ok) setTeamsPayload(await res.json());
+      else setTeamsPayload(null);
+    } catch { setTeamsPayload(null); }
+  }, []);
+
   useEffect(() => { fetchQueues(); }, [fetchQueues]);
+  useEffect(() => { if (isAdminUser) fetchTeams(); else setTeamsPayload(null); }, [isAdminUser, fetchTeams]);
 
   // ── Queue CRUD ────────────────────────────────────────
   async function createQueue() {
@@ -251,6 +295,32 @@ export function QueuesTab() {
     return systemUsers.filter((u) => !memberIds.has(u.id));
   };
 
+  // Fluxo admin: candidatos após a escolha da equipe (ou pseudo-equipe)
+  const getTeamCandidates = (queue: LeadQueue) => {
+    if (!teamsPayload) return [];
+    return pickQueueCandidates({
+      selectedTeam: addTeam,
+      teams: teamsPayload.teams,
+      admins: teamsPayload.admins,
+      teamless: teamsPayload.teamless,
+      existingMemberIds: queue.members.map((m) => m.userId),
+    });
+  };
+
+  // Fluxo admin: existe ALGUM candidato em qualquer equipe/pseudo-equipe?
+  const hasAnyTeamCandidates = (queue: LeadQueue) => {
+    if (!teamsPayload) return false;
+    const memberIds = new Set(queue.members.map((m) => m.userId));
+    return (
+      teamsPayload.teams.some((t) => t.members.some((u) => !memberIds.has(u.id))) ||
+      teamsPayload.teamless.some((u) => !memberIds.has(u.id)) ||
+      teamsPayload.admins.some((u) => !memberIds.has(u.id))
+    );
+  };
+
+  // Badge de equipe no membro da fila (userId → nome da equipe)
+  const userTeamNames = teamsPayload ? buildUserTeamNames(teamsPayload.teams) : null;
+
   const activeMembers = (q: LeadQueue) => q.members.filter((m) => m.isActive);
   const totalAssignments = queues.reduce((sum, q) => sum + q._count.assignments, 0);
 
@@ -350,6 +420,7 @@ export function QueuesTab() {
           const isExpanded = expandedId === q.id;
           const active = activeMembers(q);
           const available = getAvailableUsers(q);
+          const teamCandidates = getTeamCandidates(q);
 
           return (
             <Card
@@ -465,8 +536,19 @@ export function QueuesTab() {
                             </div>
 
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-sm font-medium truncate">{m.user.name}</span>
+                                {userTeamNames?.get(m.userId) && (
+                                  <Badge variant="outline" className="text-[9px] px-1.5 py-0 gap-0.5">
+                                    <UsersRound className="h-2.5 w-2.5" />
+                                    {userTeamNames.get(m.userId)}
+                                  </Badge>
+                                )}
+                                {m.user.role === 'ADMIN' && (
+                                  <Badge className="bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary text-[9px] px-1.5 py-0">
+                                    Admin
+                                  </Badge>
+                                )}
                                 {q.isDefault && m.isActive && active.length > 0 && (() => {
                                   const activeIdx = q.currentIdx % active.length;
                                   const activeMember = active[activeIdx];
@@ -528,11 +610,74 @@ export function QueuesTab() {
                       </div>
                     )}
 
-                    {/* Add member */}
+                    {/* Add member — admin: equipe primeiro → membros; demais: lista plana */}
                     {addingToQueue === q.id ? (
                       <div className="p-3 rounded-lg bg-muted/50 space-y-2">
                         <p className="text-xs font-medium">Adicionar membro:</p>
-                        {available.length === 0 ? (
+                        {teamsPayload ? (
+                          <>
+                            {/* Passo 1: equipe */}
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">1. Selecione a equipe</Label>
+                              <Select value={addTeam} onValueChange={setAddTeam}>
+                                <SelectTrigger className="w-full sm:w-[300px] h-8 text-xs">
+                                  <SelectValue placeholder="Selecione uma equipe" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {teamsPayload.teams.map((t) => (
+                                    <SelectItem key={t.id} value={t.id} className="text-xs">
+                                      {t.name} ({t.members.length})
+                                    </SelectItem>
+                                  ))}
+                                  {teamsPayload.teamless.length > 0 && (
+                                    <SelectItem value={TEAMLESS_OPTION} className="text-xs">
+                                      Sem equipe ({teamsPayload.teamless.length})
+                                    </SelectItem>
+                                  )}
+                                  <SelectItem value={ADMIN_TEAM_OPTION} className="text-xs">
+                                    Administradores ({teamsPayload.admins.length})
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {/* Passo 2: membros da equipe */}
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">2. Selecione os membros</Label>
+                              {!addTeam ? (
+                                <p className="text-xs text-muted-foreground">
+                                  Escolha uma equipe acima para ver os usuários disponíveis.
+                                </p>
+                              ) : teamCandidates.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">
+                                  Nenhum usuário disponível nesta seleção (equipe vazia ou todos já na fila).
+                                </p>
+                              ) : (
+                                <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+                                  {teamCandidates.map((u) => (
+                                    <button
+                                      key={u.id}
+                                      onClick={() => addMember(q.id, u.id)}
+                                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border hover:bg-muted transition-colors text-left"
+                                    >
+                                      <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                                        {u.name.charAt(0).toUpperCase()}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-medium truncate max-w-[140px]">{u.name}</p>
+                                        {u.phone && <p className="text-[10px] text-muted-foreground">{u.phone}</p>}
+                                      </div>
+                                      {addTeam === ADMIN_TEAM_OPTION && (
+                                        <Badge className="bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary text-[9px] px-1 py-0">
+                                          Admin
+                                        </Badge>
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        ) : available.length === 0 ? (
                           <p className="text-xs text-muted-foreground">Todos os usuários já estão na fila.</p>
                         ) : (
                           <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
@@ -553,7 +698,7 @@ export function QueuesTab() {
                             ))}
                           </div>
                         )}
-                        <Button variant="ghost" size="sm" className="text-xs" onClick={() => setAddingToQueue(null)}>
+                        <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setAddingToQueue(null); setAddTeam(''); }}>
                           Fechar
                         </Button>
                       </div>
@@ -562,11 +707,13 @@ export function QueuesTab() {
                         variant="outline"
                         size="sm"
                         className="text-xs gap-1.5 w-full"
-                        onClick={() => setAddingToQueue(q.id)}
-                        disabled={available.length === 0}
+                        onClick={() => { setAddingToQueue(q.id); setAddTeam(''); }}
+                        disabled={teamsPayload ? !hasAnyTeamCandidates(q) : available.length === 0}
                       >
                         <UserPlus className="h-3.5 w-3.5" />
-                        {available.length === 0 ? 'Todos os usuários já estão na fila' : 'Adicionar membro'}
+                        {teamsPayload
+                          ? (hasAnyTeamCandidates(q) ? 'Adicionar membro' : 'Todos os usuários já estão na fila')
+                          : (available.length === 0 ? 'Todos os usuários já estão na fila' : 'Adicionar membro')}
                       </Button>
                     )}
                   </div>
@@ -590,6 +737,7 @@ export function QueuesTab() {
               <li><strong>Pausar membro:</strong> temporariamente remove o atendente da rotação sem excluí-lo</li>
               <li><strong>Ordem:</strong> use as setas para definir a prioridade dos atendentes</li>
               <li><strong>Interferir na fila:</strong> clique no ícone <SkipForward className="inline h-3 w-3" /> ao lado de um atendente para colocá-lo como próximo da vez</li>
+              <li><strong>Equipes primeiro:</strong> o administrador seleciona a equipe e depois os membros dela para compor a fila — administradores entram pela opção "Administradores" e podem participar de quantas filas quiserem</li>
               <li>Os usuários precisam ter o <strong>telefone cadastrado</strong> nas Configurações para aparecer no WhatsApp</li>
             </ul>
           </div>

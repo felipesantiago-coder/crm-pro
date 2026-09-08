@@ -15,6 +15,7 @@ const createUserSchema = z.object({
     .regex(/[a-z]/, 'A senha deve conter ao menos uma letra minúscula')
     .regex(/[0-9]/, 'A senha deve conter ao menos um número'),
   role: z.enum(VALID_ROLES).optional().default('USER'),
+  teamId: z.string().min(1).optional(),
 });
 
 export async function GET() {
@@ -32,6 +33,7 @@ export async function GET() {
         role: true,
         mustChangePassword: true,
         createdAt: true,
+        team: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -62,7 +64,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, email, password, role } = result.data;
+    const { name, email, password, role, teamId } = result.data;
+
+    // Regra de negócio: administradores NÃO pertencem a equipes específicas.
+    let resolvedTeamId: string | null = null;
+    if (role !== 'ADMIN' && teamId) {
+      const teamExists = await db.team.findUnique({ where: { id: teamId }, select: { id: true } });
+      if (!teamExists) {
+        return NextResponse.json({ error: 'Equipe não encontrada' }, { status: 400 });
+      }
+      resolvedTeamId = teamId;
+    }
 
     const existingUser = await db.user.findUnique({
       where: { email },
@@ -85,6 +97,7 @@ export async function POST(request: NextRequest) {
         passwordHash,
         role: role || 'USER',
         mustChangePassword: true,
+        teamId: resolvedTeamId,
       },
       select: {
         id: true,
@@ -93,6 +106,7 @@ export async function POST(request: NextRequest) {
         role: true,
         mustChangePassword: true,
         createdAt: true,
+        team: { select: { id: true, name: true } },
       },
     });
 

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Search, Plus, Upload, Download, X, Tag, ChevronDown, Megaphone, ArrowUpDown } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { Search, Plus, Upload, Download, X, Tag, ChevronDown, Megaphone, ArrowUpDown, UsersRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -46,7 +47,15 @@ interface TagOption {
   color: string;
 }
 
+interface TeamOption {
+  id: string;
+  name: string;
+  members: Array<{ id: string }>;
+}
+
 export function ClientsView() {
+  const { data: session } = useSession();
+  const isAdminUser = ((session?.user as { role?: string } | undefined)?.role) === 'ADMIN';
   const {
     searchQuery,
     setSearchQuery,
@@ -60,6 +69,8 @@ export function ClientsView() {
 
   const [filterStage, setFilterStage] = useState('');
   const [filterCampaign, setFilterCampaign] = useState('');
+  const [filterTeam, setFilterTeam] = useState('');
+  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
@@ -129,6 +140,7 @@ export function ClientsView() {
       filterTagIds.forEach((id) => params.append('tagId', id));
       if (filterStage) params.set('stage', filterStage);
       if (filterCampaign) params.set('utmCampaign', filterCampaign);
+      if (isAdminUser && filterTeam) params.set('teamId', filterTeam);
       params.set('sortBy', sortBy);
       params.set('sortOrder', sortOrder);
       // Excluir negócios finalizados da lista principal (têm view dedicada)
@@ -145,7 +157,7 @@ export function ClientsView() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filterRegion, filterTagIds, filterStage, filterCampaign, page, sortBy, sortOrder]);
+  }, [debouncedSearch, filterRegion, filterTagIds, filterStage, filterCampaign, filterTeam, isAdminUser, page, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchClients();
@@ -168,6 +180,17 @@ export function ClientsView() {
     }
     fetchFilters();
   }, []);
+
+  // Equipes: filtro admin (uma equipe por vez — leads dos usuários da equipe)
+  useEffect(() => {
+    if (!isAdminUser) return;
+    let cancelled = false;
+    fetch('/api/teams')
+      .then((r) => (r.ok ? r.json() : { teams: [] }))
+      .then((d) => { if (!cancelled) setTeams(Array.isArray(d?.teams) ? d.teams : []); })
+      .catch(() => { if (!cancelled) setTeams([]); });
+    return () => { cancelled = true; };
+  }, [isAdminUser]);
 
   const totalPages = Math.ceil(total / limit);
 
@@ -261,6 +284,31 @@ export function ClientsView() {
             ))}
           </SelectContent>
         </Select>
+        {isAdminUser && (
+          <Select
+            value={filterTeam || 'all'}
+            onValueChange={(v) => {
+              setFilterTeam(v === 'all' ? '' : v);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-full sm:w-[190px]">
+              <div className="flex items-center gap-1.5">
+                <UsersRound className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                <SelectValue placeholder="Equipe" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as Equipes</SelectItem>
+              {teams.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  <span className="truncate">{t.name}</span>
+                  <span className="ml-2 text-[10px] text-muted-foreground">({t.members.length})</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Popover>
           <PopoverTrigger asChild>
             <Button
