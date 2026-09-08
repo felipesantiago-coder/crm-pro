@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/api-auth';
 import { normalizeAdAccountId } from '@/lib/meta-ad-accounts';
+import { validateAppSecretAtSave } from '@/lib/app-secret-validation';
 
 // ============================================================
 // PATCH /api/meta-ad-accounts/[id]
@@ -20,7 +21,7 @@ export async function PATCH(
     const body = await request.json();
     const { name, adAccountId, accessToken, verifyToken, appSecret, pageIds, formIds, queueId, enabled, isDefault, webhookEnabled, pollingEnabled } = body;
 
-    const existing = await db.metaAdAccount.findUnique({ where: { id }, select: { id: true } });
+    const existing = await db.metaAdAccount.findUnique({ where: { id }, select: { id: true, accessToken: true } });
     if (!existing) {
       return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404 });
     }
@@ -95,13 +96,45 @@ export async function PATCH(
       return NextResponse.json({ error: 'Nada para atualizar' }, { status: 400 });
     }
 
+    // ── Validação do App Secret NO ATO DE SALVAR ──────────────
+    // Um secret errado passa no self-test HMAC local (auto-consistente)
+    // e só mata as entregas REAIS do Meta — o sintoma "polling funciona,
+    // webhook mudo com tudo verde". Ao salvar um secret NOVO, monta o
+    // app access token (app_id|secret) e o prova contra a Graph API:
+    // rejeitado (190) → BLOQUEIA o save com o elo e a correção exata.
+    // Indisponibilidade transitória → salva com aviso (nunca bloqueia).
+    let saveWarning: string | null = null;
+    let appSecretVerified: boolean | undefined;
+    let verifiedAppId: string | undefined;
+    if (typeof data.appSecret === 'string' && data.appSecret) {
+      const effectiveToken =
+        data.accessToken !== undefined ? String(data.accessToken) : existing.accessToken || '';
+      const validation = await validateAppSecretAtSave(effectiveToken, data.appSecret);
+      if (validation.verdict === 'invalid') {
+        return NextResponse.json(
+          { error: validation.details, fix: validation.fix },
+          { status: 400 },
+        );
+      }
+      if (validation.verdict === 'ok') {
+        appSecretVerified = true;
+        verifiedAppId = validation.appId;
+      } else {
+        saveWarning = validation.reason;
+      }
+    }
+
     const updated = await db.metaAdAccount.update({
       where: { id },
       data,
       select: { id: true, name: true, adAccountId: true, enabled: true, isDefault: true, webhookEnabled: true, pollingEnabled: true },
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json({
+      ...updated,
+      ...(appSecretVerified ? { appSecretVerified, appId: verifiedAppId } : {}),
+      ...(saveWarning ? { warning: saveWarning } : {}),
+    });
   } catch (error: any) {
     if (error?.status === 401 || error?.status === 403) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: error.status });

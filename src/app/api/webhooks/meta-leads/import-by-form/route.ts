@@ -48,7 +48,7 @@ async function fetchLeadsFromForm(
   until: string
 ): Promise<MetaLead[]> {
   const allLeads: MetaLead[] = [];
-  let url = `https://graph.facebook.com/v22.0/${formId}/leads?fields=field_data,ad_id,campaign_id,form_id,created_time&limit=100&since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}&access_token=${encodeURIComponent(pageAccessToken)}`;
+  let url = `https://graph.facebook.com/v26.0/${formId}/leads?fields=field_data,ad_id,campaign_id,form_id,created_time&limit=100&since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}&access_token=${encodeURIComponent(pageAccessToken)}`;
 
   let page = 0;
   const MAX_PAGES = 20; // segurança: máximo 20 páginas (2000 leads)
@@ -82,7 +82,7 @@ async function fetchLeadsFromForm(
     if (data.paging?.next) {
       url = data.paging.next;
     } else if (data.paging?.cursors?.after) {
-      url = `https://graph.facebook.com/v22.0/${formId}/leads?fields=field_data,ad_id,campaign_id,form_id,created_time&limit=100&after=${encodeURIComponent(data.paging.cursors.after)}&access_token=${encodeURIComponent(pageAccessToken)}`;
+      url = `https://graph.facebook.com/v26.0/${formId}/leads?fields=field_data,ad_id,campaign_id,form_id,created_time&limit=100&after=${encodeURIComponent(data.paging.cursors.after)}&access_token=${encodeURIComponent(pageAccessToken)}`;
     } else {
       break;
     }

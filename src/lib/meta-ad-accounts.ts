@@ -537,7 +537,7 @@ export function evaluateAccountConnection<T extends AdAccountRef>(
 // Helper de rede — busca de field_data por leadgen id (multi-conta)
 // ============================================================
 
-const GRAPH_API_BASE = 'https://graph.facebook.com/v22.0';
+const GRAPH_API_BASE = 'https://graph.facebook.com/v26.0';
 
 /**
  * Busca o field_data de um lead via Graph API com um token específico.
@@ -648,7 +648,7 @@ export async function fetchLeadgenFormsForAccount(account: {
   // OK mas vazia NÃO encerra: a tentativa 3 (páginas) ainda roda —
   // a edge da conta pode existir e não listar formulários que as
   // páginas conhecem.
-  const directUrl = `https://graph.facebook.com/v22.0/${accountId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
+  const directUrl = `https://graph.facebook.com/v26.0/${accountId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
   let response: Response;
   try {
     response = await fetch(directUrl, {
@@ -675,7 +675,7 @@ export async function fetchLeadgenFormsForAccount(account: {
 
     // Tentativa 2: via campaigns com leadgen_forms aninhado (fallback ads_read)
     if (errorCode === '100' || errorCode === '200') {
-      const campaignsUrl = `https://graph.facebook.com/v22.0/${accountId}/campaigns?fields=leadgen_forms{id,name,status,created_time}&limit=100&effective_status=["ACTIVE","PAUSED"]`;
+      const campaignsUrl = `https://graph.facebook.com/v26.0/${accountId}/campaigns?fields=leadgen_forms{id,name,status,created_time}&limit=100&effective_status=["ACTIVE","PAUSED"]`;
       try {
         const campResponse = await fetch(campaignsUrl, {
           method: 'GET',
@@ -717,7 +717,7 @@ export async function fetchLeadgenFormsForAccount(account: {
   for (const pageId of pageIds) {
     const pageToken = resolvePageToken(account, pageId);
     if (!pageToken) continue;
-    const pageUrl = `https://graph.facebook.com/v22.0/${pageId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
+    const pageUrl = `https://graph.facebook.com/v26.0/${pageId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
     try {
       const pageRes = await fetch(pageUrl, {
         method: 'GET',

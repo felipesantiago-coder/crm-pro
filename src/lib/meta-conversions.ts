@@ -205,7 +205,7 @@ export async function sendLeadConversionEvent(data: LeadConversionData): Promise
       ],
     };
 
-    const url = `https://graph.facebook.com/v22.0/${config.datasetId}/events?access_token=${encodeURIComponent(config.accessToken)}`;
+    const url = `https://graph.facebook.com/v26.0/${config.datasetId}/events?access_token=${encodeURIComponent(config.accessToken)}`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -262,7 +262,7 @@ export async function sendTestCapEvent(accessToken: string, datasetId: string): 
       test_event_code: testEventCode,
     };
 
-    const url = `https://graph.facebook.com/v22.0/${datasetId}/events?access_token=${encodeURIComponent(accessToken)}`;
+    const url = `https://graph.facebook.com/v26.0/${datasetId}/events?access_token=${encodeURIComponent(accessToken)}`;
 
     const response = await fetch(url, {
       method: 'POST',

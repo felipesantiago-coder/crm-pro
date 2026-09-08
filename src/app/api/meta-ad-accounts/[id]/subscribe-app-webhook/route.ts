@@ -28,7 +28,7 @@ import {
 
 export const maxDuration = 30;
 
-const GRAPH_API_BASE = 'https://graph.facebook.com/v22.0';
+const GRAPH_API_BASE = 'https://graph.facebook.com/v26.0';
 const TIMEOUT_MS = 8_000;
 
 export async function POST(

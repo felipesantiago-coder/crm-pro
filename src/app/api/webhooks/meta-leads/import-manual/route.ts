@@ -31,7 +31,7 @@ interface LeadgenData {
 }
 
 async function fetchLeadFromMeta(leadgenId: string, pageAccessToken: string): Promise<LeadgenData | null> {
-  const url = `https://graph.facebook.com/v22.0/${leadgenId}?access_token=${encodeURIComponent(pageAccessToken)}&fields=field_data,ad_id,campaign_id,form_id,created_time`;
+  const url = `https://graph.facebook.com/v26.0/${leadgenId}?access_token=${encodeURIComponent(pageAccessToken)}&fields=field_data,ad_id,campaign_id,form_id,created_time`;
   const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
 
   if (!response.ok) {

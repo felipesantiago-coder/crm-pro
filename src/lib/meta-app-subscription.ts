@@ -24,8 +24,8 @@
 /**
  * Campo de assinatura como a Graph API REALMENTE devolve: objetos
  * { name, active, version } — NÃO strings. (GET /{app-id}/subscriptions
- * → fields: [{ name: 'leadgen', active: true, version: 'v22.0' }].)
- * Strings são aceitas por robustez (e nos testes).
+ * → fields: [{ name: 'leadgen', active: true, version: <versão usada na
+ * assinatura> }].) Strings são aceitas por robustez (e nos testes).
  */
 export interface AppSubscriptionField {
   name?: unknown;

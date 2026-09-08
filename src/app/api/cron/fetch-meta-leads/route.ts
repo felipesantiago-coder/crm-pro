@@ -126,7 +126,7 @@ async function getConfig() {
 }
 
 async function fetchRecentLeads(formId: string, pageAccessToken: string, since: string): Promise<MetaLead[]> {
-  const url = `https://graph.facebook.com/v22.0/${formId}/leads?fields=field_data,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id,form_name,created_time&limit=100&since=${encodeURIComponent(since)}&access_token=${encodeURIComponent(pageAccessToken)}`;
+  const url = `https://graph.facebook.com/v26.0/${formId}/leads?fields=field_data,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id,form_name,created_time&limit=100&since=${encodeURIComponent(since)}&access_token=${encodeURIComponent(pageAccessToken)}`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), GRAPH_API_TIMEOUT_MS);

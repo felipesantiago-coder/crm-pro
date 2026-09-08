@@ -120,7 +120,7 @@ function isValidSignature(payload: string, signature: string | null, appSecret: 
  */
 async function fetchLeadData(leadgenId: string, pageAccessToken: string): Promise<Array<{ name: string; values: string[] }> | null> {
   try {
-    const url = `https://graph.facebook.com/v22.0/${leadgenId}?access_token=${encodeURIComponent(pageAccessToken)}&fields=field_data`;
+    const url = `https://graph.facebook.com/v26.0/${leadgenId}?access_token=${encodeURIComponent(pageAccessToken)}&fields=field_data`;
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },

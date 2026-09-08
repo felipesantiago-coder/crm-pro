@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/api-auth';
 import { normalizeAdAccountId } from '@/lib/meta-ad-accounts';
+import { validateAppSecretAtSave } from '@/lib/app-secret-validation';
 
 // ============================================================
 // GET /api/meta-ad-accounts
@@ -108,6 +109,30 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // ── Validação do App Secret NO ATO DE CRIAR ───────────────
+    // Mesma regra do PATCH: secret rejeitado pela Graph API (190) →
+    // bloqueia a criação com o elo e a correção exata; indisponibilidade
+    // transitória → cria com aviso na resposta.
+    let saveWarning: string | null = null;
+    let appSecretVerified = false;
+    let verifiedAppId: string | null = null;
+    const secretToSave = appSecret ? String(appSecret).trim() : '';
+    if (secretToSave) {
+      const validation = await validateAppSecretAtSave(String(accessToken).trim(), secretToSave);
+      if (validation.verdict === 'invalid') {
+        return NextResponse.json(
+          { error: validation.details, fix: validation.fix },
+          { status: 400 },
+        );
+      }
+      if (validation.verdict === 'ok') {
+        appSecretVerified = true;
+        verifiedAppId = validation.appId;
+      } else {
+        saveWarning = validation.reason;
+      }
+    }
+
     const account = await db.metaAdAccount.create({
       data: {
         name: String(name).trim(),
@@ -126,7 +151,13 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(
-      { id: account.id, name: account.name, adAccountId: account.adAccountId },
+      {
+        id: account.id,
+        name: account.name,
+        adAccountId: account.adAccountId,
+        ...(appSecretVerified ? { appSecretVerified, appId: verifiedAppId } : {}),
+        ...(saveWarning ? { warning: saveWarning } : {}),
+      },
       { status: 201 }
     );
   } catch (error: any) {

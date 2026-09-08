@@ -214,12 +214,33 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
     if (verifyDraft.trim()) payload.verifyToken = verifyDraft.trim();
     if (secretDraft.trim()) payload.appSecret = secretDraft.trim();
     setSavingWebhook(true);
-    const ok = await patchAccount(payload, 'Webhook da conta salvo — vale só para esta conta');
-    if (ok) {
+    try {
+      // Fetch dedicado (não patchAccount) para inspecionar o resultado da
+      // validação do App Secret feita pelo servidor contra a Graph API.
+      const res = await fetch(`/api/meta-ad-accounts/${account.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error || 'Erro ao salvar configuração da conta');
+        return;
+      }
+      if (data?.appSecretVerified && data?.appId) {
+        toast.success(`Webhook da conta salvo — App Secret CONFIRMADO na Meta (app ${data.appId})`);
+      } else {
+        toast.success('Webhook da conta salvo — vale só para esta conta');
+      }
+      if (data?.warning) toast.warning(data.warning);
       setVerifyDraft('');
       setSecretDraft('');
+      onChanged();
+    } catch {
+      toast.error('Falha de conexão ao salvar configuração da conta');
+    } finally {
+      setSavingWebhook(false);
     }
-    setSavingWebhook(false);
   }
 
   async function clearField(field: 'verifyToken' | 'appSecret') {

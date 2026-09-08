@@ -256,7 +256,7 @@ export async function POST(request: NextRequest) {
     let lastErrorSubcode: string | undefined;
 
     // --- Tentativa 1: edge direta leadgen_forms ---
-    const directUrl = `https://graph.facebook.com/v22.0/${accountId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
+    const directUrl = `https://graph.facebook.com/v26.0/${accountId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
     let response = await fetch(directUrl, {
       method: 'GET',
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -278,7 +278,7 @@ export async function POST(request: NextRequest) {
       // --- Tentativa 2: via campaigns com leadgen_forms aninhado ---
       if (String(lastErrorCode) === '100') {
         console.log(`[Form Import] Tentando abordagem alternativa via campaigns...`);
-        const campaignsUrl = `https://graph.facebook.com/v22.0/${accountId}/campaigns?fields=leadgen_forms{id,name,status,created_time}&limit=100&effective_status=["ACTIVE","PAUSED"]`;
+        const campaignsUrl = `https://graph.facebook.com/v26.0/${accountId}/campaigns?fields=leadgen_forms{id,name,status,created_time}&limit=100&effective_status=["ACTIVE","PAUSED"]`;
         const campResponse = await fetch(campaignsUrl, {
           method: 'GET',
           headers: { Authorization: `Bearer ${accessToken}` },
