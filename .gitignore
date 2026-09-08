@@ -2,3 +2,6 @@ skills/
 node_modules/
 .next/
 tool-results/
+
+# caches de build (nunca commitam — regenerados a cada build local)
+*.tsbuildinfo
