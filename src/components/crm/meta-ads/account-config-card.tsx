@@ -154,6 +154,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
   const [showSecret, setShowSecret] = useState(false);
   const [savingWebhook, setSavingWebhook] = useState(false);
   const [subscribingPageId, setSubscribingPageId] = useState<string | null>(null);
+  const [subscribingApp, setSubscribingApp] = useState(false);
 
   // ── Polling (drafts) ──
   const [formDrafts, setFormDrafts] = useState<string[]>(['']);
@@ -463,6 +464,29 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
     }
   }
 
+  // Registra na Meta o webhook do NÍVEL DO APP (Page/leadgen → callback do
+  // CRM + verify token desta conta): o último elo da cadeia — sem esse
+  // registro no app, o Meta não tem para onde entregar as entregas.
+  async function subscribeAppWebhook() {
+    setSubscribingApp(true);
+    try {
+      const res = await fetch(`/api/meta-ad-accounts/${account.id}/subscribe-app-webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok) {
+        toast.success(data.message || 'Webhook do app assinado na Meta');
+      } else {
+        toast.error(data?.error || 'Falha ao assinar o webhook do app na Meta');
+      }
+    } catch {
+      toast.error('Falha de conexão ao assinar o webhook do app');
+    } finally {
+      setSubscribingApp(false);
+    }
+  }
+
   // Dados DESTE account (agrupamento sem mistura)
   const accountBindings = bindings.filter((b) => b.adAccountId === account.id);
   const accountMappings = mappings.filter((m) => m.adAccountId === account.id);
@@ -736,6 +760,17 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                     {typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/meta-leads
                   </code>
                   <p className="text-[10px] text-muted-foreground">No Meta for Developers, use esta URL + o verify token DESTA conta (aba Webhook) e inscreva as páginas dela no campo leadgen.</p>
+                  <Button
+                    onClick={subscribeAppWebhook}
+                    disabled={subscribingApp}
+                    size="sm"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    title="Registra no app desta conta o webhook Page/leadgen com esta URL e o verify token da conta — sem isso o Meta não tem para onde entregar os leads"
+                  >
+                    {subscribingApp ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Assinando webhook do app...</> : <><Zap className="h-3.5 w-3.5 mr-1.5" /> Assinar webhook do app na Meta (leadgen)</>}
+                  </Button>
+                  <p className="text-[10px] text-muted-foreground">Fecha o ÚLTIMO elo da cadeia: registra no app (descoberto via token) o webhook Page/leadgen com esta URL e o verify token DESTA conta — sem esse registro a página pode estar inscrita, mas o Meta NÃO TEM PARA ONDE entregar (leads só chegam via polling). Exige App Secret correto salvo na aba Webhook.</p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">

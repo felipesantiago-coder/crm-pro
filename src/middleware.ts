@@ -37,7 +37,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/enterprises/public') ||
     pathname.startsWith('/api/enterprises/catalog/') ||
     pathname.startsWith('/api/enterprises/list-public') ||
-    pathname.startsWith('/api/webhooks/meta-leads/route');
+    pathname.startsWith('/api/webhooks/meta-leads');
   const isLandingOrPublic =
     pathname.startsWith('/empreendimentos/') ||
     pathname.startsWith('/en/') ||

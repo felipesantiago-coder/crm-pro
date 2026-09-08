@@ -10,6 +10,11 @@ import {
   needsPagesManageMetadata,
   type AdAccountRef,
 } from '@/lib/meta-ad-accounts';
+import {
+  buildAppAccessToken,
+  evaluateAppSubscription,
+  type AppSubscriptionFetchOutcome,
+} from '@/lib/meta-app-subscription';
 
 // ============================================================
 // GET /api/meta-ad-accounts/[id]/diagnose
@@ -28,6 +33,12 @@ import {
 //      ASSINADO com o App Secret da conta — a porta EXCLUSIVA das
 //      entregas reais do Meta — usando payload sem leadgen_id (zero
 //      efeitos: nada é criado, fila não gira, cartão não dispara)
+//   5c. Assinatura do webhook NO NÍVEL DO APP: GET /{app-id}/subscriptions
+//      com app access token (app_id|app_secret) — confirma o App Secret
+//      REAL contra a Graph API (o self-test 5b é auto-consistente e não
+//      prova isso) e verifica se o app tem o webhook Page/leadgen ATIVO
+//      com Callback URL apontando para ESTE CRM — sem esse registro, o
+//      Meta não tem para onde entregar (zero entregas, tudo verde)
 //   6. Leads perdidos PELO webhook (30d) por fonte: assinatura inválida,
 //      página não vinculada, conta sem token, sem contas — cada fonte
 //      aponta o elo exato da cadeia que está falhando
@@ -577,6 +588,65 @@ export async function GET(
       key: 'webhook_post_selftest',
       status: 'skip',
       details: 'POST assinado pulado — origem do servidor não determinável',
+    });
+  }
+
+  // ── 5c. Assinatura do webhook NO NÍVEL DO APP — o último elo ─────
+  // A página pode estar inscrita (etapa 3), o CRM pode aceitar verify
+  // token (5a) e HMAC (5b) — e ainda assim NADA chega: se o APP não
+  // tiver o webhook do objeto Page com campo leadgen (Callback URL +
+  // verify token) configurado na Meta, o Meta não tem PARA ONDE
+  // entregar: zero entregas, zero leads perdidos, tudo verde — o
+  // sintoma exato de "só polling funciona".
+  //
+  // Consulta GET /{app-id}/subscriptions com app access token montado
+  // de app_id (debug_token) + App Secret salvo — que também CONFIRMA o
+  // App Secret REAL contra a Graph API: o self-test 5b assina e
+  // verifica com o MESMO secret salvo, portanto é auto-consistente e
+  // não prova que o secret é o do app que entrega os leads.
+  if (account.appSecret && account.webhookEnabled !== false) {
+    const ourAppIdForSubs = await probeOurAppId();
+    let fetchOutcome: AppSubscriptionFetchOutcome;
+    if (!ourAppIdForSubs) {
+      fetchOutcome = { kind: 'no_app_id' };
+    } else {
+      const appToken = buildAppAccessToken(ourAppIdForSubs, account.appSecret);
+      const subs = await graphGet(`${ourAppIdForSubs}/subscriptions`, appToken);
+      if (subs.ok) {
+        fetchOutcome = {
+          kind: 'ok',
+          subscriptions: Array.isArray(subs.data?.data) ? subs.data.data : [],
+        };
+      } else if (subs.status === undefined) {
+        // graphGet não retorna status quando o fetch falha (rede/timeout)
+        fetchOutcome = { kind: 'network_error', error: subs.error || 'erro desconhecido' };
+      } else {
+        fetchOutcome = {
+          kind: 'graph_error',
+          status: subs.status,
+          code: typeof subs.data?.error?.code === 'number' ? subs.data.error.code : null,
+          message: subs.error || `HTTP ${subs.status}`,
+        };
+      }
+    }
+    const appCheck = evaluateAppSubscription({
+      appId: ourAppIdForSubs,
+      appSecret: account.appSecret,
+      expectedWebhookUrl: selfOrigin ? `${selfOrigin}/api/webhooks/meta-leads` : '',
+      fetchOutcome,
+    });
+    checks.push({ key: 'app_webhook_subscription', ...appCheck });
+  } else if (!account.appSecret) {
+    checks.push({
+      key: 'app_webhook_subscription',
+      status: 'skip',
+      details: 'Assinatura do app não verificada — conta sem App Secret (sem ele o CRM não consulta as assinaturas do app nem valida entregas)',
+    });
+  } else {
+    checks.push({
+      key: 'app_webhook_subscription',
+      status: 'skip',
+      details: 'Assinatura do app não verificada — conta com webhook próprio desligado (o CRM ignora as entregas desta conta)',
     });
   }
 
