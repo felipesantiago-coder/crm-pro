@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AdaptiveTabBar } from '@/components/ui/adaptive-tab-bar';
 import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assistant-context';
 import { useSession } from 'next-auth/react';
 import {
@@ -1917,59 +1918,25 @@ export function MetaAdsPanel() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        {/* Mobile dropdown */}
-        <div className="lg:hidden mb-3">
-          <Select value={activeTab} onValueChange={setActiveTab}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="overview"><span className="flex items-center gap-2"><BarChart3 className="h-4 w-4" />Visão Geral</span></SelectItem>
-              <SelectItem value="leads"><span className="flex items-center gap-2"><Users className="h-4 w-4" />Leads</span></SelectItem>
-              <SelectItem value="tracking"><span className="flex items-center gap-2"><Crosshair className="h-4 w-4" />Tracking</span></SelectItem>
-              <SelectItem value="landing"><span className="flex items-center gap-2"><Globe className="h-4 w-4" />Landing Pages</span></SelectItem>
-              <SelectItem value="queues"><span className="flex items-center gap-2"><UsersRound className="h-4 w-4" />Filas</span></SelectItem>
-              <SelectItem value="temperature"><span className="flex items-center gap-2"><Thermometer className="h-4 w-4" />Temperatura</span></SelectItem>
-              <SelectItem value="lost-leads"><span className="flex items-center gap-2"><HeartHandshake className="h-4 w-4" />Leads Perdidos</span></SelectItem>
-              <SelectItem value="config"><span className="flex items-center gap-2"><Zap className="h-4 w-4" />Config</span></SelectItem>
-            </SelectContent>
-          </Select>
+        {/* Navegação adaptativa: 8 seções > 4 abas -> dropdown em todos os aparelhos,
+            sem risco de ultrapassar os limites visíveis (mobile e desktop) */}
+        <div className="mb-3">
+          <AdaptiveTabBar
+            aria-label="Seções do painel Meta Ads"
+            items={[
+              { value: 'overview', label: 'Visão Geral', icon: <BarChart3 className="h-4 w-4 text-muted-foreground" /> },
+              { value: 'leads', label: 'Leads', icon: <Users className="h-4 w-4 text-muted-foreground" /> },
+              { value: 'tracking', label: 'Tracking', icon: <Crosshair className="h-4 w-4 text-muted-foreground" /> },
+              { value: 'landing', label: 'Landing Pages', icon: <Globe className="h-4 w-4 text-muted-foreground" /> },
+              { value: 'queues', label: 'Filas', icon: <UsersRound className="h-4 w-4 text-muted-foreground" /> },
+              { value: 'temperature', label: 'Temperatura', icon: <Thermometer className="h-4 w-4 text-muted-foreground" /> },
+              { value: 'lost-leads', label: 'Leads Perdidos', icon: <HeartHandshake className="h-4 w-4 text-muted-foreground" /> },
+              { value: 'config', label: 'Config', icon: <Zap className="h-4 w-4 text-muted-foreground" /> },
+            ]}
+            value={activeTab}
+            onValueChange={setActiveTab}
+          />
         </div>
-        {/* Desktop tabs */}
-        <TabsList className="hidden lg:grid lg:grid-cols-8 lg:max-w-5xl w-full gap-1 p-0.5">
-          <TabsTrigger value="overview" className="text-sm gap-1.5 whitespace-nowrap">
-            <BarChart3 className="h-3.5 w-3.5" />
-            Visão Geral
-          </TabsTrigger>
-          <TabsTrigger value="leads" className="text-sm gap-1.5 whitespace-nowrap">
-            <Users className="h-3.5 w-3.5" />
-            Leads
-          </TabsTrigger>
-          <TabsTrigger value="tracking" className="text-sm gap-1.5 whitespace-nowrap">
-            <Crosshair className="h-3.5 w-3.5" />
-            Tracking
-          </TabsTrigger>
-          <TabsTrigger value="landing" className="text-sm gap-1.5 whitespace-nowrap">
-            <Globe className="h-3.5 w-3.5" />
-            Landing Pages
-          </TabsTrigger>
-          <TabsTrigger value="queues" className="text-sm gap-1.5 whitespace-nowrap">
-            <UsersRound className="h-3.5 w-3.5" />
-            Filas
-          </TabsTrigger>
-          <TabsTrigger value="temperature" className="text-sm gap-1.5 whitespace-nowrap">
-            <Thermometer className="h-3.5 w-3.5" />
-            Temperatura
-          </TabsTrigger>
-          <TabsTrigger value="lost-leads" className="text-sm gap-1.5 whitespace-nowrap">
-            <HeartHandshake className="h-3.5 w-3.5" />
-            Leads Perdidos
-          </TabsTrigger>
-          <TabsTrigger value="config" className="text-sm gap-1.5 whitespace-nowrap">
-            <Zap className="h-3.5 w-3.5" />
-            Config
-          </TabsTrigger>
-        </TabsList>
 
         <TabsContent value="overview">
           <OverviewTab

@@ -23,6 +23,9 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -332,20 +335,22 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
                 <Badge variant="outline" className="gap-1 text-[11px]"><AlertCircle className="h-3 w-3" aria-hidden />{summary.erro} erros</Badge>
               </div>
 
-              {/* Filtros */}
-              <div className="flex flex-wrap gap-1">
-                {(['all', 'novo', 'alterado', 'inalterado', 'duplicado', 'erro'] as const).map((f) => (
-                  <Button
-                    key={f}
-                    variant={statusFilter === f ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 px-2.5 text-[11px]"
-                    onClick={() => setStatusFilter(f)}
-                  >
-                    {f === 'all' ? `Todos (${summary.total})` : `${STATUS_META[f].label} (${summary[f]})`}
-                  </Button>
-                ))}
-              </div>
+              {/* Filtros: 6 opções > 4 -> dropdown responsivo, sem estourar a largura do diálogo */}
+              <Select
+                value={statusFilter}
+                onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
+              >
+                <SelectTrigger className="w-full sm:w-64" aria-label="Filtrar registros por status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(['all', 'novo', 'alterado', 'inalterado', 'duplicado', 'erro'] as const).map((f) => (
+                    <SelectItem key={f} value={f} className="text-sm">
+                      {f === 'all' ? `Todos (${summary.total})` : `${STATUS_META[f].label} (${summary[f]})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
               {/* Tabela de registros → cartões legíveis em telas estreitas */}
               <div className="space-y-1.5">

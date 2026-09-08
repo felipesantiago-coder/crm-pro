@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { AdaptiveTabBar } from '@/components/ui/adaptive-tab-bar';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -547,14 +548,22 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
             </div>
 
             <Tabs value={tab} onValueChange={(v) => setTab(v as AccountTab)}>
-              <TabsList className="w-full flex-wrap h-auto">
-                <TabsTrigger value="webhook" className="text-xs gap-1.5 flex-1">Webhook</TabsTrigger>
-                <TabsTrigger value="polling" className="text-xs gap-1.5 flex-1">Polling</TabsTrigger>
-                <TabsTrigger value="campaigns" className="text-xs gap-1.5 flex-1">Campanhas ({accountBindings.length})</TabsTrigger>
-                <TabsTrigger value="forms" className="text-xs gap-1.5 flex-1">Formulários ({accountMappings.length})</TabsTrigger>
-                <TabsTrigger value="capi" className="text-xs gap-1.5 flex-1">CAPI ({accountCapiConfigs.length})</TabsTrigger>
-                <TabsTrigger value="tests" className="text-xs gap-1.5 flex-1">Testes</TabsTrigger>
-              </TabsList>
+              {/* 6 seções > 4 abas -> dropdown responsivo (sem wrap/overflow em telas estreitas) */}
+              <AdaptiveTabBar
+                aria-label="Configurações da conta"
+                className="w-full"
+                triggerClassName="w-full"
+                items={[
+                  { value: 'webhook', label: 'Webhook' },
+                  { value: 'polling', label: 'Polling' },
+                  { value: 'campaigns', label: 'Campanhas', count: accountBindings.length },
+                  { value: 'forms', label: 'Formulários', count: accountMappings.length },
+                  { value: 'capi', label: 'CAPI', count: accountCapiConfigs.length },
+                  { value: 'tests', label: 'Testes' },
+                ]}
+                value={tab}
+                onValueChange={(v) => setTab(v as AccountTab)}
+              />
 
               {/* ══════════ WEBHOOK DA CONTA ══════════ */}
               <TabsContent value="webhook" className="space-y-3 mt-3">
