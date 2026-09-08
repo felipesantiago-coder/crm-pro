@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
+import crypto from 'crypto';
 import {
   evaluateAccountConnection,
   parseJsonArray,
@@ -19,11 +20,18 @@ import {
 //
 //   1. Checklist de configuração (token/verify/secret/pages/forms/toggles)
 //   2. Validação do access token na Graph API (GET /me)
-//   3. Cada page ID da conta: acessível? leadgen assinado no app?
+//   3. Cada page ID da conta: acessível? leadgen assinado NO APP DESTA
+//      conta (comparação por app id via debug_token — não basta "algum
+//      app" estar inscrito)?
 //   4. Cada form ID (até 5): leitura de leads liberada p/ o token?
-//   5. Self-test do webhook: GET no próprio endpoint com o verify
-//      token DESTA conta (hub.challenge)
-//   6. Estatísticas: formulários/campanhas/CAPI aprendidos nesta conta
+//   5. Self-test do webhook: GET (verify token/hub.challenge) + POST
+//      ASSINADO com o App Secret da conta — a porta EXCLUSIVA das
+//      entregas reais do Meta — usando payload sem leadgen_id (zero
+//      efeitos: nada é criado, fila não gira, cartão não dispara)
+//   6. Leads perdidos PELO webhook (30d) por fonte: assinatura inválida,
+//      página não vinculada, conta sem token, sem contas — cada fonte
+//      aponta o elo exato da cadeia que está falhando
+//   7. Estatísticas: formulários/campanhas/CAPI aprendidos nesta conta
 //
 // Retorna checks[{key,status,details,fix?}] + resumo (ok/warn/error).
 // ============================================================
@@ -203,6 +211,21 @@ export async function GET(
     return lostPagesProbe;
   };
 
+  // App id que EMITE o token salvo nesta conta (debug_token): permite
+  // confirmar que a página está inscrita para leadgen NO MESMO app cujo
+  // App Secret valida as assinaturas — não apenas em "algum" app.
+  let ourAppIdProbe: string | null | undefined;
+  const probeOurAppId = async (): Promise<string | null> => {
+    if (ourAppIdProbe !== undefined) return ourAppIdProbe;
+    const res = await graphGet(
+      `debug_token?input_token=${encodeURIComponent(account.accessToken)}`,
+      account.accessToken,
+    );
+    const appId = res.ok ? res.data?.data?.app_id : null;
+    ourAppIdProbe = typeof appId === 'string' && appId ? appId : null;
+    return ourAppIdProbe;
+  };
+
   /** Cruza as sondas e monta a causa raiz + correção para uma página inacessível. */
   const buildPageFailureDiagnosis = async (pageId: string) => {
     const parts: string[] = [];
@@ -337,7 +360,7 @@ export async function GET(
         .catch(() => {});
     }
 
-    const subs = await graphGet(`${pageId}/subscribed_apps?fields=subscribed_fields`, pageToken);
+    const subs = await graphGet(`${pageId}/subscribed_apps?fields=id,subscribed_fields`, pageToken);
     if (!subs.ok) {
       if (needsPagesManageMetadata(subs.error)) {
         // Page token em mãos, mas SEM pages_manage_metadata: o CRM não
@@ -359,21 +382,55 @@ export async function GET(
       }
       continue;
     }
-    const ownApp = Array.isArray(subs.data?.data)
-      ? subs.data.data.find((s: any) => s && Array.isArray(s.subscribed_fields))
-      : null;
-    const fields: string[] = ownApp?.subscribed_fields || [];
-    const hasLeadgen = fields.includes('leadgen');
-    checks.push({
-      key: `page_${pageId}`,
-      status: hasLeadgen ? 'ok' : 'error',
-      details: hasLeadgen
-        ? `Page "${pageName}": webhook de LEADS assinado neste app (campos: ${fields.join(', ')})${pageTokenNote}`
-        : `Page "${pageName}": o app NÃO está inscrito no campo leadgen desta página — leads NÃO chegam via webhook${pageTokenNote}`,
-      fix: hasLeadgen
-        ? undefined
-        : 'Inscreva a página no campo leadgen: POST /{page-id}/subscribed_apps?subscribed_fields=leadgen (ou Page Settings → Webhooks).',
-    });
+    // Compara por APP ID: leadgen precisa estar assinado NO app desta
+    // conta (o mesmo cujo App Secret valida as assinaturas). "Algum app
+    // assinado" não basta — outro app recebe as entregas em outro sistema.
+    const subEntries: Array<{ id?: string | number; subscribed_fields?: string[] }> = Array.isArray(subs.data?.data)
+      ? subs.data.data
+      : [];
+    const leadgenApps = subEntries.filter(
+      (s) => s && Array.isArray(s.subscribed_fields) && s.subscribed_fields.includes('leadgen'),
+    );
+    const ourAppId = await probeOurAppId();
+    const ourAppHasLeadgen = ourAppId
+      ? leadgenApps.some((s) => String(s.id) === ourAppId)
+      : null; // null = não foi possível determinar o app desta conta
+    const fieldsOf = (s: { subscribed_fields?: string[] }) => (s.subscribed_fields || []).join(', ');
+
+    if (ourAppHasLeadgen === true) {
+      checks.push({
+        key: `page_${pageId}`,
+        status: 'ok',
+        details: `Page "${pageName}": webhook de LEADS assinado NO APP DESTA CONTA (app id ${ourAppId}, campos: ${fieldsOf(leadgenApps.find((s) => String(s.id) === ourAppId) || {})})${pageTokenNote}`,
+      });
+    } else if (ourAppHasLeadgen === false && leadgenApps.length > 0) {
+      checks.push({
+        key: `page_${pageId}`,
+        status: 'error',
+        details: `Page "${pageName}": a página está inscrita para leads em OUTRO app (id ${leadgenApps.map((s) => s.id || '?').join(', ')}) — o Meta entrega os leads para OUTRO sistema e o webhook do CRM NUNCA recebe nada${pageTokenNote}`,
+        fix: `Inscreva a página no app DESTA conta (app id ${ourAppId}): aba Webhook do card → botão do Page ID, ou POST /${pageId}/subscribed_apps?subscribed_fields=leadgen com page token deste app. Remova a inscrição do app antigo se não for mais usada.`,
+      });
+    } else if (ourAppHasLeadgen === false) {
+      checks.push({
+        key: `page_${pageId}`,
+        status: 'error',
+        details: `Page "${pageName}": o app desta conta (id ${ourAppId}) NÃO está inscrito no campo leadgen desta página — leads NÃO chegam via webhook${pageTokenNote}`,
+        fix: 'Inscreva a página no campo leadgen: aba Webhook do card (botão do Page ID) ou Page Settings → Webhooks.',
+      });
+    } else {
+      // Sem app id confirmado — mantém a verificação anterior, com ressalva
+      const hasLeadgenAny = leadgenApps.length > 0;
+      checks.push({
+        key: `page_${pageId}`,
+        status: hasLeadgenAny ? 'warn' : 'error',
+        details: hasLeadgenAny
+          ? `Page "${pageName}": webhook de LEADS assinado em algum app (campos: ${fieldsOf(leadgenApps[0])}) — NÃO foi possível confirmar que é o app DESTA conta (debug_token indisponível para o token salvo); confirme no Meta for Developers → Webhooks que o app inscrito é o mesmo do App Secret salvo${pageTokenNote}`
+          : `Page "${pageName}": o app NÃO está inscrito no campo leadgen desta página — leads NÃO chegam via webhook${pageTokenNote}`,
+        fix: hasLeadgenAny
+          ? undefined
+          : 'Inscreva a página no campo leadgen: POST /{page-id}/subscribed_apps?subscribed_fields=leadgen (ou Page Settings → Webhooks).',
+      });
+    }
   }
 
   // ── 4. Form IDs: leitura de leads liberada? ──────────────────
@@ -390,50 +447,44 @@ export async function GET(
     });
   }
 
-  // ── 5. Self-test do webhook com o verify token DESTA conta ───
-  if (account.verifyToken && account.webhookEnabled !== false) {
+  // ── 5. Self-test do webhook (GET + POST assinado) ───────────
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+  const proto = request.headers.get('x-forwarded-proto') || (host?.startsWith('localhost') ? 'http' : 'https');
+  const selfOrigin = process.env.NEXT_PUBLIC_APP_URL || (host ? `${proto}://${host}` : '');
+
+  // 5a. GET — hub.challenge com o verify token DESTA conta
+  if (account.verifyToken && account.webhookEnabled !== false && selfOrigin) {
     const challenge = crypto.randomUUID().replace(/-/g, '');
-    const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
-    const proto = request.headers.get('x-forwarded-proto') || (host?.startsWith('localhost') ? 'http' : 'https');
-    const origin = process.env.NEXT_PUBLIC_APP_URL || (host ? `${proto}://${host}` : '');
-    if (origin) {
-      const selfUrl = `${origin}/api/webhooks/meta-leads?hub.mode=subscribe&hub.verify_token=${encodeURIComponent(account.verifyToken)}&hub.challenge=${challenge}`;
-      try {
-        const res = await fetch(selfUrl, { method: 'GET', signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) });
-        const bodyText = await res.text().catch(() => '');
-        if (res.status === 200 && bodyText === challenge) {
-          checks.push({
-            key: 'webhook_selftest',
-            status: 'ok',
-            details: 'Webhook do CRM aceitou o verify token DESTA conta (hub.challenge ecoado)',
-          });
-        } else if (res.status === 403) {
-          checks.push({
-            key: 'webhook_selftest',
-            status: 'error',
-            details: 'Webhook REJEITOU o verify token desta conta (HTTP 403) — valor salvo diverge do esperado',
-            fix: 'Re-salve o verify token no card da conta e use exatamente o mesmo valor no Meta for Developers.',
-          });
-        } else {
-          checks.push({
-            key: 'webhook_selftest',
-            status: 'error',
-            details: `Self-test do webhook retornou HTTP ${res.status} (esperado 200 + challenge)`,
-            fix: 'Verifique se o deploy está saudável e se a URL do webhook está correta: /api/webhooks/meta-leads',
-          });
-        }
-      } catch (err) {
+    const selfUrl = `${selfOrigin}/api/webhooks/meta-leads?hub.mode=subscribe&hub.verify_token=${encodeURIComponent(account.verifyToken)}&hub.challenge=${challenge}`;
+    try {
+      const res = await fetch(selfUrl, { method: 'GET', signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) });
+      const bodyText = await res.text().catch(() => '');
+      if (res.status === 200 && bodyText === challenge) {
+        checks.push({
+          key: 'webhook_selftest',
+          status: 'ok',
+          details: 'Webhook do CRM aceitou o verify token DESTA conta (hub.challenge ecoado)',
+        });
+      } else if (res.status === 403) {
         checks.push({
           key: 'webhook_selftest',
           status: 'error',
-          details: `Falha ao chamar o próprio webhook — ${err instanceof Error ? err.message : err}`,
+          details: 'Webhook REJEITOU o verify token desta conta (HTTP 403) — valor salvo diverge do esperado',
+          fix: 'Re-salve o verify token no card da conta e use exatamente o mesmo valor no Meta for Developers.',
+        });
+      } else {
+        checks.push({
+          key: 'webhook_selftest',
+          status: 'error',
+          details: `Self-test do webhook retornou HTTP ${res.status} (esperado 200 + challenge)`,
+          fix: 'Verifique se o deploy está saudável e se a URL do webhook está correta: /api/webhooks/meta-leads',
         });
       }
-    } else {
+    } catch (err) {
       checks.push({
         key: 'webhook_selftest',
-        status: 'skip',
-        details: 'Self-test pulado — origem do servidor não determinável',
+        status: 'error',
+        details: `Falha ao chamar o próprio webhook — ${err instanceof Error ? err.message : err}`,
       });
     }
   } else if (!account.verifyToken) {
@@ -442,9 +493,158 @@ export async function GET(
       status: 'skip',
       details: 'Self-test pulado — conta sem verify token próprio',
     });
+  } else if (!selfOrigin) {
+    checks.push({
+      key: 'webhook_selftest',
+      status: 'skip',
+      details: 'Self-test pulado — origem do servidor não determinável',
+    });
   }
 
-  // ── 6. Estatísticas da conta (agrupamento por conta) ─────────
+  // 5b. POST ASSINADO — a porta EXCLUSIVA das entregas reais do Meta.
+  // O GET acima NÃO passa pela validação HMAC; entregas reais morrem nela
+  // quando o App Secret salvo está errado (401 + Leads Perdidos) — erro
+  // invisível ao self-test de GET. Envia um payload VÁLIDO assinado com o
+  // App Secret DESTA conta, porém SEM leadgen_id: valida a assinatura e o
+  // roteamento sem criar lead, sem girar fila e sem disparar cartão.
+  if (account.appSecret && account.webhookEnabled !== false && account.enabled !== false && selfOrigin) {
+    const probePayload = JSON.stringify({
+      object: 'page',
+      entry: [
+        {
+          id: pageIds[0] || 'diagnostic_probe',
+          time: Math.floor(Date.now() / 1000),
+          changes: [{ field: 'leadgen', value: {} }],
+        },
+      ],
+    });
+    const signature =
+      'sha256=' + crypto.createHmac('sha256', account.appSecret).update(probePayload, 'utf8').digest('hex');
+    try {
+      const res = await fetch(`${selfOrigin}/api/webhooks/meta-leads`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Hub-Signature-256': signature,
+          'User-Agent': 'Meta-Diagnostic-Probe/1.0',
+        },
+        body: probePayload,
+        signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
+      });
+      const respBody = await res.json().catch(() => null);
+      if (res.status === 200) {
+        checks.push({
+          key: 'webhook_post_selftest',
+          status: 'ok',
+          details: 'Assinatura HMAC ACEITA com o App Secret DESTA conta (payload de sonda sem leadgen_id — nada processado, sem efeitos no CRM)',
+        });
+      } else if (res.status === 401) {
+        checks.push({
+          key: 'webhook_post_selftest',
+          status: 'error',
+          details: 'CAUSA RAIZ TÍPICA de "polling funciona, webhook não": o webhook REJEITOU a assinatura (HTTP 401) — o App Secret salvo NÃO é o do app que entrega os leads. TODA entrega real do Meta está sendo descartada (veja Leads Perdidos: "Assinatura inválida"). O self-test GET acima continua verde porque não passa pela assinatura.',
+          fix: 'Copie o App Secret EXATO do app que tem o webhook configurado (Meta for Developers → Configurações Básicas → App Secret) e salve na aba Webhook desta conta; depois reexecute o diagnóstico.',
+        });
+      } else {
+        checks.push({
+          key: 'webhook_post_selftest',
+          status: 'warn',
+          details: `POST assinado retornou HTTP ${res.status}${respBody?.error ? ` — ${respBody.error}` : ''} (esperado 200)`,
+          fix: 'Verifique os logs do servidor ([Meta Webhook]) e se a conta está ativa com webhook próprio habilitado.',
+        });
+      }
+    } catch (err) {
+      checks.push({
+        key: 'webhook_post_selftest',
+        status: 'warn',
+        details: `Falha no POST assinado de sonda — ${err instanceof Error ? err.message : err}`,
+      });
+    }
+  } else if (!account.appSecret) {
+    checks.push({
+      key: 'webhook_post_selftest',
+      status: 'skip',
+      details: 'POST assinado pulado — conta sem App Secret (SEM ele nenhuma entrega real do Meta é aceita)',
+    });
+  } else if (account.enabled === false || account.webhookEnabled === false) {
+    checks.push({
+      key: 'webhook_post_selftest',
+      status: 'skip',
+      details: 'POST assinado pulado — conta desativada ou com webhook próprio desligado (o webhook ignora esta conta)',
+    });
+  } else if (!selfOrigin) {
+    checks.push({
+      key: 'webhook_post_selftest',
+      status: 'skip',
+      details: 'POST assinado pulado — origem do servidor não determinável',
+    });
+  }
+
+  // ── 6. Leads perdidos PELO webhook nos últimos 30 dias (causa raiz) ──
+  // Cada fonte aponta o elo exato da cadeia que está falhando. Sem isso,
+  // falhas reais (ex.: assinatura rejeitada) ficavam invisíveis ao
+  // diagnóstico e o webhook parecia "saudável e mudo".
+  try {
+    let lostRows: Array<{ source: string; _count: { _all: number } }> = [];
+    try {
+      const grouped = await db.lostLead.groupBy({
+        by: ['source'],
+        where: { source: { startsWith: 'meta_webhook_' }, createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+        _count: { _all: true },
+      });
+      lostRows = grouped as Array<{ source: string; _count: { _all: number } }>;
+    } catch {
+      lostRows = [];
+    }
+    const bySource = new Map(lostRows.map((r) => [r.source, r._count?._all ?? 0]));
+    if (bySource.size === 0) {
+      checks.push({
+        key: 'webhook_lost_leads',
+        status: 'ok',
+        details: 'Nenhum lead perdido pelo webhook nos últimos 30 dias (assinatura, página não vinculada, conta sem token)',
+      });
+    } else {
+      const total = [...bySource.values()].reduce((a, b) => a + b, 0);
+      const explanations: Record<string, { status: 'error'; details: string; fix: string }> = {
+        meta_webhook_invalid_signature: {
+          status: 'error',
+          details: `O webhook RECEBEU ${bySource.get('meta_webhook_invalid_signature')} entrega(s) do Meta e REJEITOU a assinatura — o App Secret salvo não é o do app que entrega os leads. Os leads estão em Leads Perdidos (recupere via Importação Manual).`,
+          fix: 'Corrija o App Secret na aba Webhook desta conta com o valor EXATO do app que tem o webhook configurado (Meta for Developers → Configurações Básicas).',
+        },
+        meta_webhook_unmapped_page: {
+          status: 'error',
+          details: `O webhook recebeu ${bySource.get('meta_webhook_unmapped_page')} lead(s) de página(s) NÃO vinculada(s) a esta conta — os Page IDs salvos não incluem a página que entrega os leads. Recupere via Leads Perdidos → Importação Manual.`,
+          fix: 'Adicione o page id correto nos Page IDs da conta (aba Webhook) — o id real aparece no registro de cada lead perdido.',
+        },
+        meta_webhook_no_account_token: {
+          status: 'error',
+          details: `O webhook recebeu ${bySource.get('meta_webhook_no_account_token')} entrega(s) sem field_data e a conta estava SEM access token para buscar os dados na Graph API.`,
+          fix: 'Salve um access token válido na conta (de preferência page token — o diagnóstico o extrai automaticamente).',
+        },
+        meta_webhook_no_accounts: {
+          status: 'error',
+          details: `${bySource.get('meta_webhook_no_accounts')} entrega(s) chegaram quando NENHUMA conta estava com webhook ativo — foram salvas para recuperação manual.`,
+          fix: 'Ative a conta e o webhook próprio dela; recupere os leads via Importação Manual.',
+        },
+      };
+      const known = [...bySource.entries()].filter(([source]) => explanations[source]);
+      const unknownSources = [...bySource.keys()].filter((source) => !explanations[source]);
+      const summary = [
+        ...known.map(([source, n]) => `${explanations[source].details.split('.')[0]} (${n})`),
+        ...unknownSources.map((source) => `${source}: ${bySource.get(source)} registro(s)`),
+      ].join(' · ');
+      checks.push({
+        key: 'webhook_lost_leads',
+        status: 'error',
+        details: `Webhook recebeu e DESCARTOU ${total} lead(s) nos últimos 30 dias — ${summary}. Todos estão em Anúncios Meta > Leads Perdidos.`,
+        fix: known.length > 0 ? known.map(([source]) => explanations[source].fix).join(' ') : 'Analise os registros em Leads Perdidos para identificar a fonte exata.',
+      });
+    }
+  } catch {
+    // Falha ao agregar leads perdidos não deve derrubar o diagnóstico
+  }
+
+  // ── 7. Estatísticas da conta (agrupamento por conta) ─────────
   const [formMappingAgg, bindingAgg, capiCount] = await Promise.all([
     db.leadFormMapping
       .aggregate({ where: { adAccountId: account.id }, _count: { _all: true }, _sum: { leadCount: true } })
