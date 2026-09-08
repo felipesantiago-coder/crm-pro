@@ -21,11 +21,61 @@
  * entrega o resultado para evaluateAppSubscription.
  */
 
+/**
+ * Campo de assinatura como a Graph API REALMENTE devolve: objetos
+ * { name, active, version } — NÃO strings. (GET /{app-id}/subscriptions
+ * → fields: [{ name: 'leadgen', active: true, version: 'v22.0' }].)
+ * Strings são aceitas por robustez (e nos testes).
+ */
+export interface AppSubscriptionField {
+  name?: unknown;
+  active?: unknown;
+  version?: unknown;
+}
+
 export interface AppSubscriptionEntry {
   object?: string;
   callback_url?: string;
-  fields?: string[];
+  fields?: Array<string | AppSubscriptionField>;
   active?: boolean;
+}
+
+/**
+ * Extrai os NOMES dos campos de uma assinatura, aceitando ambos os
+ * formatos: string ('leadgen') e objeto da Graph API ({ name: 'leadgen' }).
+ * Ignora entradas sem nome reconhecível. NUNCA usar fields.join direto —
+ * com o formato real isso rende "[object Object]" (bug que gerou falso
+ * "SEM o campo leadgen" com o webhook perfeitamente assinado).
+ */
+export function normalizeSubscriptionFields(fields: unknown): string[] {
+  if (!Array.isArray(fields)) return [];
+  const names: string[] = [];
+  for (const f of fields) {
+    if (typeof f === 'string' && f) {
+      names.push(f);
+    } else if (f && typeof f === 'object' && typeof (f as AppSubscriptionField).name === 'string') {
+      names.push((f as AppSubscriptionField).name as string);
+    }
+  }
+  return names;
+}
+
+/**
+ * Flag "active" DO CAMPO informado no formato objeto da Graph API
+ * ({ name: 'leadgen', active: false } → false). Retorna:
+ *   true/false — flag presente
+ *   null       — campo ausente, formato string, ou objeto sem a flag
+ *                (neste caso a avaliação usa só a flag da assinatura)
+ */
+export function isSubscriptionFieldActive(fields: unknown, name: string): boolean | null {
+  if (!Array.isArray(fields)) return null;
+  for (const f of fields) {
+    if (f && typeof f === 'object' && (f as AppSubscriptionField).name === name) {
+      const active = (f as AppSubscriptionField).active;
+      return typeof active === 'boolean' ? active : null;
+    }
+  }
+  return null;
 }
 
 /** App access token clássico: "{app-id}|{app-secret}". */
@@ -132,12 +182,24 @@ export function evaluateAppSubscription(input: EvaluateAppSubscriptionInput): Ap
     };
   }
 
-  const fields = Array.isArray(page.fields) ? page.fields : [];
-  if (!fields.includes('leadgen')) {
+  // Campos no formato REAL da Graph API: objetos { name, active, version }.
+  // Normalizar antes de checar/juntar — join direto rende "[object Object]".
+  const fieldNames = normalizeSubscriptionFields(page.fields);
+  if (!fieldNames.includes('leadgen')) {
     return {
       status: 'error',
-      details: `O app ${appId} tem webhook do objeto Page, mas SEM o campo leadgen (campos: ${fields.join(', ') || 'nenhum'}) — eventos de lead nunca serão entregues.`,
+      details: `O app ${appId} tem webhook do objeto Page, mas SEM o campo leadgen (campos: ${fieldNames.join(', ') || 'nenhum'}) — eventos de lead nunca serão entregues.`,
       fix: `Assine o campo "leadgen" no webhook do app: Meta for Developers → Webhooks → Page, ou o botão "Assinar webhook do app" (aba Testes do card).`,
+    };
+  }
+
+  // Flag INATIVA no NÍVEL DO CAMPO (formato objeto: { name: 'leadgen', active: false }) —
+  // separada da flag da assinatura inteira, verificada logo abaixo.
+  if (isSubscriptionFieldActive(page.fields, 'leadgen') === false) {
+    return {
+      status: 'error',
+      details: `O webhook Page do app ${appId} tem o campo leadgen, mas ele está INATIVO no nível do campo — o Meta não entrega eventos desse campo.`,
+      fix: 'Regrave a assinatura com o botão "Assinar webhook do app" (aba Testes do card) ou reative em Meta for Developers → Webhooks → Page.',
     };
   }
 
@@ -170,7 +232,7 @@ export function evaluateAppSubscription(input: EvaluateAppSubscriptionInput): Ap
   const hostNote = hostOk === true ? `apontando para ${safeHost(callbackUrl)}` : `callback: ${callbackUrl || 'não informado'} — confira se é o host público deste CRM`;
   return {
     status: 'ok',
-    details: `FIM DA CADEIA CONFIRMADO: app ${appId} tem webhook Page/leadgen ATIVO na Meta ${hostNote} — e o App Secret foi CONFIRMADO na Graph API (app access token aceito).`,
+    details: `FIM DA CADEIA CONFIRMADO: app ${appId} tem webhook Page/leadgen ATIVO na Meta (campos: ${fieldNames.join(', ')}) ${hostNote} — e o App Secret foi CONFIRMADO na Graph API (app access token aceito).`,
   };
 }
 

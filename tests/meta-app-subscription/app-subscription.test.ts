@@ -12,6 +12,8 @@ import {
   buildAppAccessToken,
   pickPageSubscription,
   isCallbackHostMatch,
+  normalizeSubscriptionFields,
+  isSubscriptionFieldActive,
   evaluateAppSubscription,
   type AppSubscriptionFetchOutcome,
 } from '../../src/lib/meta-app-subscription.ts';
@@ -168,4 +170,76 @@ test('sem expectedWebhookUrl → não acusa host errado; exibe callback para con
   );
   assert.equal(r.status, 'ok');
   assert.match(r.details, /qualquer\.example\.com/);
+});
+
+// ── Formato REAL da Graph API: fields como OBJETOS { name, active, version } ──
+// O join direto rendia "[object Object]" e includes('leadgen') nunca casava —
+// falso "SEM o campo leadgen" e falso "INCOMPLETA" com a assinatura correta
+// (bug observado no diagnóstico real de 2026-09-08, app 858296646928219).
+
+const FIELDS_GRAPH_API = [
+  { name: 'leadgen', active: true, version: 'v22.0' },
+];
+
+test('formato REAL da Graph API (objetos {name}) com leadgen ativo → CADEIA CONFIRMADA, não falso "SEM leadgen"', () => {
+  const r = evaluate({
+    kind: 'ok',
+    subscriptions: [{ object: 'page', callback_url: URL_OK, fields: FIELDS_GRAPH_API, active: true }],
+  });
+  assert.equal(r.status, 'ok');
+  assert.match(r.details, /FIM DA CADEIA CONFIRMADO/);
+  assert.match(r.details, /campos: leadgen/); // nomes legíveis, não [object Object]
+  assert.doesNotMatch(r.details, /\[object Object\]/);
+});
+
+test('formato REAL sem leadgen → erro listando os nomes corretamente', () => {
+  const r = evaluate({
+    kind: 'ok',
+    subscriptions: [{ object: 'page', callback_url: URL_OK, fields: [{ name: 'feed', active: true, version: 'v22.0' }], active: true }],
+  });
+  assert.equal(r.status, 'error');
+  assert.match(r.details, /SEM o campo leadgen/);
+  assert.match(r.details, /campos: feed/);
+  assert.doesNotMatch(r.details, /\[object Object\]/);
+});
+
+test('formato REAL com leadgen INATIVO no nível do campo → erro específico de campo inativo', () => {
+  const r = evaluate({
+    kind: 'ok',
+    subscriptions: [{ object: 'page', callback_url: URL_OK, fields: [{ name: 'leadgen', active: false, version: 'v22.0' }], active: true }],
+  });
+  assert.equal(r.status, 'error');
+  assert.match(r.details, /leadgen/);
+  assert.match(r.details, /INATIVO no nível do campo/);
+});
+
+test('formatos mistos (string + objeto) → normalização robusta', () => {
+  assert.deepEqual(
+    normalizeSubscriptionFields(['leadgen', { name: 'feed', active: true }, { sem: 'nome' }, null, 42]),
+    ['leadgen', 'feed'],
+  );
+});
+
+test('normalizeSubscriptionFields: vazio/inválido → [] (nunca crasha)', () => {
+  assert.deepEqual(normalizeSubscriptionFields(undefined), []);
+  assert.deepEqual(normalizeSubscriptionFields(null), []);
+  assert.deepEqual(normalizeSubscriptionFields('não é array'), []);
+  assert.deepEqual(normalizeSubscriptionFields([]), []);
+});
+
+test('isSubscriptionFieldActive: flag do campo; ausente → null (não bloqueia)', () => {
+  const fields = [{ name: 'leadgen', active: false }, { name: 'feed' }];
+  assert.equal(isSubscriptionFieldActive(fields, 'leadgen'), false);
+  assert.equal(isSubscriptionFieldActive(fields, 'feed'), null); // sem flag → null
+  assert.equal(isSubscriptionFieldActive(fields, 'comments'), null); // campo ausente
+  assert.equal(isSubscriptionFieldActive(['leadgen'], 'leadgen'), null); // formato string
+  assert.equal(isSubscriptionFieldActive(undefined, 'leadgen'), null);
+});
+
+test('string leadgen segue válida (retrocompatibilidade) → ok', () => {
+  const r = evaluate({
+    kind: 'ok',
+    subscriptions: [{ object: 'page', callback_url: URL_OK, fields: ['leadgen'], active: true }],
+  });
+  assert.equal(r.status, 'ok');
 });

@@ -1,7 +1,11 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/api-auth';
-import { buildAppAccessToken } from '@/lib/meta-app-subscription';
+import {
+  buildAppAccessToken,
+  isSubscriptionFieldActive,
+  normalizeSubscriptionFields,
+} from '@/lib/meta-app-subscription';
 
 // ============================================================
 // POST /api/meta-ad-accounts/[id]/subscribe-app-webhook
@@ -109,8 +113,12 @@ export async function POST(
   }
 
   // 5. Confirmação: lê de volta a assinatura
+  //    ATENÇÃO: a Graph API devolve fields como OBJETOS { name, active,
+  //    version } — normalizar antes de checar/juntar (join direto rende
+  //    "[object Object]" e includes('leadgen') nunca casa — bug que
+  //    reportava "INCOMPLETA" com a assinatura perfeitamente ativa).
   const confirm = await graphCall('GET', `${appId}/subscriptions`, appToken);
-  const rows: Array<{ object?: string; callback_url?: string; fields?: string[]; active?: boolean }> =
+  const rows: Array<{ object?: string; callback_url?: string; fields?: Array<string | { name?: string; active?: boolean; version?: string }>; active?: boolean }> =
     Array.isArray(confirm.data?.data) ? confirm.data.data : [];
   const page = rows.find((r) => r?.object === 'page') || null;
   if (!page) {
@@ -123,14 +131,16 @@ export async function POST(
     });
   }
 
-  const hasLeadgen = Array.isArray(page.fields) && page.fields.includes('leadgen');
-  if (!hasLeadgen || page.active === false) {
+  const fieldNames = normalizeSubscriptionFields(page.fields);
+  const leadgenFieldInactive = isSubscriptionFieldActive(page.fields, 'leadgen') === false;
+  const hasLeadgen = fieldNames.includes('leadgen');
+  if (!hasLeadgen || leadgenFieldInactive || page.active === false) {
     return NextResponse.json({
       ok: true,
       appId,
       callbackUrl,
       confirmed: false,
-      message: `Assinatura registrada, porém INCOMPLETA (campos: ${(page.fields || []).join(', ') || 'nenhum'}, ativa: ${page.active === false ? 'não' : 'sim'}) — reexecute o diagnóstico e, se persistir, registre manualmente em Meta for Developers → Webhooks → Page`,
+      message: `Assinatura registrada, porém INCOMPLETA (campos: ${fieldNames.join(', ') || 'nenhum'}, leadgen ativo no campo: ${hasLeadgen && !leadgenFieldInactive ? 'sim' : 'não'}, assinatura ativa: ${page.active === false ? 'não' : 'sim'}) — reexecute o diagnóstico e, se persistir, registre manualmente em Meta for Developers → Webhooks → Page`,
     });
   }
 
