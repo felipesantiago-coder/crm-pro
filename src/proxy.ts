@@ -14,8 +14,9 @@ async function hashUserAgent(ua: string): Promise<string> {
 }
 
 /**
- * Edge Middleware — executa em TODAS as requisições antes de chegar
- * às páginas ou API routes.
+ * Edge Proxy (convenção Next.js 16 — substitui o arquivo middleware.ts,
+ * deprecado a partir da v16) — executa em TODAS as requisições antes de
+ * chegar às páginas ou API routes.
  *
  * Responsabilidades:
  *  1. Session binding: invalida sessão se o User-Agent mudou
@@ -23,7 +24,7 @@ async function hashUserAgent(ua: string): Promise<string> {
  *  3. Impedir cache de HTML pelo navegador (evita código antigo após deploy)
  *  4. Impedir cache de dados da API (sempre dados frescos)
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const response = NextResponse.next();
 
@@ -55,7 +56,7 @@ export async function middleware(request: NextRequest) {
       if (token?.uaHash) {
         const currentUaHash = await hashUserAgent(request.headers.get('user-agent') || '');
         if (token.uaHash !== currentUaHash) {
-          console.warn(`[MIDDLEWARE] Session binding mismatch — userId=${token.id}`);
+          console.warn(`[PROXY] Session binding mismatch — userId=${token.id}`);
           // Deleta o cookie de sessão para forçar re-login
           const res = NextResponse.json({ error: 'Sessão inválida. Faça login novamente.' }, { status: 401 });
           const sessionCookie = request.cookies.get('next-auth.session-token') ||

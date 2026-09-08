@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
  *   META_ACCESS_TOKEN    — System User Token with ads_management permission
  */
 
-const META_API_VERSION = 'v21.0';
+const META_API_VERSION = 'v26.0';
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
 
 // SHA-256 hash for PII (Meta CAPI requirement)
