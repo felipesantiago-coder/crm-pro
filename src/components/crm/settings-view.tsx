@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Moon, Sun, CheckCircle2, Circle, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle, Bell, Smartphone, Check } from 'lucide-react';
+import { Moon, Sun, CheckCircle2, Circle, User, Loader2, Save, CalendarDays, Link2, Unlink, Phone, Send, MessageCircle, Bell, Smartphone, Check, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,15 @@ import { useRegisterAssistantContext } from '@/components/ai-assistant/use-assis
 import { useAssistantContextStore, initProactivityPreference } from '@/components/ai-assistant/assistant-context-store';
 import { getAssistantMessages } from '@/components/ai-assistant/assistant-messages';
 import { TelegramLeadPreview } from '@/components/crm/telegram-lead-preview';
+
+/** Shape do diagnóstico devolvido por /api/telegram/webhook/register. */
+interface TgWebhookData {
+  diagnosis: { status: string; verdict: string; problems: string[]; hints: string[] };
+  bot: { id: number | null; username: string | null } | null;
+  webhook: { url?: string; pending_update_count?: number; last_error_message?: string } | null;
+  expectedUrl: string | null;
+  env: { botTokenConfigured: boolean; webhookSecretConfigured: boolean; botUsernameEnv: string | null };
+}
 
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
@@ -61,6 +70,11 @@ export function SettingsView() {
   // Fallback legado (convite indisponível): Chat ID digitado manualmente
   const [tgLegacyFallback, setTgLegacyFallback] = useState(false);
   const [tgChatId, setTgChatId] = useState('');
+  // Webhook do bot (ADMIN): o setWebhook era um passo manual — sem ele o
+  // bot fica mudo para tudo (nem /start responde). Diagnóstico + registro.
+  const [tgWebhook, setTgWebhook] = useState<TgWebhookData | null>(null);
+  const [tgWebhookLoading, setTgWebhookLoading] = useState(false);
+  const [tgWebhookRegistering, setTgWebhookRegistering] = useState(false);
 
   useEffect(() => {
     // Verificar status da conexão Google Calendar
@@ -214,6 +228,55 @@ export function SettingsView() {
       toast.error('Erro ao verificar vínculo');
     }
   }
+
+  // ── Webhook do bot (ADMIN): diagnóstico e registro do setWebhook ──
+  async function checkTelegramWebhook(showToast = false) {
+    setTgWebhookLoading(true);
+    try {
+      const res = await fetch('/api/telegram/webhook/register');
+      const data = await res.json();
+      if (res.ok) {
+        setTgWebhook(data);
+        if (showToast) {
+          if (data.diagnosis?.status === 'ok') toast.success('Webhook do bot saudável.');
+          else toast.warning(data.diagnosis?.verdict || 'Webhook com pendências.');
+        }
+      } else {
+        toast.error(data.error || 'Erro no diagnóstico do webhook');
+      }
+    } catch {
+      toast.error('Erro no diagnóstico do webhook');
+    } finally {
+      setTgWebhookLoading(false);
+    }
+  }
+
+  async function registerTelegramWebhook() {
+    setTgWebhookRegistering(true);
+    try {
+      const res = await fetch('/api/telegram/webhook/register', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setTgWebhook(data);
+        if (data.diagnosis?.status === 'ok') {
+          toast.success('Webhook registrado e saudável — teste o bot agora (/help deve responder).');
+        } else {
+          toast.warning(data.diagnosis?.verdict || 'Webhook registrado, mas com pendências.');
+        }
+      } else {
+        toast.error(data.error || 'Erro ao registrar o webhook');
+      }
+    } catch {
+      toast.error('Erro ao registrar o webhook');
+    } finally {
+      setTgWebhookRegistering(false);
+    }
+  }
+
+  useEffect(() => {
+    // Diagnóstico silencioso ao abrir Ajustes como admin
+    if (isAdmin) checkTelegramWebhook();
+  }, [isAdmin]);
 
   /** Fallback legado (só quando o convite seguro não puder ser gerado). */
   async function saveTelegramChatIdLegacy() {
@@ -716,6 +779,73 @@ export function SettingsView() {
             )}
           </CardContent>
         </Card>
+
+        {/* Webhook do bot (Telegram) — admin: registro/diagnóstico do setWebhook */}
+        {isAdmin && (
+          <Card className="hover:shadow-md transition-shadow duration-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-blue-500" />
+                Webhook do bot (Telegram)
+              </CardTitle>
+              <CardDescription>
+                O bot só responde se o webhook estiver registrado no Telegram — sem isso nem o /start do convite recebe resposta.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {tgWebhook ? (
+                <>
+                  <div className="flex items-start gap-2">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium flex-shrink-0 mt-0.5 ${tgWebhook.diagnosis.status === 'ok' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                      {tgWebhook.diagnosis.status === 'ok' ? 'OK' : tgWebhook.diagnosis.status.toUpperCase()}
+                    </span>
+                    <p className="text-sm">{tgWebhook.diagnosis.verdict}</p>
+                  </div>
+                  {tgWebhook.diagnosis.problems.length > 0 && (
+                    <ul className="space-y-1 text-xs text-destructive">
+                      {tgWebhook.diagnosis.problems.map((p, i) => (
+                        <li key={i} className="flex gap-1.5"><AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" /><span>{p}</span></li>
+                      ))}
+                    </ul>
+                  )}
+                  {tgWebhook.diagnosis.hints.length > 0 && (
+                    <ul className="space-y-1 text-xs text-muted-foreground">
+                      {tgWebhook.diagnosis.hints.map((h, i) => (<li key={i}>• {h}</li>))}
+                    </ul>
+                  )}
+                  <div className="text-[11px] text-muted-foreground space-y-0.5">
+                    {tgWebhook.webhook?.url ? (
+                      <p>Registrado em: <span className="font-mono">{tgWebhook.webhook.url}</span></p>
+                    ) : (
+                      <p>Nenhum webhook registrado no bot.</p>
+                    )}
+                    {tgWebhook.expectedUrl && (
+                      <p>Esperado: <span className="font-mono">{tgWebhook.expectedUrl}</span></p>
+                    )}
+                    {typeof tgWebhook.webhook?.pending_update_count === 'number' && tgWebhook.webhook.pending_update_count > 0 && (
+                      <p>Fila pendente no Telegram: {tgWebhook.webhook.pending_update_count}</p>
+                    )}
+                    {tgWebhook.bot?.username && (
+                      <p>Bot: <span className="font-mono">@{tgWebhook.bot.username}</span>{tgWebhook.env.botUsernameEnv ? ` · env aponta para @${tgWebhook.env.botUsernameEnv}` : ''}{tgWebhook.env.webhookSecretConfigured ? '' : ' · sem TELEGRAM_WEBHOOK_SECRET'}</p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {tgWebhookLoading ? 'Verificando webhook...' : 'Clique em Verificar para consultar o status no Telegram.'}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => checkTelegramWebhook(true)} disabled={tgWebhookLoading}>
+                  {tgWebhookLoading ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Verificando...</> : 'Verificar'}
+                </Button>
+                <Button size="sm" onClick={registerTelegramWebhook} disabled={tgWebhookRegistering} className="bg-blue-600 hover:bg-blue-700 text-white">
+                  {tgWebhookRegistering ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Registrando...</> : 'Registrar webhook'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Sugestões proativas do Nexo (prompt v2.0 §13.2) */}
         <Card className="hover:shadow-md transition-shadow duration-200">

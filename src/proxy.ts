@@ -38,7 +38,12 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/enterprises/public') ||
     pathname.startsWith('/api/enterprises/catalog/') ||
     pathname.startsWith('/api/enterprises/list-public') ||
-    pathname.startsWith('/api/webhooks/meta-leads');
+    pathname.startsWith('/api/webhooks/meta-leads') ||
+    // Webhook do bot: updates vindos dos servidores do Telegram nunca
+    // têm cookie de sessão — getToken aqui é trabalho morto (e o elo
+    // de vinculação do bot não pode depender do middleware). Match
+    // EXATO: a rota admin de registro (/register) continua vinculada.
+    pathname === '/api/telegram/webhook';
   const isLandingOrPublic =
     pathname.startsWith('/empreendimentos/') ||
     pathname.startsWith('/en/') ||
