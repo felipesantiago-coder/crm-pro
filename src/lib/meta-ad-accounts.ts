@@ -625,6 +625,10 @@ export interface LeadgenFormsFetchResult {
   via: 'account' | 'campaigns' | 'page' | null;
   /** Último erro reportado pela Graph quando nenhuma via retornou nada. */
   lastErrorMsg: string;
+  /** error.code da Graph da última tentativa com resposta parseável
+   *  (190 → token expirado; 200/10 → permissão). Alimenta o registro
+   *  de estado de autenticação da conta (meta-oauth-server). */
+  lastErrorCode?: string | null;
 }
 
 /**
@@ -671,6 +675,7 @@ export async function fetchLeadgenFormsForAccount(account: {
     try { parsed = JSON.parse(errText); } catch {}
     result.lastErrorMsg = parsed?.error?.message || `HTTP ${response.status}`;
     const errorCode = String(parsed?.error?.code || '');
+    result.lastErrorCode = errorCode || null;
     console.warn(`[Leadgen Forms] Conta ${accountId}: tentativa 1 (direct) falhou — code=${errorCode} msg=${result.lastErrorMsg}`);
 
     // Tentativa 2: via campaigns com leadgen_forms aninhado (fallback ads_read)
@@ -701,6 +706,7 @@ export async function fetchLeadgenFormsForAccount(account: {
           let parsed2: any = {};
           try { parsed2 = JSON.parse(err2Text); } catch {}
           result.lastErrorMsg = parsed2?.error?.message || `HTTP ${campResponse.status}`;
+          if (parsed2?.error?.code) result.lastErrorCode = String(parsed2.error.code);
           console.error(`[Leadgen Forms] Conta ${accountId}: tentativa 2 (campaigns) também falhou — ${result.lastErrorMsg}`);
         }
       } catch (err) {

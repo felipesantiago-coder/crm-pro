@@ -11,6 +11,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { AIChatWidget } from '@/components/ai-assistant/ai-chat-widget'; // [AI ASSISTANT] — remova esta linha e o <AIChatWidget /> abaixo para desativar
 import { useSessionGuard } from '@/hooks/use-session-guard';
 import { BrandSymbol } from '@/components/brand';
+import { consumeMetaOAuthFeedback } from '@/lib/meta-oauth-client';
 
 // Code splitting: carrega apenas a view ativa
 const DashboardView = lazy(() =>
@@ -64,6 +65,11 @@ function CRMApp() {
 
   // Intercepta 401 e redireciona ao login automaticamente
   useSessionGuard();
+
+  // Feedback do OAuth Meta (retorno do callback) — toast em qualquer view
+  useEffect(() => {
+    consumeMetaOAuthFeedback();
+  }, []);
 
   useEffect(() => {
     if (status === 'unauthenticated') {

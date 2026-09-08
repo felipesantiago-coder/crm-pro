@@ -10,7 +10,7 @@ generator client {
 // Storage/Realtime: Supabase (mesmo projeto: Object Storage + Realtime)
 // Autenticação: NextAuth Credentials (tabela "users" no Postgres, NÃO Supabase Auth)
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -747,6 +747,10 @@ model MetaAdAccount {
   /** App Secret dedicado para validar HMAC do webhook desta conta
    *  (opcional — se null, o secret global também é aceito). */
   appSecret   String?  @map("appSecret")
+  /** App ID comprovado pela Graph API quando o App Secret desta conta
+   *  foi validado no ato de salvar (debug_token). Usado pelo OAuth para
+   *  resolver as credenciais do app sem depender de envs. */
+  appId       String?  @map("appId")
   /** JSON array de page_ids do Facebook vinculados a esta conta.
    *  O webhook usa entry[].id para resolver a conta de origem. */
   pageIds     String?  @map("pageIds")          // JSON: ["111","222"]
@@ -767,6 +771,21 @@ model MetaAdAccount {
   /** Polling desta conta ativo: quando false, os formIds da conta não
    *  são consultados (o polling das demais contas segue normal). */
   pollingEnabled Boolean @default(true) @map("pollingEnabled")
+  // ── Estado de AUTENTICAÇÃO do token (OAuth + reconexão) ──
+  /** Origem do token: 'oauth' (Facebook Login for Business — token de
+   *  usuário de longa duração renovável via Reconectar) ou 'manual'
+   *  (token colado no card — System User/Page). null = legado. */
+  authSource String? @map("authSource")
+  /** Expiração do token de USUÁRIO (OAuth ~60 dias). null = desconhecida
+   *  (token manual/System User — não expira ou expiração não informada). */
+  tokenExpiresAt DateTime? @map("tokenExpiresAt")
+  /** Saúde do token: 'ok' | 'expiring' (≤7 dias) | 'expired' (Graph 190)
+   *  | 'permission_denied' (Graph 200/10 — permissão revogada/não aprovada).
+   *  Marcado automaticamente quando o uso do token falha na Graph API. */
+  authStatus String @default("ok") @map("authStatus")
+  /** Último erro de autenticação reportado pela Graph API (para a UI). */
+  lastAuthError String? @map("lastAuthError")
+  lastAuthErrorAt DateTime? @map("lastAuthErrorAt")
   /** Fila default para leads desta conta (menos específico que
    *  campanha/formulário; mais específico que a fila global default). */
   queueId     String?  @map("queueId")

@@ -11,6 +11,8 @@ import { resolveQueueForMetaLead, mapWithConcurrency } from '@/lib/meta-lead-rou
 import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, extractRawAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
 import { buildLeadTemperatureFields } from '@/lib/lead-temperature';
 import { fetchEnabledAdAccounts, parseJsonArray, upsertCampaignBindingAuto } from '@/lib/meta-ad-accounts';
+import { extractGraphErrorCode } from '@/lib/meta-oauth';
+import { clearAccountAuthState, registerAccountAuthFailure } from '@/lib/meta-oauth-server';
 
 // maxDuration=10s no Hobby (Vercel impõe). Pro permite até 300s.
 export const maxDuration = 10;
@@ -373,6 +375,11 @@ export async function GET(request: NextRequest) {
     const newWatermarks: Record<string, string> = { ...config.formWatermarks };
     const errors: string[] = [];
 
+    // (b) Estado de autenticação por CONTA: sucesso/falha acumulado
+    // durante o run e aplicado ao fim (1 write por conta, não por form).
+    const okAccountIds = new Set<string>();
+    const failedAccounts = new Map<string, { code: number | null; message: string }>();
+
     // 6. Processar alvos EM PARALELO (cada form é independente;
     //    cada conta usa o PRÓPRIO token — isolamento entre contas)
     await mapWithConcurrency(targets, FORM_CONCURRENCY, async (target) => {
@@ -397,6 +404,8 @@ export async function GET(request: NextRequest) {
 
       try {
         const leads = await fetchRecentLeads(formId, token, since);
+        // Token comprovadamente válido nesta conta (b)
+        if (adAccountId) okAccountIds.add(adAccountId);
         console.log(`[Meta Polling] Form ${formId}${accountName ? ` (conta: ${accountName})` : ''}: ${leads.length} leads encontrados (since=${since})`);
 
         // Ordenar por created_time ASC
@@ -442,8 +451,28 @@ export async function GET(request: NextRequest) {
         console.error(`[Meta Polling] ${msg}`);
         errors.push(msg);
         perForm.push({ formId, account: accountName, fetched: 0, imported: 0, error: msg });
+        // (b) 190/200/10 no corpo do erro Graph → marca a conta para
+        // reconexão (transitórios são ignorados por registerAccountAuthFailure)
+        if (adAccountId) {
+          const graphCode = extractGraphErrorCode(e instanceof Error ? e.message : String(e));
+          if (graphCode !== null) {
+            const prev = failedAccounts.get(adAccountId);
+            if (!prev) failedAccounts.set(adAccountId, { code: graphCode, message: msg.slice(0, 400) });
+          }
+        }
       }
     });
+
+    // (b) Aplica o estado de autenticação — 1 write por conta afetada.
+    // Falha vence sucesso (conta com 1 form OK e outro 190 continua
+    // marcada — o próximo run limpa quando todos OK).
+    for (const [accountId, failure] of failedAccounts) {
+      await registerAccountAuthFailure(accountId, failure);
+      okAccountIds.delete(accountId);
+    }
+    for (const accountId of okAccountIds) {
+      await clearAccountAuthState(accountId);
+    }
 
     const totalFetched = perForm.reduce((acc, f) => acc + f.fetched, 0);
     const totalImported = perForm.reduce((acc, f) => acc + f.imported, 0);

@@ -15,7 +15,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdmin();
+    const { error } = await requireAdmin();
+    if (error) return error;
 
     const { id } = await params;
     const body = await request.json();
@@ -49,6 +50,14 @@ export async function PATCH(
     if (accessToken !== undefined) {
       if (accessToken === null) data.accessToken = '';
       else if (String(accessToken).trim() !== '') data.accessToken = String(accessToken).trim();
+    }
+    // Token manual substituído → estado de autenticação zerado (a
+    // expiração anterior não pertence ao token novo).
+    if (typeof data.accessToken === 'string' && data.accessToken) {
+      data.authSource = 'manual';
+      data.authStatus = 'ok';
+      data.lastAuthError = null;
+      data.tokenExpiresAt = null;
     }
     if (verifyToken !== undefined) {
       data.verifyToken = verifyToken === null || verifyToken === '' ? null : String(verifyToken).trim();
@@ -119,6 +128,8 @@ export async function PATCH(
       if (validation.verdict === 'ok') {
         appSecretVerified = true;
         verifiedAppId = validation.appId;
+        // Persiste o App ID comprovado (fonte de credenciais do OAuth)
+        if (validation.appId) data.appId = validation.appId;
       } else {
         saveWarning = validation.reason;
       }
@@ -154,7 +165,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdmin();
+    const { error } = await requireAdmin();
+    if (error) return error;
 
     const { id } = await params;
     const existing = await db.metaAdAccount.findUnique({ where: { id }, select: { id: true } });

@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Building2, Info, Loader2, Plus } from 'lucide-react';
+import { Building2, Facebook, Info, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AccountConfigCard,
@@ -184,10 +184,26 @@ export function AdAccountsGroup() {
           <Building2 className="h-4 w-4 text-muted-foreground" />
           Contas cadastradas ({accounts.length})
         </div>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="h-4 w-4 mr-1" /> Nova conta
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* OAuth (Facebook Login for Business): o usuário autoriza com o
+              PRÓPRIO Facebook — sem criar app, sem System User, sem colar
+              token. Cada conta de anúncio ATIVA autorizada vira um card. */}
+          <Button
+            size="sm"
+            className="bg-[#1877F2] hover:bg-[#1667d9] text-white"
+            onClick={() => { window.location.href = '/api/meta-ad-accounts/oauth/start'; }}
+            title="Conectar contas autorizando o app com o Facebook (Login for Business)"
+          >
+            <Facebook className="h-4 w-4 mr-1" /> Conectar com o Facebook
+          </Button>
+          <Button size="sm" variant="outline" onClick={openCreate}>
+            <Plus className="h-4 w-4 mr-1" /> Nova conta (token manual)
+          </Button>
+        </div>
       </div>
+      <p className="text-[11px] text-muted-foreground">
+        Conecte contas autorizando com o Facebook (recomendado — pede todas as permissões de uma vez e guarda a expiração do token) ou cadastre manualmente um token de System User/Page, como antes.
+      </p>
 
       {loading ? (
         <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">

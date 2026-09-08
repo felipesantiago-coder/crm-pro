@@ -33,6 +33,7 @@ import {
   Eraser,
   Eye,
   EyeOff,
+  Facebook,
   Loader2,
   MinusCircle,
   Pencil,
@@ -81,6 +82,13 @@ export interface AdAccountData {
   pollingEnabled: boolean;
   queueId: string | null;
   queue?: { id: string; name: string; isActive: boolean } | null;
+  // Estado de autenticação do token (OAuth / reconexão)
+  authSource?: string | null;
+  authStatus?: string | null;
+  tokenExpiresAt?: string | null;
+  lastAuthError?: string | null;
+  tokenStatus?: 'unknown' | 'ok' | 'expiring' | 'expired' | 'permission_denied';
+  daysUntilTokenExpiry?: number | null;
   _count?: { campaignBindings: number; formMappings: number; capiConfigs: number };
 }
 
@@ -565,6 +573,44 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
             </Button>
           </div>
         </div>
+
+        {/* ── Estado de AUTENTICAÇÃO do token (OAuth/reconexão) ── */}
+        {/* Sempre visível quando há problema — token morto = leads perdidos
+            em silêncio. Reconectar usa o fluxo OAuth da própria conta. */}
+        {(account.tokenStatus === 'expired' || account.tokenStatus === 'permission_denied' || account.tokenStatus === 'expiring') && (
+          <div className={`border-t px-3 py-2 flex flex-wrap items-center gap-2 text-xs ${account.tokenStatus === 'expiring'
+            ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-200'
+            : 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/50 text-red-800 dark:text-red-200'}`}>
+            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="flex-1 min-w-[220px] leading-snug">
+              {account.tokenStatus === 'expired' && (
+                <><strong>Token EXPIRADO/REVOGADO</strong> — o webhook e o polling desta conta estão falhando; os leads dela NÃO entram.</>
+              )}
+              {account.tokenStatus === 'permission_denied' && (
+                <><strong>Permissão negada pela Meta</strong> — a permissão foi revogada ou nunca foi aprovada no App Review; as consultas do token falham (code 200).</>
+              )}
+              {account.tokenStatus === 'expiring' && (
+                <><strong>Token expira em {account.daysUntilTokenExpiry ?? '?'} dia(s)</strong> — renove agora para não perder leads quando expirar.</>
+              )}
+              {account.lastAuthError && (
+                <span className="block text-[10px] opacity-80 truncate" title={account.lastAuthError}>Último erro: {account.lastAuthError}</span>
+              )}
+            </span>
+            <Button
+              size="sm"
+              className="bg-[#1877F2] hover:bg-[#1667d9] text-white flex-shrink-0"
+              onClick={() => { window.location.href = `/api/meta-ad-accounts/oauth/start?accountId=${account.id}`; }}
+              title="Renovar o token autorizando o app com o Facebook (Login for Business)"
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1" /> Reconectar com o Facebook
+            </Button>
+          </div>
+        )}
+        {account.tokenStatus === 'ok' && account.tokenExpiresAt && (
+          <div className="border-t px-3 py-1 text-[10px] text-muted-foreground bg-muted/10">
+            Token {account.authSource === 'oauth' ? 'OAuth' : 'manual'} válido até {new Date(account.tokenExpiresAt).toLocaleDateString('pt-BR')} — o CRM avisa e permite renovar na semana da expiração.
+          </div>
+        )}
 
         {/* ── Configurações AGRUPADAS da conta ── */}
         {expanded && (

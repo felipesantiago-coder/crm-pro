@@ -3,15 +3,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/api-auth';
 import { normalizeAdAccountId } from '@/lib/meta-ad-accounts';
 import { validateAppSecretAtSave } from '@/lib/app-secret-validation';
+import { daysUntil, resolveAccountAuthStatus } from '@/lib/meta-oauth';
 
 // ============================================================
 // GET /api/meta-ad-accounts
 // Lista todas as contas de anúncios (multi-conta Meta Ads),
-// sem expor tokens completos.
+// sem expor tokens completos. Inclui o ESTADO DE AUTENTICAÇÃO do
+// token (expiração OAuth, permissão negada) para os banners de
+// reconexão da UI.
 // ============================================================
 export async function GET() {
   try {
-    await requireAdmin();
+    const { error } = await requireAdmin();
+    if (error) return error;
 
     const accounts = await db.metaAdAccount.findMany({
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
@@ -30,6 +34,12 @@ export async function GET() {
         pollingEnabled: true,
         queueId: true,
         queue: { select: { id: true, name: true, isActive: true } },
+        // Estado de autenticação (OAuth/reconexão)
+        authSource: true,
+        authStatus: true,
+        tokenExpiresAt: true,
+        lastAuthError: true,
+        lastAuthErrorAt: true,
         createdAt: true,
         updatedAt: true,
         _count: { select: { campaignBindings: true, formMappings: true, capiConfigs: true } },
@@ -43,6 +53,9 @@ export async function GET() {
         : null,
       hasVerifyToken: !!a.verifyToken,
       hasAppSecret: !!a.appSecret,
+      // Status COMPUTADO (expiração real vence o armazenado)
+      tokenStatus: resolveAccountAuthStatus({ authStatus: a.authStatus, tokenExpiresAt: a.tokenExpiresAt }),
+      daysUntilTokenExpiry: daysUntil(a.tokenExpiresAt),
       accessToken: undefined,
       verifyToken: undefined,
       appSecret: undefined,
@@ -67,7 +80,8 @@ export async function GET() {
 // ============================================================
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin();
+    const { error } = await requireAdmin();
+    if (error) return error;
 
     const body = await request.json();
     const { name, adAccountId, accessToken, verifyToken, appSecret, pageIds, formIds, queueId, enabled, isDefault, webhookEnabled, pollingEnabled } = body;
@@ -147,6 +161,13 @@ export async function POST(request: NextRequest) {
         isDefault: !!isDefault,
         webhookEnabled: webhookEnabled === undefined ? true : !!webhookEnabled,
         pollingEnabled: pollingEnabled === undefined ? true : !!pollingEnabled,
+        // Token manual: origem declarada + estado limpo (expiração
+        // desconhecida — System User não expira; user token manual a UI
+        // mostra como 'unknown' e o runtime marca 190 quando morrer).
+        authSource: 'manual',
+        authStatus: 'ok',
+        // App ID comprovado pela Graph API (quando o secret foi validado)
+        appId: verifiedAppId,
       },
     });
 
