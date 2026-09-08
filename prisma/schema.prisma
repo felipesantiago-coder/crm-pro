@@ -10,7 +10,7 @@ generator client {
 // Storage/Realtime: Supabase (mesmo projeto: Object Storage + Realtime)
 // Autenticação: NextAuth Credentials (tabela "users" no Postgres, NÃO Supabase Auth)
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
