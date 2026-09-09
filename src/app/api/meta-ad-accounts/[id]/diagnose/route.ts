@@ -223,19 +223,28 @@ export async function GET(
     return lostPagesProbe;
   };
 
-  // App id que EMITE o token salvo nesta conta (debug_token): permite
-  // confirmar que a página está inscrita para leadgen NO MESMO app cujo
-  // App Secret valida as assinaturas — não apenas em "algum" app.
-  let ourAppIdProbe: string | null | undefined;
-  const probeOurAppId = async (): Promise<string | null> => {
-    if (ourAppIdProbe !== undefined) return ourAppIdProbe;
+  // App id da conta para os checks de WEBHOOK. Ordem de resolução:
+  //   1. account.appId — COMPROVADO pela Graph no ato de salvar o App
+  //      Secret (par appId+secret validado): é o app cujas assinaturas
+  //      o CRM valida e o que deve receber as entregas do webhook.
+  //      Funciona inclusive com System User token, onde debug_token
+  //      costuma falhar ("debug_token indisponível").
+  //   2. debug_token (app que EMITE o token salvo) — proxy quando o
+  //      appId não foi comprovado; também expõe divergência token×app.
+  // tokenAppId fica disponível para sinalizar token emitido por app
+  // diferente do app do webhook (o polling funciona, mas a dupla
+  // token×secret fica inconsistente entre apps).
+  let appIdsProbe: { webhookAppId: string | null; tokenAppId: string | null } | undefined;
+  const probeAppIds = async (): Promise<{ webhookAppId: string | null; tokenAppId: string | null }> => {
+    if (appIdsProbe !== undefined) return appIdsProbe;
     const res = await graphGet(
       `debug_token?input_token=${encodeURIComponent(account.accessToken)}`,
       account.accessToken,
     );
     const appId = res.ok ? res.data?.data?.app_id : null;
-    ourAppIdProbe = typeof appId === 'string' && appId ? appId : null;
-    return ourAppIdProbe;
+    const tokenAppId = typeof appId === 'string' && appId ? appId : null;
+    appIdsProbe = { webhookAppId: account.appId || tokenAppId, tokenAppId };
+    return appIdsProbe;
   };
 
   // ── 2b. Permissões do token (SEMPRE) — causa raiz dos erros de
@@ -280,6 +289,24 @@ export async function GET(
           details: `Permissões do token — ${permList}`,
         });
       }
+    }
+  }
+
+  // ── 2c. Divergência token × app do webhook — o token pode ter sido
+  // emitido por OUTRO app (ex.: System User token gerado selecionando
+  // um app diferente do App Secret salvo): o polling e as leituras
+  // funcionam (o token tem as permissões e os ativos), mas token,
+  // webhook e assinaturas HMAC ficam atrelados a apps distintos —
+  // sinaliza para regenerar no app certo.
+  if (account.accessToken) {
+    const { webhookAppId, tokenAppId } = await probeAppIds();
+    if (tokenAppId && webhookAppId && tokenAppId !== webhookAppId) {
+      checks.push({
+        key: 'token_app_mismatch',
+        status: 'warn',
+        details: `O token desta conta foi emitido pelo app ${tokenAppId}, mas o app do webhook (App ID comprovado com o App Secret salvo) é o ${webhookAppId}. O polling e as leituras na Graph funcionam, mas token, webhook e assinaturas HMAC ficam em apps diferentes.`,
+        fix: `Gere um novo token para esta conta no app ${webhookAppId} (System User → Generate Token selecionando esse app, ou "Reconectar com o Facebook" no card) e atualize o card.`,
+      });
     }
   }
 
@@ -448,7 +475,7 @@ export async function GET(
     const leadgenApps = subEntries.filter(
       (s) => s && Array.isArray(s.subscribed_fields) && s.subscribed_fields.includes('leadgen'),
     );
-    const ourAppId = await probeOurAppId();
+    const { webhookAppId: ourAppId } = await probeAppIds();
     const ourAppHasLeadgen = ourAppId
       ? leadgenApps.some((s) => String(s.id) === ourAppId)
       : null; // null = não foi possível determinar o app desta conta
@@ -481,7 +508,7 @@ export async function GET(
         key: `page_${pageId}`,
         status: hasLeadgenAny ? 'warn' : 'error',
         details: hasLeadgenAny
-          ? `Page "${pageName}": webhook de LEADS assinado em algum app (campos: ${fieldsOf(leadgenApps[0])}) — NÃO foi possível confirmar que é o app DESTA conta (debug_token indisponível para o token salvo); confirme no Meta for Developers → Webhooks que o app inscrito é o mesmo do App Secret salvo${pageTokenNote}`
+          ? `Page "${pageName}": webhook de LEADS assinado em algum app (campos: ${fieldsOf(leadgenApps[0])}) — NÃO foi possível confirmar que é o app DESTA conta (sem App ID comprovado salvo e debug_token indisponível para o token salvo); confirme no Meta for Developers → Webhooks que o app inscrito é o mesmo do App Secret salvo${pageTokenNote}`
           : `Page "${pageName}": o app NÃO está inscrito no campo leadgen desta página — leads NÃO chegam via webhook${pageTokenNote}`,
         fix: hasLeadgenAny
           ? undefined
@@ -681,12 +708,13 @@ export async function GET(
   // sintoma exato de "só polling funciona".
   //
   // Consulta GET /{app-id}/subscriptions com app access token montado
-  // de app_id (debug_token) + App Secret salvo — que também CONFIRMA o
-  // App Secret REAL contra a Graph API: o self-test 5b assina e
-  // verifica com o MESMO secret salvo, portanto é auto-consistente e
-  // não prova que o secret é o do app que entrega os leads.
+  // de app_id (appId comprovado → debug_token) + App Secret salvo — que
+  // também CONFIRMA o App Secret REAL contra a Graph API: o self-test
+  // 5b assina e verifica com o MESMO secret salvo, portanto é
+  // auto-consistente e não prova que o secret é o do app que entrega
+  // os leads.
   if (account.appSecret && account.webhookEnabled !== false) {
-    const ourAppIdForSubs = await probeOurAppId();
+    const { webhookAppId: ourAppIdForSubs } = await probeAppIds();
     let fetchOutcome: AppSubscriptionFetchOutcome;
     if (!ourAppIdForSubs) {
       fetchOutcome = { kind: 'no_app_id' };
