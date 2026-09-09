@@ -5,15 +5,14 @@ import { db } from '@/lib/db';
 /**
  * Telegram Webhook — receives updates from the Bot.
  *
- * Fluxo de vinculação SEGURA (§18.1):
+ * Fluxo de vinculação SEGURA (§18.1) — ÚNICO fluxo aceito:
  * 1. Usuário autenticado no CRM gera um convite (POST /api/telegram/link-token)
  * 2. Abre o deep link https://t.me/<bot>?start=<token-opaco> e envia /start <token>
  * 3. Este endpoint valida: hash, validade (TTL), uso único, chat PRIVADO,
  *    e vincula o chat ao usuário esperado — prova de posse do canal.
  *
- * Compatibilidade (desativação progressiva): /start <email> continua
- * aceito, mas confirma apenas o CONHECIMENTO do endereço — a UI do CRM
- * não o recomenda mais e orienta o convite seguro.
+ * SECURITY: o fluxo legado `/start <email>` foi removido (vinculação
+ * conhece apenas o e-mail = sequestro de notificações + enumeração).
  *
  * To set up: POST https://api.telegram.org/bot<TOKEN>/setWebhook?url=<YOUR_DOMAIN>/api/telegram/webhook
  */
@@ -45,17 +44,21 @@ export async function POST(request: NextRequest) {
     const text = message.text.trim();
     const firstName = message.from?.first_name || '';
 
-    // Handle /start command with optional parameter (token seguro ou e-mail legado)
+    // Handle /start command — APENAS o fluxo seguro por convite (§18.1).
+    // SECURITY: o fluxo legado `/start <email>` foi REMOVIDO — ele
+    // vinculava o chat conhecendo só o e-mail do usuário (quem soubesse
+    // o e-mail recebia os leads/PII dele) e servia de oráculo de
+    // enumeração de e-mails. Qualquer argumento que não seja um convite
+    // válido recebe a mesma mensagem de orientação.
     if (text.startsWith('/start')) {
       const parts = text.split(/\s+/);
-      const arg = parts[1]; // token opaco OU e-mail
+      const arg = parts[1]; // token opaco
 
-      if (!arg) {
+      if (!arg || !LINK_TOKEN_PATTERN.test(arg)) {
         await sendTelegramReply(BOT_TOKEN, chatId,
           `👋 Olá${firstName ? ', ' + escapeHtml(firstName) : ''}!\n\n` +
           `Para vincular este Telegram ao CRM, abra <b>Ajustes → Notificações</b> ` +
-          `no CRM e toque em <b>“Vincular Telegram”</b> — o convite chega por aqui.\n\n` +
-          `Ou envie: <code>/start seu_email@exemplo.com</code>`
+          `no CRM e toque em <b>“Vincular Telegram”</b> — o convite chega por aqui e vale 15 minutos.`
         );
         return NextResponse.json({ ok: true });
       }
@@ -139,51 +142,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // ── Fluxo legado: /start <email> (desativação progressiva) ──
-      const emailArg = arg;
-
-      // Look up user by email
-      const user = await db.user.findUnique({
-        where: { email: emailArg.toLowerCase() },
-        select: { id: true, name: true, email: true, telegramChatId: true },
-      });
-
-      if (!user) {
-        await sendTelegramReply(BOT_TOKEN, chatId,
-          `❌ Nenhum usuário encontrado com o e-mail:\n<code>${escapeHtml(emailArg)}</code>\n\n` +
-          `Verifique se o e-mail está correto e tente novamente.`
-        );
-        return NextResponse.json({ ok: true });
-      }
-
-      // Check if another user already has this chatId
-      const existingOwner = await db.user.findFirst({
-        where: { telegramChatId: chatId },
-        select: { id: true, name: true, email: true },
-      });
-
-      if (existingOwner && existingOwner.id !== user.id) {
-        await sendTelegramReply(BOT_TOKEN, chatId,
-          `⚠️ Este Telegram já está vinculado a outra conta:\n` +
-          `<b>${escapeHtml(existingOwner.name)}</b> (${escapeHtml(existingOwner.email)})\n\n` +
-          `Se você é o dono desta conta, entre em contato com o administrador.`
-        );
-        return NextResponse.json({ ok: true });
-      }
-
-      // Link chat ID to user
-      await db.user.update({
-        where: { id: user.id },
-        data: { telegramChatId: chatId },
-      });
-
-      await sendTelegramReply(BOT_TOKEN, chatId,
-        `✅ <b>Vinculado com sucesso!</b>\n\n` +
-        `👤 <b>Nome:</b> ${escapeHtml(user.name)}\n` +
-        `📧 <b>E-mail:</b> ${escapeHtml(user.email)}\n\n` +
-        `Agora você receberá notificações de novos leads aqui! 🚀\n\n` +
-        `<i>Dica: prefira sempre o convite gerado em Ajustes → Notificações — ele confirma que este chat é seu.</i>`
-      );
+      // (fluxo legado por e-mail REMOVIDO — ver SECURITY acima)
       return NextResponse.json({ ok: true });
     }
 

@@ -55,7 +55,7 @@ export async function POST(
       return NextResponse.json({ error: 'Conta sem ID de conta de anúncios — edite a conta e informe o adAccountId' }, { status: 400 });
     }
 
-    const { forms, via, lastErrorMsg, lastErrorCode } = await fetchLeadgenFormsForAccount(account);
+    const { forms, via, lastErrorMsg, lastErrorCode, attempts } = await fetchLeadgenFormsForAccount(account);
 
     if (forms.length === 0 && lastErrorMsg) {
       // (b) Falha de AUTENTICAÇÃO do token (190/200/10): registra o
@@ -73,9 +73,18 @@ export async function POST(
           ? '\n\nPERMISSÃO NEGADA pela Graph (code 200/10) — a permissão pode ter sido revogada ou nunca aprovada no App Review. Reconecte a conta com o Facebook ou ajuste as permissões do token.'
           : '';
       const permissionHint = pageCount > 0
-        ? '\n\nPara resolver:\n1. Conceda ads_read ao token desta conta: System User com a conta de anúncios como ativo (business.facebook.com/settings/system-users) OU papel de ANUNCIANTE para a identidade do token — depois gere um novo token e atualize o card.\n2. As páginas vinculadas também foram consultadas sem sucesso — confira os detalhes por página no console do servidor.'
-        : '\n\nPara resolver:\n1. Conceda ads_read ao token desta conta (System User com a conta de anúncios como ativo) e gere um novo token.\n2. Nenhum Page ID está salvo nesta conta — salve-os na aba Webhook para habilitar a sincronização via páginas (não exige ads_read).';
-      return NextResponse.json({ error: lastErrorMsg + authHint + permissionHint }, { status: 400 });
+        ? '\n\nPara resolver:\n1. Conceda ads_read ao token desta conta: System User com a conta de anúncios como ativo (business.facebook.com/settings/system-users) OU papel de ANUNCIANTE para a identidade do token — depois gere um novo token e atualize o card.\n2. As páginas vinculadas também foram consultadas — o resultado de cada uma está no "Diagnóstico por via" abaixo.\n3. Alternativa sem ads_read: cole os IDs dos formulários manualmente na aba Polling desta conta (um ID por linha) — o polling busca os leads com o token da conta.'
+        : '\n\nPara resolver:\n1. Conceda ads_read ao token desta conta (System User com a conta de anúncios como ativo) e gere um novo token.\n2. Nenhum Page ID está salvo nesta conta — salve-os na aba Webhook para habilitar a sincronização via páginas (não exige ads_read).\n3. Alternativa: cole os IDs dos formulários manualmente na aba Polling desta conta (um ID por linha).';
+      // Diagnóstico por via: mostra ao admin O QUE falhou em cada
+      // tentativa (conta, campanhas, página a página) direto no toast —
+      // antes isso só existia no console do servidor (inacessível na
+      // prática dentro da Vercel).
+      const attemptLines = attempts
+        .slice(0, 13)
+        .map((a) => `• ${a.label}${a.code ? ` [code ${a.code}]` : ''}: ${a.msg.slice(0, 200)}`)
+        .join('\n');
+      const diagnosisBlock = attemptLines ? `\n\nDiagnóstico por via:\n${attemptLines}` : '';
+      return NextResponse.json({ error: lastErrorMsg + authHint + permissionHint + diagnosisBlock }, { status: 400 });
     }
 
     if (forms.length === 0) {

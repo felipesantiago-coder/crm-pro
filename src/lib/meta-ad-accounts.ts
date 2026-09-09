@@ -629,6 +629,23 @@ export interface LeadgenFormsFetchResult {
    *  (190 → token expirado; 200/10 → permissão). Alimenta o registro
    *  de estado de autenticação da conta (meta-oauth-server). */
   lastErrorCode?: string | null;
+  /** Rastro detalhado de cada tentativa (conta, campanhas, página a
+   *  página) — permite que o chamador mostre ao admin O NOME de
+   *  onde falhou e por quê, sem depender do console do servidor. */
+  attempts: LeadgenFormsAttempt[];
+}
+
+export interface LeadgenFormsAttempt {
+  via: 'account' | 'campaigns' | 'page';
+  /** Rótulo humano do alvo: "conta act_123", "campanhas da conta", "página 111". */
+  label: string;
+  ok: boolean;
+  /** Quantidade de formulários achados (quando ok). */
+  found?: number;
+  /** error.code da Graph (quando aplicável). */
+  code?: string | null;
+  /** Mensagem de resultado (erro da Graph, HTTP ou "OK"). */
+  msg: string;
 }
 
 /**
@@ -645,7 +662,7 @@ export async function fetchLeadgenFormsForAccount(account: {
 }): Promise<LeadgenFormsFetchResult> {
   const accountId = normalizeAdAccountId(account.adAccountId);
   const label = account.name || accountId;
-  const result: LeadgenFormsFetchResult = { forms: [], via: null, lastErrorMsg: '' };
+  const result: LeadgenFormsFetchResult = { forms: [], via: null, lastErrorMsg: '', attempts: [] };
   if (!accountId || !account.accessToken) return result;
 
   // Tentativa 1: edge direta leadgen_forms (requer ads_read no token).
@@ -661,6 +678,7 @@ export async function fetchLeadgenFormsForAccount(account: {
     });
   } catch (err) {
     result.lastErrorMsg = err instanceof Error ? err.message : 'Falha de rede na Graph API';
+    result.attempts.push({ via: 'account', label: `conta ${accountId}`, ok: false, msg: result.lastErrorMsg });
     console.warn(`[Leadgen Forms] Conta ${accountId}: tentativa 1 (direct) falhou — ${result.lastErrorMsg}`);
     return result;
   }
@@ -669,6 +687,7 @@ export async function fetchLeadgenFormsForAccount(account: {
     const data = await response.json().catch(() => ({}));
     result.forms = data.data || [];
     if (result.forms.length > 0) result.via = 'account';
+    result.attempts.push({ via: 'account', label: `conta ${accountId}`, ok: true, found: result.forms.length, msg: `OK — ${result.forms.length} formulário(s)` });
   } else {
     const errText = await response.text().catch(() => '');
     let parsed: any = {};
@@ -676,6 +695,7 @@ export async function fetchLeadgenFormsForAccount(account: {
     result.lastErrorMsg = parsed?.error?.message || `HTTP ${response.status}`;
     const errorCode = String(parsed?.error?.code || '');
     result.lastErrorCode = errorCode || null;
+    result.attempts.push({ via: 'account', label: `conta ${accountId}`, ok: false, code: errorCode || null, msg: result.lastErrorMsg });
     console.warn(`[Leadgen Forms] Conta ${accountId}: tentativa 1 (direct) falhou — code=${errorCode} msg=${result.lastErrorMsg}`);
 
     // Tentativa 2: via campaigns com leadgen_forms aninhado (fallback ads_read)
@@ -701,16 +721,19 @@ export async function fetchLeadgenFormsForAccount(account: {
             result.via = 'campaigns';
             console.log(`[Leadgen Forms] Conta ${accountId}: tentativa 2 (campaigns) encontrou ${result.forms.length} formulários`);
           }
+          result.attempts.push({ via: 'campaigns', label: 'campanhas da conta', ok: true, found: result.forms.length, msg: `OK — ${result.forms.length} formulário(s)` });
         } else {
           const err2Text = await campResponse.text().catch(() => '');
           let parsed2: any = {};
           try { parsed2 = JSON.parse(err2Text); } catch {}
           result.lastErrorMsg = parsed2?.error?.message || `HTTP ${campResponse.status}`;
           if (parsed2?.error?.code) result.lastErrorCode = String(parsed2.error.code);
+          result.attempts.push({ via: 'campaigns', label: 'campanhas da conta', ok: false, code: parsed2?.error?.code ? String(parsed2.error.code) : null, msg: result.lastErrorMsg });
           console.error(`[Leadgen Forms] Conta ${accountId}: tentativa 2 (campaigns) também falhou — ${result.lastErrorMsg}`);
         }
       } catch (err) {
         result.lastErrorMsg = err instanceof Error ? err.message : 'Falha de rede na Graph API';
+        result.attempts.push({ via: 'campaigns', label: 'campanhas da conta', ok: false, msg: result.lastErrorMsg });
         console.error(`[Leadgen Forms] Conta ${accountId}: tentativa 2 (campaigns) falhou — ${result.lastErrorMsg}`);
       }
     }
@@ -719,33 +742,46 @@ export async function fetchLeadgenFormsForAccount(account: {
   // Tentativa 3 (fallback SEM ads_read): edge leadgen_forms de cada
   // página vinculada — usa o page token salvo quando existir
   // (resolvePageToken); cobre tokens de papel de página.
-  const pageIds = parseJsonArray(account.pageIds).slice(0, 10);
-  for (const pageId of pageIds) {
-    const pageToken = resolvePageToken(account, pageId);
-    if (!pageToken) continue;
-    const pageUrl = `https://graph.facebook.com/v26.0/${pageId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
-    try {
-      const pageRes = await fetch(pageUrl, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${pageToken}` },
-      });
-      if (pageRes.ok) {
-        const pageData = await pageRes.json().catch(() => ({}));
-        const pageForms: LeadgenFormSummary[] = Array.isArray(pageData?.data) ? pageData.data : [];
-        if (pageForms.length > 0) {
-          result.forms = pageForms;
-          result.via = 'page';
-          console.log(`[Leadgen Forms] Conta ${accountId} (${label}): tentativa 3 (página ${pageId}) encontrou ${pageForms.length} formulários`);
-          return result;
-        }
-      } else {
-        const err3Text = await pageRes.text().catch(() => '');
-        let parsed3: any = {};
-        try { parsed3 = JSON.parse(err3Text); } catch {}
-        console.warn(`[Leadgen Forms] Conta ${accountId}: tentativa 3 (página ${pageId}) falhou — ${parsed3?.error?.message || `HTTP ${pageRes.status}`}`);
+  // CORREÇÃO: só roda quando NADA foi achado nas vias 1/2 — antes,
+  // ela sobrescrevia result.forms com os formulários DA PÁGINA,
+  // descartando formulários já listados pela edge da conta.
+  if (result.forms.length === 0) {
+    const pageIds = parseJsonArray(account.pageIds).slice(0, 10);
+    for (const pageId of pageIds) {
+      const pageToken = resolvePageToken(account, pageId);
+      if (!pageToken) {
+        result.attempts.push({ via: 'page', label: `página ${pageId}`, ok: false, msg: 'sem token de página disponível' });
+        continue;
       }
-    } catch (err) {
-      console.warn(`[Leadgen Forms] Conta ${accountId}: tentativa 3 (página ${pageId}) falhou —`, err instanceof Error ? err.message : err);
+      const pageUrl = `https://graph.facebook.com/v26.0/${pageId}/leadgen_forms?fields=id,name,status,created_time&limit=100`;
+      try {
+        const pageRes = await fetch(pageUrl, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${pageToken}` },
+        });
+        if (pageRes.ok) {
+          const pageData = await pageRes.json().catch(() => ({}));
+          const pageForms: LeadgenFormSummary[] = Array.isArray(pageData?.data) ? pageData.data : [];
+          result.attempts.push({ via: 'page', label: `página ${pageId}`, ok: true, found: pageForms.length, msg: `OK — ${pageForms.length} formulário(s)` });
+          if (pageForms.length > 0) {
+            result.forms = pageForms;
+            result.via = 'page';
+            console.log(`[Leadgen Forms] Conta ${accountId} (${label}): tentativa 3 (página ${pageId}) encontrou ${pageForms.length} formulários`);
+            return result;
+          }
+        } else {
+          const err3Text = await pageRes.text().catch(() => '');
+          let parsed3: any = {};
+          try { parsed3 = JSON.parse(err3Text); } catch {}
+          const msg3 = parsed3?.error?.message || `HTTP ${pageRes.status}`;
+          result.attempts.push({ via: 'page', label: `página ${pageId}`, ok: false, code: parsed3?.error?.code ? String(parsed3.error.code) : null, msg: msg3 });
+          console.warn(`[Leadgen Forms] Conta ${accountId}: tentativa 3 (página ${pageId}) falhou — ${msg3}`);
+        }
+      } catch (err) {
+        const msg3 = err instanceof Error ? err.message : String(err);
+        result.attempts.push({ via: 'page', label: `página ${pageId}`, ok: false, msg: msg3 });
+        console.warn(`[Leadgen Forms] Conta ${accountId}: tentativa 3 (página ${pageId}) falhou —`, msg3);
+      }
     }
   }
 
