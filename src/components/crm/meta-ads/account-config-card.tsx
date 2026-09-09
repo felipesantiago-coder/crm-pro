@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { buildCapiDeleteConfirmMessage } from '@/lib/capi-delete-confirm';
+import { buildFormRemovalConfirmMessage } from '@/lib/lead-form-removal';
 import { CampaignBindingsSection } from './campaign-bindings-section';
 import { CapiQualityDialog } from './capi-quality-dialog';
 
@@ -58,7 +59,7 @@ import { CapiQualityDialog } from './capi-quality-dialog';
 //   Webhook      → verify token, app secret, page IDs e toggle próprio
 //   Polling      → form IDs da conta + Sync Forms + toggle próprio
 //   Campanhas    → fila por campaignId aprendida/atribuída nesta conta
-//   Formulários  → form mappings aprendidos nesta conta (fila + CAPI)
+//   Formulários  → form mappings aprendidos nesta conta (fila + CAPI + remoção)
 //   CAPI         → datasets vinculados à conta (testar/vincular/criar)
 //
 // Toda alteração usa PATCH/POST nos endpoints existentes e chama
@@ -182,6 +183,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
   const [savingCapi, setSavingCapi] = useState(false);
   const [testingCapiId, setTestingCapiId] = useState<string | null>(null);
   const [deletingCapiId, setDeletingCapiId] = useState<string | null>(null);
+  const [deletingFormId, setDeletingFormId] = useState<string | null>(null);
 
   // ── Testes & Diagnóstico (por conta) ──
   const [diagnosing, setDiagnosing] = useState(false);
@@ -306,6 +308,39 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
       }
     } catch {
       toast.error('Falha de conexão');
+    }
+  }
+
+  // Remove o formulário aprendido desta conta: apaga os LeadFormMapping
+  // escopados (fila/CAPI/empreendimento aprendidos) e limpa o formId dos
+  // arrays formIds dos configs CAPI — leads já capturados permanecem.
+  // Se um novo lead chegar por este formulário, ele é reaprendido.
+  async function removeForm(mapping: GroupedMapping) {
+    if (
+      !confirm(
+        buildFormRemovalConfirmMessage({
+          formId: mapping.formId,
+          formName: mapping.formName,
+          totalLeads: mapping.totalLeads,
+        })
+      )
+    )
+      return;
+    setDeletingFormId(mapping.formId);
+    try {
+      const params = new URLSearchParams({ formId: mapping.formId, adAccountId: account.id });
+      const res = await fetch(`/api/meta-capi-configs/form-mappings?${params}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(data?.error || 'Erro ao remover formulário');
+        return;
+      }
+      toast.success(`Formulário ${mapping.formName ? `"${mapping.formName}" ` : ''}removido desta conta`);
+      onChanged();
+    } catch {
+      toast.error('Erro ao remover formulário');
+    } finally {
+      setDeletingFormId(null);
     }
   }
 
@@ -987,6 +1022,16 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                                 ))}
                               </SelectContent>
                             </Select>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                              onClick={() => removeForm(mapping)}
+                              disabled={deletingFormId === mapping.formId}
+                              title="Remover formulário desta conta (leads já capturados são preservados)"
+                            >
+                              {deletingFormId === mapping.formId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                            </Button>
                           </div>
                         </div>
                       </div>

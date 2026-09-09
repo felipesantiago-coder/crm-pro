@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/api-auth';
+import { removeFormMapping } from '@/lib/lead-form-removal';
 
 // ============================================================
 // GET /api/meta-capi-configs/form-mappings
@@ -222,6 +223,39 @@ export async function PATCH(request: NextRequest) {
     }
     console.error('[Form Mappings] Erro ao atualizar:', error);
     return NextResponse.json({ error: 'Erro ao atualizar mapeamento' }, { status: 500 });
+  }
+}
+
+// ============================================================
+// DELETE /api/meta-capi-configs/form-mappings?formId=…&adAccountId=…
+// Remove o formulário aprendido da aba "Formulários" do card da
+// conta (admin). Escopo OBRIGATÓRIO: com adAccountId remove só as
+// linhas daquela conta; SEM o parâmetro remove apenas as linhas do
+// grupo global (adAccountId null) — nunca "todas as contas" de uma vez.
+// Deleta os LeadFormMapping (fila/CAPI/empreendimento aprendidos) e
+// limpa o formId dos arrays formIds dos MetaCapConfig. Leads já
+// capturados e LeadFormScoring (Temperatura) NÃO são tocados.
+// ============================================================
+export async function DELETE(request: NextRequest) {
+  try {
+    const { error: authError } = await requireAdmin();
+    if (authError) return authError;
+    const { searchParams } = new URL(request.url);
+    const formId = searchParams.get('formId');
+    const adAccountId = searchParams.get('adAccountId'); // ausente → global (sem conta)
+
+    if (!formId) {
+      return NextResponse.json({ error: 'formId é obrigatório' }, { status: 400 });
+    }
+
+    const result = await removeFormMapping(db, { formId, adAccountId });
+    return NextResponse.json(result);
+  } catch (error: any) {
+    if (error?.status === 401 || error?.status === 403) {
+      return NextResponse.json({ error: 'Acesso negado' }, { status: error.status });
+    }
+    console.error('[Form Mappings] Erro ao remover formulário:', error);
+    return NextResponse.json({ error: 'Erro ao remover formulário' }, { status: 500 });
   }
 }
 
