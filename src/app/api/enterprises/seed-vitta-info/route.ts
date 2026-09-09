@@ -1,13 +1,27 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
 /**
  * Endpoint TEMPORÁRIO para popular o cachedInfo do Residencial Vitta.
  * Deve ser removido após uso.
  *
+ * SECURITY: era público e MUTAVA o DB sem autenticação. Agora exige
+ * o mesmo segredo de seed do /api/auth/seed (Bearer SEED_SECRET) e
+ * retorna 403 quando SEED_SECRET não está configurado.
+ *
  * GET /api/enterprises/seed-vitta-info
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const seedSecret = process.env.SEED_SECRET;
+  if (!seedSecret) {
+    return NextResponse.json({ error: 'Seed desabilitado' }, { status: 403 });
+  }
+
+  const authHeader = request.headers.get('authorization');
+  if (authHeader !== `Bearer ${seedSecret}`) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  }
+
   try {
     const enterprise = await db.enterprise.findFirst({
       where: { name: { contains: 'Vitta', mode: 'insensitive' } },

@@ -12,11 +12,20 @@ import { checkAndNotifyUpcomingSchedules, checkAndNotifyDueReminders } from '@/l
  */
 export async function GET(request: Request) {
   try {
-    // Validação de segurança — apenas Vercel Cron ou chave válida
+    // Validação de segurança — apenas Vercel Cron ou chave válida.
+    // SECURITY (fail-closed): sem CRON_SECRET configurado em produção,
+    // o endpoint era ABERTO — qualquer um podia disparar notificações e
+    // ler detalhes de agendas/lembretes na resposta. Em produção exige
+    // o segredo; em desenvolvimento permite sem segredo para testes locais.
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
 
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if (!cronSecret) {
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[CRON] CRON_SECRET não configurado — endpoint bloqueado em produção');
+        return NextResponse.json({ error: 'CRON_SECRET não configurado' }, { status: 403 });
+      }
+    } else if (authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 

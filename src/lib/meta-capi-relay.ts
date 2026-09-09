@@ -1,19 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server';
-
-/**
- * Meta Conversions API (CAPI) — Server-Side Event Forwarding
- *
- * Sends conversion events directly to Meta's server, bypassing
- * browser ad blockers. Used as a server-side complement to the
- * browser Meta Pixel for reliable conversion tracking.
- *
- * POST /api/meta-capi
- * Body: { event_name, event_id?, user_data?, custom_data?, action_source? }
- *
- * Required env vars:
- *   META_PIXEL_ID       — Facebook Pixel ID
- *   META_ACCESS_TOKEN    — System User Token with ads_management permission
- */
+// ============================================================
+// Meta Conversions API (CAPI) — Server-Side Event Relay
+//
+// Envia eventos de conversão diretamente para a Meta (server-side),
+// ignorando ad blockers. Complemento do Pixel no browser.
+//
+// SECURITY: esta lógica vivia na rota pública POST /api/meta-capi,
+// cujo "gate" de origin era inefetivo (curl sem Origin passava) e
+// permitia injeção de conversões falsas no pixel. A lógica agora é
+// uma função de lib importada exclusivamente por código server-side
+// (public-lead) — a superfície HTTP pública foi removida.
+//
+// Required env vars:
+//   META_PIXEL_ID      — Facebook Pixel ID
+//   META_ACCESS_TOKEN  — System User Token com ads_management
+// ============================================================
 
 const META_API_VERSION = 'v26.0';
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
@@ -27,48 +27,53 @@ async function sha256(str: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function POST(request: NextRequest) {
-  // Security: Only accept requests from same-origin (internal server-side calls)
-  // Prevents external abuse of the Meta CAPI endpoint
-  const origin = request.headers.get('origin');
-  const host = request.headers.get('host');
-  const referer = request.headers.get('referer');
-  const appUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || '';
-  const isInternal =
-    // Same-origin fetch (no origin header = server-side)
-    !origin ||
-    // Origin matches the app URL
-    (appUrl && origin === appUrl) ||
-    // Referer matches the app domain
-    (appUrl && referer && referer.startsWith(appUrl)) ||
-    // No origin, no referer, has host = likely server-side
-    (!origin && !referer && !!host);
+export interface MetaCapiRelayUserData {
+  email?: string;
+  phone?: string;
+  name?: string;
+  ip?: string;
+  user_agent?: string;
+  fbp?: string;
+  fbc?: string;
+  page_url?: string;
+}
 
-  if (!isInternal) {
-    console.warn(`[Meta CAPI] Blocked external request: origin=${origin} referer=${referer} host=${host}`);
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+export interface MetaCapiRelayEvent {
+  event_name: string;
+  event_id?: string;
+  user_data?: MetaCapiRelayUserData;
+  custom_data?: Record<string, unknown>;
+  action_source?: string;
+}
 
+export interface MetaCapiRelayResult {
+  ok: boolean;
+  sent: boolean;
+  reason?: 'not_configured' | 'meta_error' | 'internal_error';
+  status?: number;
+  error?: string;
+  fbtrace_id?: string;
+}
+
+/**
+ * Envia UM evento de conversão para a Meta CAPI. Nunca lança —
+ * o chamador é fire-and-forget por natureza (lead público).
+ */
+export async function sendMetaCapiRelayEvent(
+  payload: MetaCapiRelayEvent,
+): Promise<MetaCapiRelayResult> {
   const pixelId = process.env.META_PIXEL_ID;
   const accessToken = process.env.META_ACCESS_TOKEN;
 
   if (!pixelId || !accessToken) {
-    // CAPI not configured — silently ignore (don't block the caller)
-    return NextResponse.json({ ok: true, sent: false, reason: 'not_configured' });
+    return { ok: true, sent: false, reason: 'not_configured' };
   }
 
   try {
-    const body = await request.json();
-    const {
-      event_name,
-      event_id,
-      user_data: rawUserData,
-      custom_data,
-      action_source = 'website',
-    } = body;
+    const { event_name, event_id, user_data: rawUserData, custom_data, action_source = 'website' } = payload;
 
     if (!event_name || typeof event_name !== 'string') {
-      return NextResponse.json({ error: 'event_name is required' }, { status: 400 });
+      return { ok: false, sent: false, reason: 'internal_error', error: 'event_name is required' };
     }
 
     // Build user_data with hashed PII
@@ -135,27 +140,27 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      console.error('[Meta CAPI] Error from Meta API:', response.status, JSON.stringify(result));
-      // Don't fail the request — CAPI is fire-and-forget from the caller's perspective
-      return NextResponse.json({
+      console.error('[Meta CAPI relay] Error from Meta API:', response.status, JSON.stringify(result));
+      return {
         ok: false,
         sent: true,
+        reason: 'meta_error',
         status: response.status,
         error: result?.error?.message || 'Meta API error',
-      });
+      };
     }
 
     const fbTraceId = result?.fbtrace_id;
     if (fbTraceId) {
-      console.log(`[Meta CAPI] Event "${event_name}" sent successfully. fbtrace_id=${fbTraceId}`);
+      console.log(`[Meta CAPI relay] Event "${event_name}" sent successfully. fbtrace_id=${fbTraceId}`);
     }
 
-    return NextResponse.json({ ok: true, sent: true, fbtrace_id: fbTraceId });
+    return { ok: true, sent: true, fbtrace_id: fbTraceId };
   } catch (error) {
-    console.error('[Meta CAPI] Unexpected error:', error);
-    return NextResponse.json({ ok: false, sent: false, error: 'internal_error' });
+    console.error('[Meta CAPI relay] Unexpected error:', error);
+    return { ok: false, sent: false, reason: 'internal_error' };
   }
 }

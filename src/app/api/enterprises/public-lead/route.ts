@@ -8,6 +8,7 @@ import type { TelegramLeadNotificationInput } from '@/lib/lead-notify/types';
 import { formatMetaPhone } from '@/lib/meta-lead-utils';
 import { rateLimit } from '@/lib/rate-limit';
 import { assignLeadToUser, peekNextUser, type AssignResult } from '@/lib/lead-queue';
+import { sendMetaCapiRelayEvent } from '@/lib/meta-capi-relay';
 
 /**
  * PUBLIC endpoint — no auth required.
@@ -203,34 +204,32 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Helper: fire Meta CAPI event (fire-and-forget, ad-blocker proof) ──
+    // SECURITY: chamada direta à lib (sem hop HTTP público) — a antiga
+    // rota /api/meta-capi foi removida por permitir injeção de conversões.
     const fireMetaCAPI = () => {
       if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) return;
       const fbp = request.cookies.get('_fbp')?.value;
       const fbc = request.cookies.get('_fbc')?.value;
-      fetch('/api/meta-capi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event_name: 'Lead',
-          event_id: metaEventId || undefined,
-          action_source: 'website',
-          user_data: {
-            email: cleanEmail || undefined,
-            phone: cleanPhone.length >= 10 ? cleanPhone : undefined,
-            name: name.trim(),
-            fbp: fbp || undefined,
-            fbc: fbc || undefined,
-            ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined,
-            user_agent: request.headers.get('user-agent') || undefined,
-            page_url: slug ? `${process.env.NEXT_PUBLIC_APP_URL || ''}/empreendimentos/${slug}` : undefined,
-          },
-          custom_data: {
-            content_name: enterpriseName || undefined,
-            content_category: 'empreendimento',
-            value: 1,
-            currency: 'BRL',
-          },
-        }),
+      sendMetaCapiRelayEvent({
+        event_name: 'Lead',
+        event_id: metaEventId || undefined,
+        action_source: 'website',
+        user_data: {
+          email: cleanEmail || undefined,
+          phone: cleanPhone.length >= 10 ? cleanPhone : undefined,
+          name: name.trim(),
+          fbp: fbp || undefined,
+          fbc: fbc || undefined,
+          ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined,
+          user_agent: request.headers.get('user-agent') || undefined,
+          page_url: slug ? `${process.env.NEXT_PUBLIC_APP_URL || ''}/empreendimentos/${slug}` : undefined,
+        },
+        custom_data: {
+          content_name: enterpriseName || undefined,
+          content_category: 'empreendimento',
+          value: 1,
+          currency: 'BRL',
+        },
       }).catch((err) => console.warn('[Public Lead] Meta CAPI fire-and-forget failed:', err?.message));
     };
 

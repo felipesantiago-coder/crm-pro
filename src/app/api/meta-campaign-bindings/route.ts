@@ -13,7 +13,8 @@ import { requireAdmin } from '@/lib/api-auth';
 // ============================================================
 export async function GET() {
   try {
-    await requireAdmin();
+    const { error: authError } = await requireAdmin();
+    if (authError) return authError;
 
     const bindings = await db.metaCampaignBinding.findMany({
       orderBy: [{ lastSeenAt: 'desc' }],
@@ -67,7 +68,8 @@ export async function GET() {
 // ============================================================
 export async function PATCH(request: NextRequest) {
   try {
-    await requireAdmin();
+    const { error: authError } = await requireAdmin();
+    if (authError) return authError;
 
     const body = await request.json();
     const { campaignId, campaignName, queueId, adAccountId, enterpriseId } = body;

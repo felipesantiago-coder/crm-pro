@@ -1,13 +1,21 @@
 // ============================================================
-// Debug / self-test endpoint for tracking pipeline (PUBLIC, no auth)
+// Debug / self-test endpoint for tracking pipeline (ADMIN-ONLY)
 // POST: simulates a pixel event and returns detailed diagnostics
 // GET:  returns a lightweight health summary (table counts + last event)
+//
+// SECURITY: era público — POST inseria eventos falsos no DB de
+// produção sem rate limit e GET/POST vazavam contagens, visitorIds,
+// stacks de erro do DB e hints de infraestrutura. Agora exige admin.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireAdmin } from '@/lib/api-auth';
 
 export async function POST(request: NextRequest) {
+  const { error: authError } = await requireAdmin();
+  if (authError) return authError;
+
   const ip =
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     request.headers.get('x-real-ip') ||
@@ -117,8 +125,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET: lightweight public health (no auth required)
+// GET: lightweight tracking health summary (admin-only)
 export async function GET() {
+  const { error: authError } = await requireAdmin();
+  if (authError) return authError;
+
   try {
     const [vCount, eCount, latest] = await Promise.all([
       db.trackingVisitor.count(),
