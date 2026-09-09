@@ -7,7 +7,7 @@ import {
   normalizeAdAccountId,
   parseJsonArray,
 } from '@/lib/meta-ad-accounts';
-import { classifyGraphAuthFailure, buildSyncFormsPermissionHint } from '@/lib/meta-oauth';
+import { classifyGraphAuthFailure, buildSyncFormsPermissionHint, fetchLeadsRetrievalGranted, isLeadgenFormsHiddenByLeadsRetrieval } from '@/lib/meta-oauth';
 import { clearAccountAuthState, registerAccountAuthFailure } from '@/lib/meta-oauth-server';
 
 // ============================================================
@@ -74,11 +74,19 @@ export async function POST(
           : '';
       // Dica de permissão: quando a via campanhas respondeu OK mas a
       // edge da conta deu #100 "nonexisting field (leadgen_forms)", a
-      // dica clássica "conceda ads_read" é FALSA (ads_read provado) —
-      // o bloqueio real é leads_retrieval ausente (helper puro em
-      // meta-oauth, testado). Caso contrário, mantém a orientação de
+      // dica clássica "conceda ads_read" é FALSA (ads_read provado).
+      // Confirmamos o estado REAL de leads_retrieval no token (1
+      // chamada Graph SÓ no caminho de falha): ausente → dica clássica
+      // da permissão; JÁ concedida → a pista falsa seria culpar a
+      // permissão — a dica vira Advanced Access/modo do app, app do
+      // token e página/formulário dono (helper puro em meta-oauth,
+      // testado). Sem o padrão #100, mantém a orientação de
       // ads_read/asset da conta.
-      const permissionHint = buildSyncFormsPermissionHint({ attempts, pageCount });
+      const hiddenByLeadsRetrieval = isLeadgenFormsHiddenByLeadsRetrieval(attempts);
+      const leadsRetrievalGranted = hiddenByLeadsRetrieval
+        ? await fetchLeadsRetrievalGranted(account.accessToken)
+        : null;
+      const permissionHint = buildSyncFormsPermissionHint({ attempts, pageCount, leadsRetrievalGranted });
       // Diagnóstico por via: mostra ao admin O QUE falhou em cada
       // tentativa (conta, campanhas, página a página) direto no toast —
       // antes isso só existia no console do servidor (inacessível na

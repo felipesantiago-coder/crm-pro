@@ -263,11 +263,14 @@ export interface LeadgenFormsAttemptLike {
   msg?: string;
 }
 
-/** TRUE quando o padrão de tentativas indica a edge da conta OCULTA por
- *  leads_retrieval ausente: a tentativa direta em act_<id>/leadgen_forms
- *  falhou com #100 "nonexisting field" e a via campanhas (que PROVA
- *  ads_read + papel na conta de anúncios) respondeu OK. Nesse cenário a
- *  dica "conceda ads_read" é falsa — o bloqueio é leads_retrieval. */
+/** TRUE quando o padrão de tentativas indica a edge da conta OCULTA
+ *  (act_<id>/leadgen_forms falhou com #100 "nonexisting field" e a via
+ *  campanhas — que PROVA ads_read + papel na conta — respondeu OK).
+ *  ATENÇÃO: isso detecta o SINTOMA, não a causa final — o mesmo padrão
+ *  ocorre com leads_retrieval ausente E com a permissão concedida porém
+ *  inefetiva (app "Ao vivo" sem Advanced Access, token de outro app).
+ *  Quem decide a dica é buildSyncFormsPermissionHint com o estado REAL
+ *  da permissão (fetchLeadsRetrievalGranted). */
 export function isLeadgenFormsHiddenByLeadsRetrieval(
   attempts: ReadonlyArray<LeadgenFormsAttemptLike>,
 ): boolean {
@@ -278,16 +281,61 @@ export function isLeadgenFormsHiddenByLeadsRetrieval(
   return accountHidden && campaignsOk;
 }
 
+/** Estado de leads_retrieval no PRÓPRIO token (GET /me/permissions —
+ *  só responde para tokens de USUÁRIO): true = granted; false =
+ *  conclusivamente AUSENTE/REVOGADA (listagem OK sem a permissão, ou
+ *  status declined); null = inconclusivo (page/System User token,
+ *  falha de rede, formato inesperado). Nunca lança — é best-effort
+ *  para escolher a variante da dica do Sync Forms. */
+export async function fetchLeadsRetrievalGranted(accessToken: string): Promise<boolean | null> {
+  try {
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/me/permissions?access_token=${encodeURIComponent(accessToken)}`;
+    const data = await graphGetJson(url);
+    const rows = data?.data;
+    if (!Array.isArray(rows)) return null;
+    const row = rows.find((r: { permission?: string }) => r?.permission === 'leads_retrieval');
+    if (!row) return false; // /me/permissions respondeu e a permissão nem consta → ausente
+    return row.status === 'granted';
+  } catch {
+    return null;
+  }
+}
+
 /** Dica de correção do toast do Sync Forms. Detecta o caso
- *  "ads_read OK, leads_retrieval ausente" (via campanhas OK + #100 na
- *  edge da conta) e troca a orientação: o problema NÃO é asset/papel na
- *  conta, e colar form IDs manualmente NÃO contorna (o polling lê
- *  /{form-id}/leads com o token da conta, que também exige a permissão). */
+ *  "ads_read OK (campanhas respondeu), edge da conta oculta (#100)" e
+ *  troca a orientação. DUAS variantes conforme o estado REAL de
+ *  leads_retrieval no token:
+ *  - ausente/inconclusivo (default): causa clássica — conceda a
+ *    permissão; colar form IDs NÃO contorna (o polling lê
+ *    /{form-id}/leads com o token da conta).
+ *  - JÁ CONCEDIDA (leadsRetrievalGranted === true, confirmado em
+ *    /me/permissions): culpar a permissão seria pista falsa — aponta
+ *    as causas remanescentes (Advanced Access/modo do app, token de
+ *    app diferente) e o bloqueio mais comum na prática: o formulário
+ *    NÃO pertence à página vinculada (página respondeu 0 forms) ou o
+ *    ID está errado/excluído. */
 export function buildSyncFormsPermissionHint(args: {
   attempts: ReadonlyArray<LeadgenFormsAttemptLike>;
   pageCount: number;
+  /** Estado de leads_retrieval no token (null/undefined = não verificado). */
+  leadsRetrievalGranted?: boolean | null;
 }): string {
-  if (isLeadgenFormsHiddenByLeadsRetrieval(args.attempts)) {
+  const pattern = isLeadgenFormsHiddenByLeadsRetrieval(args.attempts);
+  if (pattern && args.leadsRetrievalGranted === true) {
+    // Página vinculada consultada com sucesso e ZERO formulários → o
+    // form ID colado não pertence a ela (ou foi excluído).
+    const pageZero = args.attempts.some(
+      (a) => a.via === 'page' && a.ok === true && /0 formulário/i.test(a.msg || ''),
+    );
+    const passo2 = pageZero
+      ? '2. MAIS IMPORTANTE: a página vinculada respondeu OK com 0 formulário(s) e o form ID colado não pôde ser lido — o formulário NÃO está nesta página (ou foi excluído/ID errado). Localize o formulário real (Gerenciador de Anúncios → anúncio → formulário instantâneo, ou Business Manager → Formulários instantâneos), confirme a PÁGINA dona, salve essa página nos Page IDs (aba Webhook) e cole o ID certo na aba Polling.\n'
+      : '2. Confirme também a PÁGINA dona do formulário: a leitura /{form-id}/leads falha para formulários excluídos, IDs errados ou de páginas inacessíveis para a identidade do token — cole apenas IDs de formulários das páginas desta conta.\n';
+    return '\n\nPara resolver:\n' +
+      '1. O token desta conta JÁ TEM leads_retrieval concedida (/me/permissions) e as campanhas responderam OK — a causa clássica (permissão ausente no token) NÃO se aplica. Se o "#100" persiste, verifique o lado do APP: (a) app em modo "Ao vivo" sem Acesso avançado de leads_retrieval — solicite em Painel do App → Revisão do App → Permissões e recursos (em modo DESENVOLVIMENTO vale para usuários com papel no app); (b) token gerado por um app DIFERENTE do app do webhook — gere pelo botão "Reconectar com o Facebook" do card (mesmo app, permissões certas).\n' +
+      passo2 +
+      '3. Webhook desta conta ativo (aba Webhook)? Leads NOVOS do formulário correto chegam por webhook mesmo com a listagem bloqueada — o polling fica como complemento (histórico e recuperação).';
+  }
+  if (pattern) {
     return '\n\nPara resolver:\n' +
       '1. As campanhas da conta responderam OK — ads_read e o papel na conta de anúncios estão CORRETOS. O bloqueio real é a permissão leads_retrieval: sem ela a Graph OCULTA a leitura de formulários e leads (sintomas: "#100 nonexisting field (leadgen_forms)" na listagem e falha ao ler leads mesmo com o form ID colado).\n' +
       '2. Gere um novo token para esta conta concedendo leads_retrieval (além de ads_read e pages_*): se a conta veio do Facebook, use "Reconectar com o Facebook" no card; se o token é manual, marque leads_retrieval na geração — no Graph API Explorer selecione o MESMO app do webhook desta conta. Apps públicos exigem Advanced Access (App Review); em modo DESENVOLVIMENTO funciona para usuários com papel no app.\n' +
