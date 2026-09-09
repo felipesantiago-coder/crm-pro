@@ -8,8 +8,8 @@ import { requireAdmin } from '@/lib/api-auth';
 // ============================================================
 export async function GET() {
   try {
-    await requireAdmin();
-
+    const { error: authError } = await requireAdmin();
+    if (authError) return authError;
     const configs = await db.metaCapConfig.findMany({
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
       select: {
@@ -56,8 +56,8 @@ export async function GET() {
 // ============================================================
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin();
-
+    const { error: authError } = await requireAdmin();
+    if (authError) return authError;
     const body = await request.json();
     const { name, accessToken, datasetId, isDefault, formIds, queueId, adAccountId } = body;
 

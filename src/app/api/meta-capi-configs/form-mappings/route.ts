@@ -9,8 +9,8 @@ import { requireAdmin } from '@/lib/api-auth';
 // ============================================================
 export async function GET(request: NextRequest) {
   try {
-    await requireAdmin();
-
+    const { error: authError } = await requireAdmin();
+    if (authError) return authError;
     const { searchParams } = new URL(request.url);
     const grouped = searchParams.get('grouped') === 'true';
 
@@ -146,8 +146,8 @@ export async function GET(request: NextRequest) {
 // ============================================================
 export async function PATCH(request: NextRequest) {
   try {
-    await requireAdmin();
-
+    const { error: authError } = await requireAdmin();
+    if (authError) return authError;
     const body = await request.json();
     const { formId, campaignId, capiConfigId, queueId, enterpriseId } = body;
 
@@ -232,8 +232,8 @@ export async function PATCH(request: NextRequest) {
 // ============================================================
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin();
-
+    const { error: authError } = await requireAdmin();
+    if (authError) return authError;
     const body = await request.json();
     const { accessToken, adAccountId, capiConfigId } = body;
 

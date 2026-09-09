@@ -11,7 +11,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdmin();
+    const { error: authError } = await requireAdmin();
+    if (authError) return authError;
     const { id } = await params;
 
     const config = await db.metaCapConfig.findUnique({ where: { id } });
@@ -37,7 +38,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdmin();
+    const { error: authError } = await requireAdmin();
+    if (authError) return authError;
     const { id } = await params;
     const body = await request.json();
     const { name, accessToken, datasetId, enabled, isDefault, formIds, queueId, adAccountId } = body;
@@ -106,7 +108,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdmin();
+    const { error: authError } = await requireAdmin();
+    if (authError) return authError;
     const { id } = await params;
 
     const existing = await db.metaCapConfig.findUnique({ where: { id } });

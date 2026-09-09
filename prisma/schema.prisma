@@ -631,6 +631,44 @@ model MetaCapConfig {
 }
 
 // ============================================================
+// CAPI EVENT LOG — Trilha de auditoria dos envios à Conversions API
+// feitos por sendLeadConversionEvent (mudança de stage). Torna visíveis
+// no painel falhas que antes eram apenas console.error silencioso no
+// servidor. SEM foreign keys de propósito: usa snapshots denormalizados
+// (capiConfigName/clientName) para que a auditoria sobreviva à exclusão
+// do config CAPI ou do cliente (o config excluído não apaga o histórico
+// de tentativas que o usaram — importante para diagnosticar envios
+// perdidos). status: 'sent' | 'failed' | 'skipped'.
+// Rollback: DROP TABLE "capi_event_logs";
+// ============================================================
+model CapiEventLog {
+  id             String   @id @default(cuid()) @map("id")
+  /** ID do config usado no envio ('__legacy__' = token legado do UserSettings). */
+  capiConfigId   String?  @map("capiConfigId")
+  /** Snapshot do nome do config no momento do envio. */
+  capiConfigName String?  @map("capiConfigName")
+  clientId       String?  @map("clientId")
+  /** Snapshot do nome do cliente no momento do envio. */
+  clientName     String?  @map("clientName")
+  /** Nome do evento Meta (Lead, Visit_Scheduled, Purchase...). */
+  eventName      String?  @map("eventName")
+  /** Stage do CRM que originou o envio. */
+  stage          String?  @map("stage")
+  /** 'sent' = aceito pela Meta; 'failed' = HTTP/erro de rede; 'skipped' = config do lead não resolvido. */
+  status         String   @map("status")
+  /** Detalhe do erro (HTTP status + snippet da resposta) quando failed/skipped. */
+  errorMessage   String?  @map("errorMessage")
+  /** Resumo da resposta da Meta quando sent (events_received + warnings). */
+  metaResponse   String?  @map("metaResponse")
+  createdAt      DateTime @default(now()) @map("createdAt")
+
+  @@index([capiConfigId, createdAt])
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@map("capi_event_logs")
+}
+
+// ============================================================
 // LEAD FORM MAPPING — Auto-populated mapping table
 // Every time a lead arrives via webhook, the form_id, ad_name,
 // campaign_name, ad_id, campaign_id are recorded.

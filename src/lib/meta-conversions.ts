@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { buildCapiLogErrorMessage, logCapiSend, parseCapiSendOutcome } from '@/lib/capi-event-log';
 
 // ============================================================
 // Meta Conversions API (CAPI) — Multi-client CRM Integration
@@ -31,6 +32,8 @@ export interface LeadConversionData {
   stage: string;
   /** ID do CAPI config específico do cliente (se houver). */
   capiConfigId?: string | null;
+  /** ID do cliente no CRM — vai para o log de auditoria dos envios. */
+  clientId?: string | null;
 }
 
 /**
@@ -152,6 +155,22 @@ export async function sendLeadConversionEvent(data: LeadConversionData): Promise
     const config = await resolveCapConfig(data.capiConfigId);
 
     if (!config || !config.accessToken || !config.datasetId) {
+      // CAPI desabilitado ou não configurado. Só registra quando o lead TINHA
+      // um config atribuído que não pôde ser resolvido (excluído/inativo) —
+      // isso é uma perda silenciosa de conversão e precisa ficar visível.
+      if (data.capiConfigId) {
+        await logCapiSend({
+          status: 'skipped',
+          capiConfigId: data.capiConfigId,
+          capiConfigName: null,
+          clientId: data.clientId ?? null,
+          clientName: data.clientName,
+          eventName: stageToEventName(data.stage),
+          stage: data.stage,
+          errorMessage:
+            'Config CAPI do lead não encontrado ou inativo — evento NÃO enviado (lead caiu no vazio)',
+        });
+      }
       return; // CAPI desabilitado ou não configurado
     }
 
@@ -220,6 +239,17 @@ export async function sendLeadConversionEvent(data: LeadConversionData): Promise
         ` [config: ${config.name}]:`,
         `HTTP ${response.status}`, errorText
       );
+      // Auditoria visível no painel — antes isto era apenas console.error.
+      await logCapiSend({
+        status: 'failed',
+        capiConfigId: config.id,
+        capiConfigName: config.name,
+        clientId: data.clientId ?? null,
+        clientName: data.clientName,
+        eventName: stageToEventName(data.stage),
+        stage: data.stage,
+        errorMessage: buildCapiLogErrorMessage(response.status, errorText),
+      });
     } else {
       const result = await response.json();
       const warnings = result.messages?.filter((m: any) => m.type === 'warning');
@@ -228,9 +258,30 @@ export async function sendLeadConversionEvent(data: LeadConversionData): Promise
       }
       console.log(`[Meta CAPI] Evento enviado: ${stageToEventName(data.stage)} para ${data.clientName}` +
         ` (${data.metaLeadgenId || 'sem lead_id'}) [config: ${config.name}]`);
+      await logCapiSend({
+        status: 'sent',
+        capiConfigId: config.id,
+        capiConfigName: config.name,
+        clientId: data.clientId ?? null,
+        clientName: data.clientName,
+        eventName: stageToEventName(data.stage),
+        stage: data.stage,
+        metaResponse: parseCapiSendOutcome(result),
+      });
     }
   } catch (error) {
     console.error('[Meta CAPI] Erro ao enviar evento de conversão:', error);
+    // Falha antes/fora do fetch (rede, build do payload). Loga o que souber.
+    await logCapiSend({
+      status: 'failed',
+      capiConfigId: data.capiConfigId ?? null,
+      capiConfigName: null,
+      clientId: data.clientId ?? null,
+      clientName: data.clientName,
+      eventName: stageToEventName(data.stage),
+      stage: data.stage,
+      errorMessage: error instanceof Error ? error.message : 'Erro desconhecido',
+    }).catch(() => {});
   }
 }
 

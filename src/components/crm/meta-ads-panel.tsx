@@ -37,6 +37,8 @@ import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { buildCapiDeleteConfirmMessage } from '@/lib/capi-delete-confirm';
 import { TrackingTab } from './tracking-tab';
+import { CapiQualityDialog } from './meta-ads/capi-quality-dialog';
+import { CapiActivityLog } from './meta-ads/capi-activity-log';
 import { LandingPagesTab } from './landing-pages-tab';
 import { QueuesTab } from './queues-tab';
 import { AdAccountsGroup } from './meta-ads/ad-accounts-group';
@@ -1435,9 +1437,10 @@ function ConfigTab() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => testCapiConfig(config.id)} disabled={testingCapId === config.id}>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => testCapiConfig(config.id)} disabled={testingCapId === config.id} title="Testar envio CAPI">
                           {testingCapId === config.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
                         </Button>
+                        <CapiQualityDialog configId={config.id} configName={config.name} datasetId={config.datasetId} />
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditCapiDialog(config)}>
                           <Save className="h-3.5 w-3.5" />
                         </Button>
@@ -1450,6 +1453,9 @@ function ConfigTab() {
                 ))}
               </div>
             )}
+
+            {/* Atividade de envio (falhas agora visíveis — antes só console.error) */}
+            <CapiActivityLog refreshToken={capiTick} />
 
             {/* Info */}
             <div className="rounded-lg bg-muted/50 border p-3 space-y-2">

@@ -49,6 +49,7 @@ import {
 import { toast } from 'sonner';
 import { buildCapiDeleteConfirmMessage } from '@/lib/capi-delete-confirm';
 import { CampaignBindingsSection } from './campaign-bindings-section';
+import { CapiQualityDialog } from './capi-quality-dialog';
 
 // ============================================================
 // AccountConfigCard — Card de UMA conta de anúncios com as PRÓPRIAS
@@ -1016,6 +1017,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => testCapi(config.id)} disabled={testingCapiId === config.id} title="Testar envio CAPI">
                             {testingCapiId === config.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
                           </Button>
+                          <CapiQualityDialog configId={config.id} configName={config.name} datasetId={config.datasetId} />
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground" onClick={() => unlinkCapi(config.id)} title="Desvincular desta conta (volta para o global, sem excluir)">
                             <Link2Off className="h-3.5 w-3.5" />
                           </Button>
@@ -1048,6 +1050,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => linkCapiToAccount(cfg.id)} title="Vincular a esta conta">
                               <Link2 className="h-3.5 w-3.5" />
                             </Button>
+                            <CapiQualityDialog configId={cfg.id} configName={cfg.name} datasetId={cfg.datasetId} />
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700" onClick={() => deleteCapi(cfg)} disabled={deletingCapiId === cfg.id} title="Excluir permanentemente (remove o config do sistema inteiro)">
                               {deletingCapiId === cfg.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                             </Button>
