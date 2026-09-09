@@ -253,18 +253,63 @@ export function ClientsView() {
       )}
 
       {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Pesquisar clientes..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
+      <div className="flex flex-col gap-3">
+        {/* Linha 1: busca + ordenação (nunca comprime a busca) */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Pesquisar clientes..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+              }}
+              className="pl-9"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 shrink-0"
+            onClick={() => {
+              if (sortBy === 'createdAt') {
+                setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+              } else {
+                setSortBy('createdAt');
+                setSortOrder('desc');
+              }
+              setPage(1);
             }}
-            className="pl-9"
-          />
+          >
+            <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="hidden sm:inline text-xs">Data Criação</span>
+            {sortBy === 'createdAt' && (
+              <span className="text-[10px] text-muted-foreground">{sortOrder === 'desc' ? '↓' : '↑'}</span>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 shrink-0"
+            onClick={() => {
+              if (sortBy === 'lastInteractionAt') {
+                setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+              } else {
+                setSortBy('lastInteractionAt');
+                setSortOrder('desc');
+              }
+              setPage(1);
+            }}
+          >
+            <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="hidden sm:inline text-xs">Última Interação</span>
+            {sortBy === 'lastInteractionAt' && (
+              <span className="text-[10px] text-muted-foreground">{sortOrder === 'desc' ? '↓' : '↑'}</span>
+            )}
+          </Button>
         </div>
+        {/* Linha 2: filtros — flex-wrap evita corte em telas estreitas */}
+        <div className="flex flex-wrap items-center gap-2">
         <Select
           value={filterRegion || 'all'}
           onValueChange={(v) => {
@@ -449,46 +494,7 @@ export function ClientsView() {
             )}
           </SelectContent>
         </Select>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 gap-1.5"
-          onClick={() => {
-            if (sortBy === 'createdAt') {
-              setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
-            } else {
-              setSortBy('createdAt');
-              setSortOrder('desc');
-            }
-            setPage(1);
-          }}
-        >
-          <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="hidden sm:inline text-xs">Data Criação</span>
-          {sortBy === 'createdAt' && (
-            <span className="text-[10px] text-muted-foreground">{sortOrder === 'desc' ? '↓' : '↑'}</span>
-          )}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 gap-1.5"
-          onClick={() => {
-            if (sortBy === 'lastInteractionAt') {
-              setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
-            } else {
-              setSortBy('lastInteractionAt');
-              setSortOrder('desc');
-            }
-            setPage(1);
-          }}
-        >
-          <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="hidden sm:inline text-xs">Última Interação</span>
-          {sortBy === 'lastInteractionAt' && (
-            <span className="text-[10px] text-muted-foreground">{sortOrder === 'desc' ? '↓' : '↑'}</span>
-          )}
-        </Button>
+        </div>
       </div>
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
