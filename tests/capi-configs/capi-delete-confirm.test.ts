@@ -50,6 +50,18 @@ test('não-padrão → sem aviso ATENÇÃO', () => {
   assert.doesNotMatch(msg, /ATENÇÃO/);
 });
 
+test('isGlobalPool → explica que o config aparece em todas as contas e some de todas', () => {
+  const msg = buildCapiDeleteConfirmMessage({ name: 'X', isGlobalPool: true });
+  assert.match(msg, /grupo global \(não pertence a nenhuma conta\)/);
+  assert.match(msg, /aparece na lista "sem conta" de todas as contas/);
+  assert.match(msg, /a exclusão o remove de todos esses locais/);
+});
+
+test('config de conta específica → sem parágrafo do grupo global', () => {
+  const msg = buildCapiDeleteConfirmMessage({ name: 'X', isGlobalPool: false });
+  assert.doesNotMatch(msg, /grupo global \(não pertence a nenhuma conta\)/);
+});
+
 test('mensagem completa cobre todos os impactos na ordem esperada', () => {
   const msg = buildCapiDeleteConfirmMessage({
     name: 'Cliente X - Offline Dataset',
@@ -64,4 +76,18 @@ test('mensagem completa cobre todos os impactos na ordem esperada', () => {
   assert.ok(idxQuestion > -1 && idxLeads > -1 && idxAttention > -1 && idxForms > -1 && idxUndo > -1);
   assert.ok(idxQuestion < idxLeads && idxLeads < idxAttention && idxAttention < idxForms && idxForms < idxUndo);
   assert.match(msg, /Vínculos de formulários com este config também serão removidos\./);
+});
+
+test('mensagem de config órfão: grupo global vem depois do impacto em leads e antes do aviso de padrão', () => {
+  const msg = buildCapiDeleteConfirmMessage({
+    name: 'X',
+    clientsCount: 3,
+    isDefault: true,
+    isGlobalPool: true,
+  });
+  const idxLeads = msg.indexOf('3 leads vinculados');
+  const idxPool = msg.indexOf('grupo global (não pertence a nenhuma conta)');
+  const idxAttention = msg.indexOf('ATENÇÃO');
+  assert.ok(idxLeads > -1 && idxPool > -1 && idxAttention > -1);
+  assert.ok(idxLeads < idxPool && idxPool < idxAttention);
 });

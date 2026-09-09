@@ -20,6 +20,9 @@ export interface CapiDeleteContext {
   clientsCount?: number;
   /** Se o config é o PADRÃO (fallback global da cadeia) */
   isDefault?: boolean;
+  /** Config no grupo global (sem conta): aparece na lista "sem conta" de
+   *  TODAS as contas — a exclusão o remove de todos esses locais de uma vez */
+  isGlobalPool?: boolean;
 }
 
 const FALLBACK_TEXT = 'voltará a usar o config CAPI padrão ou o token legado da conta';
@@ -29,6 +32,7 @@ export function buildCapiDeleteConfirmMessage({
   name,
   clientsCount,
   isDefault,
+  isGlobalPool,
 }: CapiDeleteContext): string {
   const parts: string[] = [`Excluir o config CAPI "${name}" permanentemente?`];
 
@@ -40,6 +44,12 @@ export function buildCapiDeleteConfirmMessage({
     );
   } else {
     parts.push(`Leads vinculados (se houver) perderão a associação e ${FALLBACK_TEXT_PLURAL}.`);
+  }
+
+  if (isGlobalPool) {
+    parts.push(
+      'Este config está no grupo global (não pertence a nenhuma conta) e aparece na lista "sem conta" de todas as contas — a exclusão o remove de todos esses locais.'
+    );
   }
 
   if (isDefault) {

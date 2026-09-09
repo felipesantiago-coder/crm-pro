@@ -39,9 +39,20 @@ interface AccountDialogState {
   enabled: boolean;
 }
 
+interface AdAccountsGroupProps {
+  /** Chamado quando um config CAPI muda aqui dentro (criar/vincular/
+   *  desvincular/excluir) — o painel global recarrega a própria lista
+   *  enquanto os dois acordeões estão montados (Accordion type="multiple"). */
+  onCapiChanged?: () => void;
+  /** Incrementado pelo painel global quando um config CAPI muda lá fora
+   *  (ex.: exclusão/edição na seção CAPI global) — recarrega os dados
+   *  aqui dentro para configs excluídos não continuarem aparecendo. */
+  capiRefreshToken?: number;
+}
+
 const EMPTY_DIALOG: AccountDialogState = { name: '', adAccountId: '', accessToken: '', isDefault: false, enabled: true };
 
-export function AdAccountsGroup() {
+export function AdAccountsGroup({ onCapiChanged, capiRefreshToken = 0 }: AdAccountsGroupProps) {
   const [accounts, setAccounts] = useState<AdAccountData[]>([]);
   const [queues, setQueues] = useState<QueueOption[]>([]);
   const [capiConfigs, setCapiConfigs] = useState<CapiOption[]>([]);
@@ -85,7 +96,7 @@ export function AdAccountsGroup() {
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, capiRefreshToken]);
 
   const openCreate = () => {
     setEditing(null);
@@ -225,6 +236,7 @@ export function AdAccountsGroup() {
               bindings={bindings}
               mappings={mappings}
               onChanged={load}
+              onCapiChanged={onCapiChanged}
               onEdit={openEdit}
               onDelete={remove}
             />

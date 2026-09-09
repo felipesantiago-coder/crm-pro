@@ -891,6 +891,10 @@ function ConfigTab() {
 
   // CAPI Multi-config states
   const [capiConfigs, setCapiConfigs] = useState<any[]>([]);
+  // Incrementado a cada mutação de config CAPI feita NESTA seção: força o
+  // <AdAccountsGroup> (montado simultaneamente — Accordion type="multiple")
+  // a recarregar e não continuar exibindo configs já excluídos/alterados.
+  const [capiTick, setCapiTick] = useState(0);
   const [adAccounts, setAdAccounts] = useState<Array<{ id: string; name: string; adAccountId: string; enabled: boolean; hasVerifyToken?: boolean; hasAppSecret?: boolean; pageIds?: string | null; formIds?: string | null; webhookEnabled?: boolean; pollingEnabled?: boolean }>>([]);
   const [loadingCapi, setLoadingCapi] = useState(false);
   const [showCapiDialog, setShowCapiDialog] = useState(false);
@@ -1044,6 +1048,7 @@ function ConfigTab() {
         toast.success(editingCapi ? 'Configuração CAPI atualizada' : 'Configuração CAPI criada');
         setShowCapiDialog(false);
         loadCapiConfigs();
+        setCapiTick((t) => t + 1);
       } else {
         const data = await res.json();
         throw new Error(data.error || 'Erro ao salvar');
@@ -1078,6 +1083,7 @@ function ConfigTab() {
       if (res.ok) {
         toast.success(`Configuração CAPI "${config.name}" excluída`);
         loadCapiConfigs();
+        setCapiTick((t) => t + 1);
       } else {
         const data = await res.json().catch(() => null);
         toast.error(data?.error || 'Erro ao excluir configuração CAPI');
@@ -1131,6 +1137,7 @@ function ConfigTab() {
         toast.success(capiConfigId ? `${data.updated} mapeamento(s) vinculado(s)` : 'Vinculação removida');
         loadFormMappings();
         loadCapiConfigs();
+        setCapiTick((t) => t + 1);
       }
     } catch {
       toast.error('Erro ao vincular formulário');
@@ -1182,6 +1189,7 @@ function ConfigTab() {
         setImportResult(data);
         loadFormMappings();
         loadCapiConfigs();
+        setCapiTick((t) => t + 1);
       } else {
         const detail = data.metaErrorCode
           ? `${data.error} (código ${data.metaErrorCode})`
@@ -1351,7 +1359,7 @@ function ConfigTab() {
             </div>
           </AccordionTrigger>
           <AccordionContent className="px-4 pb-4">
-            <AdAccountsGroup />
+            <AdAccountsGroup onCapiChanged={loadCapiConfigs} capiRefreshToken={capiTick} />
           </AccordionContent>
         </AccordionItem>
 

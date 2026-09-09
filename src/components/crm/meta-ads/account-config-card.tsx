@@ -34,6 +34,7 @@ import {
   Eye,
   EyeOff,
   Facebook,
+  Link2,
   Link2Off,
   Loader2,
   MinusCircle,
@@ -137,6 +138,9 @@ interface AccountConfigCardProps {
   bindings: BindingItem[];
   mappings: GroupedMapping[];
   onChanged: () => void;
+  /** Notifica o pai que um config CAPI mudou (criar/vincular/desvincular/excluir),
+   *  para o painel global recarregar a própria lista enquanto estiver montado. */
+  onCapiChanged?: () => void;
   onEdit: (account: AdAccountData) => void;
   onDelete: (account: AdAccountData) => void;
 }
@@ -152,7 +156,7 @@ function parseLines(raw: string | null | undefined): string[] {
 
 type AccountTab = 'webhook' | 'polling' | 'campaigns' | 'forms' | 'capi' | 'tests';
 
-export function AccountConfigCard({ account, queues, capiConfigs, bindings, mappings, onChanged, onEdit, onDelete }: AccountConfigCardProps) {
+export function AccountConfigCard({ account, queues, capiConfigs, bindings, mappings, onChanged, onCapiChanged, onEdit, onDelete }: AccountConfigCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState<AccountTab>('webhook');
   const [patching, setPatching] = useState(false);
@@ -172,7 +176,6 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
   const [syncing, setSyncing] = useState(false);
 
   // ── CAPI ──
-  const [linkCapiId, setLinkCapiId] = useState('');
   const [showNewCapi, setShowNewCapi] = useState(false);
   const [newCapi, setNewCapi] = useState({ name: '', datasetId: '', accessToken: '' });
   const [savingCapi, setSavingCapi] = useState(false);
@@ -338,8 +341,8 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
         return;
       }
       toast.success('Config CAPI vinculado a esta conta');
-      setLinkCapiId('');
       onChanged();
+      onCapiChanged?.();
     } catch {
       toast.error('Falha de conexão');
     }
@@ -355,6 +358,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
       if (res.ok) {
         toast.success('Config CAPI desvinculado da conta (voltou para o grupo global)');
         onChanged();
+        onCapiChanged?.();
       }
     } catch {
       toast.error('Erro ao desvincular config CAPI');
@@ -372,6 +376,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
           name: config.name,
           clientsCount: config._count?.clients,
           isDefault: config.isDefault,
+          isGlobalPool: !config.adAccountId,
         })
       )
     )
@@ -386,6 +391,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
       }
       toast.success(`Config CAPI "${config.name}" excluído permanentemente`);
       onChanged();
+      onCapiChanged?.();
     } catch {
       toast.error('Erro ao excluir config CAPI');
     } finally {
@@ -442,6 +448,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
       setShowNewCapi(false);
       setNewCapi({ name: '', datasetId: '', accessToken: '' });
       onChanged();
+      onCapiChanged?.();
     } catch {
       toast.error('Falha de conexão ao criar config CAPI');
     } finally {
@@ -1023,18 +1030,34 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
 
                 {unlinkedCapiConfigs.length > 0 && (
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Vincular config CAPI existente (sem conta)</Label>
-                    <Select value={linkCapiId || '__pick__'} onValueChange={(v) => { if (v !== '__pick__') linkCapiToAccount(v); }}>
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Selecionar config global..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__pick__" disabled>Selecionar config global...</SelectItem>
-                        {unlinkedCapiConfigs.map((cfg) => (
-                          <SelectItem key={cfg.id} value={cfg.id}>{cfg.name} ({cfg.datasetId})</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-xs font-medium">
+                      No grupo global (sem conta) — {unlinkedCapiConfigs.length}
+                    </Label>
+                    <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
+                      {unlinkedCapiConfigs.map((cfg) => (
+                        <div key={cfg.id} className="rounded-md border border-dashed bg-muted/20 p-2 text-xs flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-medium text-[11px]">{cfg.name}</span>
+                              {cfg.isDefault && <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[9px] px-1.5 py-0">padrão</Badge>}
+                              {!cfg.enabled && <Badge className="bg-muted text-muted-foreground text-[9px] px-1.5 py-0">inativo</Badge>}
+                            </div>
+                            <p className="font-mono text-[10px] text-muted-foreground mt-0.5">Dataset: {cfg.datasetId}</p>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => linkCapiToAccount(cfg.id)} title="Vincular a esta conta">
+                              <Link2 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700" onClick={() => deleteCapi(cfg)} disabled={deletingCapiId === cfg.id} title="Excluir permanentemente (remove o config do sistema inteiro)">
+                              {deletingCapiId === cfg.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Estes configs não pertencem a nenhuma conta (por isso aparecem nesta lista em todas as contas — ex.: desvinculados antes ou órfãos de conta removida). Vincular associa a esta conta; excluir remove do sistema inteiro.
+                    </p>
                   </div>
                 )}
 
