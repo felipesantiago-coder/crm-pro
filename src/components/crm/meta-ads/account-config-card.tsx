@@ -34,6 +34,7 @@ import {
   Eye,
   EyeOff,
   Facebook,
+  Link2Off,
   Loader2,
   MinusCircle,
   Pencil,
@@ -45,6 +46,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { buildCapiDeleteConfirmMessage } from '@/lib/capi-delete-confirm';
 import { CampaignBindingsSection } from './campaign-bindings-section';
 
 // ============================================================
@@ -175,6 +177,7 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
   const [newCapi, setNewCapi] = useState({ name: '', datasetId: '', accessToken: '' });
   const [savingCapi, setSavingCapi] = useState(false);
   const [testingCapiId, setTestingCapiId] = useState<string | null>(null);
+  const [deletingCapiId, setDeletingCapiId] = useState<string | null>(null);
 
   // ── Testes & Diagnóstico (por conta) ──
   const [diagnosing, setDiagnosing] = useState(false);
@@ -355,6 +358,38 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
       }
     } catch {
       toast.error('Erro ao desvincular config CAPI');
+    }
+  }
+
+  // Exclusão PERMANENTE do config CAPI (diferente de desvincular, que
+  // apenas remove a associação com esta conta e devolve ao grupo global).
+  // O backend (DELETE /api/meta-capi-configs/[id]) aplica SetNull nos
+  // clientes e vínculos de formulários; a confirmação explica o impacto.
+  async function deleteCapi(config: CapiOption) {
+    if (
+      !confirm(
+        buildCapiDeleteConfirmMessage({
+          name: config.name,
+          clientsCount: config._count?.clients,
+          isDefault: config.isDefault,
+        })
+      )
+    )
+      return;
+    setDeletingCapiId(config.id);
+    try {
+      const res = await fetch(`/api/meta-capi-configs/${config.id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(data?.error || 'Erro ao excluir config CAPI');
+        return;
+      }
+      toast.success(`Config CAPI "${config.name}" excluído permanentemente`);
+      onChanged();
+    } catch {
+      toast.error('Erro ao excluir config CAPI');
+    } finally {
+      setDeletingCapiId(null);
     }
   }
 
@@ -974,8 +1009,11 @@ export function AccountConfigCard({ account, queues, capiConfigs, bindings, mapp
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => testCapi(config.id)} disabled={testingCapiId === config.id} title="Testar envio CAPI">
                             {testingCapiId === config.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
                           </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground" onClick={() => unlinkCapi(config.id)} title="Desvincular desta conta (volta para o global)">
-                            <Trash2 className="h-3.5 w-3.5" />
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground" onClick={() => unlinkCapi(config.id)} title="Desvincular desta conta (volta para o global, sem excluir)">
+                            <Link2Off className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700" onClick={() => deleteCapi(config)} disabled={deletingCapiId === config.id} title="Excluir permanentemente (leads e vínculos de formulários perdem a associação)">
+                            {deletingCapiId === config.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                       </div>

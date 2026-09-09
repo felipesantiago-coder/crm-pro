@@ -6,7 +6,7 @@ import {
   Copy, ExternalLink, Loader2, Save, Users, TrendingUp, Target,
   ArrowUpRight, ArrowDownRight, Search, BarChart3,
   ChevronDown, ChevronUp, Phone, Mail, MapPin, Calendar,
-  AlertTriangle, Download, ChevronLeft, ChevronRight,
+  AlertTriangle, Download, ChevronLeft, ChevronRight, Trash2,
   UserPlus, Activity, PieChart, Crosshair, Globe, UsersRound,
   HeartHandshake, Building2, Clock, Plus, X, Info, Thermometer,
 } from 'lucide-react';
@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
+import { buildCapiDeleteConfirmMessage } from '@/lib/capi-delete-confirm';
 import { TrackingTab } from './tracking-tab';
 import { LandingPagesTab } from './landing-pages-tab';
 import { QueuesTab } from './queues-tab';
@@ -1054,13 +1055,32 @@ function ConfigTab() {
     }
   }
 
-  async function deleteCapiConfig(id: string) {
-    if (!confirm('Excluir esta configuração CAPI? Leads vinculados perderão a associação.')) return;
+  // Exclusão PERMANENTE no painel global — mesma mensagem compartilhada
+  // da aba CAPI do card da conta (impacto: SetNull + cadeia de fallback).
+  async function deleteCapiConfig(config: {
+    id: string;
+    name: string;
+    isDefault: boolean;
+    _count?: { clients: number };
+  }) {
+    if (
+      !confirm(
+        buildCapiDeleteConfirmMessage({
+          name: config.name,
+          clientsCount: config._count?.clients,
+          isDefault: config.isDefault,
+        })
+      )
+    )
+      return;
     try {
-      const res = await fetch(`/api/meta-capi-configs/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/meta-capi-configs/${config.id}`, { method: 'DELETE' });
       if (res.ok) {
-        toast.success('Configuração CAPI excluída');
+        toast.success(`Configuração CAPI "${config.name}" excluída`);
         loadCapiConfigs();
+      } else {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || 'Erro ao excluir configuração CAPI');
       }
     } catch {
       toast.error('Erro ao excluir configuração CAPI');
@@ -1413,8 +1433,8 @@ function ConfigTab() {
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditCapiDialog(config)}>
                           <Save className="h-3.5 w-3.5" />
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700" onClick={() => deleteCapiConfig(config.id)}>
-                          <Circle className="h-3.5 w-3.5" />
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700" onClick={() => deleteCapiConfig(config)} title="Excluir permanentemente (leads e vínculos de formulários perdem a associação)">
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
