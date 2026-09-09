@@ -7,7 +7,7 @@ import {
   normalizeAdAccountId,
   parseJsonArray,
 } from '@/lib/meta-ad-accounts';
-import { classifyGraphAuthFailure } from '@/lib/meta-oauth';
+import { classifyGraphAuthFailure, buildSyncFormsPermissionHint } from '@/lib/meta-oauth';
 import { clearAccountAuthState, registerAccountAuthFailure } from '@/lib/meta-oauth-server';
 
 // ============================================================
@@ -72,9 +72,13 @@ export async function POST(
         : authKind === 'permission_denied'
           ? '\n\nPERMISSÃO NEGADA pela Graph (code 200/10) — a permissão pode ter sido revogada ou nunca aprovada no App Review. Reconecte a conta com o Facebook ou ajuste as permissões do token.'
           : '';
-      const permissionHint = pageCount > 0
-        ? '\n\nPara resolver:\n1. Conceda ads_read ao token desta conta: System User com a conta de anúncios como ativo (business.facebook.com/settings/system-users) OU papel de ANUNCIANTE para a identidade do token — depois gere um novo token e atualize o card.\n2. As páginas vinculadas também foram consultadas — o resultado de cada uma está no "Diagnóstico por via" abaixo.\n3. Alternativa sem ads_read: cole os IDs dos formulários manualmente na aba Polling desta conta (um ID por linha) — o polling busca os leads com o token da conta.'
-        : '\n\nPara resolver:\n1. Conceda ads_read ao token desta conta (System User com a conta de anúncios como ativo) e gere um novo token.\n2. Nenhum Page ID está salvo nesta conta — salve-os na aba Webhook para habilitar a sincronização via páginas (não exige ads_read).\n3. Alternativa: cole os IDs dos formulários manualmente na aba Polling desta conta (um ID por linha).';
+      // Dica de permissão: quando a via campanhas respondeu OK mas a
+      // edge da conta deu #100 "nonexisting field (leadgen_forms)", a
+      // dica clássica "conceda ads_read" é FALSA (ads_read provado) —
+      // o bloqueio real é leads_retrieval ausente (helper puro em
+      // meta-oauth, testado). Caso contrário, mantém a orientação de
+      // ads_read/asset da conta.
+      const permissionHint = buildSyncFormsPermissionHint({ attempts, pageCount });
       // Diagnóstico por via: mostra ao admin O QUE falhou em cada
       // tentativa (conta, campanhas, página a página) direto no toast —
       // antes isso só existia no console do servidor (inacessível na

@@ -197,6 +197,108 @@ export function findMissingScopes(
 }
 
 // ============================================================
+// Permissões do token × leitura de leads (diagnóstico do polling)
+// ============================================================
+// O token pode ser VÁLIDO (/me OK, ads_read OK, webhook saudável) e
+// ainda assim NÃO conseguir ler formulários/leads: a Graph oculta as
+// edges/objetos que exigem permissões não concedidas — os sintomas
+// clássicos de leads_retrieval ausente são
+//   "#100 Tried accessing nonexisting field (leadgen_forms)"  (listagem)
+//   "Unsupported get request … cannot be loaded due to missing
+//    permissions"                                              (leitura)
+// e a dica genérica "conceda ads_read" vira uma pista falsa quando o
+// próprio ads_read está OK (provable pela via campanhas do Sync Forms).
+
+/** Permissões que o diagnóstico de leads cruza em /me/permissions. */
+export const LEAD_TOKEN_PERMISSIONS = [
+  'leads_retrieval',       // ler leads/formulários (edges /leads e leadgen_forms)
+  'ads_read',              // listar formulários via conta de anúncios
+  'pages_show_list',       // listar páginas do usuário (/me/accounts → page token)
+  'pages_read_engagement', // ler conteúdo/engajamento das páginas
+  'pages_manage_metadata', // inscrever a página no webhook leadgen
+] as const;
+
+export type TokenPermissionStatus = 'granted' | 'declined' | 'absent';
+
+export type TokenPermissionSummary =
+  | { inconclusive: true }
+  | {
+      inconclusive: false;
+      permissions: Array<{ permission: string; status: TokenPermissionStatus }>;
+      leadsRetrievalMissing: boolean;
+      adsReadMissing: boolean;
+    };
+
+/** Resume as permissões concedidas ao token (GET /me/permissions — só
+ *  responde para tokens de USUÁRIO) para as permissões de interesse.
+ *  granted=null → inconclusivo (page/System User token ou falha de rede).
+ *  declined ≠ ausente: o usuário concedeu e depois REVOGOU (ou desmarcou
+ *  no diálogo) — ambos bloqueiam a leitura. */
+export function evaluateTokenPermissions(granted: Record<string, boolean> | null): TokenPermissionSummary {
+  if (!granted) return { inconclusive: true };
+  const permissions = LEAD_TOKEN_PERMISSIONS.map((permission) => ({
+    permission,
+    status: (
+      granted[permission] === true
+        ? 'granted'
+        : granted[permission] === false
+          ? 'declined'
+          : 'absent'
+    ) as TokenPermissionStatus,
+  }));
+  return {
+    inconclusive: false,
+    permissions,
+    leadsRetrievalMissing: granted['leads_retrieval'] !== true,
+    adsReadMissing: granted['ads_read'] !== true,
+  };
+}
+
+/** Shape mínimo dos attempts de fetchLeadgenFormsForAccount (lib
+ *  meta-ad-accounts) — estrutural, para manter este módulo puro. */
+export interface LeadgenFormsAttemptLike {
+  via: 'account' | 'campaigns' | 'page';
+  ok: boolean;
+  code?: string | null;
+  msg?: string;
+}
+
+/** TRUE quando o padrão de tentativas indica a edge da conta OCULTA por
+ *  leads_retrieval ausente: a tentativa direta em act_<id>/leadgen_forms
+ *  falhou com #100 "nonexisting field" e a via campanhas (que PROVA
+ *  ads_read + papel na conta de anúncios) respondeu OK. Nesse cenário a
+ *  dica "conceda ads_read" é falsa — o bloqueio é leads_retrieval. */
+export function isLeadgenFormsHiddenByLeadsRetrieval(
+  attempts: ReadonlyArray<LeadgenFormsAttemptLike>,
+): boolean {
+  const accountHidden = attempts.some(
+    (a) => a.via === 'account' && a.ok === false && a.code === '100' && /leadgen_forms/i.test(a.msg || ''),
+  );
+  const campaignsOk = attempts.some((a) => a.via === 'campaigns' && a.ok === true);
+  return accountHidden && campaignsOk;
+}
+
+/** Dica de correção do toast do Sync Forms. Detecta o caso
+ *  "ads_read OK, leads_retrieval ausente" (via campanhas OK + #100 na
+ *  edge da conta) e troca a orientação: o problema NÃO é asset/papel na
+ *  conta, e colar form IDs manualmente NÃO contorna (o polling lê
+ *  /{form-id}/leads com o token da conta, que também exige a permissão). */
+export function buildSyncFormsPermissionHint(args: {
+  attempts: ReadonlyArray<LeadgenFormsAttemptLike>;
+  pageCount: number;
+}): string {
+  if (isLeadgenFormsHiddenByLeadsRetrieval(args.attempts)) {
+    return '\n\nPara resolver:\n' +
+      '1. As campanhas da conta responderam OK — ads_read e o papel na conta de anúncios estão CORRETOS. O bloqueio real é a permissão leads_retrieval: sem ela a Graph OCULTA a leitura de formulários e leads (sintomas: "#100 nonexisting field (leadgen_forms)" na listagem e falha ao ler leads mesmo com o form ID colado).\n' +
+      '2. Gere um novo token para esta conta concedendo leads_retrieval (além de ads_read e pages_*): se a conta veio do Facebook, use "Reconectar com o Facebook" no card; se o token é manual, marque leads_retrieval na geração — no Graph API Explorer selecione o MESMO app do webhook desta conta. Apps públicos exigem Advanced Access (App Review); em modo DESENVOLVIMENTO funciona para usuários com papel no app.\n' +
+      '3. Atenção: colar os IDs dos formulários manualmente NÃO contorna este erro — o polling lê /{form-id}/leads com o token da conta, e essa leitura também exige leads_retrieval.';
+  }
+  return args.pageCount > 0
+    ? '\n\nPara resolver:\n1. Conceda ads_read ao token desta conta: System User com a conta de anúncios como ativo (business.facebook.com/settings/system-users) OU papel de ANUNCIANTE para a identidade do token — depois gere um novo token e atualize o card.\n2. As páginas vinculadas também foram consultadas — o resultado de cada uma está no "Diagnóstico por via" abaixo.\n3. Alternativa sem ads_read: cole os IDs dos formulários manualmente na aba Polling desta conta (um ID por linha) — o polling busca os leads com o token da conta.'
+    : '\n\nPara resolver:\n1. Conceda ads_read ao token desta conta (System User com a conta de anúncios como ativo) e gere um novo token.\n2. Nenhum Page ID está salvo nesta conta — salve-os na aba Webhook para habilitar a sincronização via páginas (não exige ads_read).\n3. Alternativa: cole os IDs dos formulários manualmente na aba Polling desta conta (um ID por linha).';
+}
+
+// ============================================================
 // Estado do token (b) — expiração e convite de reconexão
 // ============================================================
 

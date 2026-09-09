@@ -15,6 +15,7 @@ import {
   evaluateAppSubscription,
   type AppSubscriptionFetchOutcome,
 } from '@/lib/meta-app-subscription';
+import { evaluateTokenPermissions } from '@/lib/meta-oauth';
 
 // ============================================================
 // GET /api/meta-ad-accounts/[id]/diagnose
@@ -237,6 +238,51 @@ export async function GET(
     return ourAppIdProbe;
   };
 
+  // ── 2b. Permissões do token (SEMPRE) — causa raiz dos erros de
+  // leitura de formulários/leads. O token pode ser VÁLIDO (/me OK) e
+  // ainda assim a Graph OCULTAR as edges de leads quando o token não
+  // tem leads_retrieval: "#100 nonexisting field (leadgen_forms)" no
+  // Sync Forms e "Unsupported get request … missing permissions" na
+  // leitura de leads são os sintomas clássicos — MESMO com ads_read OK
+  // e webhook saudável. /me/permissions só responde para tokens de
+  // USUÁRIO (page/System User → skip, inconclusivo).
+  if (account.accessToken) {
+    const perms = await probePermissions();
+    const permSummary = evaluateTokenPermissions(perms ? perms.granted : null);
+    if (permSummary.inconclusive) {
+      checks.push({
+        key: 'token_permissions',
+        status: 'skip',
+        details: 'Permissões do token não puderam ser listadas (/me/permissions só responde para tokens de usuário) — os checks de formulários abaixo mostram o efeito real das falhas de leitura',
+      });
+    } else {
+      const permList = permSummary.permissions
+        .map((p) => `${p.permission}: ${p.status === 'granted' ? 'granted' : p.status === 'declined' ? 'DECLINED' : 'ausente'}`)
+        .join(' · ');
+      if (permSummary.leadsRetrievalMissing) {
+        checks.push({
+          key: 'token_permissions',
+          status: 'error',
+          details: `Permissões do token — ${permList}. SEM leads_retrieval a Graph oculta a leitura de formulários e leads: causa típica de "#100 nonexisting field (leadgen_forms)" no Sync Forms e de "Unsupported get request … missing permissions" ao ler leads — MESMO com ads_read OK e webhook saudável.`,
+          fix: 'Gere um novo token concedendo leads_retrieval: se a conta veio do Facebook, use "Reconectar com o Facebook" no card; se é token manual, marque leads_retrieval na geração — no Graph API Explorer selecione o MESMO app do webhook desta conta. Apps públicos exigem Advanced Access (App Review); em modo DESENVOLVIMENTO funciona para usuários com papel no app.',
+        });
+      } else if (permSummary.adsReadMissing) {
+        checks.push({
+          key: 'token_permissions',
+          status: 'warn',
+          details: `Permissões do token — ${permList}. Sem ads_read a LISTAGEM de formulários via conta de anúncios (Sync Forms) não funciona — a leitura de leads por form ID (polling) continua OK porque leads_retrieval está concedida.`,
+          fix: 'Gere um novo token concedendo ads_read: System User com a conta de anúncios como ativo, OU papel de ANUNCIANTE para a identidade do token.',
+        });
+      } else {
+        checks.push({
+          key: 'token_permissions',
+          status: 'ok',
+          details: `Permissões do token — ${permList}`,
+        });
+      }
+    }
+  }
+
   /** Cruza as sondas e monta a causa raiz + correção para uma página inacessível. */
   const buildPageFailureDiagnosis = async (pageId: string) => {
     const parts: string[] = [];
@@ -445,17 +491,52 @@ export async function GET(
   }
 
   // ── 4. Form IDs: leitura de leads liberada? ──────────────────
+  // Falha NÃO fica genérica: cruza com (i) a leitura do PRÓPRIO form
+  // (/{form-id}?fields=page — revela a página REAL dona dele, mesmo
+  // quando o Page ID do card está errado) e (ii) leads_retrieval do
+  // token (probe do 2b) — sem essa permissão, "Unsupported get
+  // request … missing permissions" é o sintoma, não um form inexistente.
   const formIds = parseJsonArray(account.formIds).slice(0, 5);
   for (const formId of formIds) {
     const leads = await graphGet(`${formId}/leads?limit=1&fields=id`, account.accessToken);
-    checks.push({
-      key: `form_${formId}`,
-      status: leads.ok ? 'ok' : 'error',
-      details: leads.ok
-        ? `Form ${formId}: leitura de leads OK com o token desta conta`
-        : `Form ${formId}: FALHA ao ler leads — ${leads.error}`,
-      fix: leads.ok ? undefined : 'Confirme que o formulário pertence a uma página desta conta e que o token tem leads_retrieval.',
-    });
+    if (leads.ok) {
+      checks.push({
+        key: `form_${formId}`,
+        status: 'ok',
+        details: `Form ${formId}: leitura de leads OK com o token desta conta`,
+      });
+      continue;
+    }
+
+    const fp = await probeFormPage(formId);
+    const perms = await probePermissions();
+    const lrMissing = perms ? perms.granted['leads_retrieval'] !== true : null;
+    const fpOwned = fp ? parseJsonArray(account.pageIds).includes(fp.pageId) : false;
+
+    const causeParts: string[] = [];
+    if (lrMissing === true) {
+      causeParts.push('o token NÃO tem leads_retrieval concedida (check "Permissões do token") — sem ela a leitura de leads/formulários fica bloqueada, mesmo com webhook saudável');
+    }
+    if (fp) {
+      causeParts.push(fpOwned
+        ? `o formulário em si é legível e pertence à página ${fp.pageId}${fp.pageName ? ` "${fp.pageName}"` : ''} (vinculada nesta conta)`
+        : `o formulário pertence à página ${fp.pageId}${fp.pageName ? ` "${fp.pageName}"` : ''}, que NÃO está nos Page IDs desta conta`);
+    } else if (lrMissing !== true) {
+      causeParts.push('a leitura do PRÓPRIO formulário também falhou — objeto excluído, ID errado ou página inacessível para a identidade do token');
+    }
+    const details = `Form ${formId}: FALHA ao ler leads — ${leads.error}${causeParts.length ? ` — ${causeParts.join('; ')}` : ''}`;
+
+    let fix: string;
+    if (lrMissing === true) {
+      fix = 'Gere um novo token concedendo leads_retrieval ("Reconectar com o Facebook" no card, ou marque a permissão na geração do token manual — no Graph API Explorer selecione o app do webhook desta conta) e reexecute o diagnóstico.';
+    } else if (fp && !fpOwned) {
+      fix = `Vincule a página real do formulário (${fp.pageId}) nos Page IDs desta conta (aba Webhook) ou mova o form ID para a conta correta.`;
+    } else if (lrMissing === null) {
+      fix = 'Confirme que o formulário existe e pertence a uma página acessível pela identidade do token; /me/permissions é inconclusivo para tokens de página/sistema — valide leads_retrieval no app (Advanced Access/App Review).';
+    } else {
+      fix = 'Confirme que o formulário pertence a uma página desta conta e que o token tem leads_retrieval.';
+    }
+    checks.push({ key: `form_${formId}`, status: 'error', details, fix });
   }
 
   // ── 5. Self-test do webhook (GET + POST assinado) ───────────
