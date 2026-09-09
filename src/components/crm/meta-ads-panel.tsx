@@ -36,6 +36,7 @@ import {
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { buildCapiDeleteConfirmMessage } from '@/lib/capi-delete-confirm';
+import { buildFormRemovalConfirmMessage } from '@/lib/lead-form-removal';
 import { TrackingTab } from './tracking-tab';
 import { CapiQualityDialog } from './meta-ads/capi-quality-dialog';
 import { CapiActivityLog } from './meta-ads/capi-activity-log';
@@ -913,6 +914,7 @@ function ConfigTab() {
   const [importForm, setImportForm] = useState({ accessToken: '', adAccountId: '', capiConfigId: '' });
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
+  const [deletingOrphanFormId, setDeletingOrphanFormId] = useState<string | null>(null);
 
   // Manual lead import states
   const [showManualImportDialog, setShowManualImportDialog] = useState(false);
@@ -1166,6 +1168,41 @@ function ConfigTab() {
     }
   }
 
+  // Remove um formulário ÓRFÃO (sem conta de anúncios) da lista global
+  // da Seção 3. DELETE sem adAccountId = remove apenas linhas globais
+  // (nunca as das contas). Leads e Temperatura não são tocados.
+  async function removeOrphanForm(mapping: any) {
+    if (
+      !confirm(
+        buildFormRemovalConfirmMessage({
+          formId: mapping.formId,
+          formName: mapping.formName,
+          totalLeads: mapping.totalLeads ?? mapping.leadCount,
+          scopeLabel: 'da lista global (formulários sem conta)',
+        })
+      )
+    )
+      return;
+    setDeletingOrphanFormId(mapping.formId);
+    try {
+      const params = new URLSearchParams({ formId: mapping.formId });
+      const res = await fetch(`/api/meta-capi-configs/form-mappings?${params}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(data?.error || 'Erro ao remover formulário');
+        return;
+      }
+      toast.success(`Formulário ${mapping.formName ? `"${mapping.formName}" ` : ''}removido da lista global`);
+      loadFormMappings();
+      loadCapiConfigs();
+      setCapiTick((t) => t + 1);
+    } catch {
+      toast.error('Erro ao remover formulário');
+    } finally {
+      setDeletingOrphanFormId(null);
+    }
+  }
+
   async function importFormIds() {
     if (!importForm.accessToken || !importForm.adAccountId) {
       toast.error('Access Token e ID da conta de anúncios são obrigatórios');
@@ -1286,6 +1323,11 @@ function ConfigTab() {
   const accountsPollingReady = adAccounts.filter((a: any) => a.enabled && a.pollingEnabled !== false && countIds(a.formIds) > 0).length;
   const hasCapiActive = capiConfigs.some((c: any) => c.enabled);
   const hasFormMappings = formMappings.length > 0;
+  // Escopo REAL da Seção 3: apenas formulários ÓRFÃOS (sem conta) — os
+  // das contas vivem no card de cada conta. Badge e conteúdo da seção
+  // refletem esse escopo (não o total aprendido).
+  const orphanMappings = formMappings.filter((m: any) => !m.adAccountId);
+  const hasOrphanForms = orphanMappings.length > 0;
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -1492,14 +1534,14 @@ function ConfigTab() {
         <AccordionItem value="form-mappings" className="border rounded-xl overflow-hidden data-[state=open]:border-success/30 data-[state=open]:shadow-sm transition-all">
           <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
             <div className="flex items-center gap-3 text-left">
-              <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${hasFormMappings ? 'bg-success/10' : 'bg-muted'}`}>
-                <Target className={`h-4 w-4 ${hasFormMappings ? 'text-success' : 'text-muted-foreground'}`} />
+              <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${hasOrphanForms ? 'bg-success/10' : 'bg-muted'}`}>
+                <Target className={`h-4 w-4 ${hasOrphanForms ? 'text-success' : 'text-muted-foreground'}`} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-sm">Mapeamento de Formulários</span>
-                  {hasFormMappings ? (
-                    <Badge className="bg-success/10 text-success text-[10px]">{formMappings.length} formulário{(formMappings.length !== 1 ? 's' : '')}</Badge>
+                  {hasOrphanForms ? (
+                    <Badge className="bg-success/10 text-success text-[10px]">{orphanMappings.length} formulário{(orphanMappings.length !== 1 ? 's' : '')}</Badge>
                   ) : (
                     <Badge className="bg-muted text-muted-foreground text-[10px]">Nenhum</Badge>
                   )}
@@ -1509,6 +1551,7 @@ function ConfigTab() {
             </div>
           </AccordionTrigger>
           <AccordionContent className="px-4 pb-4 space-y-4">
+            {hasOrphanForms ? (<>
             {/* O que faz */}
             <div className="rounded-lg bg-accent/40 dark:bg-accent/20 border border-accent p-3 space-y-2">
               <p className="text-xs font-semibold text-accent-foreground">O que esta seção faz</p>
@@ -1533,7 +1576,7 @@ function ConfigTab() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold">Formulários Detectados (sem conta)</span>
-                {formMappings.length > 0 && <Badge variant="secondary" className="text-[10px]">{formMappings.reduce((acc: number, m: any) => acc + (m.totalLeads || m.leadCount || 0), 0)} leads</Badge>}
+                <Badge variant="secondary" className="text-[10px]">{orphanMappings.reduce((acc: number, m: any) => acc + (m.totalLeads || m.leadCount || 0), 0)} leads</Badge>
               </div>
               <div className="flex items-center gap-1.5">
                 <Button size="sm" variant="outline" className="h-7 text-xs border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400" onClick={() => setShowImportDialog(true)}>
@@ -1547,18 +1590,9 @@ function ConfigTab() {
 
             {loadingMappings ? (
               <div className="flex items-center justify-center py-6"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
-            ) : formMappings.filter((m: any) => !m.adAccountId).length === 0 ? (
-              <div className="text-center py-6 space-y-1.5">
-                <p className="text-xs text-muted-foreground">
-                  {formMappings.length > 0
-                    ? 'Todos os formulários detectados pertencem a contas de anúncios — eles aparecem dentro do card da conta correspondente (Seção 1).'
-                    : 'Nenhum formulário detectado ainda. Os Form IDs aparecem automaticamente quando chegam leads via webhook.'}
-                </p>
-                <p className="text-[11px] text-muted-foreground">Ou use o botão <strong>Importar</strong> para buscar formulários diretamente da conta de anúncios do cliente.</p>
-              </div>
             ) : (
               <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                {formMappings.filter((m: any) => !m.adAccountId).map((mapping: any) => {
+                {orphanMappings.map((mapping: any) => {
                   const campaigns = mapping.campaigns || [];
                   const linkedConfig = mapping.capiConfig;
                   const isMapped = !!mapping.capiConfigId;
@@ -1606,6 +1640,16 @@ function ConfigTab() {
                               ))}
                             </SelectContent>
                           </Select>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                            onClick={() => removeOrphanForm(mapping)}
+                            disabled={deletingOrphanFormId === mapping.formId}
+                            title="Remover da lista global (leads já capturados são preservados)"
+                          >
+                            {deletingOrphanFormId === mapping.formId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -1615,6 +1659,25 @@ function ConfigTab() {
             )}
 
             <p className="text-[10px] text-muted-foreground">Form IDs detectados automaticamente via webhook e polling. Vincule cada formulário a um config CAPI (eventos de conversão) e a uma fila de atendimento (distribuição de leads por anúncio).</p>
+            </>) : (
+            // Estado COMPACTO quando não há formulários órfãos: a seção
+            // continua existindo (abriga "Fila por campanha"), mas o bloco
+            // de formulários vira uma única linha — sem caixa explicativa,
+            // sem estado vazio longo. Importar permanece acessível.
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed p-2.5">
+                <p className="text-[11px] text-muted-foreground min-w-0 flex-1">
+                  Nenhum formulário sem conta de anúncios — os formulários aprendidos aparecem no card de cada conta (Seção 1).
+                </p>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button size="sm" variant="outline" className="h-7 text-xs border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400" onClick={() => setShowImportDialog(true)}>
+                    <Download className="h-3 w-3 mr-1" /> Importar
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={loadFormMappings} disabled={loadingMappings}>
+                    {loadingMappings ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* FILA POR CAMPANHA (campaignId) — prioridade máxima no roteamento.
                 No grupo global mostramos apenas campanhas SEM conta; as das

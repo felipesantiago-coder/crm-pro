@@ -104,14 +104,18 @@ export function buildFormRemovalConfirmMessage(args: {
   formId: string;
   formName?: string | null;
   totalLeads?: number;
+  /** Contexto da remoção na UI. Default: 'desta conta' (card da conta).
+   *  Seção global (formulários sem conta) usa rótulo próprio. */
+  scopeLabel?: string;
 }): string {
   const label = args.formName ? `"${args.formName}" (${args.formId})` : args.formId;
+  const scope = args.scopeLabel || 'desta conta';
   const leads =
     typeof args.totalLeads === 'number' && args.totalLeads > 0
       ? `\n• Os ${args.totalLeads} lead(s) JÁ capturados por este formulário NÃO são apagados.`
       : '\n• Leads já capturados NÃO são apagados.';
   return (
-    `Remover o formulário ${label} desta conta?\n\n` +
+    `Remover o formulário ${label} ${scope}?\n\n` +
     '• O mapeamento aprendido (fila, config CAPI, empreendimento e campanhas) será excluído.' +
     leads +
     '\n• Se um novo lead chegar por este formulário, ele reaparece aqui automaticamente.'

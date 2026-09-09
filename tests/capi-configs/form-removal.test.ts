@@ -171,3 +171,22 @@ test('buildFormRemovalConfirmMessage: sem nome usa só o formId; sem leads usa f
   assert.match(msg, /formulário F2 desta conta\?/);
   assert.match(msg, /Leads já capturados NÃO são apagados/);
 });
+
+test('buildFormRemovalConfirmMessage: scopeLabel customizado substitui "desta conta" (lista global)', () => {
+  const msg = buildFormRemovalConfirmMessage({
+    formId: 'SIM_FORM_001',
+    formName: 'Formulário Teste Simulação',
+    totalLeads: 4,
+    scopeLabel: 'da lista global (formulários sem conta)',
+  });
+  assert.match(msg, /"Formulário Teste Simulação" \(SIM_FORM_001\) da lista global \(formulários sem conta\)\?/);
+  assert.doesNotMatch(msg, /desta conta/);
+  assert.match(msg, /4 lead\(s\) JÁ capturados/);
+});
+
+test('buildFormRemovalConfirmMessage: scopeLabel ausente mantém "desta conta" (backward compat)', () => {
+  const msg = buildFormRemovalConfirmMessage({ formId: 'F3', totalLeads: 0 });
+  assert.match(msg, /formulário F3 desta conta\?/);
+  // totalLeads = 0 → frase genérica (não "0 lead(s)")
+  assert.match(msg, /Leads já capturados NÃO são apagados/);
+});
