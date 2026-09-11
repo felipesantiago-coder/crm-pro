@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { FormFieldManager } from './form-field-manager';
 import { GalleryManager } from './gallery-manager';
+import { WhatsAppLandingSection } from './whatsapp-landing-section';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -159,6 +160,19 @@ export function LandingPagesTab() {
 
   return (
     <div className="space-y-5">
+      {/* ══ Landing de WhatsApp — Clique para Entrar (anúncios) ══ */}
+      <WhatsAppLandingSection />
+
+      {/* ══ Landings de empreendimentos ══ */}
+      <div className="flex items-center gap-3 pt-2">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <Building2 className="h-3 w-3" />
+          Landings de empreendimentos
+        </span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
       {/* Stats bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-wrap">

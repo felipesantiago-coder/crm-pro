@@ -39,6 +39,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/enterprises/catalog/') ||
     pathname.startsWith('/api/enterprises/list-public') ||
     pathname.startsWith('/api/webhooks/meta-leads') ||
+    // Beacon público de métrica da landing de WhatsApp (/lp/{slug})
+    pathname === '/api/lp-view' ||
     // Webhook do bot: updates vindos dos servidores do Telegram nunca
     // têm cookie de sessão — getToken aqui é trabalho morto (e o elo
     // de vinculação do bot não pode depender do middleware). Match
@@ -46,6 +48,8 @@ export async function proxy(request: NextRequest) {
     pathname === '/api/telegram/webhook';
   const isLandingOrPublic =
     pathname.startsWith('/empreendimentos/') ||
+    // Landing pública "Clique para Entrar" (anúncios): página + /go
+    pathname.startsWith('/lp/') ||
     pathname.startsWith('/en/') ||
     pathname.startsWith('/es/') ||
     pathname === '/login' ||
@@ -125,7 +129,9 @@ export async function proxy(request: NextRequest) {
   // ANTIGA da landing por até uma janela de 60s após a publicação de uma base
   // nova. Regra §12: atualização publicada deve refletir OBRIGATORIAMENTE →
   // max-age=0 + must-revalidate (sem stale).
-  const isLandingPage = /^\/empreendimentos\/[^/]+(\/?$|\/cadastro-sucesso)/.test(pathname);
+  const isLandingPage =
+    /^\/empreendimentos\/[^/]+(\/?$|\/cadastro-sucesso)/.test(pathname) ||
+    /^\/lp\/[^/]+\/?$/.test(pathname);
 
   if (isLandingPage) {
     response.headers.set('Cache-Control', 'public, max-age=0, must-revalidate');
@@ -165,6 +171,7 @@ export const config = {
     '/reset-password',
     '/forgot-password',
     '/empreendimentos/:path*',
+    '/lp/:path*',
     '/en/:path*',
     '/es/:path*',
     '/api/:path*',

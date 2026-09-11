@@ -1015,3 +1015,32 @@ model TelegramLinkToken {
   @@map("telegram_link_tokens")
 }
 
+// ============================================================
+// WHATSAPP LANDING — Landing pública "Clique para Entrar"
+// Página mínima de redirecionamento para WhatsApp, usada em
+// anúncios para captar leads SEM qualificação: o visitante da
+// região anunciativa clica no botão e cai direto na conversa.
+// Admin cria dinamicamente: região + número + mensagem + slug.
+// Métricas leves: views (beacon) e clicks (redirect /go).
+// Rollback: DROP TABLE "whatsapp_landings";
+// ============================================================
+model WhatsAppLanding {
+  id        String   @id @default(cuid()) @map("id")
+  /** Parte da URL pública: /lp/{slug} — único, imutável por convenção. */
+  slug      String   @unique @map("slug")
+  /** Região anunciada à qual a página está vinculada (ex.: "Portal do Parque"). */
+  region    String   @map("region")
+  /** Número de destino em dígitos com DDI (ex.: 5511999999999). */
+  phone     String   @map("phone")
+  /** Mensagem pré-preenchida; suporta placeholder {regiao}. */
+  message   String   @default("Olá, gostaria de conhecer outras opções na região") @map("message")
+  /** Inativa → /lp/{slug} responde 404 (link de anúncio morre suavemente). */
+  active    Boolean  @default(true) @map("active")
+  views     Int      @default(0) @map("views")
+  clicks    Int      @default(0) @map("clicks")
+  createdAt DateTime @default(now()) @map("createdAt")
+  updatedAt DateTime @updatedAt @map("updatedAt")
+
+  @@map("whatsapp_landings")
+}
+
