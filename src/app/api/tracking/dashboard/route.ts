@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
 import { Prisma } from '@prisma/client';
+import { runInWaves, TtlCache } from '@/lib/query-budget';
+import { splitUtmGroupingRows, formFunnelFromScan, type UtmGroupingSetRow } from '@/lib/tracking-agg';
 
 // Wrapper: individual query failure won't kill the entire dashboard
 const safe = <T,>(p: Promise<T>): Promise<T | []> =>
@@ -19,9 +21,55 @@ const PERIOD_DAYS: Record<string, number> = {
   '30d': 30,
 };
 
+// ── Fase 6: cache curto por usuário/escopo/período (TTL 60s) ──
+// Somente métricas AGREGADAS não sensíveis; recentLeads (PII:
+// nome do cliente, cidade, página) fica FORA do cache e é buscado
+// a cada request. Sem timers — evicção lazy (serverless-safe).
+const dashboardCache = new TtlCache<object>(60_000, 50);
+
+// ── Fase 6: recentLeads fora do cache (contém PII) — consulta viva ──
+async function fetchRecentLeads(startDate: Date, siteId: string | null) {
+  return safe(db.$queryRaw<
+    Array<{
+      visitorId: string;
+      leadId: string;
+      country: string | null;
+      city: string | null;
+      utmSource: string | null;
+      utmCampaign: string | null;
+      utmContent: string | null;
+      pageUrl: string | null;
+      convertedAt: string;
+      clientName: string | null;
+    }>
+  >(
+    Prisma.sql`
+      SELECT DISTINCT ON (v."visitorId")
+        v."visitorId",
+        v."leadId",
+        v."country",
+        v."city",
+        e."utmSource",
+        e."utmCampaign",
+        e."utmContent",
+        e."pageUrl",
+        e."createdAt" AS "convertedAt",
+        c.name AS "clientName"
+      FROM tracking_visitors v
+      JOIN tracking_events e ON e."visitorId" = v."visitorId"
+      LEFT JOIN clients c ON c.id = v."leadId"
+      WHERE v."leadId" IS NOT NULL
+        AND e."createdAt" >= ${startDate}::timestamptz
+        AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+      ORDER BY v."visitorId", e."createdAt" DESC
+      LIMIT 20
+    `,
+  ));
+}
+
 export async function GET(request: Request) {
   try {
-    const { error } = await requireAdmin();
+    const { error, session } = await requireAdmin();
     if (error) return error;
 
     const { searchParams } = new URL(request.url);
@@ -38,47 +86,35 @@ export async function GET(request: Request) {
       startDate.setHours(0, 0, 0, 0);
     }
 
-    // Run all independent queries in parallel
-    const [
-      kpis,
-      bouncedVisitors,
-      chartData,
-      funnelData,
-      byCampaign,
-      bySource,
-      byContent,
-      byMedium,
-      byTerm,
-      byEventType,
-      topPages,
-      topCountries,
-      topCities,
-      deviceBreakdown,
-      hourlyData,
-      recentLeads,
-      referrerBreakdown,
-      metaPixelLeads,
-      metaCrmLeads,
-      metaMatched,
-      scrollDepthData,
-      formInteractionData,
-      exitIntentCount,
-      topEntryPages,
-      avgSessionDuration,
-      returningVisitors,
-      engagementByDayOfWeek,
-      whatsappClicks,
-      webVitalsData,
-      engagedTimeData,
-      jsErrorsData,
-      sectionViewsData,
-      ctaClicksData,
-      formFunnelData,
-      visitorContextData,
-      contentEngagementData,
-    ] = await Promise.all([
+    // ── Fase 6: chave de cache por usuário/escopo(siteId)/período ──
+    const cacheKey = `dash|${session?.user?.id ?? session?.user?.email ?? 'anon'}|${siteId ?? 'all'}|${period}`;
+    const cachedPayload = dashboardCache.get(cacheKey);
+    if (cachedPayload) {
+      // recentLeads nunca cacheado (PII) — consulta viva no hit
+      const recentLeads = await fetchRecentLeads(startDate, siteId);
+      console.log(`[Tracking Dashboard] Cache HIT — key=${cacheKey}`);
+      return NextResponse.json({
+        ...cachedPayload,
+        recentLeads: recentLeads.map((r) => ({
+          visitorId: r.visitorId,
+          leadId: r.leadId,
+          country: r.country,
+          city: r.city,
+          utmSource: r.utmSource,
+          utmCampaign: r.utmCampaign,
+          utmContent: r.utmContent,
+          pageUrl: r.pageUrl,
+          convertedAt: r.convertedAt,
+          clientName: r.clientName,
+        })),
+      });
+    }
+
+    // ── Fase 6: ondas de consultas com orçamento de concorrência ──
+    // (antes: ~34 consultas em um único Promise.all sem orçamento)
+    const results = await runInWaves([
       // ── 1. Core KPIs ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{
           totalVisitors: bigint;
           totalPageviews: bigint;
@@ -102,7 +138,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 2. Bounced visitors ──
-      safe(db.$queryRaw<Array<{ count: bigint }>>(
+      () => safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(*)::bigint AS count
           FROM (
@@ -118,7 +154,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 3. Daily chart data ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{
           date: string;
           visitors: bigint;
@@ -144,7 +180,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 4. Funnel ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ stage: string; count: bigint }>
       >(
         Prisma.sql`
@@ -174,98 +210,43 @@ export async function GET(request: Request) {
         `,
       )),
 
-      // ── 5. By campaign ──
-      safe(db.$queryRaw<
-        Array<{ campaign: string; visitors: bigint; leads: bigint }>
+      // ── 5-9. Breakdowns UTM (Fase 6: UMA consulta com GROUPING
+      // SETS em vez de 5 scans quase idênticos — a divisão nas 5
+      // estruturas originais fica em splitUtmGroupingRows, com os
+      // mesmos rótulos default e ordenação por visitors desc) ──
+      () => safe(db.$queryRaw<
+        UtmGroupingSetRow[]
       >(
         Prisma.sql`
           SELECT
-            COALESCE(e."utmCampaign", '(sem campanha)') AS campaign,
+            CASE
+              WHEN GROUPING(e."utmCampaign") = 0 THEN 'campaign'::text
+              WHEN GROUPING(e."utmSource") = 0 THEN 'source'::text
+              WHEN GROUPING(e."utmContent") = 0 THEN 'content'::text
+              WHEN GROUPING(e."utmMedium") = 0 THEN 'medium'::text
+              ELSE 'term'::text
+            END AS dimension,
+            CASE
+              WHEN GROUPING(e."utmCampaign") = 0 THEN COALESCE(e."utmCampaign", '(sem campanha)')
+              WHEN GROUPING(e."utmSource") = 0 THEN COALESCE(e."utmSource", '(orgânico/direto)')
+              WHEN GROUPING(e."utmContent") = 0 THEN COALESCE(e."utmContent", '(sem conteúdo)')
+              WHEN GROUPING(e."utmMedium") = 0 THEN COALESCE(e."utmMedium", '(não definido)')
+              ELSE COALESCE(e."utmTerm", '(não definido)')
+            END AS label,
             COUNT(DISTINCT e."visitorId")::bigint AS visitors,
             COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS leads
           FROM tracking_events e
           LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
           WHERE e."createdAt" >= ${startDate}::timestamptz
             AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY COALESCE(e."utmCampaign", '(sem campanha)')
-          ORDER BY visitors DESC
-        `,
-      )),
-
-      // ── 6. By source ──
-      safe(db.$queryRaw<
-        Array<{ source: string; visitors: bigint; leads: bigint }>
-      >(
-        Prisma.sql`
-          SELECT
-            COALESCE(e."utmSource", '(orgânico/direto)') AS source,
-            COUNT(DISTINCT e."visitorId")::bigint AS visitors,
-            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS leads
-          FROM tracking_events e
-          LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
-          WHERE e."createdAt" >= ${startDate}::timestamptz
-            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY COALESCE(e."utmSource", '(orgânico/direto)')
-          ORDER BY visitors DESC
-        `,
-      )),
-
-      // ── 7. By UTM content (ad creative) ──
-      safe(db.$queryRaw<
-        Array<{ content: string; visitors: bigint; leads: bigint }>
-      >(
-        Prisma.sql`
-          SELECT
-            COALESCE(e."utmContent", '(sem conteúdo)') AS content,
-            COUNT(DISTINCT e."visitorId")::bigint AS visitors,
-            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS leads
-          FROM tracking_events e
-          LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
-          WHERE e."createdAt" >= ${startDate}::timestamptz
-            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY COALESCE(e."utmContent", '(sem conteúdo)')
-          ORDER BY visitors DESC
-        `,
-      )),
-
-      // ── 8. By UTM medium ──
-      safe(db.$queryRaw<
-        Array<{ medium: string; visitors: bigint; leads: bigint }>
-      >(
-        Prisma.sql`
-          SELECT
-            COALESCE(e."utmMedium", '(não definido)') AS medium,
-            COUNT(DISTINCT e."visitorId")::bigint AS visitors,
-            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS leads
-          FROM tracking_events e
-          LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
-          WHERE e."createdAt" >= ${startDate}::timestamptz
-            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY COALESCE(e."utmMedium", '(não definido)')
-          ORDER BY visitors DESC
-        `,
-      )),
-
-      // ── 9. By UTM term ──
-      safe(db.$queryRaw<
-        Array<{ term: string; visitors: bigint; leads: bigint }>
-      >(
-        Prisma.sql`
-          SELECT
-            COALESCE(e."utmTerm", '(não definido)') AS term,
-            COUNT(DISTINCT e."visitorId")::bigint AS visitors,
-            COUNT(DISTINCT CASE WHEN v."leadId" IS NOT NULL THEN e."visitorId" END)::bigint AS leads
-          FROM tracking_events e
-          LEFT JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
-          WHERE e."createdAt" >= ${startDate}::timestamptz
-            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          GROUP BY COALESCE(e."utmTerm", '(não definido)')
-          ORDER BY visitors DESC
+          GROUP BY GROUPING SETS (
+            (e."utmCampaign"), (e."utmSource"), (e."utmContent"), (e."utmMedium"), (e."utmTerm")
+          )
         `,
       )),
 
       // ── 10. By event type ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ eventType: string; count: bigint }>
       >(
         Prisma.sql`
@@ -281,7 +262,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 11. Top pages ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ url: string; views: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -301,7 +282,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 12. Top countries ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ country: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -319,7 +300,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 13. Top cities ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ city: string; country: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -338,7 +319,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 14. Device breakdown ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ device: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -365,7 +346,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 15. Hourly distribution ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ hour: number; visitors: bigint; events: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -383,46 +364,12 @@ export async function GET(request: Request) {
         `,
       )),
 
-      // ── 16. Recent converted leads (last 20) ──
-      safe(db.$queryRaw<
-        Array<{
-          visitorId: string;
-          leadId: string;
-          country: string | null;
-          city: string | null;
-          utmSource: string | null;
-          utmCampaign: string | null;
-          utmContent: string | null;
-          pageUrl: string | null;
-          convertedAt: string;
-          clientName: string | null;
-        }>
-      >(
-        Prisma.sql`
-          SELECT DISTINCT ON (v."visitorId")
-            v."visitorId",
-            v."leadId",
-            v."country",
-            v."city",
-            e."utmSource",
-            e."utmCampaign",
-            e."utmContent",
-            e."pageUrl",
-            e."createdAt" AS "convertedAt",
-            c.name AS "clientName"
-          FROM tracking_visitors v
-          JOIN tracking_events e ON e."visitorId" = v."visitorId"
-          LEFT JOIN clients c ON c.id = v."leadId"
-          WHERE v."leadId" IS NOT NULL
-            AND e."createdAt" >= ${startDate}::timestamptz
-            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          ORDER BY v."visitorId", e."createdAt" DESC
-          LIMIT 20
-        `,
-      )),
+      // ── 16. Recent converted leads — REMOVIDO das ondas na Fase 6
+      // (contém PII — fica fora do cache, consulta viva em
+      // fetchRecentLeads) ──
 
       // ── 17. Referrer breakdown ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ referrer: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -462,7 +409,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 18a. Meta discrepancy: pixel-tracked leads ──
-      safe(db.$queryRaw<Array<{ count: bigint }>>(
+      () => safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
           FROM tracking_events e
@@ -473,7 +420,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 18b. Meta discrepancy: CRM leads tagged [Meta Ads] ──
-      safe(db.$queryRaw<Array<{ count: bigint }>>(
+      () => safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(*)::bigint AS count
           FROM clients
@@ -483,7 +430,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 18c. Meta discrepancy: matched ──
-      safe(db.$queryRaw<Array<{ count: bigint }>>(
+      () => safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
           FROM tracking_events e
@@ -497,7 +444,7 @@ export async function GET(request: Request) {
 
       // ── 19. Scroll depth distribution ──
       // Uses metadata->>'depth' for new events, falls back to eventName
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ depth_label: string; count: bigint }>
       >(
         Prisma.sql`
@@ -521,7 +468,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 20. Form interaction events ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ eventType: string; eventName: string | null; count: bigint }>
       >(
         Prisma.sql`
@@ -536,7 +483,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 21. Exit intent count ──
-      safe(db.$queryRaw<Array<{ count: bigint }>>(
+      () => safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(*)::bigint AS count
           FROM tracking_events e
@@ -547,7 +494,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 22. Top entry pages ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ url: string; count: bigint }>
       >(
         Prisma.sql`
@@ -571,7 +518,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 23. Average session duration (approx) ──
-      safe(db.$queryRaw<Array<{ avg_seconds: number }>>(
+      () => safe(db.$queryRaw<Array<{ avg_seconds: number }>>(
         Prisma.sql`
           SELECT
             AVG(
@@ -591,7 +538,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 24. Returning visitors (visitors with events on 2+ different days) ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ returning: bigint; new: bigint }>
       >(
         Prisma.sql`
@@ -611,7 +558,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 25. Engagement by day of week ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ dow: number; dow_name: string; visitors: bigint; leads: bigint }>
       >(
         Prisma.sql`
@@ -630,7 +577,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 26. WhatsApp clicks (unique visitors who clicked WhatsApp) ──
-      safe(db.$queryRaw<Array<{ count: bigint }>>(
+      () => safe(db.$queryRaw<Array<{ count: bigint }>>(
         Prisma.sql`
           SELECT COUNT(DISTINCT e."visitorId")::bigint AS count
           FROM tracking_events e
@@ -641,7 +588,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 27. Web Vitals summary (avg per metric) ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ metric: string; avg_value: number; p75: number; count: bigint }>
       >(
         Prisma.sql`
@@ -660,7 +607,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 28. Engaged time distribution ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ seconds: number; count: bigint }>
       >(
         Prisma.sql`
@@ -678,7 +625,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 29. JS Errors (count + top messages) ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ error_message: string; count: bigint; latest: string }>
       >(
         Prisma.sql`
@@ -697,7 +644,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 30. Section views ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ section: string; views: bigint; unique_visitors: bigint }>
       >(
         Prisma.sql`
@@ -716,7 +663,7 @@ export async function GET(request: Request) {
       )),
 
       // ── 31. CTA clicks ──
-      safe(db.$queryRaw<
+      () => safe(db.$queryRaw<
         Array<{ cta_text: string; section: string; clicks: bigint; unique_visitors: bigint }>
       >(
         Prisma.sql`
@@ -735,66 +682,120 @@ export async function GET(request: Request) {
         `,
       )),
 
-      // ── 32. Form funnel (view → focus → attempt → submit → error) ──
-      safe(db.$queryRaw<
-        Array<{ stage: string; count: bigint }>
+      // ── 32. Form funnel (Fase 6: scan único com COUNT FILTER em vez
+      // de 5 scans UNION ALL; forma de resposta preservada) ──
+      () => safe(db.$queryRaw<
+        Array<Parameters<typeof formFunnelFromScan>[0]>
       >(
         Prisma.sql`
-          SELECT stage, COUNT(*)::bigint AS count FROM (
-            SELECT 'form_view' AS stage FROM tracking_events WHERE "eventType" = 'form_view' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
-            UNION ALL
-            SELECT 'form_focus' AS stage FROM tracking_events WHERE "eventType" = 'form_focus' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
-            UNION ALL
-            SELECT 'form_submit_attempt' AS stage FROM tracking_events WHERE "eventType" = 'form_submit_attempt' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
-            UNION ALL
-            SELECT 'form_submit' AS stage FROM tracking_events WHERE "eventType" = 'form_submit' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
-            UNION ALL
-            SELECT 'form_submit_error' AS stage FROM tracking_events WHERE "eventType" = 'form_submit_error' AND "createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
-          ) all_stages
-          GROUP BY stage
-          ORDER BY count DESC
+          SELECT
+            COUNT(*) FILTER (WHERE "eventType" = 'form_view')::bigint          AS form_view,
+            COUNT(*) FILTER (WHERE "eventType" = 'form_focus')::bigint         AS form_focus,
+            COUNT(*) FILTER (WHERE "eventType" = 'form_submit_attempt')::bigint AS form_submit_attempt,
+            COUNT(*) FILTER (WHERE "eventType" = 'form_submit')::bigint        AS form_submit,
+            COUNT(*) FILTER (WHERE "eventType" = 'form_submit_error')::bigint  AS form_submit_error
+          FROM tracking_events
+          WHERE "eventType" IN ('form_view','form_focus','form_submit_attempt','form_submit','form_submit_error')
+            AND "createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR "siteId" = ${siteId})
         `,
       )),
 
-      // ── 33. Visitor context (language + connection) ──
-      safe(db.$queryRaw<
+      // ── 33. Visitor context (Fase 6: scan único via CROSS JOIN de
+      // dimensões em vez de 2 scans UNION ALL) ──
+      () => safe(db.$queryRaw<
         Array<{ context_type: string; context_value: string; visitors: bigint }>
       >(
         Prisma.sql`
-          SELECT context_type, context_value, COUNT(DISTINCT "visitorId")::bigint AS visitors FROM (
-            SELECT 'language' AS context_type, COALESCE(e."metadata"->>'language', '(desconhecido)') AS context_value, e."visitorId"
-            FROM tracking_events e
-            WHERE e."metadata"->>'language' IS NOT NULL AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-            UNION ALL
-            SELECT 'connection' AS context_type, COALESCE(e."metadata"->>'connection', '(desconhecido)') AS context_value, e."visitorId"
-            FROM tracking_events e
-            WHERE e."metadata"->>'connection' IS NOT NULL AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          ) ctx
-          GROUP BY context_type, context_value
+          SELECT
+            dim.context_type,
+            COALESCE(
+              CASE dim.context_type
+                WHEN 'language' THEN e."metadata"->>'language'
+                ELSE e."metadata"->>'connection'
+              END,
+              '(desconhecido)'
+            ) AS context_value,
+            COUNT(DISTINCT e."visitorId")::bigint AS visitors
+          FROM tracking_events e
+          CROSS JOIN (VALUES ('language'::text), ('connection'::text)) AS dim(context_type)
+          WHERE (
+            CASE dim.context_type
+              WHEN 'language' THEN e."metadata"->>'language'
+              ELSE e."metadata"->>'connection'
+            END
+          ) IS NOT NULL
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY dim.context_type, 2
           ORDER BY context_type, visitors DESC
         `,
       )),
 
-      // ── 34. Gallery clicks + FAQ opens ──
-      safe(db.$queryRaw<
+      // ── 34. Gallery clicks + FAQ opens (Fase 6: scan único via
+      // CROSS JOIN de tipos em vez de 2 scans UNION ALL) ──
+      () => safe(db.$queryRaw<
         Array<{ event_type: string; label: string; count: bigint }>
       >(
         Prisma.sql`
-          SELECT event_type, label, COUNT(*)::bigint AS count FROM (
-            SELECT 'gallery_click' AS event_type, COALESCE(e."eventName", 'Galeria') AS label
-            FROM tracking_events e
-            WHERE e."eventType" = 'gallery_click' AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-            UNION ALL
-            SELECT 'faq_open' AS event_type, COALESCE(e."metadata"->>'question', e."eventName", 'FAQ') AS label
-            FROM tracking_events e
-            WHERE e."eventType" = 'faq_open' AND e."createdAt" >= ${startDate}::timestamptz AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
-          ) content_events
-          GROUP BY event_type, label
+          SELECT
+            dim.event_type,
+            CASE dim.event_type
+              WHEN 'gallery_click' THEN COALESCE(e."eventName", 'Galeria')
+              ELSE COALESCE(e."metadata"->>'question', e."eventName", 'FAQ')
+            END AS label,
+            COUNT(*)::bigint AS count
+          FROM tracking_events e
+          CROSS JOIN (VALUES ('gallery_click'::text), ('faq_open'::text)) AS dim(event_type)
+          WHERE e."eventType" = dim.event_type
+            AND e."createdAt" >= ${startDate}::timestamptz
+            AND (${siteId}::text IS NULL OR e."siteId" = ${siteId})
+          GROUP BY dim.event_type, 2
           ORDER BY event_type, count DESC
           LIMIT 20
         `,
       )),
-    ]);
+    ], 6);
+
+    const [
+      kpis,
+      bouncedVisitors,
+      chartData,
+      funnelData,
+      utmRows,
+      byEventType,
+      topPages,
+      topCountries,
+      topCities,
+      deviceBreakdown,
+      hourlyData,
+      referrerBreakdown,
+      metaPixelLeads,
+      metaCrmLeads,
+      metaMatched,
+      scrollDepthData,
+      formInteractionData,
+      exitIntentCount,
+      topEntryPages,
+      avgSessionDuration,
+      returningVisitors,
+      engagementByDayOfWeek,
+      whatsappClicks,
+      webVitalsData,
+      engagedTimeData,
+      jsErrorsData,
+      sectionViewsData,
+      ctaClicksData,
+      formFunnelScan,
+      visitorContextData,
+      contentEngagementData,
+    ] = results;
+
+    const { byCampaign, bySource, byContent, byMedium, byTerm } = splitUtmGroupingRows(utmRows);
+    const formFunnelData = formFunnelFromScan(formFunnelScan[0]);
+
+    // ── Fase 6: recentLeads fora do cache (PII) — consulta viva ──
+    const recentLeads = await fetchRecentLeads(startDate, siteId);
 
     // ── Compute derived metrics ──
     const totalVisitors = Number(kpis[0]?.totalVisitors ?? 0);
@@ -1042,7 +1043,9 @@ export async function GET(request: Request) {
       count: Number(r.count),
     }));
 
-    return NextResponse.json({
+    // ── Fase 6: payload agregado (sem PII) vai ao cache curto;
+    // recentLeads é injetado a cada request ──
+    const payload = {
       metrics: {
         totalVisitors,
         totalPageviews,
@@ -1101,7 +1104,12 @@ export async function GET(request: Request) {
       formFunnel: formFunnelRows,
       visitorContext: visitorContextRows,
       contentEngagement: contentEngagementRows,
-    });
+    };
+
+    dashboardCache.set(cacheKey, payload);
+    console.log(`[Tracking Dashboard] Cache SET — key=${cacheKey}`);
+
+    return NextResponse.json({ ...payload, recentLeads: leadRows });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;

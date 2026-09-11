@@ -424,6 +424,7 @@ model TrackingVisitor {
   @@index([siteId])
   @@index([leadId])
   @@index([lastSeenAt])
+  @@index([siteId, lastSeenAt])
   @@map("tracking_visitors")
 }
 
@@ -449,7 +450,26 @@ model TrackingEvent {
   @@index([visitorId])
   @@index([sessionId])
   @@index([createdAt])
+  @@index([siteId, createdAt])
+  @@index([siteId, eventType, createdAt])
   @@map("tracking_events")
+}
+
+// ============================================================
+// Fase 6 — rate limit DISTRIBUÍDO do /api/track (otimização Vercel)
+// Uma linha por chave (ip): contador da janela corrente, resetado via
+// CASE no próprio statement atômico (INSERT ... ON CONFLICT DO UPDATE
+// ... RETURNING — pooler-safe, sem transação interativa). Linhas de
+// janelas antigas são removidas de forma oportunista pelo próprio
+// endpoint (probabilidade baixa por request).
+// ============================================================
+model TrackingRateLimit {
+  key         String   @id @map("key")
+  windowStart DateTime @default(now()) @map("windowStart")
+  count       Int      @default(0) @map("count")
+  updatedAt   DateTime @updatedAt @map("updatedAt")
+
+  @@map("tracking_rate_limit")
 }
 
 // ============================================================

@@ -15,6 +15,7 @@
 | Migration `20260911_create_whatsapp_landings` | `DROP TABLE "whatsapp_landings";` (tabela isolada, sem FK) | Perde landings criadas |
 | Migration `20260911_meta_ingest_durability` (inbox/cursor/lease) | `DROP TABLE IF EXISTS "meta_polling_lease"; DROP TABLE IF EXISTS "meta_polling_cursor"; DROP TABLE IF EXISTS "meta_lead_inbox";` + flags `META_INGEST_V2=legacy` e `META_POLL_CURSOR_V2=legacy` | Sem perda de leads (clients intacto); perde apenas itens pendentes na inbox na hora do drop |
 | Migration `20260911_lead_queue_assignment_unique` (Fase 4) | `DROP INDEX IF EXISTS "lead_queue_assignments_leadId_key"; CREATE INDEX IF NOT EXISTS "lead_queue_assignments_leadId_idx" ON "lead_queue_assignments"("leadId");` + flag `LEAD_QUEUE_ATOMIC_V2=legacy` | Sem perda de atribuições; volta ao CAS + create de 2 statements (com replay P2002). O índice simples é recriado pois foi dropado como redundante |
+| Migration `20260911_tracking_report_indexes` (Fase 6) | `DROP INDEX IF EXISTS "tracking_events_siteId_createdAt_idx"; DROP INDEX IF EXISTS "tracking_events_siteId_eventType_createdAt_idx"; DROP INDEX IF EXISTS "tracking_visitors_siteId_lastSeenAt_idx"; DROP TABLE IF EXISTS "tracking_rate_limit";` + flag `TRACK_RATE_LIMIT_V2=legacy` | Mínimo — índices são reconstruíveis e a tabela guarda só contadores de janela (nenhum dado de negócio); sem a tabela, o /api/track degrada automaticamente para o rate limit in-memory (WARN único) |
 
 ## 2. Procedimento de release de migration (NOVO fluxo)
 
@@ -56,6 +57,18 @@ DATABASE_URL="<url-sessao>" node scripts/sanitize-lead-queue-assignments.mjs --a
 DATABASE_URL="<url-sessao>" psql "$DATABASE_URL" -f scripts/explain-lead-queue-indexes.sql
 #    Esperado: Index Scan em leadId (Q1) e plano da CTE sem erro (Q2).
 #    Q2 usa EXPLAIN sem ANALYZE — NÃO executa escrita.
+#
+#    Fase 6 (tracking/relatórios):
+DATABASE_URL="<url-sessao>" psql "$DATABASE_URL" -f scripts/explain-tracking-indexes.sql
+#    Esperado: Index Scan em (siteId,createdAt) (Q1),
+#    (siteId,eventType,createdAt) (Q2), (siteId,lastSeenAt) (Q3);
+#    Q4 = GROUPING SETS sem erro (PG 15+); Q5 = plano do upsert do
+#    rate limit (EXPLAIN puro — NÃO escreve); Q6 = journey com
+#    ROW_NUMBER sem erro. Seq Scan com pouco tráfego é normal no
+#    release — re-executar após dias de tracking real.
+#    (alternativa sem psql/node: SQL Editor do Supabase — pacote
+#     download/fase6-sql-editor-release.sql com pré-checks, DDL,
+#     registro em _prisma_migrations, EXPLAINs e verificação)
 
 # 5) Verificar
 DATABASE_URL="<url-sessao>" npx prisma migrate status
@@ -106,6 +119,17 @@ Comparar antes/depois por deployment no Observability do projeto:
 - [ ] `peekNextUser` das landings mostra o agente da vez (comportamento inalterado)
 - [ ] Log `Caminho atômico indisponível — usando CAS+create legado` NÃO aparece em produção (se aparecer: UNIQUE não aplicada ou erro de statement — investigar; o caminho legado mantém o serviço)
 - [ ] Se algo estranho: `LEAD_QUEUE_ATOMIC_V2=legacy` (redeploy) OU Instant Rollback §4 — rollback de schema documentado na tabela §1
+
+### Canário específico da Fase 6 (tracking/relatórios)
+
+- [ ] `/api/track` recebe eventos do pixel normalmente (visita de teste numa landing → visitor+event no Supabase; resposta 200 `{status:'ok'}`)
+- [ ] `tracking_rate_limit` recebendo 1 linha por IP com `count` acumulando por eventos e resetando a cada 60s (Bloco 4d do pacote SQL)
+- [ ] Log `[TrackRateLimit] Distribuído indisponível (...) fallback in-memory` NÃO aparece após aplicar o SQL (se aparecer: tabela ausente ou erro de statement — o serviço continua, mas distribuído é o objetivo)
+- [ ] Dashboard de tracking carrega como antes, com TODAS as seções populadas (breakdowns UTM campanha/fonte/conteúdo/médio/termo com os mesmos rótulos; funil de formulário; visitorContext; contentEngagement) — segunda carga em < 60s deve mostrar log `[Tracking Dashboard] Cache HIT`
+- [ ] `recentLeads` do dashboard atualiza a cada request (mesmo com cache HIT — PII fora do cache)
+- [ ] Report markdown gera como antes; jornadas longas truncadas em 5.000 eventos COM nota de truncamento (novo, esperado)
+- [ ] Staging local/dev sqlite: dashboard mostra seções vazias como sempre (consultas são Postgres-only — `safe()` mantém o comportamento)
+- [ ] Se algo estranho: `TRACK_RATE_LIMIT_V2=legacy` (redeploy) OU Instant Rollback §4 — rollback de schema documentado na tabela §1 (só índices/contadores, sem dado de negócio)
 
 ## 6. Recuperação de desastre — drift de schema (P3005/P3018)
 

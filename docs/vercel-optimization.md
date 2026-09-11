@@ -114,11 +114,50 @@ A partir deste commit, **push não aplica migration automaticamente**. Fluxo de 
 - **Legado permanece verbatim** como fallback (flag + degradação), com o acréscimo do replay P2002 — mesmo padrão da Fase 3.
 - **EXPLAIN pendente de execução**: `scripts/explain-lead-queue-indexes.sql` (Q1 replay/UNIQUE, Q2 plano do statement atômico — SEM ANALYZE, não escreve, Q3 histórico por fila) vai como passo do release.
 
-## Fases 6/7 — Sequenciadas (não rejeitadas; exigem janela de release/canário)
+## Fase 6 — Tracking e relatórios ✅ (implementada; release + canário pendentes)
+
+### /api/track — limites de ingestão (exigências do prompt, uma a uma)
+
+1. **Limite de corpo por bytes**: `Content-Length` rejeitado (> 64 KB → 413) + teto no tamanho REAL lido (`request.text()` — defesa contra header mentiroso). Pixel legítimo usa ≪ (sendBeacon de 1 evento).
+2. **Limite de quantidade de eventos**: lote cortado em 100 eventos (`TRACK_MAX_EVENTS_PER_BATCH`) — excedente é descartado com WARN e contadores aditivos na resposta (`received`/`accepted`), preservando o contrato `{status:'ok'}` que o pixel lê apenas como 2xx.
+3. **Validação de strings/metadata**: ids ≤ 128, URLs (pageUrl/referrer) ≤ 2048, eventName/utm* ≤ 256, metadata serializada ≤ 8 KB. Evento válido NUNCA é perdido por campo gigante: strings são cortadas e metadata estourada vira marcador `{_truncated:true,_keys:n}` — com `lead_id` EXTRAÍDO ANTES do truncamento, então o link `identify` nunca se perde.
+4. **Particione lotes e limite escrita concorrente**: `writeEventBatch` processa o lote em chunks sequenciais de 10 (concorrência interna ≤ 10, comprovada por teste de pico de in-flight). Falha de um evento não interrompe os demais (`written`/`failed` contados; `partial_error` quando failed > 0 — contrato preservado).
+5. **sendBeacon/identify/UTM/consent/eventos válidos preservados**: mapeamento snake_case→camelCase verbatim, campos extras → metadata, `cookie_consent` mapeado, filtro de payload válido (visitorId+siteId), parse urlencoded `data=` do sendBeacon e JSON.
+6. **Rate limit DISTRIBUÍDO**: o Map por instância virou tabela `tracking_rate_limit` + statement ÚNICO pooler-safe (`INSERT ... ON CONFLICT ("key") DO UPDATE` com reset de janela via CASE + `RETURNING count`) — mesmo padrão da CTE da Fase 4, sem transação interativa (proibida com PgBouncer). 1 round-trip por request (que já escrevia no banco). Limpeza de linhas paradas (>10 min) é oportunista (~5% dos requests, fora do caminho crítico). **Fallback**: `TRACK_RATE_LIMIT_V2=legacy` (rollback por env) OU erro P2021/P2022 (deploy antes do SQL) OU falha de banco → limitador in-memory com WARN único — disponibilidade > rigor em endpoint público (mesma filosofia das Fases 3/4). Semântica preservada: janela 60s, 100 eventos por IP, 429.
+7. **Geo-IP assíncrono com timeout e cache limitado**: já era fire-and-forget com 3s por provider e cache TTL 24h; adicionado HARD CAP de tamanho (evicção dos mais antigos quando cheio — antes só entradas expiradas eram removidas, permitindo crescimento além do teto com IPs todos frescos).
+
+### Dashboard/report — orçamento e agregações
+
+1. **Ondas com orçamento**: os `Promise.all` de ~34 (dashboard) e ~36 (report) consultas paralelas viraram `runInWaves` (lib `query-budget`) — ondas de 6, ordem de resultados idêntica ao Promise.all (tipagem espelhada), rejeição propagada (cada consulta já tem `safe()`).
+2. **GROUPING SETS**: os 5 breakdowns UTM (campaign/source/content/medium/term) eram 5 scans quase idênticos → UMA consulta com `GROUP BY GROUPING SETS` + `GROUPING()`; a lib `tracking-agg` (`splitUtmGroupingRows`) divide as linhas de volta nas 5 estruturas originais com os MESMOS rótulos default e ordenação por visitors desc — resposta byte-a-byte compatível. Funil de formulário (5 scans UNION ALL → 1 scan com COUNT FILTER), visitorContext (2 → 1 via CROSS JOIN) e contentEngagement (2 → 1) idem.
+3. **Janela/paginação segura**: período já era fechado (`PERIOD_DAYS`); corrigidos os pontos SEM teto: jornada do report (era SEM janela e sem limite — agora teto por visitante de 200 eventos via ROW_NUMBER + limite global de 5.000 linhas + nota de truncamento no markdown) e jornadas do campaigns (janela do período + teto por visitante + flag aditiva `journeysTruncated`).
+4. **Colunas necessárias**: a consulta de jornada do report selecionava `sessionId` e `metadata` (coluna Json — a mais pesada) que NUNCA eram consumidos — removidas do SELECT.
+5. **Cache curto não sensível**: dashboard cacheia o payload AGREGADO em `TtlCache` (60s, chave `usuário|siteId|período`, teto 50 entradas, evicção lazy sem timers — serverless-safe). `recentLeads` (PII: nome do cliente, cidade, página) fica FORA do cache e é buscado a cada request (cache HIT também). Report NÃO é cacheado (export sob demanda com jornadas/PII — decisão explícita).
+6. **Índices após EXPLAIN**: migration `20260911_tracking_report_indexes` com os índices previstos no plano `(siteId, createdAt)` e `(siteId, eventType, createdAt)` + `(siteId, lastSeenAt)` para visitors; `scripts/explain-tracking-indexes.sql` (Q1–Q4 com ANALYZE de leitura, Q5 SEM ANALYZE — não escreve) vai no §2 do rollback.md como passo OBRIGATÓRIO (sandbox sem Postgres, regra 8).
+
+### Rollups/retenção (avaliação exigida pelo prompt) — decisão explícita
+
+- **Rollups DEFERIDOS**: as consultas já são agregações SQL com janela fechada; com cache 60s + índices compostos, o volume atual não justifica tabela de rollup (complexidade de invalidação no publish/atrás de cadastro). Revisitar se o canário mostrar p95 > 1s no dashboard com 30 dias de janela.
+- **Retenção SEM apagar sem consentimento**: NENHUM DELETE automático (sem cron, sem default ON). `scripts/meta-inbox-retention.mjs` entrega a limpeza CONFIGURÁVEL prometida na Fase 3 para `meta_lead_inbox` (DRY RUN por padrão; `--apply` explícito; SÓ remove SUCCEEDED — ledger de falhas/pendentes intacto; `META_INBOX_RETENTION_DAYS`, mínimo 7) e ainda limpa linhas paradas do `tracking_rate_limit` (lixo puro de contadores). Para `tracking_events`, o script apenas REPORTA contagens >90d/>180d — retenção de dados de terceiros depende de base legal/consentimento e fica documentada como decisão do titular, não automática.
+
+### Flags de canário (default ON; rollback por env)
+
+- `TRACK_RATE_LIMIT_V2=legacy` → rate limit volta ao in-memory por instância (comportamento pré-Fase 6)
+- Degradação AUTOMÁTICA: tabela `tracking_rate_limit` ausente (P2021/P2022) ou erro de banco → in-memory com WARN único — deploy seguro ANTES do SQL
+- Ondas/cache/agregações são sem flag: preservam resposta e semântica (rollback = Instant Rollback do deploy)
+
+### Decisões explícitas (regra do prompt)
+
+- **Lote de eventos cortado (não rejeitado)**: 413 só para BYTES (corpo inteiro suspeito); acima de 100 eventos processa os 100 primeiros com contadores aditivos — tracking é fire-and-forget (o pixel não lê o corpo da resposta) e rejeitar tudo perderia eventos válidos por causa do excesso.
+- **Fallback do rate limit é fail-open para o in-memory** (não fail-closed): se o banco cair, os writes falham de qualquer forma; bloquear tráfego legítimo por causa do limitador seria agravar uma indisponibilidade. O WARN único torna a degradação observável nos logs.
+- **Cache por usuário + recentLeads fora**: o payload agregado é idêntico entre admins, mas a chave por usuário (exigência do prompt) elimina qualquer vazamento entre contas e permite invalidação por usuário no futuro; recentLeads contém PII e respeita a regra “apenas métricas não sensíveis”.
+- **GROUPING() exige PG 10+**: Supabase roda PG 15+ — validado por EXPLAIN no release (Q4 do pacote SQL Editor/script psql).
+- **EXPLAIN pendente de execução**: `scripts/explain-tracking-indexes.sql` + Bloco 3 do pacote SQL Editor vão como passo OBRIGATÓRIO do release.
+
+## Fase 7 — Sequenciada (não rejeitada; exige prova de cobertura de invalidação)
 
 | Fase | Escopo | Por que não nesta iteração | Próximo passo |
 |---|---|---|---|
-| 6 — Tracking/relatórios (limites de lote, rate limit distribuído, índices com EXPLAIN, cache curto) | código + migrations de índice | índices exigem EXPLAIN no banco real (sandbox sem acesso, regra 2) | medir com `DIRECT_DATABASE_URL` de leitura; índices `(siteId, createdAt)`, `(siteId, eventType, createdAt)` |
 | 7 — Páginas públicas (snapshot versionado + invalidação por tag), imagens/PDF adaptativos | cache/invalidação + compressão | invalidação exige prova de cobertura por locale/fluxo de publicação; compressão adaptativa exige benchmark de legibilidade | spike de revalidateTag com publish/unpublish + fixture PT/EN/ES |
 
 ## Critérios de aceite — status
@@ -128,7 +167,9 @@ A partir deste commit, **push não aplica migration automaticamente**. Fluxo de 
 - ✅ Build sem migration + análise de bundle (−18,9 MB)
 - ✅ Fase 3: 44 testes novos (contrato 15, inbox 11, webhook-inbox 6, polling 12) — **630/630**; tsc postgres 100% limpo; build Vercel-fiel verde; lint 11/4 = baseline
 - ✅ Fase 4: 18 testes novos (tests/lead-queue — replay, 20 concorrentes mesmo lead, 20 leads distintos, falhas entre etapas, flag legacy, CAS perdido, P2002→replay) — **648/648**; tsc postgres 100% limpo; build Vercel-fiel verde; lint 11/4 = baseline; DDL validado vs canônico; CTE validado por parse Postgres
-- ⏳ Canário 24–48 h com métricas de runtime + checklists das Fases 3 e 4 — **ação do usuário** (dashboard Vercel), checklists em `docs/rollback.md` §5
+- ✅ Fase 6: 60 testes novos (tests/track-ingest 39 — limites/truncamento/identify/concorrência/rate limit distribuído+fallback; tests/tracking-report 21 — ondas de 6/LRU-TTL/splitUtmGroupingSets/funil single-scan) — **708/708**; tsc postgres 100% limpo; build Vercel-fiel verde; lint 11/4 = baseline; DDL validado vs canônico (scripts/validate-tracking-migration.sh)
+- ⏳ Canário 24–48 h com métricas de runtime + checklists das Fases 3, 4 e 6 — **ação do usuário** (dashboard Vercel), checklists em `docs/rollback.md` §5
 - ⏳ Passos do release da Fase 3: `db:release` + `EXPLAIN` (`scripts/explain-meta-ingest-indexes.sql`) — `docs/rollback.md` §2
 - ⏳ Passos do release da Fase 4: SANEAMENTO (obrigatório, antes) + `db:release` + `EXPLAIN` (`scripts/explain-lead-queue-indexes.sql`) — `docs/rollback.md` §2; alternativa SQL Editor do Supabase: pacote de release entregue no ambiente do projeto (mesmos passos/sanamento/DDL/registro)
-- ⏳ Fases 6/7 — sequenciadas (tabela acima)
+- ⏳ Passos do release da Fase 6: `db:release` + `EXPLAIN` (`scripts/explain-tracking-indexes.sql`) — `docs/rollback.md` §2; alternativa SQL Editor do Supabase: pacote `download/fase6-sql-editor-release.sql` (pré-checks/DDL/registro/EXPLAIN/verificação)
+- ⏳ Fase 7 — sequenciada (tabela acima)

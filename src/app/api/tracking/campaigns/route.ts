@@ -135,11 +135,16 @@ export async function GET(request: Request) {
     ]);
 
     // ── 5. Fetch full event journeys for lead visitors ──
+    // Fase 6: janela segura (createdAt >= startDate — antes puxava o
+    // histórico INTEIRO dos 50 visitantes) + teto por visitante de 200
+    // eventos (ROW_NUMBER) contra visitantes desproporcionais
     let leadJourneys: Array<{
       visitorId: string;
       leadId: string | null;
       events: Array<{ eventType: string; pageUrl: string | null; createdAt: string }>;
     }> = [];
+
+    let journeysTruncated = false;
 
     if (leadVisitorIds.length > 0) {
       const ids = leadVisitorIds.map((r) => r.visitorId);
@@ -150,21 +155,36 @@ export async function GET(request: Request) {
           eventType: string;
           pageUrl: string | null;
           createdAt: Date;
+          rn: number;
         }>
       >(
         Prisma.sql`
+          WITH capped AS (
+            SELECT
+              e."visitorId",
+              e."eventType",
+              e."pageUrl",
+              e."createdAt",
+              ROW_NUMBER() OVER (PARTITION BY e."visitorId" ORDER BY e."createdAt") AS rn
+            FROM tracking_events e
+            WHERE e."visitorId" IN (${Prisma.join(ids)})
+              AND e."createdAt" >= ${startDate}::timestamptz
+          )
           SELECT
             v."visitorId",
             v."leadId",
-            e."eventType",
-            e."pageUrl",
-            e."createdAt"
-          FROM tracking_events e
-          JOIN tracking_visitors v ON v."visitorId" = e."visitorId"
-          WHERE e."visitorId" IN (${Prisma.join(ids)})
-          ORDER BY v."visitorId", e."createdAt" ASC
+            c."eventType",
+            c."pageUrl",
+            c."createdAt",
+            c.rn
+          FROM capped c
+          JOIN tracking_visitors v ON v."visitorId" = c."visitorId"
+          WHERE c.rn <= 200
+          ORDER BY v."visitorId", c."createdAt" ASC
         `,
       );
+
+      journeysTruncated = journeyEvents.some((row) => Number(row.rn) >= 200);
 
       // Group by visitor
       const grouped = new Map<string, typeof journeyEvents>();
@@ -215,6 +235,7 @@ export async function GET(request: Request) {
         };
       }),
       leadJourneys,
+      journeysTruncated,
     });
   } catch (err) {
     console.error('[Tracking Campaigns] Error:', err);

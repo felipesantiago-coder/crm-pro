@@ -136,12 +136,20 @@ export async function resolveGeoIP(ip: string, geoHint?: string | null): Promise
   // Normalize country/city names to canonical Portuguese forms
   result = normalizeGeoNames(result);
 
-  // Evict old entries if cache is too large
+  // Evict old entries if cache is too large (expired first)
   if (cache.size >= MAX_CACHE_SIZE) {
     const now = Date.now();
     for (const [key, val] of cache) {
       if (now - val.ts > CACHE_TTL_MS) cache.delete(key);
     }
+  }
+
+  // Hard cap (Fase 6): se ainda cheio (todas as entradas frescas),
+  // evita crescimento descontrolado descartando os mais antigos
+  while (cache.size >= MAX_CACHE_SIZE) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
   }
 
   cache.set(ip, { result, ts: Date.now() });
