@@ -165,7 +165,11 @@ const io = new Server(PORT, {
  * O token é o valor do cookie `next-auth.session-token` do NextAuth.
  */
 io.use(async (socket, next) => {
-  const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace('Bearer ', '');
+  // auth.token é unknown no stub de tipos — restringe antes de usar
+  const headerToken = socket.handshake.headers?.authorization;
+  const token =
+    (typeof socket.handshake.auth?.token === 'string' ? socket.handshake.auth.token : undefined) ||
+    headerToken?.replace('Bearer ', '');
 
   if (!token) {
     // Verifica autenticação por segredo (fallback para integrações)

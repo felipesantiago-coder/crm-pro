@@ -42,7 +42,7 @@ export default function LandingLightbox({ images, activeIdx, onClose, onIndexCha
   }, [activeIdx, scrollToIndex]);
 
   // Sync scroll position → active index (debounced to avoid rapid updates)
-  const scrollTimer = useRef<ReturnType<typeof setTimeout>>();
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleScroll = useCallback(() => {
     if (!scrollRef.current || programmaticScroll.current) return;
     const container = scrollRef.current;

@@ -103,12 +103,12 @@ export function useSocketRealtime(
       onConnect?.();
     });
 
-    socket.on('disconnect', (reason) => {
+    socket.on('disconnect', (reason: string) => {
       setConnected(false);
       onDisconnect?.(reason);
     });
 
-    socket.on('connect_error', (err) => {
+    socket.on('connect_error', (err: Error) => {
       setConnected(false);
       console.warn('[Socket.io] Erro de conexão:', err.message);
 
@@ -135,7 +135,7 @@ export function useSocketRealtime(
     });
 
     // ─── Confirmação de conexão ───
-    socket.on('crm:connected', (data) => {
+    socket.on('crm:connected', (data: { user?: { name?: string } | null; serverTime?: string }) => {
       console.log(
         `[Socket.io] Conectado ao servidor. Usuário: ${data.user?.name}, Server time: ${data.serverTime}`
       );

@@ -1358,7 +1358,7 @@ export default function LandingPageClient({ params, initialData, initialQueueUse
                   })}
                 </h2>
                 <p className="text-[#33492F]/80 text-sm sm:text-base font-medium mb-2">
-                  {showUrgencyBadge ? t('form.subtextWithInfo', { status }) : priceText ? t('form.subtextWithPrice', { price: priceText.replace('a partir de ', '') }) : t('form.subtextFallback')}
+                  {showUrgencyBadge ? t('form.subtextWithInfo', { status: status ?? '' }) : priceText ? t('form.subtextWithPrice', { price: priceText.replace('a partir de ', '') }) : t('form.subtextFallback')}
                 </p>
                 <p className="text-[#1a1a1a]/50 max-w-md text-sm sm:text-base leading-relaxed mb-5 sm:mb-6">
                   {e.landingDescription || `${t('form.descriptionBase')}${info?.location?.neighborhood ? ` ${t('form.descriptionIn', { neighborhood: info.location.neighborhood })}` : ''}. ${t('form.descriptionEnd')}`}

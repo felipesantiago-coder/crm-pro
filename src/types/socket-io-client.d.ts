@@ -13,8 +13,9 @@ declare module 'socket.io-client' {
     connected: boolean;
     id: string;
     auth: Record<string, unknown>;
-    on(event: string, callback: (...args: unknown[]) => void): this;
-    off(event: string, callback?: (...args: unknown[]) => void): this;
+    /** E é inferido da anotação do callback no ponto de uso. */
+    on<E = unknown>(event: string, callback: (arg: E) => void): this;
+    off<E = unknown>(event: string, callback?: (arg: E) => void): this;
     emit(event: string, ...args: unknown[]): this;
     connect(): this;
     disconnect(): this;

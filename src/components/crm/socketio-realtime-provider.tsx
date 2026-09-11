@@ -33,8 +33,17 @@ interface SocketioRealtimeProviderProps {
  * Busca contagem de notificações (lemmbretes pendentes).
  * Mesma lógica do SupabaseRealtimeProvider original.
  */
+/** Estrutura idêntica à de CRMState['notificationReminders'] (src/store/crm-store.ts). */
+type NotificationReminder = {
+  id: string;
+  title: string;
+  description: string | null;
+  dueDate: string;
+  client: { id: string; name: string };
+};
+
 async function fetchNotificationCount(
-  setNotificationReminders: (reminders: Array<Record<string, unknown>>) => void
+  setNotificationReminders: (reminders: NotificationReminder[]) => void
 ) {
   try {
     const res = await fetch('/api/reminders/check');
@@ -51,7 +60,7 @@ async function fetchNotificationCount(
  */
 function handleSocketEvent(
   event: RealtimeEvent,
-  setNotificationReminders: (reminders: Array<Record<string, unknown>>) => void
+  setNotificationReminders: (reminders: NotificationReminder[]) => void
 ) {
   const { table, eventType, label } = event;
 

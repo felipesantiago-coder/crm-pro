@@ -71,7 +71,7 @@ export async function proxy(request: NextRequest) {
           const sessionCookie = request.cookies.get('next-auth.session-token') ||
             request.cookies.get('__Secure-next-auth.session-token');
           if (sessionCookie) {
-            res.cookies.delete(sessionCookie.name, { path: '/' });
+            res.cookies.delete({ name: sessionCookie.name, path: '/' });
           }
           return res;
         }

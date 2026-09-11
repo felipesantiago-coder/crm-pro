@@ -498,6 +498,26 @@ const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: React.
   },
 };
 
+// Classes ativo/inativo dos botões de filtro por origem.
+// Lookup em Record em vez de comparações inline no JSX: evita o quirk do
+// TypeScript que vaza o estreitamento de `sourceFilter === 'all'` (linha 585)
+// pelas expressões irmãs do JSX e acusa TS2367 "no overlap" nos botões seguintes.
+type SourceFilter = 'all' | 'meta_webhook' | 'landing_form' | 'whatsapp_click';
+
+const SOURCE_BUTTON_CLASS: Record<SourceFilter, string> = {
+  all: 'bg-foreground text-background',
+  meta_webhook: 'bg-blue-600 text-white',
+  landing_form: 'bg-primary text-primary-foreground',
+  whatsapp_click: 'bg-green-600 text-white',
+};
+
+const SOURCE_BUTTON_CLASS_INACTIVE: Record<SourceFilter, string> = {
+  all: 'bg-muted text-muted-foreground hover:bg-muted/80',
+  meta_webhook: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:opacity-80',
+  landing_form: 'bg-primary/10 text-primary dark:text-primary hover:opacity-80',
+  whatsapp_click: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:opacity-80',
+};
+
 const WHATSAPP_SOURCE_LABELS: Record<string, string> = {
   hero: 'Botão principal',
   form_section: 'Seção do formulário',
@@ -524,7 +544,16 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [period, setPeriod] = useState('30');
-  const [sourceFilter, setSourceFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+
+  // Classes do botão de filtro por origem. Helper com closure em vez de
+  // comparação inline no JSX: o CFA do TS vaza o estreitamento de
+  // `sourceFilter === 'all'` pelos filhos irmãos do JSX e acusa TS2367
+  // ("no overlap") nas comparações seguintes — função não sofre narrowing.
+  const sourceButtonClass = (key: SourceFilter) =>
+    `inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${
+      sourceFilter === key ? SOURCE_BUTTON_CLASS[key] : SOURCE_BUTTON_CLASS_INACTIVE[key]
+    }`;
   const [sourceCounts, setSourceCounts] = useState<SourceCounts | null>(null);
   const [temperatureFilter, setTemperatureFilter] = useState('all');
   const [temperatureCounts, setTemperatureCounts] = useState<Record<string, number> | null>(null);
@@ -586,25 +615,25 @@ function LeadsTab({ onLeadsNeeded }: { onLeadsNeeded: () => void }) {
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
               onClick={() => setSourceFilter('all')}
-              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'all' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+              className={sourceButtonClass('all')}
             >
               Todos ({sourceCounts.meta_webhook + sourceCounts.landing_form + sourceCounts.whatsapp_click})
             </button>
             <button
               onClick={() => setSourceFilter('meta_webhook')}
-              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'meta_webhook' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:opacity-80'}`}
+              className={sourceButtonClass('meta_webhook')}
             >
               <Megaphone className="h-2.5 w-2.5" /> {sourceCounts.meta_webhook}
             </button>
             <button
               onClick={() => setSourceFilter('landing_form')}
-              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'landing_form' ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary dark:text-primary hover:opacity-80'}`}
+              className={sourceButtonClass('landing_form')}
             >
               <Globe className="h-2.5 w-2.5" /> {sourceCounts.landing_form}
             </button>
             <button
               onClick={() => setSourceFilter('whatsapp_click')}
-              className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${sourceFilter === 'whatsapp_click' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:opacity-80'}`}
+              className={sourceButtonClass('whatsapp_click')}
             >
               <Phone className="h-2.5 w-2.5" /> {sourceCounts.whatsapp_click}
             </button>

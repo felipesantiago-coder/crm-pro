@@ -7,8 +7,20 @@ const nextConfig: NextConfig = {
   // "standalone" é necessário para Vercel deployment com Prisma
   output: "standalone",
 
+  // Fase 2 (otimização Vercel): o build valida os tipos. Prova: tsc 100%
+  // limpo com client postgresql (provider de produção) — ver
+  // docs/typecheck-baseline.md. Falha de build = deploy antigo continua no ar.
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
+  },
+
+  // Fase 5 (otimização Vercel): `typescript` (18,9 MB, 12% do artefato)
+  // entra no standalone/traçado das Functions sem nenhum require no grafo
+  // de runtime (verificado: grep em chunks + node_modules traçados).
+  // É dependência de BUILD (tsc), nunca de runtime. Baseline medido em
+  // docs/vercel-baseline.md §3.
+  outputFileTracingExcludes: {
+    "*": ["./node_modules/typescript/**"],
   },
 
   reactStrictMode: true,

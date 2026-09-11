@@ -23,7 +23,8 @@ export async function POST(request: NextRequest) {
   const ua = request.headers.get('user-agent') || 'none';
   const ct = request.headers.get('content-type') || '';
 
-  const diagnostics: Record<string, unknown> = {
+  // steps é array de strings de rastreio do pipeline de ingestão
+  const diagnostics: Record<string, unknown> & { steps: string[] } = {
     timestamp: new Date().toISOString(),
     ip,
     userAgent: ua.substring(0, 120),

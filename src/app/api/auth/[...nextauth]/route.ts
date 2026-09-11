@@ -21,7 +21,9 @@ function hashUserAgent(ua: string): string {
  */
 async function handler(
   req: NextRequest,
-  context: { params: { nextauth: string[] } },
+  // Next 16: params é Promise no contrato dos route handlers (validator.ts).
+  // next-auth 4.24.11 aguarda params internamente — contexto é repassado como está.
+  context: { params: Promise<{ nextauth: string[] }> },
 ) {
   const ua = req.headers.get('user-agent') || '';
   const uaHash = hashUserAgent(ua);

@@ -876,8 +876,11 @@ export async function GET(request: Request) {
     ]);
 
     // ── Convert all BigInt → Number to prevent mixing errors ──
+    // map com param explícito: unbig já faz cast interno para Record<string, unknown>[]
     [kpis, bouncedVisitors, chartData, funnelData, byCampaign, bySource, byContent, byMedium, byTerm, byEventType, topPages, topCountries, topCities, deviceBreakdown, hourlyData, recentLeads, allLeadsWithJourney, referrerBreakdown, metaPixelLeads, metaCrmLeads, metaMatched, scrollDepthData, formInteractionData, exitIntentCount, topEntryPages, avgSessionDuration, returningVisitors, engagementByDayOfWeek, whatsappClicks, webVitalsData, engagedTimeData, jsErrorsData, sectionViewsData, ctaClicksData, formFunnelData, visitorContextData, contentEngagementData] =
-      [kpis, bouncedVisitors, chartData, funnelData, byCampaign, bySource, byContent, byMedium, byTerm, byEventType, topPages, topCountries, topCities, deviceBreakdown, hourlyData, recentLeads, allLeadsWithJourney, referrerBreakdown, metaPixelLeads, metaCrmLeads, metaMatched, scrollDepthData, formInteractionData, exitIntentCount, topEntryPages, avgSessionDuration, returningVisitors, engagementByDayOfWeek, whatsappClicks, webVitalsData, engagedTimeData, jsErrorsData, sectionViewsData, ctaClicksData, formFunnelData, visitorContextData, contentEngagementData].map(unbig) as any;
+      [kpis, bouncedVisitors, chartData, funnelData, byCampaign, bySource, byContent, byMedium, byTerm, byEventType, topPages, topCountries, topCities, deviceBreakdown, hourlyData, recentLeads, allLeadsWithJourney, referrerBreakdown, metaPixelLeads, metaCrmLeads, metaMatched, scrollDepthData, formInteractionData, exitIntentCount, topEntryPages, avgSessionDuration, returningVisitors, engagementByDayOfWeek, whatsappClicks, webVitalsData, engagedTimeData, jsErrorsData, sectionViewsData, ctaClicksData, formFunnelData, visitorContextData, contentEngagementData].map(
+        (arr: unknown[]) => unbig(arr),
+      ) as any;
 
     console.log('[Tracking Report] Queries completed, converting BigInt and building markdown...');
 
@@ -2076,8 +2079,9 @@ export async function GET(request: Request) {
 
       // Check weekends vs weekdays
       const weekdayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-      const weekendDays = dayAnalysis.filter(d => !weekdayNames.includes((d.dow_name ?? '').trim()));
-      const weekdayData = dayAnalysis.filter(d => weekdayNames.includes((d.dow_name ?? '').trim()));
+      // day já é dow_name.trim() do map acima
+      const weekendDays = dayAnalysis.filter(d => !weekdayNames.includes(d.day));
+      const weekdayData = dayAnalysis.filter(d => weekdayNames.includes(d.day));
       if (weekendDays.length > 0 && weekdayData.length > 0) {
         const wkLeads = weekendDays.reduce((s, d) => s + d.leads, 0);
         const wkVisitors = weekendDays.reduce((s, d) => s + d.visitors, 0);

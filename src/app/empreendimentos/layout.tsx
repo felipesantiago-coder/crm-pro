@@ -38,7 +38,7 @@ export default async function EmpreendimentosLayout({
       {/* Preconnect: WhatsApp — hero CTA and floating button link */}
       <link rel="preconnect" href="https://wa.me" />
       {/* Preconnect: Supabase Storage — serves all landing page images (hero, gallery, floor plans) */}
-      <link rel="preconnect" href="https://bxkpvzdqjokqshqmnwqr.supabase.co" crossorigin />
+      <link rel="preconnect" href="https://bxkpvzdqjokqshqmnwqr.supabase.co" crossOrigin="anonymous" />
 
       {/* Set lang attribute dynamically */}
       <script

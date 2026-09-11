@@ -182,6 +182,8 @@ export async function DELETE(
       if (floorPlans.length > 0) {
         const paths: string[] = [];
         for (const fp of floorPlans) {
+          // fp.url pode ser null no schema — pular antes de construir URL
+          if (!fp.url) continue;
           try {
             const url = new URL(fp.url);
             const storagePath = url.pathname.split('/enterprise-images/')[1];
