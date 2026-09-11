@@ -1044,3 +1044,102 @@ model WhatsAppLanding {
   @@map("whatsapp_landings")
 }
 
+
+// ============================================================
+// META LEAD INBOX — ingestão durável (Fase 3 da otimização Vercel)
+// Tabela de jobs idempotente: todo lead Meta (webhook OU polling)
+// é persistido aqui ANTES do processamento pesado (Graph API,
+// cliente, temperatura, fila, Telegram). O replay do mesmo evento
+// reencontra a linha por dedupKey e NUNCA cria cliente, atribuição
+// ou mensagem Telegram duplicada. Webhook e polling compartilham o
+// mesmo espaço de chaves — o mesmo lead por dois caminhos cai na
+// MESMA linha e é processado uma única vez.
+// Ciclo: RECEIVED → PROCESSING → SUCCEEDED | RETRYABLE (backoff)
+//        → FAILED. lastError sempre sanitizado (sem token/PII).
+// ============================================================
+model MetaLeadInbox {
+  id            String    @id @default(cuid()) @map("id")
+  /** Chave idempotente do evento: "leadgen:{leadgenId}". */
+  dedupKey      String    @unique @map("dedupKey")
+  leadgenId     String    @map("leadgenId")
+  /** Canal de origem: 'webhook' | 'polling' — textos/ordem de dedup. */
+  channel       String    @map("channel")
+  /** Conta de anúncios de origem (MetaAdAccount.id), quando resolvida. */
+  adAccountId   String?   @map("adAccountId")
+  formId        String?   @map("formId")
+  campaignId    String?   @map("campaignId")
+  /** Payload mínimo do evento: ids, created_time, field_data quando
+   *  disponível, pageId. Usado pelo worker (evita nova busca Graph
+   *  quando o polling já trouxe os dados). */
+  payload       Json      @map("payload")
+  /** RECEIVED | PROCESSING | SUCCEEDED | RETRYABLE | FAILED */
+  status        String    @default("RECEIVED") @map("status")
+  attempts      Int       @default(0) @map("attempts")
+  maxAttempts   Int       @default(5) @map("maxAttempts")
+  /** Backoff exponencial: quando o worker pode reivindicar a linha. */
+  nextAttemptAt DateTime  @default(now()) @map("nextAttemptAt")
+  /** Último erro SANITIZADO (tokens removidos, truncado). */
+  lastError     String?   @map("lastError")
+  /** Resultado do processamento (clientName, reason, clientId...). */
+  result        Json?     @map("result")
+  processedAt   DateTime? @map("processedAt")
+  createdAt     DateTime  @default(now()) @map("createdAt")
+  updatedAt     DateTime  @updatedAt @map("updatedAt")
+
+  @@index([status, nextAttemptAt])
+  @@index([leadgenId])
+  @@map("meta_lead_inbox")
+}
+
+// ============================================================
+// META POLLING CURSOR — cursor persistente por (adAccountId, formId)
+// Substitui a janela since + limit=100 apoiada em watermarks soltas
+// no UserSettings. Avança SOMENTE até o último lead CONFIRMADO na
+// inbox; a janela de sobreposição (60 s) continua aplicada na busca
+// (tolerância de relógio), e a deduplicação da inbox elimina o
+// reprocessamento do que já foi confirmado. Backfill: na primeira
+// execução o cursor é inicializado a partir de
+// meta_polling_form_watermarks (runtime, idempotente).
+// ============================================================
+model MetaPollingCursor {
+  id                     String    @id @default(cuid()) @map("id")
+  /** ID do registro MetaAdAccount dono do formulário. */
+  adAccountId            String    @map("adAccountId")
+  formId                 String    @map("formId")
+  /** Watermark: created_time do último lead confirmado na inbox. */
+  cursorTime             DateTime  @map("cursorTime")
+  /** leadgen_id do último lead confirmado (observabilidade). */
+  lastConfirmedLeadgenId String?   @map("lastConfirmedLeadgenId")
+  lastRunAt              DateTime? @map("lastRunAt")
+  lastError              String?   @map("lastError")
+  createdAt              DateTime  @default(now()) @map("createdAt")
+  updatedAt              DateTime  @updatedAt @map("updatedAt")
+
+  @@unique([adAccountId, formId])
+  @@map("meta_polling_cursor")
+}
+
+// ============================================================
+// META POLLING LEASE — lock distribuído no Postgres (Fase 3)
+// Substitui o isRunning em memória (válido só por instância): TTL,
+// renovação pelo dono e recuperação automática após crash (a linha
+// expira e outra instância assume). quotaRemaining reserva a quota
+// de leads do run de forma ATÔMICA (UPDATE condicional com
+// decrement e cláusula WHERE quota > 0) — nunca decremento
+// desprotegido dentro de Promise.all.
+// ============================================================
+model MetaPollingLease {
+  id             String   @id @default(cuid()) @map("id")
+  /** Escopo do lock (ex.: 'polling' — execução global única). */
+  scope          String   @unique @map("scope")
+  /** Token aleatório do dono atual — só o dono renova/libera/reserva. */
+  ownerToken     String   @map("ownerToken")
+  /** Quota do run corrente; reservada atomicamente por lead. */
+  quotaRemaining Int      @default(0) @map("quotaRemaining")
+  expiresAt      DateTime @map("expiresAt")
+  renewedAt      DateTime @map("renewedAt")
+  createdAt      DateTime @default(now()) @map("createdAt")
+  updatedAt      DateTime @updatedAt @map("updatedAt")
+
+  @@map("meta_polling_lease")
+}

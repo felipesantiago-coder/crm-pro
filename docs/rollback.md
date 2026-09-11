@@ -13,6 +13,7 @@
 | Migration fora do build | Restaurar `node scripts/vercel-migrate.mjs` no script `build` (o teste de higiene `tests/build-hygiene` vai falhar de propósito — é o alarme) | Volta ao comportamento antigo |
 | Correções de typecheck | `git revert` arquivo a arquivo — todas são anotações/guards sem mudança de comportamento | Nenhum |
 | Migration `20260911_create_whatsapp_landings` | `DROP TABLE "whatsapp_landings";` (tabela isolada, sem FK) | Perde landings criadas |
+| Migration `20260911_meta_ingest_durability` (inbox/cursor/lease) | `DROP TABLE IF EXISTS "meta_polling_lease"; DROP TABLE IF EXISTS "meta_polling_cursor"; DROP TABLE IF EXISTS "meta_lead_inbox";` + flags `META_INGEST_V2=legacy` e `META_POLL_CURSOR_V2=legacy` | Sem perda de leads (clients intacto); perde apenas itens pendentes na inbox na hora do drop |
 
 ## 2. Procedimento de release de migration (NOVO fluxo)
 
@@ -33,7 +34,13 @@ DATABASE_URL="postgresql://<user>:<pass>@aws-1-<region>.pooler.supabase.com:5432
 #     automaticamente, aplica com timeout e trata drift P3005/P3018
 #     com baseline controlado)
 
-# 4) Verificar
+# 4) Fase 3 — validar índices novos com EXPLAIN (regra 8):
+DATABASE_URL="<url-sessao>" psql "$DATABASE_URL" -f scripts/explain-meta-ingest-indexes.sql
+#    Esperado: Index Scan em dedupKey (Q1), (status,nextAttemptAt) (Q2),
+#    (adAccountId,formId) (Q3) e scope (Q4). Seq Scan em tabelas
+#    populadas → investigar ANTES de liberar o canário.
+
+# 5) Verificar
 DATABASE_URL="<url-sessao>" npx prisma migrate status
 ```
 
@@ -63,6 +70,16 @@ Comparar antes/depois por deployment no Observability do projeto:
 - [ ] Erros/timeout 5xx (esperado: neutro ou melhor — typecheck agora barra builds quebrados)
 - [ ] Fluxo funcional: login, lead via webhook, lead via polling, cartão Telegram, atribuição de fila, landing WhatsApp `/lp/{slug}`, upload de imagem, extração PDF, tracking, publicação aprovada refletindo na próxima visita
 - [ ] Sem leads duplicados/perdidos após o deploy
+
+### Canário específico da Fase 3 (ingestão durável)
+
+- [ ] `meta_lead_inbox` recebendo linhas com status transitando RECEIVED → SUCCEEDED (painel do Supabase ou SQL)
+- [ ] Webhook: criar lead de teste no formulário → cliente aparece no CRM + cartão Telegram como antes (latência equivalente)
+- [ ] Replay do MESMO evento (reenvio do payload) → SEM novo cliente/interação/cartão; resposta com resultado existente
+- [ ] Polling: cursor avançando por (conta, formulário); `perForm` com fetched/imported/deduped coerentes; campo novo `inboxDrained` ≥ 0
+- [ ] `meta_polling_lease`: linha `scope='polling'` liberada ao fim de cada run (ou expira em 90 s)
+- [ ] Endpoint `/api/cron/meta-inbox-drain?limit=10` (com CRON_SECRET) respondendo `{status:'ok',...}` — recomenda-se agendar a cada 1–5 min no cron-job.org
+- [ ] Se algo estranho: `META_INGEST_V2=legacy` + `META_POLL_CURSOR_V2=legacy` (redeploy) OU Instant Rollback §4 — degradação para o caminho antigo sem perda (itens pendentes na inbox ficam para depois de reativar)
 
 ## 6. Recuperação de desastre — drift de schema (P3005/P3018)
 

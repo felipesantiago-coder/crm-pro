@@ -2,15 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { db } from '@/lib/db';
-import { notifyQueueUpdate } from '@/lib/telegram';
-import { notifyAssignedMetaLead } from '@/lib/lead-notify/service';
-import { resolveLeadEnterprise } from '@/lib/lead-notify/resolver';
-import { assignLeadToUser, peekNextUser } from '@/lib/lead-queue';
-import { findCapConfigByFormId } from '@/lib/meta-conversions';
-import { resolveQueueForMetaLead, mapWithConcurrency } from '@/lib/meta-lead-routing';
-import { getMetaFieldValue, formatMetaPhone, extractCustomAnswers, extractRawAnswers, formatCustomAnswersText } from '@/lib/meta-lead-utils';
-import { buildLeadTemperatureFields } from '@/lib/lead-temperature';
-import { fetchEnabledAdAccounts, parseJsonArray, upsertCampaignBindingAuto } from '@/lib/meta-ad-accounts';
+import { mapWithConcurrency, resolveQueueForMetaLead } from '@/lib/meta-lead-routing';
+import { fetchEnabledAdAccounts, parseJsonArray } from '@/lib/meta-ad-accounts';
+import { processMetaLead } from '@/lib/meta-ingest/pipeline';
+import { createMetaIngestServices, resolveDrainPageToken } from '@/lib/meta-ingest/defaults';
+import { isMetaCursorV2Enabled } from '@/lib/meta-ingest/flags';
+import { ensureInboxItemInfallible, drainInbox, sanitizeError, type MetaInboxPayload, type MetaInboxRow } from '@/lib/meta-ingest/inbox';
+import {
+  acquirePollingLease,
+  renewPollingLease,
+  releasePollingLease,
+  reserveQuotaSlot,
+  refundQuotaSlot,
+  loadPollingCursor,
+  advancePollingCursor,
+  recordCursorError,
+  fetchAllLeadsPages,
+  type LeaseAcquisition,
+  type CursorRow,
+  type MetaPollingDbSlice,
+  type MetaLeadLike,
+  type GraphLeadsResponse,
+} from '@/lib/meta-ingest/polling';
+import type { MetaInboxDbSlice } from '@/lib/meta-ingest/inbox';
 import { extractGraphErrorCode } from '@/lib/meta-oauth';
 import { clearAccountAuthState, registerAccountAuthFailure } from '@/lib/meta-oauth-server';
 
@@ -44,6 +58,15 @@ export const maxDuration = 10;
 //   - Query param ?secret=<CRON_SECRET> (cron-job.org)
 // ============================================================
 
+// Serviços reais do pipeline (Prisma + Telegram + fila) — Fase 3.
+const ingestServices = createMetaIngestServices(db);
+
+// FASE 3 — lease distribuído: escopo único, TTL com folga e deadline
+// do run (maxDuration 10s → orçamento de ~7,5s; sobras ficam na inbox).
+const POLLING_LEASE_SCOPE = 'polling';
+const POLLING_LEASE_TTL_MS = 90_000;
+const POLLING_RUN_BUDGET_MS = 7_500;
+
 // Timeout conservador para chamadas externas (Graph API)
 const GRAPH_API_TIMEOUT_MS = 8_000;
 
@@ -63,19 +86,8 @@ const LEAD_CONCURRENCY = 5;
 // In-flight lock: impede execução concorrente do polling (por instância)
 let isRunning = false;
 
-interface MetaLead {
-  id: string;
-  field_data: Array<{ name: string; values: string[] }>;
-  ad_id?: string;
-  ad_name?: string;
-  adset_id?: string;
-  adset_name?: string;
-  campaign_id?: string;
-  campaign_name?: string;
-  form_id?: string;
-  form_name?: string;
-  created_time?: string;
-}
+/** Lead do endpoint /leads — fatia idêntica ao tipo do polling lib. */
+type MetaLead = MetaLeadLike;
 
 /** Alvo de polling: um form consultado com o token da sua conta (ou global). */
 interface PollTarget {
@@ -150,149 +162,66 @@ async function fetchRecentLeads(formId: string, pageAccessToken: string, since: 
   }
 }
 
+/**
+ * Importa UM lead Meta via o pipeline compartilhado da Fase 3
+ * (src/lib/meta-ingest) — a MESMA implementação usada pelo webhook,
+ * pelo worker da inbox e pelo drain. Comportamento observável do
+ * polling preservado: textos "[Meta Polling]", dedup metaLeadgenId
+ * primeiro, sem notificação para contato existente, rota resolvida
+ * UMA vez por formulário (preResolvedRoute).
+ */
+/** Busca UMA página de /leads com o mesmo timeout conservador do run. */
+async function fetchLeadsPage(url: string): Promise<GraphLeadsResponse> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GRAPH_API_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 200)}`);
+    }
+    return await response.json();
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function importSingleLead(
   lead: MetaLead,
   creatorId: string,
   queueId: string | undefined,
   quota: { remaining: number },
   adAccountId: string | null,
+  accountName: string | null,
 ): Promise<{ leadgenId: string; imported: boolean; clientName?: string; reason?: string; assignedTo?: string }> {
-  const leadgenId = lead.id;
-  const fieldData = lead.field_data;
-  const formId = lead.form_id || '';
-  const adName = lead.ad_name || 'Meta Ads';
-  const campaignName = lead.campaign_name || '';
-  const campaignId = lead.campaign_id || '';
-  const formName = lead.form_name || '';
-
-  // 1. Dedup por metaLeadgenId
-  const existing = await db.client.findUnique({ where: { metaLeadgenId: leadgenId }, select: { id: true, name: true } });
-  if (existing) return { leadgenId, imported: false, clientName: existing.name, reason: 'já_existente' };
-
-  // 1b. Auto-registro campanha → conta (fire-and-forget; fila específica
-  //     por campanha via MetaCampaignBinding — igual ao webhook)
-  if (campaignId) {
-    upsertCampaignBindingAuto({ campaignId, campaignName, adAccountId });
-  }
-
-  // 2. Extrair campos
-  const rawName = getMetaFieldValue(fieldData, 'full_name') || getMetaFieldValue(fieldData, 'name') || getMetaFieldValue(fieldData, 'nome') || getMetaFieldValue(fieldData, 'nome_completo') || 'Lead Meta Ads';
-  const rawEmail = getMetaFieldValue(fieldData, 'email') || getMetaFieldValue(fieldData, 'e_mail') || null;
-  const rawPhone = getMetaFieldValue(fieldData, 'phone_number') || getMetaFieldValue(fieldData, 'phone') || getMetaFieldValue(fieldData, 'celular') || getMetaFieldValue(fieldData, 'telefone') || null;
-  const city = getMetaFieldValue(fieldData, 'city') || getMetaFieldValue(fieldData, 'cidade') || null;
-  const name = rawName?.trim() || 'Lead Meta Ads';
-  const email = rawEmail?.trim() || null;
-  const phone = formatMetaPhone(rawPhone);
-  const region = city?.trim() || null;
-  const customAnswers = extractCustomAnswers(fieldData);
-  const customAnswersText = formatCustomAnswersText(customAnswers);
-  // Todas as respostas com todos os valores e ordem original (cartão)
-  const rawAnswers = extractRawAnswers(fieldData);
-
-  // TEMPERATURA DO LEAD (por formulário): pontuação com a config do
-  // próprio formulário — metaFormId/metaFormData sempre gravados;
-  // metaScore/metaTemperature somente com config ativa.
-  const temperatureFields = await buildLeadTemperatureFields(formId || undefined, rawAnswers);
-  // Horário REAL do cadastro no Meta — exibido no cartão em vez do
-  // horário de processamento (§15)
-  const submittedAt = lead.created_time ? new Date(lead.created_time) : null;
-
-  // 3. Dedup por telefone/email (soft)
-  const existingByContact = await db.client.findFirst({
-    where: { OR: [...(phone ? [{ phone }] : []), ...(email ? [{ email }] : [])] },
-    orderBy: { createdAt: 'desc' },
+  const outcome = await processMetaLead(ingestServices, {
+    channel: 'polling',
+    leadgenId: lead.id,
+    fieldData: lead.field_data || [],
+    createdTimeRaw: lead.created_time || null,
+    rawAdName: lead.ad_name || null,
+    rawAdId: lead.ad_id || null,
+    campaignId: lead.campaign_id || null,
+    campaignName: lead.campaign_name || null,
+    formId: lead.form_id || null,
+    formName: lead.form_name || null,
+    adAccountDbId: adAccountId,
+    adAccountName: accountName || adAccountId || 'conta',
+    creatorId,
+    preResolvedRoute: { queueId, routeSource: 'default' },
   });
-  if (existingByContact) {
-    await db.client.update({ where: { id: existingByContact.id }, data: { metaLeadgenId: leadgenId, lastInteractionAt: new Date() } }).catch(() => {});
-    await db.interaction.create({ data: { clientId: existingByContact.id, description: `[Meta Polling] Lead ${leadgenId} detectado pelo polling. Dados: ${email ? `Email: ${email}` : ''}${phone ? ` | Tel: ${phone}` : ''}.${customAnswersText}` } });
-    return { leadgenId, imported: false, clientName: existingByContact.name, reason: 'cliente_existente_atualizado' };
-  }
 
-  // 4. CAPI config
-  let capiConfigId: string | undefined;
-  if (formId) { try { const m = await findCapConfigByFormId(formId); if (m) capiConfigId = m.id; } catch {} }
-
-  // 5. Criar cliente
-  const newClient = await db.client.create({
-    data: {
-      name, email: email || undefined, phone: phone || undefined, region: region || undefined,
-      stage: 'LEAD', updatePeriod: 1, createdBy: creatorId, metaLeadgenId: leadgenId, metaCapConfigId: capiConfigId,
-      ...temperatureFields,
-      notes: `[Meta Ads] Lead importado por polling automático.\nAnúncio: ${adName}${campaignName ? `\nCampanha: ${campaignName}` : ''}\nFormulário: ${formName}${formId ? ` (ID: ${formId})` : ''}\nLead ID: ${leadgenId}${lead.created_time ? `\nCriado em: ${lead.created_time}` : ''}${capiConfigId ? `\nCAPI Config: ${capiConfigId}` : ''}${customAnswersText}`,
-    },
-  });
-  await db.interaction.create({ data: { clientId: newClient.id, description: `[Meta Polling] Cliente criado via polling automático. Anúncio: ${adName}.${customAnswersText}` } });
-
-  // 6. Atribuir à fila roteada pela origem do lead (form/config), não à default cega
-  let assignedUserName: string | undefined;
-  let assignedUserId: string | undefined;
-  let assignedQueueId: string | undefined;
-  try {
-    const r = await assignLeadToUser({ leadId: newClient.id, queueId, source: `meta_ads:polling:${campaignName || adName || ''}` });
-    if (r.assigned && r.userId) {
-      assignedUserId = r.userId; assignedQueueId = r.queueId; assignedUserName = r.userName;
-      await db.client.update({ where: { id: newClient.id }, data: { createdBy: r.userId, utmSource: 'meta_ads', utmCampaign: (campaignName || '').slice(0, 200) || undefined } }).catch(() => {});
-    }
-  } catch (e) { console.error(`[Meta Polling] Falha fila ${newClient.id}:`, e); }
-
-  // 7. Notificar agente com o cartão novo (await — serverless-safe).
-  // Empreendimento vem EXCLUSIVAMENTE dos vínculos explícitos —
-  // nunca por similaridade de nome de anúncio (§9.1).
-  const notifyId = assignedUserId || creatorId;
-  let resolvedEnt: Awaited<ReturnType<typeof resolveLeadEnterprise>> | null = null;
-  if (notifyId) {
-    try {
-      const u = await db.user.findUnique({ where: { id: notifyId }, select: { telegramChatId: true, name: true } });
-      if (u?.telegramChatId) {
-        resolvedEnt = await resolveLeadEnterprise({
-          adId: lead.ad_id || null,
-          formId: formId || null,
-          campaignId: campaignId || null,
-          clientId: newClient.id,
-        });
-        await notifyAssignedMetaLead({
-          eventId: leadgenId,
-          eventKind: 'new_lead',
-          clientId: newClient.id,
-          recipientChatId: u.telegramChatId,
-          recipientUserId: notifyId,
-          recipientFirstName: assignedUserName || null,
-          leadName: newClient.name,
-          leadPhoneE164: newClient.phone || null,
-          leadEmail: newClient.email || null,
-          leadRegion: region,
-          resolvedEnterprise: resolvedEnt,
-          source: {
-            adAccountId: adAccountId,
-            campaignId: campaignId || null,
-            campaignName: campaignName || null,
-            adId: lead.ad_id || null,
-            adName: adName || null,
-            formId: formId || null,
-            formName: formName || null,
-            leadgenId,
-            ingestionMethod: 'polling',
-            submittedAt,
-            receivedAt: new Date(),
-          },
-          rawAnswers,
-        });
-      }
-    } catch (e) { console.warn('[Meta Polling] Falha notificação agente:', e); }
-  }
-
-  // 8. Notificar admin (await)
-  if (assignedUserId && assignedQueueId) {
-    try {
-      const admin = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { telegramChatId: true } });
-      if (admin?.telegramChatId) {
-        const next = await peekNextUser({ queueId: assignedQueueId });
-        await notifyQueueUpdate(admin.telegramChatId, { source: `meta_ads:polling:${campaignName || adName || ''}`, assignedUserName: assignedUserName || '?', nextUserName: next?.userName || null, leadName: newClient.name, enterpriseName: resolvedEnt?.name || undefined });
-      }
-    } catch (e) { console.warn('[Meta Polling] Falha notificação admin:', e); }
-  }
-
-  return { leadgenId, imported: true, clientName: name, assignedTo: assignedUserName };
+  return {
+    leadgenId: outcome.leadgenId,
+    imported: outcome.imported,
+    clientName: outcome.clientName,
+    reason: outcome.reason,
+    assignedTo: outcome.assignedTo,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -303,11 +232,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
-  // 2. Concurrency guard — impede execução paralela entre instâncias locais
-  if (isRunning) {
-    return NextResponse.json({ status: 'already_running', message: 'Polling já está em execução' });
+  // 2. Concurrency guard — FASE 3: lease distribuído no Postgres com
+  //    TTL, renovação e recuperação automática pós-crash (substitui o
+  //    isRunning de memória, válido só por instância). Postgres
+  //    indisponível/migration pendente → lock em memória (legado).
+  let durablePolling = isMetaCursorV2Enabled();
+  let lease: LeaseAcquisition | null = null;
+  if (durablePolling) {
+    try {
+      lease = await acquirePollingLease(db, POLLING_LEASE_SCOPE, POLLING_LEASE_TTL_MS, MAX_LEADS_PER_RUN);
+      if (!lease.acquired) {
+        return NextResponse.json({ status: 'already_running', message: 'Polling já está em execução' });
+      }
+    } catch (leaseErr) {
+      console.error('[Meta Polling] Lease indisponível — usando lock em memória:', leaseErr instanceof Error ? leaseErr.message : leaseErr);
+      durablePolling = false;
+      lease = null;
+    }
   }
-  isRunning = true;
+  if (!durablePolling) {
+    if (isRunning) {
+      return NextResponse.json({ status: 'already_running', message: 'Polling já está em execução' });
+    }
+    isRunning = true;
+  }
+  const runDeadline = startTime + POLLING_RUN_BUDGET_MS;
 
   try {
     // 3. Escopo por conta (?accountId=<id> — botão "Executar agora" do card)
@@ -397,13 +346,37 @@ export async function GET(request: NextRequest) {
         console.log(`[Meta Polling] Form ${formId}${accountName ? ` (conta: ${accountName})` : ''} → fila "${route.queueName ?? route.queueId}" (${route.routeSource})`);
       }
 
-      // Watermark individual: usa a última execução BEM-SUCEDIDA deste form
+      // Watermark individual — FASE 3: CURSOR PERSISTENTE por
+      // (adAccountId, formId) com backfill do watermark legado na
+      // primeira execução (idempotente). Flag legacy → watermark solta.
       const formWatermark = config.formWatermarks[formId];
-      const sinceMs = formWatermark ? new Date(formWatermark).getTime() : globalFallback;
+      let cursor: CursorRow | null = null;
+      let sinceMs = formWatermark ? new Date(formWatermark).getTime() : globalFallback;
+      if (durablePolling && adAccountId) {
+        try {
+          cursor = await loadPollingCursor(db, adAccountId, formId, sinceMs);
+          sinceMs = cursor.cursorTime.getTime();
+        } catch (cursorErr) {
+          console.error('[Meta Polling] Cursor indisponível — usando watermark legado:', cursorErr instanceof Error ? cursorErr.message : cursorErr);
+          cursor = null;
+        }
+      }
       const since = new Date(sinceMs - 60 * 1000).toISOString();
 
+      // Renovação do lease entre alvos (só o dono renova; falha não
+      // aborta o run — o TTL de 90s cobre com folga)
+      if (durablePolling && lease?.ownerToken) {
+        await renewPollingLease(db, POLLING_LEASE_SCOPE, lease.ownerToken, POLLING_LEASE_TTL_MS).catch(() => {});
+      }
+
       try {
-        const leads = await fetchRecentLeads(formId, token, since);
+        // FASE 3: PAGINAÇÃO COMPLETA da Graph API (paging.next), com
+        // orçamento de tempo — o que não couber fica para o próximo run
+        // (o cursor só avança até o último lead CONFIRMADO na inbox).
+        const fetchResult = durablePolling
+          ? await fetchAllLeadsPages(fetchLeadsPage, formId, token, since, { deadlineMs: runDeadline, maxPages: 10 })
+          : null;
+        const leads = fetchResult ? fetchResult.leads : await fetchRecentLeads(formId, token, since);
         // Token comprovadamente válido nesta conta (b)
         if (adAccountId) okAccountIds.add(adAccountId);
         console.log(`[Meta Polling] Form ${formId}${accountName ? ` (conta: ${accountName})` : ''}: ${leads.length} leads encontrados (since=${since})`);
@@ -413,11 +386,81 @@ export async function GET(request: NextRequest) {
 
         let imported = 0;
         let deduped = 0;
+        let cursorAdvanceMs: number | null = null;
+        let deferredCount = 0;
 
-        // Leads do mesmo formulário em paralelo (concorrência limitada)
+        if (durablePolling && adAccountId && lease?.ownerToken) {
+          // FASE 3 — separar buscar de processar: garante a inbox
+          // idempotente PRIMEIRO (nenhum lead perdido), depois processa
+          // com orçamento de tempo e reserva ATÔMICA de quota.
+          const inboxDb = db;
+          const confirmed: Array<{ item: MetaInboxRow; lead: MetaLeadLike }> = [];
+          for (const lead of leads) {
+            const inboxPayload: MetaInboxPayload = {
+              leadgenId: lead.id,
+              channel: 'polling',
+              formId: lead.form_id || null,
+              formName: lead.form_name || null,
+              campaignId: lead.campaign_id || null,
+              campaignName: lead.campaign_name || null,
+              adId: lead.ad_id || null,
+              adName: lead.ad_name || null,
+              createdTimeRaw: lead.created_time || null,
+              fieldData: lead.field_data || [],
+              accountName,
+              queueId: route.queueId,
+              routeSource: route.routeSource,
+            };
+            const r = await ensureInboxItemInfallible(inboxDb, inboxPayload, adAccountId);
+            if (!r.ok) throw new Error(`inbox indisponível (migration pendente?): ${r.error instanceof Error ? r.error.message : String(r.error)}`);
+            confirmed.push({ item: r.item, lead });
+          }
+
+          // Cursor avança SOMENTE até o último lead CONFIRMADO na inbox
+          for (let i = confirmed.length - 1; i >= 0; i--) {
+            const c = confirmed[i];
+            if (c.lead.created_time) {
+              const ms = new Date(c.lead.created_time).getTime();
+              if (await advancePollingCursor(db, adAccountId, formId, ms, c.lead.id)) {
+                cursorAdvanceMs = ms;
+              }
+              break;
+            }
+          }
+
+          // Worker com orçamento + quota atômica (reserve → import →
+          // refund em dedup/falha — nunca decremento desprotegido)
+          const drainResults = await drainInbox(
+            inboxDb,
+            ingestServices,
+            {
+              ids: confirmed.map((c) => c.item.id),
+              budgetMs: Math.max(0, runDeadline - Date.now()),
+              concurrency: LEAD_CONCURRENCY,
+              creatorId,
+              reserveQuotaSlot: () => reserveQuotaSlot(db, POLLING_LEASE_SCOPE, lease!.ownerToken!),
+              refundQuotaSlot: () => refundQuotaSlot(db, POLLING_LEASE_SCOPE, lease!.ownerToken!),
+            },
+            resolveDrainPageToken,
+          );
+          for (const d of drainResults) {
+            if (d.outcome?.imported) imported++;
+            else if (d.outcome && !d.outcome.imported) deduped++;
+            else if (d.deferredAs === 'retryable' || d.deferredAs === 'failed') {
+              errors.push(`${formId}: ${d.error ?? 'erro de processamento (fila durável)'}`);
+              deferredCount++;
+            } else if (d.deferredAs === 'deferred' || d.deferredAs === 'quota_exhausted' || d.deferredAs === 'claim_lost') {
+              deferredCount++;
+            }
+          }
+          if (deferredCount > 0) {
+            errors.push(`${deferredCount} lead(s) ficaram na fila durável (inbox) e serão importados automaticamente nos próximos runs/drain.`);
+          }
+        } else {
+        // LEGADO — Leads do mesmo formulário em paralelo (concorrência limitada)
         const settledLeads = await mapWithConcurrency(leads, LEAD_CONCURRENCY, async (lead) => {
           if (quota.remaining <= 0) return { skipped: true, imported: false };
-          const result = await importSingleLead(lead, creatorId, route.queueId, quota, adAccountId);
+          const result = await importSingleLead(lead, creatorId, route.queueId, quota, adAccountId, accountName);
           if (result.imported) {
             quota.remaining--;
             imported++;
@@ -435,6 +478,7 @@ export async function GET(request: NextRequest) {
             errors.push(`${formId}: ${msg}`);
           }
         }
+        }
 
         if (quota.remaining <= 0 && leads.length > imported) {
           errors.push(`Limite de ${MAX_LEADS_PER_RUN} leads atingido. Os demais serão importados na próxima execução.`);
@@ -442,9 +486,15 @@ export async function GET(request: NextRequest) {
 
         perForm.push({ formId, account: accountName, fetched: leads.length, imported, deduped });
 
-        // Sucesso na busca: avança o watermark DESTE formulário
-        newWatermarks[formId] = nowIso;
+        // Sucesso na busca: avança o watermark DESTE formulário.
+        // FASE 3: espelha o CURSOR no watermark legado (rollback seguro
+        // para META_POLL_CURSOR_V2=legacy — sem refazer janelas antigas);
+        // avança até o último lead CONFIRMADO, não até "agora".
+        newWatermarks[formId] = cursorAdvanceMs !== null
+          ? new Date(cursorAdvanceMs).toISOString()
+          : (durablePolling && cursor ? new Date(Math.max(sinceMs, Date.now() - 60 * 1000)).toISOString() : nowIso);
       } catch (e) {
+        if (durablePolling && cursor) recordCursorError(db, cursor, e instanceof Error ? e.message.slice(0, 300) : String(e));
         // Falha na busca do form: NÃO avança o watermark deste form —
         // a próxima execução repete a janela e nenhum lead é perdido
         const msg = `Form ${formId}${accountName ? ` (conta: ${accountName})` : ''}: ${e instanceof Error ? e.message : String(e)}`;
@@ -472,6 +522,32 @@ export async function GET(request: NextRequest) {
     }
     for (const accountId of okAccountIds) {
       await clearAccountAuthState(accountId);
+    }
+
+    // FASE 3 — safety net: consome o BACKLOG da inbox (itens de runs
+    // anteriores/webhook estourados/retries vencidos) em lote pequeno
+    // com o orçamento restante. O endpoint /api/cron/meta-inbox-drain
+    // também consome este backlog entre runs.
+    let inboxDrained = 0;
+    if (durablePolling && lease?.ownerToken) {
+      try {
+        const backlog = await drainInbox(
+          db,
+          ingestServices,
+          {
+            limit: 5,
+            budgetMs: Math.max(0, runDeadline - Date.now()),
+            concurrency: 4,
+            creatorId,
+            reserveQuotaSlot: () => reserveQuotaSlot(db, POLLING_LEASE_SCOPE, lease!.ownerToken!),
+            refundQuotaSlot: () => refundQuotaSlot(db, POLLING_LEASE_SCOPE, lease!.ownerToken!),
+          },
+          resolveDrainPageToken,
+        );
+        inboxDrained = backlog.filter((r) => r.outcome?.imported).length;
+      } catch (backlogErr) {
+        console.warn('[Meta Polling] Backlog da inbox indisponível:', backlogErr instanceof Error ? backlogErr.message : backlogErr);
+      }
     }
 
     const totalFetched = perForm.reduce((acc, f) => acc + f.fetched, 0);
@@ -513,9 +589,16 @@ export async function GET(request: NextRequest) {
       accountsChecked: accountCount,
       totalFetched, totalImported, totalDeduped,
       perForm,
+      inboxDrained,
       errors: errors.length > 0 ? errors : undefined,
     });
   } finally {
-    isRunning = false;
+    // FASE 3: libera o lease (recuperação imediata por outro run);
+    // flag legacy/liberação falha → TTL resolve sozinho.
+    if (durablePolling && lease?.ownerToken) {
+      await releasePollingLease(db, POLLING_LEASE_SCOPE, lease.ownerToken);
+    } else {
+      isRunning = false;
+    }
   }
 }

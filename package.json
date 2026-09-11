@@ -16,7 +16,7 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
     "postinstall": "prisma generate",
-    "test": "node --test --import ./tests/ai/register.mjs tests/ai-assistant/*.test.ts tests/ai/*.test.ts tests/build-hygiene/*.test.ts tests/capi-configs/*.test.ts tests/landing-pages/*.test.ts tests/lead-temperature/*.test.ts tests/meta-app-subscription/*.test.ts tests/telegram-webhook/*.test.ts tests/meta-oauth/*.test.ts tests/teams/*.test.ts"
+    "test": "node --test --import ./tests/ai/register.mjs tests/ai-assistant/*.test.ts tests/ai/*.test.ts tests/build-hygiene/*.test.ts tests/capi-configs/*.test.ts tests/landing-pages/*.test.ts tests/lead-temperature/*.test.ts tests/meta-ingest/*.test.ts tests/meta-app-subscription/*.test.ts tests/telegram-webhook/*.test.ts tests/meta-oauth/*.test.ts tests/teams/*.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
