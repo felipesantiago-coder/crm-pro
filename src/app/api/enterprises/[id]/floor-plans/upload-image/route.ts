@@ -2,60 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 import { supabaseServer } from '@/lib/supabase-server';
-import sharp from 'sharp';
+import { invalidatePublicSnapshotsForEnterprise } from '@/lib/public-snapshot';
+import { compressForWeb, ImageTooLargeError } from '@/lib/image-compression';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB raw
-const COMPRESS_TARGET_BYTES = 400 * 1024; // 400KB (floor plans need more detail)
-const MAX_DIMENSION = 2400; // Floor plans can be larger for detail
 const ALLOWED_TYPES = new Set(['image/webp', 'image/jpeg', 'image/png', 'image/avif']);
-
-async function compressImage(buffer: Buffer): Promise<Buffer> {
-  const image = sharp(buffer);
-  const metadata = await image.metadata();
-
-  let width = metadata.width || MAX_DIMENSION;
-  let height = metadata.height || MAX_DIMENSION;
-
-  if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-    const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
-    width = Math.round(width * ratio);
-    height = Math.round(height * ratio);
-  }
-
-  if (buffer.length <= COMPRESS_TARGET_BYTES) {
-    return image
-      .resize(width, height, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 85, effort: 4 })
-      .toBuffer();
-  }
-
-  const qualityLevels = [88, 82, 75, 68, 60, 50];
-  for (const quality of qualityLevels) {
-    const compressed = await image
-      .resize(width, height, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality, effort: 4 })
-      .toBuffer();
-
-    if (compressed.length <= COMPRESS_TARGET_BYTES) return compressed;
-
-    if (quality === qualityLevels[qualityLevels.length - 1]) {
-      return image
-        .resize(Math.round(width * 0.8), Math.round(height * 0.8), { fit: 'inside', withoutEnlargement: true })
-        .webp({ quality: 55, effort: 4 })
-        .toBuffer();
-    }
-  }
-
-  return image
-    .resize(width, height, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 55, effort: 4 })
-    .toBuffer();
-}
 
 /**
  * POST /api/enterprises/[id]/floor-plans/upload-image
  * Upload an image for a specific floor plan.
  * FormData: { file: File, planId: string }
+ *
+ * Fase 7 (§Fase 7 do prompt): plantas/diagramas passam pelo modo DIAGRAM
+ * da compressão adaptativa — preserva nitidez de texto/linhas:
+ *   - SEM redução de dimensões (até 2400px) e qualidade mínima alta (82);
+ *   - NÃO força o target de bytes: se o arquivo comprimido exceder o
+ *     alvo, é ACEITO com qualidade alta (legibilidade > bytes) — o
+ *     hard cap só dispara uma redução única de 15%;
+ *   - limite de pixels (413 antes de decodificar), orientação EXIF e
+ *     transparência preservados, orçamento de CPU (≤3 encodes).
  */
 export async function POST(
   request: NextRequest,
@@ -78,10 +43,7 @@ export async function POST(
     }
 
     if (!ALLOWED_TYPES.has(file.type)) {
-      return NextResponse.json(
-        { error: 'Tipo inválido. Use WebP, JPEG, PNG ou AVIF.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Tipo inválido. Use WebP, JPEG, PNG ou AVIF.' }, { status: 400 });
     }
 
     if (file.size > MAX_FILE_SIZE) {
@@ -107,12 +69,24 @@ export async function POST(
       } catch { /* skip */ }
     }
 
-    // Compress
-    const rawBuffer = Buffer.from(await file.arrayBuffer());
-    const compressedBuffer = await compressImage(rawBuffer);
-    console.log(
-      `[FloorPlan Image] Compressão: ${Math.round(rawBuffer.length / 1024)}KB → ${Math.round(compressedBuffer.length / 1024)}KB`,
-    );
+    // Fase 7 — compressão adaptativa (src/lib/image-compression.ts).
+    let compressedBuffer: Buffer;
+    try {
+      const rawBuffer = Buffer.from(await file.arrayBuffer());
+      const result = await compressForWeb(rawBuffer, { context: 'floor-plan' });
+      compressedBuffer = result.buffer;
+      console.log(
+        `[FloorPlan Image] Compressão (${result.mode}): ${Math.round(result.fromBytes / 1024)}KB → ${Math.round(result.toBytes / 1024)}KB · q${result.quality} · resized=${result.resized}`,
+      );
+    } catch (err) {
+      if (err instanceof ImageTooLargeError) {
+        return NextResponse.json(
+          { error: `Imagem muito grande em pixels (${err.pixels.toLocaleString('pt-BR')}). Máximo ${Math.round(ImageTooLargeError.MAX_PIXELS / 1_000_000)}MP.` },
+          { status: 413 },
+        );
+      }
+      throw err;
+    }
 
     // Upload to Supabase Storage
     const timestamp = Date.now();
@@ -140,6 +114,9 @@ export async function POST(
       where: { id: planId },
       data: { url: urlData.publicUrl },
     });
+
+    // Fase 7: imagem da planta é payload público.
+    await invalidatePublicSnapshotsForEnterprise(db, enterpriseId);
 
     return NextResponse.json(updated);
   } catch (error) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
+import { invalidatePublicSnapshotsForEnterprise } from '@/lib/public-snapshot';
 
 export async function PUT(request: NextRequest) {
   try {
@@ -21,6 +22,10 @@ export async function PUT(request: NextRequest) {
         where: { id },
         data: { slug: null },
       });
+      // Fase 7: slug é a CHAVE de leitura do snapshot — landing
+      // desativada/renomeada mata os snapshots do empreendimento (o
+      // snapshot do slug antigo ficaria órfão até o TTL).
+      await invalidatePublicSnapshotsForEnterprise(db, id);
       return NextResponse.json({ success: true, slug: null });
     }
 
@@ -52,6 +57,10 @@ export async function PUT(request: NextRequest) {
       data: { slug: trimmedSlug },
       select: { id: true, name: true, slug: true },
     });
+
+    // Fase 7: slug trocado — snapshots do slug antigo ficariam órfãos
+    // (a chave de leitura mudou); o novo slug recompõe no primeiro acesso.
+    await invalidatePublicSnapshotsForEnterprise(db, id);
 
     return NextResponse.json(enterprise);
   } catch (error) {

@@ -154,11 +154,52 @@ A partir deste commit, **push não aplica migration automaticamente**. Fluxo de 
 - **GROUPING() exige PG 10+**: Supabase roda PG 15+ — validado por EXPLAIN no release (Q4 do pacote SQL Editor/script psql).
 - **EXPLAIN pendente de execução**: `scripts/explain-tracking-indexes.sql` + Bloco 3 do pacote SQL Editor vão como passo OBRIGATÓRIO do release.
 
-## Fase 7 — Sequenciada (não rejeitada; exige prova de cobertura de invalidação)
+## Fase 7 — Páginas públicas, imagens e PDF ✅ (implementada; release + canário pendentes)
 
-| Fase | Escopo | Por que não nesta iteração | Próximo passo |
-|---|---|---|---|
-| 7 — Páginas públicas (snapshot versionado + invalidação por tag), imagens/PDF adaptativos | cache/invalidação + compressão | invalidação exige prova de cobertura por locale/fluxo de publicação; compressão adaptativa exige benchmark de legibilidade | spike de revalidateTag com publish/unpublish + fixture PT/EN/ES |
+### Páginas públicas — snapshot versionado com invalidação por CONSTRUÇÃO
+
+A exigência §12 ("publicação aprovada atualizada imediatamente") continuou valendo — o snapshot só foi adotado por preservá-la **por request**:
+
+- **Fonte única de composição** (`src/lib/public-enterprise-view.ts`): a composição (gate §12-v2 → resolução i18n → merge de tradução) existia DUPLICADA na SSR e na API pública — com divergências (ambas vazavam `pdfContent` no payload). Agora landing SSR, API pública e snapshot consomem a MESMA função; `pdfContent`, draft, `publishedInfo`/`verifiedInfo` brutos e PII ficam FORA do payload.
+- **Snapshot versionado** (`src/lib/public-snapshot.ts` + tabela `enterprise_public_snapshots`, UNIQUE `(slug, locale)`): payload pré-composto por locale; caminho feliz = 2 queries leves (freshness 3 colunas por `enterprises.slug` + findUnique por chave única) em vez de 1 query pesada (puxava `pdfContent` inteiro) + 3 subselects + resolve/merge por request.
+- **Invalidação por construção (prova de cobertura exigida)**: o snapshot carrega a digital de frescor `(baseUpdatedAt = Enterprise.updatedAt, version = publishedVersion)` verificada a CADA request. Toda mutação que afeta o público passa por `db.enterprise.update` — publish, restore, upload/remoção de base, PATCH, catalog, web-enrich — e o Prisma (@updatedAt) recarrega a digital AUTOMATICAMENTE (inclusive rotas futuras/desconhecidas): digital divergiu → recomposição IMEDIATA no request seguinte. Mutações de tabelas FILHAS (galeria/hero/alt/ordem, plantas, formFields, slug) recebem invalidação explícita (`invalidatePublicSnapshotsForEnterprise`) em 10 pontos; TTL de segurança (300s default, `PUBLIC_SNAPSHOT_TTL_SECONDS`) cobre qualquer escape.
+- **Concorrência publish/request** (testada): request em voo responde com o que compôs; o snapshot salvo com digital pré-publish fica stale e o request SEGUINTE recompõe — sem lock, sem stale persistente. Fila (`peekNextUser`) NUNCA é cacheada — segue por request. Slugs inexistentes agora respondem 404 (antes renderizavam página vazia — coerência com a API pública e com o generateMetadata).
+- **`revalidateTag`/`unstable_cache` REJEITADOS** (decisão explícita): a leitura pública é force-dynamic direto do banco (regra §12); o cache do Next não cobre esse caminho sem reescrever a renderização e não é verificável por contrato. A digital em BANCO é testável (node:test), observável e independe do ciclo de vida do cache da plataforma.
+- **Legibilidade (compressão adaptativa)**: guardas determinísticos por MODO em vez de análise de pixels/OCR — diagrama (PNG; WebP/AVIF com alpha): dimensões preservadas até 2400px, qualidade mínima 82, arquivo maior aceito quando o alvo não cabe (a spec: "não force 300 KB em plantas/diagramas"); foto: alvo 300KB com ladder reduzido.
+
+### Upload de imagem — limite de pixels, orçamento de CPU e legibilidade
+
+`src/lib/image-compression.ts` (substitui os 2 pipelines duplicados que forçavam TODO arquivo a 300/400KB):
+
+- **Limite de pixels**: >24MP → 413 ANTES de decodificar (metadata lê só o header) — mata "decompression bomb" que estourava memória da function.
+- **Orçamento de CPU**: ≤4 encodes foto (era até 7: ladder 82→40 + redução extra) / ≤3 diagrama.
+- **Orientação**: `.rotate()` explícito aplica EXIF (foto de celular sai em pé — testada com fixture orientation 6).
+- **Transparência**: PNG/alpha → WebP com alpha preservado (testado com `stats().isOpaque`).
+- **Preservações intocadas**: tipos aceitos (WebP/JPEG/PNG/AVIF), MAX_IMAGES 15, ordem, alt text, hero, bucket/path de storage.
+
+### PDF/extraction — auditoria dos invariantes (código já atendia; decisões registradas)
+
+- **"Persista hash/run/documento antes do trabalho pesado"**: upload grava `pdfContent` + `documentHash` ANTES de `runExtraction`; a run (`RUNNING`) é criada ANTES do loop de blocos de IA. Parse local do PDF é pré-condição do "documento persistível" (pdfContent é o texto) — barato e sem IA.
+- **"Estado assíncrono quando necessário"**: extração permanece síncrona com orçamento de parede (100s/120s) — mas PARTIAL é persistido com blocos processados, `/api/enterprises/extraction/status` expõe run/draft/health para polling, e runs RUNNING presas >15min são reaped como FAILED.
+- **"Preserve draft, evidências, aprovação, publicação e retry"**: substituição de base preserva published/verified/cached (só cadeia ÓRFÃ — primeira base sem histórico — é resetada, §12-v2); remoção é DELETE explícito do admin com versões append-only preservadas; retry via REPROCESS (`force`) deduplicado por hash; publicação só transacional com críticos resolvidos.
+- Contratos de regressão da cadeia já cobertos por `tests/ai/` (extraction-core, draft-deletion, draft-reconciliation, version-history, enterprise-info).
+
+### Flags de canário (default ON; rollback por env)
+
+| Flag | Off (`=legacy`) |
+|---|---|
+| `PUBLIC_SNAPSHOT_V2` | Landing SSR e API pública voltam à composição dinâmica por request (comportamento pré-Fase 7) |
+
+Degradação AUTOMÁTICA: tabela `enterprise_public_snapshots` ausente (P2021/P2022) ou qualquer erro no caminho do snapshot → composição dinâmica com WARN único — deploy seguro ANTES do SQL. Compressão adaptativa e higiene do payload são sem flag (mesma API, rollback = Instant Rollback).
+
+### Decisões explícitas (regra do prompt)
+
+- **Digital em banco vs invalidação por tags do Next**: a digital cobre mutações DESCONHECIDAS (@updatedAt é do ORM, não da rota) e é testável por contrato; `revalidateTag` exigiria reescrever a renderização e confia em pontos de invalidação manuais — exatamente o risco que o doc apontava.
+- **Snapshot por locale (3 linhas/slug), payload já resolvido**: troca de locale não recompõe; i18n é estável entre publishes (invalidação acontece junto com o conteúdo).
+- **TTL 300s é REDE DE SEGURANÇA, não política de frescor**: o frescor vem da digital (imediato); o TTL limita o dano de uma invalidação esquecida de tabela filha.
+- **pdfContent removido do payload público** (correção de vazamento): a API pública e o initialData da SSR carregavam o documento inteiro por request — agora só o gate de presença o lê.
+- **404 para slug inexistente na SSR** (antes: página vazia): coerente com a API pública e com os metadados já noindex.
+- **413 por pixels (não por bytes)**: bytes grandes comprimem; pixels grandes quebram a function — o limite protege o runtime, não o storage.
 
 ## Critérios de aceite — status
 
@@ -168,8 +209,10 @@ A partir deste commit, **push não aplica migration automaticamente**. Fluxo de 
 - ✅ Fase 3: 44 testes novos (contrato 15, inbox 11, webhook-inbox 6, polling 12) — **630/630**; tsc postgres 100% limpo; build Vercel-fiel verde; lint 11/4 = baseline
 - ✅ Fase 4: 18 testes novos (tests/lead-queue — replay, 20 concorrentes mesmo lead, 20 leads distintos, falhas entre etapas, flag legacy, CAS perdido, P2002→replay) — **648/648**; tsc postgres 100% limpo; build Vercel-fiel verde; lint 11/4 = baseline; DDL validado vs canônico; CTE validado por parse Postgres
 - ✅ Fase 6: 60 testes novos (tests/track-ingest 39 — limites/truncamento/identify/concorrência/rate limit distribuído+fallback; tests/tracking-report 21 — ondas de 6/LRU-TTL/splitUtmGroupingSets/funil single-scan) — **708/708**; tsc postgres 100% limpo; build Vercel-fiel verde; lint 11/4 = baseline; DDL validado vs canônico (scripts/validate-tracking-migration.sh)
-- ⏳ Canário 24–48 h com métricas de runtime + checklists das Fases 3, 4 e 6 — **ação do usuário** (dashboard Vercel), checklists em `docs/rollback.md` §5
+- ✅ Fase 7: 34 testes novos (tests/public-snapshot 21 — hit/digital updatedAt+version/TTL/locales PT-EN-ES/remoção 404/degradação P2021/flag legacy/invalidação filha/higiene do payload sem pdfContent-draft-PII/concorrência publish×request/UNIQUE por (slug,locale); tests/image-compression 13 — plano puro foto×diagrama/24MP/limite pixels real com sharp/orientação EXIF aplicada/alpha preservado/planta SEM downscale e q≥82/orçamento de encodes) — **742/742**; tsc postgres 100% limpo; build Vercel-fiel verde; lint 11/4 = baseline; DDL validado vs canônico (scripts/validate-public-snapshot-migration.sh)
+- ⏳ Canário 24–48 h com métricas de runtime + checklists das Fases 3, 4, 6 e 7 — **ação do usuário** (dashboard Vercel), checklists em `docs/rollback.md` §5
 - ⏳ Passos do release da Fase 3: `db:release` + `EXPLAIN` (`scripts/explain-meta-ingest-indexes.sql`) — `docs/rollback.md` §2
 - ⏳ Passos do release da Fase 4: SANEAMENTO (obrigatório, antes) + `db:release` + `EXPLAIN` (`scripts/explain-lead-queue-indexes.sql`) — `docs/rollback.md` §2; alternativa SQL Editor do Supabase: pacote de release entregue no ambiente do projeto (mesmos passos/sanamento/DDL/registro)
 - ⏳ Passos do release da Fase 6: `db:release` + `EXPLAIN` (`scripts/explain-tracking-indexes.sql`) — `docs/rollback.md` §2; alternativa SQL Editor do Supabase: pacote `download/fase6-sql-editor-release.sql` (pré-checks/DDL/registro/EXPLAIN/verificação)
-- ⏳ Fase 7 — sequenciada (tabela acima)
+- ⏳ Passos do release da Fase 7: `db:release` + `EXPLAIN` (`scripts/explain-public-snapshot.sql`) — `docs/rollback.md` §2; alternativa SQL Editor do Supabase: pacote `download/fase7-sql-editor-release.sql` (pré-checks/DDL/registro/EXPLAIN/verificação). Deploy pode preceder o SQL — degradação automática para composição dinâmica
+- ⏳ Todas as fases do plano implementadas (3/4/6/7); canários 24–48h pendentes (ação do usuário)

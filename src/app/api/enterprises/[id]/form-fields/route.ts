@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/api-auth';
+import { invalidatePublicSnapshotsForEnterprise } from '@/lib/public-snapshot';
 
 const VALID_TYPES = ['text', 'textarea', 'select', 'number', 'checkbox'] as const;
 
@@ -83,6 +84,9 @@ export async function POST(
         sortOrder: sortOrder ?? (maxOrder._max.sortOrder ?? -1) + 1,
       },
     });
+
+    // Fase 7: campos ativos do formulário são payload público.
+    await invalidatePublicSnapshotsForEnterprise(db, id);
 
     return NextResponse.json(field, { status: 201 });
   } catch (error) {

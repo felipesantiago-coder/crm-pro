@@ -2,78 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 import { supabaseServer } from '@/lib/supabase-server';
-import sharp from 'sharp';
+import { invalidatePublicSnapshotsForEnterprise } from '@/lib/public-snapshot';
+import { compressForWeb, ImageTooLargeError } from '@/lib/image-compression';
 
 const MAX_IMAGES = 15;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB raw (will be compressed)
-const COMPRESS_TARGET_KB = 300;
-const COMPRESS_TARGET_BYTES = COMPRESS_TARGET_KB * 1024;
-const MAX_DIMENSION = 1920;
 const ALLOWED_TYPES = new Set([
   'image/webp',
   'image/jpeg',
   'image/png',
   'image/avif',
 ]);
-
-/**
- * Compress an image buffer to target ~300KB using sharp.
- * Converts to WebP for best compression ratio.
- * Returns the compressed buffer.
- */
-async function compressImage(buffer: Buffer): Promise<Buffer> {
-  const image = sharp(buffer);
-
-  // Get metadata
-  const metadata = await image.metadata();
-
-  // Calculate output dimensions (max 1920px on longest side)
-  let width = metadata.width || MAX_DIMENSION;
-  let height = metadata.height || MAX_DIMENSION;
-
-  if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-    const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
-    width = Math.round(width * ratio);
-    height = Math.round(height * ratio);
-  }
-
-  // If image is already small and under target, just convert to WebP
-  if (buffer.length <= COMPRESS_TARGET_BYTES) {
-    return image
-      .resize(width, height, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 80, effort: 4 })
-      .toBuffer();
-  }
-
-  // Try quality levels from high to low until under target
-  const qualityLevels = [82, 75, 68, 60, 50, 40];
-  for (const quality of qualityLevels) {
-    const compressed = await image
-      .resize(width, height, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality, effort: 4 })
-      .toBuffer();
-
-    if (compressed.length <= COMPRESS_TARGET_BYTES) {
-      return compressed;
-    }
-
-    // If even lowest quality is too large, reduce dimensions further
-    if (quality === qualityLevels[qualityLevels.length - 1]) {
-      const reducedWidth = Math.round(width * 0.8);
-      const reducedHeight = Math.round(height * 0.8);
-      return image
-        .resize(reducedWidth, reducedHeight, { fit: 'inside', withoutEnlargement: true })
-        .webp({ quality: 50, effort: 4 })
-        .toBuffer();
-    }
-  }
-
-  // Fallback (should not reach here)
-  return image
-    .resize(width, height, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 50, effort: 4 })
-    .toBuffer();
-}
 
 /**
  * GET /api/enterprises/[id]/images
@@ -156,14 +95,33 @@ export async function POST(
     });
     const nextOrder = (maxOrder._max.sortOrder ?? -1) + 1;
 
-    // Compress image to ~300KB WebP
-    const rawBuffer = Buffer.from(await file.arrayBuffer());
-    const originalSizeKB = Math.round(rawBuffer.length / 1024);
-    const compressedBuffer = await compressImage(rawBuffer);
-    const compressedSizeKB = Math.round(compressedBuffer.length / 1024);
-    console.log(
-      `[Images POST] Compressão: ${originalSizeKB}KB → ${compressedSizeKB}KB`,
-    );
+    // Fase 7 — compressão adaptativa (src/lib/image-compression.ts):
+    // limite de pixels (413 ANTES de decodificar), modo foto × diagrama
+    // (PNG/alpha NÃO é forçado a 300KB — legibilidade > bytes), orçamento
+    // de CPU (≤4 encodes vs 7 antes), orientação EXIF e alpha preservados.
+    let compressedBuffer: Buffer;
+    let compressionMode: string;
+    let compressionBytes = 0;
+    try {
+      const rawBuffer = Buffer.from(await file.arrayBuffer());
+      const result = await compressForWeb(rawBuffer);
+      compressedBuffer = result.buffer;
+      compressionMode = result.mode;
+      compressionBytes = result.toBytes;
+      const originalSizeKB = Math.round(result.fromBytes / 1024);
+      const compressedSizeKB = Math.round(result.toBytes / 1024);
+      console.log(
+        `[Images POST] Compressão (${result.mode}): ${originalSizeKB}KB → ${compressedSizeKB}KB · q${result.quality} · resized=${result.resized}`,
+      );
+    } catch (err) {
+      if (err instanceof ImageTooLargeError) {
+        return NextResponse.json(
+          { error: `Imagem muito grande em pixels (${err.pixels.toLocaleString('pt-BR')}). Máximo ${Math.round(ImageTooLargeError.MAX_PIXELS / 1_000_000)}MP.` },
+          { status: 413 },
+        );
+      }
+      throw err;
+    }
 
     // Upload compressed buffer to Supabase Storage
     const timestamp = Date.now();
@@ -207,7 +165,14 @@ export async function POST(
       });
     }
 
-    return NextResponse.json(image, { status: 201 });
+    // Fase 7: galeria/hero mudaram → snapshot público invalidado
+    // (tabela filha não recarrega updatedAt do enterprise).
+    await invalidatePublicSnapshotsForEnterprise(db, id);
+
+    return NextResponse.json(
+      { ...image, compression: { mode: compressionMode, bytes: compressionBytes } },
+      { status: 201 },
+    );
   } catch (error) {
     console.error('[Images POST] Erro:', error);
     return NextResponse.json({ error: 'Erro ao enviar imagem.' }, { status: 500 });
@@ -240,6 +205,8 @@ export async function PUT(
           }),
         ),
       );
+      // Fase 7: ordem da galeria é payload público.
+      await invalidatePublicSnapshotsForEnterprise(db, id);
       return NextResponse.json({ success: true });
     }
 
@@ -249,6 +216,8 @@ export async function PUT(
         where: { id: body.imageId, enterpriseId: id },
         data: { altText: body.altText || null },
       });
+      // Fase 7: altText é payload público (acessibilidade).
+      await invalidatePublicSnapshotsForEnterprise(db, id);
       return NextResponse.json(updated);
     }
 
@@ -264,6 +233,11 @@ export async function PUT(
         where: { id },
         data: { imageUrl: image.url },
       });
+      // Fase 7: hero mudou via enterprise.update (updatedAt diverge a
+      // digital) — invalidação explícita acelera a convergência (o
+      // recompute do hit seguinte seria de qualquer forma necessário;
+      // aqui nem a leitura da digital antiga acontece).
+      await invalidatePublicSnapshotsForEnterprise(db, id);
       return NextResponse.json({ success: true, imageUrl: image.url });
     }
 
@@ -330,6 +304,9 @@ export async function DELETE(
         data: { imageUrl: nextImage?.url || null },
       });
     }
+
+    // Fase 7: imagem removida do payload público.
+    await invalidatePublicSnapshotsForEnterprise(db, id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

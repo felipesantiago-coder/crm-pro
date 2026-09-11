@@ -16,6 +16,7 @@
 | Migration `20260911_meta_ingest_durability` (inbox/cursor/lease) | `DROP TABLE IF EXISTS "meta_polling_lease"; DROP TABLE IF EXISTS "meta_polling_cursor"; DROP TABLE IF EXISTS "meta_lead_inbox";` + flags `META_INGEST_V2=legacy` e `META_POLL_CURSOR_V2=legacy` | Sem perda de leads (clients intacto); perde apenas itens pendentes na inbox na hora do drop |
 | Migration `20260911_lead_queue_assignment_unique` (Fase 4) | `DROP INDEX IF EXISTS "lead_queue_assignments_leadId_key"; CREATE INDEX IF NOT EXISTS "lead_queue_assignments_leadId_idx" ON "lead_queue_assignments"("leadId");` + flag `LEAD_QUEUE_ATOMIC_V2=legacy` | Sem perda de atribuições; volta ao CAS + create de 2 statements (com replay P2002). O índice simples é recriado pois foi dropado como redundante |
 | Migration `20260911_tracking_report_indexes` (Fase 6) | `DROP INDEX IF EXISTS "tracking_events_siteId_createdAt_idx"; DROP INDEX IF EXISTS "tracking_events_siteId_eventType_createdAt_idx"; DROP INDEX IF EXISTS "tracking_visitors_siteId_lastSeenAt_idx"; DROP TABLE IF EXISTS "tracking_rate_limit";` + flag `TRACK_RATE_LIMIT_V2=legacy` | Mínimo — índices são reconstruíveis e a tabela guarda só contadores de janela (nenhum dado de negócio); sem a tabela, o /api/track degrada automaticamente para o rate limit in-memory (WARN único) |
+| Migration `20260911_enterprise_public_snapshot` (Fase 7) | `DROP TABLE IF EXISTS "enterprise_public_snapshots";` + flag `PUBLIC_SNAPSHOT_V2=legacy` | Nenhum — cache puro e reconstruível (nenhum dado de negócio); sem a tabela, landing SSR e API pública degradam automaticamente para a composição dinâmica por request (WARN único). Frescor NUNCA dependeu do snapshot: a digital é verificada por request e a composição canônica é a mesma da pré-Fase 7 |
 
 ## 2. Procedimento de release de migration (NOVO fluxo)
 
@@ -69,6 +70,16 @@ DATABASE_URL="<url-sessao>" psql "$DATABASE_URL" -f scripts/explain-tracking-ind
 #    (alternativa sem psql/node: SQL Editor do Supabase — pacote
 #     download/fase6-sql-editor-release.sql com pré-checks, DDL,
 #     registro em _prisma_migrations, EXPLAINs e verificação)
+#
+#    Fase 7 (snapshot público):
+DATABASE_URL="<url-sessao>" psql "$DATABASE_URL" -f scripts/explain-public-snapshot.sql
+#    Esperado: Index Scan usando enterprise_public_snapshots_slug_locale_key (Q1 — hit do caminho feliz);
+#    enterprise_public_snapshots_enterpriseId_idx (Q2 — invalidação filha, EXPLAIN puro NÃO apaga);
+#    enterprises_slug_key (Q3 — digital por request). Seq Scan em
+#    tabela vazia é NORMAL — re-executar após tráfego real.
+#    (alternativa sem psql/node: SQL Editor do Supabase — pacote
+#     download/fase7-sql-editor-release.sql com pré-checks, DDL,
+#     registro em _prisma_migrations, EXPLAINs e verificação)
 
 # 5) Verificar
 DATABASE_URL="<url-sessao>" npx prisma migrate status
@@ -81,7 +92,7 @@ DATABASE_URL="<url-sessao>" npx prisma migrate status
 ## 3. Verificação de integridade pós-release
 
 ```bash
-npm test        # 648/648 (inclui higiene do build + lead-queue)
+npm test        # 742/742 (inclui higiene do build + lead-queue + tracking + snapshot/compressão)
 npm run typecheck
 npm run lint    # 11 err / 4 warn = baseline inalterado
 ```
@@ -130,6 +141,18 @@ Comparar antes/depois por deployment no Observability do projeto:
 - [ ] Report markdown gera como antes; jornadas longas truncadas em 5.000 eventos COM nota de truncamento (novo, esperado)
 - [ ] Staging local/dev sqlite: dashboard mostra seções vazias como sempre (consultas são Postgres-only — `safe()` mantém o comportamento)
 - [ ] Se algo estranho: `TRACK_RATE_LIMIT_V2=legacy` (redeploy) OU Instant Rollback §4 — rollback de schema documentado na tabela §1 (só índices/contadores, sem dado de negócio)
+
+### Canário específico da Fase 7 (snapshot público / imagens / PDF)
+
+- [ ] Landing `/empreendimentos/{slug}` carrega como antes (mesma página, mesmo i18n) — após o 1º acesso, 1 linha por (slug, locale) em `enterprise_public_snapshots` (Bloco 4d do pacote SQL)
+- [ ] Publicar extração aprovada → página pública reflete IMEDIATAMENTE na próxima visita (digital diverge → recompute); `version`/`baseUpdatedAt` da linha do snapshot atualizam
+- [ ] Trocar imagem da galeria/hero/planta/form field → reflete na próxima visita (invalidação explícita + TTL ≤ 5 min)
+- [ ] Remover base documental → página pública some (404) no acesso seguinte; re-publicar traz de volta
+- [ ] Locale: `/en/...` e `/es/...` servem as traduções como antes (linhas separadas por locale)
+- [ ] Log `[PublicSnapshot] caminho de snapshot indisponível (degradando...)` NÃO aparece após aplicar o SQL (se aparecer: tabela ausente — serviço continua dinâmico)
+- [ ] Upload de imagem: PNG de planta sai com dimensões preservadas e texto legível (NÃO forçado a 300KB); JPEG de foto sai ≤ ~300KB; imagem > 24MP responde 413 com mensagem clara
+- [ ] Upload de PDF: resposta com extractionStatus; EXTRAÇÃO parcial mostra blocos processados + botão Reprocessar; dados publicados preservados durante a substituição
+- [ ] Se algo estranho: `PUBLIC_SNAPSHOT_V2=legacy` (redeploy) OU Instant Rollback §4 — a página volta ao caminho dinâmico pré-Fase 7 sem perda de dados (snapshot é cache)
 
 ## 6. Recuperação de desastre — drift de schema (P3005/P3018)
 

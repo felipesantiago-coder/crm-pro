@@ -76,7 +76,10 @@ interface ExtractedInfo {
   summary: string | null;
 }
 
-interface Enterprise {
+// Exportada para a page SSR fazer o binding tipado do payload do snapshot
+// (Record<string, unknown> → shape consumida) — import TYPE-ONLY, não puxa
+// runtime do client.
+export interface Enterprise {
   id: string;
   name: string;
   slug: string | null;

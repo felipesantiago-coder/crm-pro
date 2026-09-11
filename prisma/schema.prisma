@@ -183,8 +183,41 @@ model Enterprise {
   publishedAt      DateTime? @map("publishedAt")
   publishedVersion Int       @default(0) @map("publishedVersion")
 
+  publicSnapshots EnterprisePublicSnapshot[]
+
   @@index([documentHash])
   @@map("enterprises")
+}
+
+/// Snapshot público versionado da landing (Fase 7 da otimização Vercel).
+/// Payload PRÉ-COMPOSTO (i18n resolvido por locale) servido quando a
+/// impressão digital de frescor bate — publish/unpublish/troca de base muda
+/// Enterprise.updatedAt (Prisma @updatedAt) e/ou publishedVersion, divergindo
+/// a digital e forçando recomposição IMEDIATA no request seguinte.
+/// NUNCA guarda draft, publishedInfo bruto, PII de contato, dados de fila
+/// (peekNextUser continua por request) nem pdfContent (documento interno).
+model EnterprisePublicSnapshot {
+  id            String   @id @default(cuid()) @map("id")
+  enterpriseId  String   @map("enterpriseId")
+  /** Espelho do slug público — parte da chave de leitura. */
+  slug          String   @map("slug")
+  /** pt-BR | en | es — payload com i18n JÁ resolvido por locale. */
+  locale        String   @map("locale")
+  /** publishedVersion na captura (diagnóstico + parte da digital). */
+  version       Int      @default(0) @map("version")
+  /** Digital de frescor: Enterprise.updatedAt na captura. */
+  baseUpdatedAt DateTime @map("baseUpdatedAt")
+  /** Payload público final (compose resolvida) — same shape do initialData. */
+  payload       Json     @map("payload")
+  createdAt     DateTime @default(now()) @map("createdAt")
+  /** Última recomposição — base do TTL de segurança. */
+  refreshedAt   DateTime @default(now()) @map("refreshedAt")
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@unique([slug, locale])
+  @@index([enterpriseId])
+  @@map("enterprise_public_snapshots")
 }
 
 model EnterpriseImage {

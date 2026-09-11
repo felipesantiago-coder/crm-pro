@@ -2,7 +2,18 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { db } from '@/lib/db';
-import { resolvePublicEnterpriseInfo, mergePublicInfoI18n } from '@/lib/ai/enterprise-info';
+import {
+  PUBLIC_ENTERPRISE_SELECT,
+  buildPublicEnterprisePayload,
+  resolveI18nString,
+  type ComposableEnterprise,
+} from '@/lib/public-enterprise-view';
+import {
+  servePublicEnterprise,
+  createDbPublicSnapshotDeps,
+} from '@/lib/public-snapshot';
+import { resolvePublicEnterpriseInfo } from '@/lib/ai/enterprise-info';
+import type { Enterprise as LandingEnterprise } from './landing-page-client';
 import LandingPageClient from './landing-page-client';
 import { LandingErrorBoundary } from './landing-error-boundary';
 import { peekNextUser } from '@/lib/lead-queue';
@@ -26,73 +37,31 @@ interface PageProps {
 // e, pior, não oferecia garantia de frescor caso a rota deixasse de ser
 // dinâmica. Regra §12: atualização de base publicada deve refletir
 // OBRIGATORIAMENTE nas superfícies públicas → renderização sempre dinâmica,
-// leitura direta do banco a cada request.
+// leitura do banco a cada request.
+//
+// Fase 7: a leitura passa pelo snapshot público versionado
+// (src/lib/public-snapshot.ts) — o frescor continua POR REQUEST (digital
+// baseUpdatedAt/publishedVersion verificada a cada request; divergiu →
+// recomposição IMEDIATA no mesmo request), mas o caminho feliz serve um
+// payload pré-composto (2 queries leves em vez de 1 query pesada com
+// pdfContent + 3 subselects). Fila (peekNextUser) fica FORA do snapshot —
+// por request. Publish/restore/pdf/PATCH mudam updatedAt (@updatedAt) e/ou
+// publishedVersion → digital diverge → recompute; mutações de tabelas
+// filhas (imagens/plantas/formFields/slug) invalidam explicitamente.
 export const dynamic = 'force-dynamic';
 
-const ENTERPRISE_SELECT = {
-  id: true, name: true, slug: true, region: true, imageUrl: true,
-  landingTitle: true, landingSubtitle: true, landingDescription: true,
-  cachedInfo: true, mapLatitude: true, mapLongitude: true, createdAt: true,
-  pdfContent: true,
-  publishedInfo: true, publishedAt: true, publishedVersion: true,
-  verifiedInfo: true, verifiedInfoAt: true,
-  _count: { select: { clients: true } },
-  images: { select: { id: true, url: true, altText: true, sortOrder: true }, orderBy: { sortOrder: 'asc' } },
-  floorPlans: { select: { id: true, url: true, altText: true, sortOrder: true, name: true, area: true, bedrooms: true, suites: true, hasBalcony: true, isGarden: true, isPenthouse: true, description: true }, orderBy: { sortOrder: 'asc' } },
-  formFields: {
-    where: { isActive: true },
-    select: { id: true, label: true, fieldType: true, placeholder: true, options: true, required: true, sortOrder: true },
-    orderBy: { sortOrder: 'asc' },
-  },
-} as const;
-
-// mergeCachedInfo/mergePublicInfoWithCatalog foram REMOVIDOS (§12-v2):
-// nenhuma superfície pública mais recebe fallback do catálogo estático.
-
-function resolveI18nString(field: any, locale: string): string | null {
-  if (!field || typeof field !== 'object') return typeof field === 'string' ? field : null;
-  return field[locale] || field['pt-BR'] || Object.values(field)[0] || null;
-}
-
+/**
+ * Composição canônica (caminho de miss do snapshot) — mesma query da
+ * pré-Fase 7, com a resolução delegada à lib view (fonte única de
+ * composição; antes duplicada aqui e na API pública).
+ */
 async function fetchEnterpriseData(slug: string, locale: string) {
   const enterprise = await db.enterprise.findUnique({
     where: { slug },
-    select: { ...ENTERPRISE_SELECT, cachedInfoI18n: true } as any,
+    select: PUBLIC_ENTERPRISE_SELECT,
   });
   if (!enterprise) return null;
-
-  // Política §12-v2 (enterprise-info.ts): o público consome APENAS
-  // publicado → verificado, e SOMENTE com base documental presente — sem
-  // fallback de catálogo estático e sem legado cachedInfo. Base removida →
-  // nada de dados é exibido. Rascunhos (extractionDraft) NUNCA são públicos.
-  // O resultado é exposto em `cachedInfo` (camada de compatibilidade) com
-  // `infoSource` para diagnóstico.
-  const resolved = resolvePublicEnterpriseInfo(enterprise as any, { requireBaseDocument: true });
-  enterprise.cachedInfo = resolved.info as any;
-  const infoSource = resolved.source;
-  const infoReferenceDate = resolved.referenceDate;
-
-  // Resolve i18n string fields → flat string for client
-  const raw = enterprise as any;
-  raw.landingTitle = resolveI18nString(raw.landingTitle, locale);
-  raw.landingSubtitle = resolveI18nString(raw.landingSubtitle, locale);
-  raw.landingDescription = resolveI18nString(raw.landingDescription, locale);
-
-  // Resolve cachedInfo i18n: merge translated locale over base — SOMENTE com
-  // info aprovada (§12-v2 rev. Task 41): tradução é derivada da cadeia de
-  // extração e NUNCA ressuscita dado de base removida/não aprovada.
-  raw.cachedInfo = mergePublicInfoI18n(
-    raw.cachedInfo as Record<string, unknown> | null,
-    raw.cachedInfoI18n,
-    locale,
-  );
-  delete raw.cachedInfoI18n;
-  delete raw.publishedInfo;
-  delete raw.verifiedInfo;
-  raw.infoSource = infoSource;
-  raw.infoReferenceDate = infoReferenceDate;
-
-  return JSON.parse(JSON.stringify(raw));
+  return buildPublicEnterprisePayload(enterprise as ComposableEnterprise, locale);
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -126,8 +95,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         };
       }
       const info = resolved.info as Record<string, any> | null;
-      enterpriseName = resolveI18nString(enterprise.landingTitle, locale) || enterprise.name;
-      enterpriseDescription = info?.summary || resolveI18nString(enterprise.landingDescription, locale) || null;
+      // Casts locais: colunas Json do Prisma (landingTitle/Description) —
+      // resolveI18nString da lib view tipa estritamente Record<string,string>.
+      enterpriseName =
+        resolveI18nString(enterprise.landingTitle as Record<string, string> | null, locale) ||
+        enterprise.name;
+      enterpriseDescription =
+        info?.summary ||
+        resolveI18nString(enterprise.landingDescription as Record<string, string> | null, locale) ||
+        null;
       imageUrl = enterprise.imageUrl || enterprise.images[0]?.url || null;
     }
   } catch {}
@@ -170,8 +146,12 @@ export default async function LandingPage({ params }: PageProps) {
   const headersList = await headers();
   const xLocale = headersList.get('x-locale');
   const locale: Locale = xLocale && isValidLocale(xLocale) ? xLocale : defaultLocale;
-  const [initialData, queueUserData] = await Promise.all([
-    fetchEnterpriseData(slug, locale).catch((err) => { console.error('[LandingPage] fetchEnterpriseData failed for slug', slug, err); return null; }),
+  const [served, queueUserData] = await Promise.all([
+    servePublicEnterprise(createDbPublicSnapshotDeps(db), { slug, locale }).catch((err) => {
+      console.error('[LandingPage] servePublicEnterprise failed for slug', slug, err);
+      return null;
+    }),
+    // Fila NUNCA é cacheada — atribuição dinâmica por request (§Fase 7).
     peekNextUser({ slug }).catch(() => null),
   ]);
   // §12-v2 rev. Task 41 ("ela somente exiba as informações da extração e
@@ -179,16 +159,25 @@ export default async function LandingPage({ params }: PageProps) {
   // aprovada COM base documental, a página pública do empreendimento NÃO
   // EXISTE — 404 por request (renderização dinâmica: o administrador publica
   // e a página volta no próximo acesso; remove a base e ela some).
-  // Isso elimina os últimos vazamentos da landing sem info aprovada: hero
-  // com landingSubtitle curado (texto com preço antigo), descrição curada no
-  // formulário e seções com placeholders.
-  if (initialData && (initialData as { infoSource?: string }).infoSource === 'none') {
+  // Fase 7: o gate fica na compose — served null cobre slug inexistente E
+  // info 'none' (antes: slugs inexistentes renderizavam página vazia; agora
+  // 404, coerente com a API pública e com o generateMetadata).
+  const initialData = served?.payload ?? null;
+  if (!initialData) {
     notFound();
   }
   const initialQueueUser = queueUserData ? { userId: queueUserData.userId, userPhone: queueUserData.userPhone } : null;
   return (
     <LandingErrorBoundary>
-      <LandingPageClient params={params} initialData={initialData} initialQueueUser={initialQueueUser} />
+      {/* Cast de fronteira: o payload do snapshot é Record<string, unknown>
+          (JSON puro da fonte única public-enterprise-view); o client tipa
+          localmente a shape que consome. Equivalente tipado do
+          JSON.parse(...): any que servia o initialData antes da Fase 7. */}
+      <LandingPageClient
+        params={params}
+        initialData={initialData as unknown as LandingEnterprise}
+        initialQueueUser={initialQueueUser}
+      />
     </LandingErrorBoundary>
   );
 }

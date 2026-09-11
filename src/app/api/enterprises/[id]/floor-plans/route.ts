@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/api-auth';
 import { db } from '@/lib/db';
+import { invalidatePublicSnapshotsForEnterprise } from '@/lib/public-snapshot';
 
 const MAX_PLANS = 10;
 
@@ -84,6 +85,9 @@ export async function POST(
       },
     });
 
+    // Fase 7: plantas são payload público.
+    await invalidatePublicSnapshotsForEnterprise(db, id);
+
     return NextResponse.json(plan, { status: 201 });
   } catch (error) {
     console.error('[FloorPlans POST] Erro:', error);
@@ -114,6 +118,8 @@ export async function PUT(
           }),
         ),
       );
+      // Fase 7: ordem das plantas é payload público.
+      await invalidatePublicSnapshotsForEnterprise(db, id);
       return NextResponse.json({ success: true });
     }
 
@@ -166,6 +172,8 @@ export async function PATCH(
       where: { id: planId },
       data: updateData,
     });
+    // Fase 7: metadados da planta são payload público.
+    await invalidatePublicSnapshotsForEnterprise(db, id);
     return NextResponse.json(updated);
   } catch (error) {
     console.error('[FloorPlans PATCH] Erro:', error);
@@ -200,6 +208,8 @@ export async function DELETE(
     }
 
     await db.enterpriseFloorPlan.delete({ where: { id: planId } });
+    // Fase 7: planta removida do payload público.
+    await invalidatePublicSnapshotsForEnterprise(db, id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[FloorPlans DELETE] Erro:', error);
