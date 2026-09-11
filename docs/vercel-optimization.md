@@ -24,6 +24,9 @@ Método: implementação incremental, mensurável e reversível. Nenhuma funcion
 | Quota do polling | decremento desprotegido (estourava sob concorrência) | **UPDATE condicional atômico** (`quotaRemaining > 0`) | teto respeitado |
 | Janela do polling | since + limit=100 (1 página) | **cursor por (adAccountId, formId) + paginação completa** | nenhum lead além de 100 fica para trás |
 | Falha no meio do webhook | lead perdido (sem persistência prévia) | **inbox antes do processamento + retry com backoff** | crash = retry, não perda |
+| Reserva (avanço do currentIdx) × criação da atribuição | 2 statements separados — crash entre eles avançava a fila SEM atribuir | **UM statement único (CTE data-modifying)** | tudo ou nada; compatível com o pooler (sem transação interativa) |
+| Corrida do MESMO lead (webhook/polling/endpoints) | dedup de 2 camadas (cache + findFirst) — janela de corrida criava 2ª atribuição | **UNIQUE(leadId) + replay P2002** | conflito devolve a atribuição existente; nunca duplica |
+| Índice simples em `leadId` | mantido junto do novo UNIQUE | **dropado (redundante)** | menos uma escrita de índice por atribuição |
 
 Runtime (invocações, CPU, p95, DB duration): **não medido** — comparar no canário 24–48 h conforme §6.
 
@@ -88,11 +91,33 @@ A partir deste commit, **push não aplica migration automaticamente**. Fluxo de 
 - **Exceção → RETRYABLE; outcome terminal → SUCCEEDED**: falhas de negócio (`no_user`, `no_account_token`, `create_failed`) são terminais como hoje; retry só em exceções (infra), onde o dedup é à prova de duplicação (leadgen único + idempotência de fila/Telegram). Duplicidade de interação possível apenas no caso raro de exceção ENTRE create e interação — documentado.
 - **EXPLAIN pendente de execução**: sandbox sem Postgres (regra 2) — `scripts/explain-meta-ingest-indexes.sql` vai no §2 do rollback.md como passo OBRIGATÓRIO do release.
 
-## Fases 4/6/7 — Sequenciadas (não rejeitadas; exigem janela de release/canário)
+## Fase 4 — Atribuição de fila atômica ✅ (implementada; release + canário pendentes)
+
+### O que mudou
+
+1. **Migration `20260911_lead_queue_assignment_unique`** — UNIQUE em `lead_queue_assignments."leadId"` (a atribuição lógica de um lead é única; múltiplos NULL continuam válidos para rounds sem lead) + DROP do índice simples `leadId_idx` (redundante — o UNIQUE cobre as mesmas consultas). DDL validado contra o canônico Prisma (`scripts/validate-lead-queue-migration.sh`); rollback SQL no cabeçalho e em `docs/rollback.md` §1.
+2. **Saneamento PRÉVIO obrigatório** (`scripts/sanitize-lead-queue-assignments.mjs` + Bloco 1 do pacote SQL Editor): duplicados históricos (corridas pré-inbox) impedem o CREATE UNIQUE INDEX. Política conservadora: mantém a linha MAIS RECENTE por leadId (`createdAt DESC, id DESC`) — exatamente a que o dedup em runtime retorna hoje (`findFirst orderBy createdAt desc`), então NENHUM dono visível muda; remove as antigas com backup em tabela `lead_queue_assignments_dup_backup_20260911` (+ JSON opcional `--output`). DRY RUN por padrão, idempotente.
+3. **Statement atômico** (`src/lib/lead-queue.ts` — `atomicAssignLead`): reserva (CAS no `currentIdx`) e criação da atribuição agora são UM ÚNICO statement (CTE data-modifying: `guard → target → member → adv → ins`), exigido pelo prompt ("transação curta/função SQL compatível com o pooler") — sem transação interativa (proibida em `src/lib/db.ts` para PgBouncer), sem conexão direta por request. Crash entre reserva e criação fica impossível por construção; corridas de UPDATE são resolvidas pela reavaliação do WHERE (lock da linha) e pelo índice UNIQUE.
+4. **Replay em TODAS as camadas**: conflito P2002 no create do caminho LEGADO também vira replay (devolve a atribuição existente em vez de propagar erro) — exigência do prompt. O replay usa a MESMA semântica do dedup atual (`findFirst orderBy createdAt desc` + `message: 'already_assigned'`).
+5. **Ordem/filas preservados (regra do prompt)**: round-robin com `%` sobre membros ativos com usuário (filtragem defensiva equivalente ao skip-loop legado), prioridade fila por campanha/formulário/conta (`resolveQueueForMetaLead` intocado), `peekNextUser` e `setNextUser` inalterados; contratos de mensagem (`'Nenhuma fila ativa encontrada'`, `'Nenhum membro ativo na fila'`, `'Fila não encontrada ou desativada'`, `'Erro interno na atribuição'`), `source` default `'api'` com corte 200 e cache Layer-1 preservados byte a byte.
+
+### Flags de canário (default ON; rollback por env)
+
+- `LEAD_QUEUE_ATOMIC_V2=legacy` → volta ao CAS + create de 2 statements (com replay P2002 — correção da Fase 4 permanece no legado)
+- Degradação AUTOMÁTICA: erro no statement (UNIQUE ainda não aplicada → "no unique or exclusion constraint", dialeto sqlite no dev) → caminho legado assume com WARN único — deploy seguro ANTES da migration/saneamento
+
+### Decisões explícitas (regra do prompt)
+
+- **CTE data-modifying em vez de transação interativa**: a convenção do projeto (`src/lib/db.ts`) proíbe `$transaction` interativo com PgBouncer; o prompt permite "função SQL compatível com o pooler" — um statement único é atômico por definição e passa pelo pooler sem fixar conexão. Testado por 18 testes de contrato com fakes que implementam a semântica real (UNIQUE/CAS/CTE) e sintaxe validada por parse Postgres (sqlglot) + EXPLAIN no release (regra 8, sandbox sem Postgres).
+- **Saneamento mantém a linha mais RECENTE** (não a mais antiga): o dedup em runtime sempre retornou a atribuição mais recente como dono — manter a mais antiga MUDARIA o dono visível. Backup completo antes de remover.
+- **DROP do índice simples**: `lead_queue_assignments_leadId_idx` é coberto pelo UNIQUE `leadId_key` (mesma coluna, mesma capacidade de lookup) — manter ambos seria escrita dupla. Rollback recria o simples (documentado).
+- **Legado permanece verbatim** como fallback (flag + degradação), com o acréscimo do replay P2002 — mesmo padrão da Fase 3.
+- **EXPLAIN pendente de execução**: `scripts/explain-lead-queue-indexes.sql` (Q1 replay/UNIQUE, Q2 plano do statement atômico — SEM ANALYZE, não escreve, Q3 histórico por fila) vai como passo do release.
+
+## Fases 6/7 — Sequenciadas (não rejeitadas; exigem janela de release/canário)
 
 | Fase | Escopo | Por que não nesta iteração | Próximo passo |
 |---|---|---|---|
-| 4 — Atribuição de fila atômica (UNIQUE em LeadQueueAssignment + transação/P2002-replay) | saneamento prévio de duplicados + migration | requer saneamento em produção com backup e EXPLAIN; risco de duplicar atribuições se mal ordenado | ferramenta de saneamento + EXPLAIN + migration com rollback SQL |
 | 6 — Tracking/relatórios (limites de lote, rate limit distribuído, índices com EXPLAIN, cache curto) | código + migrations de índice | índices exigem EXPLAIN no banco real (sandbox sem acesso, regra 2) | medir com `DIRECT_DATABASE_URL` de leitura; índices `(siteId, createdAt)`, `(siteId, eventType, createdAt)` |
 | 7 — Páginas públicas (snapshot versionado + invalidação por tag), imagens/PDF adaptativos | cache/invalidação + compressão | invalidação exige prova de cobertura por locale/fluxo de publicação; compressão adaptativa exige benchmark de legibilidade | spike de revalidateTag com publish/unpublish + fixture PT/EN/ES |
 
@@ -102,6 +127,8 @@ A partir deste commit, **push não aplica migration automaticamente**. Fluxo de 
 - ✅ `npm ci`-equivalente local (instalação limpa existente), geração Prisma isolada, typecheck limpo (postgres), 586/586 testes, build verde sem banco
 - ✅ Build sem migration + análise de bundle (−18,9 MB)
 - ✅ Fase 3: 44 testes novos (contrato 15, inbox 11, webhook-inbox 6, polling 12) — **630/630**; tsc postgres 100% limpo; build Vercel-fiel verde; lint 11/4 = baseline
-- ⏳ Canário 24–48 h com métricas de runtime + checklist específico da Fase 3 — **ação do usuário** (dashboard Vercel), checklists em `docs/rollback.md` §5
+- ✅ Fase 4: 18 testes novos (tests/lead-queue — replay, 20 concorrentes mesmo lead, 20 leads distintos, falhas entre etapas, flag legacy, CAS perdido, P2002→replay) — **648/648**; tsc postgres 100% limpo; build Vercel-fiel verde; lint 11/4 = baseline; DDL validado vs canônico; CTE validado por parse Postgres
+- ⏳ Canário 24–48 h com métricas de runtime + checklists das Fases 3 e 4 — **ação do usuário** (dashboard Vercel), checklists em `docs/rollback.md` §5
 - ⏳ Passos do release da Fase 3: `db:release` + `EXPLAIN` (`scripts/explain-meta-ingest-indexes.sql`) — `docs/rollback.md` §2
-- ⏳ Fases 4/6/7 — sequenciadas (tabela acima)
+- ⏳ Passos do release da Fase 4: SANEAMENTO (obrigatório, antes) + `db:release` + `EXPLAIN` (`scripts/explain-lead-queue-indexes.sql`) — `docs/rollback.md` §2; alternativa SQL Editor do Supabase: pacote de release entregue no ambiente do projeto (mesmos passos/sanamento/DDL/registro)
+- ⏳ Fases 6/7 — sequenciadas (tabela acima)

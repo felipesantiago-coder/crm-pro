@@ -494,7 +494,12 @@ model LeadQueueAssignment {
   id        String   @id @default(cuid()) @map("id")
   queueId   String   @map("queueId")
   userId    String   @map("userId")
-  leadId    String?  @map("leadId")
+  // UNIQUE = a atribuição lógica de um lead é ÚNICA (Fase 4 da
+  // otimização Vercel). leadId é opcional (rounds sem lead) — múltiplos
+  // NULL são permitidos pelo Postgres/sqlite. Conflito de INSERT é
+  // tratado como REPLAY em assignLeadToUser (devolve a atribuição
+  // existente em vez de duplicar).
+  leadId    String?  @unique @map("leadId")
   source    String   @map("source")
   createdAt DateTime @default(now()) @map("createdAt")
 
@@ -504,7 +509,9 @@ model LeadQueueAssignment {
 
   @@index([queueId, createdAt])
   @@index([userId])
-  @@index([leadId])
+  // @@index([leadId]) removido na Fase 4: o UNIQUE leadId_key o torna
+  // redundante (mesma coluna, mesma capacidade de lookup) — menos uma
+  // escrita de índice por atribuição.
   @@map("lead_queue_assignments")
 }
 
