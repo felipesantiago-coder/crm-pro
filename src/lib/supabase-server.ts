@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 //
 // SUPABASE SERVER CLIENT — Object Storage (apenas)
@@ -37,8 +37,37 @@ export function createSupabaseServerClient() {
   });
 }
 
+// Singleton LAZY: o client só é instanciado no primeiro USO, não na
+// importação do módulo. Motivos (otimização Vercel — Fase 5):
+//   1. `next build` não exige envs de Storage (build local/CI sem envs de
+//      produção completa — antes, a importação lançava e quebrava a coleta
+//      de dados de página);
+//   2. Rotas que importam este módulo não pagam a criação do client no
+//      cold start se não usarem Storage;
+//   3. Comportamento preservado: chamar uma operação sem envs configuradas
+//      lança exatamente o mesmo erro — só muda o momento (uso, não import).
+const globalForSupabase = globalThis as unknown as {
+  __crmSupabaseServer?: SupabaseClient;
+};
+
+function getSupabaseServerInstance(): SupabaseClient {
+  if (!globalForSupabase.__crmSupabaseServer) {
+    globalForSupabase.__crmSupabaseServer = createSupabaseServerClient();
+  }
+  return globalForSupabase.__crmSupabaseServer;
+}
+
 /**
- * Singleton do client Supabase server-side para Storage.
+ * Singleton do client Supabase server-side para Storage (lazy).
  * NÃO usar para queries de banco de dados — use `db` de @/lib/db.
+ *
+ * Proxy transparente: todas as propriedades (`.storage`, `.from`, etc.)
+ * são resolvidas contra a instância real, criada no primeiro acesso.
  */
-export const supabaseServer = createSupabaseServerClient();
+export const supabaseServer = new Proxy({} as SupabaseClient, {
+  get(_target, prop, receiver) {
+    const client = getSupabaseServerInstance() as unknown as Record<string | symbol, unknown>;
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(client) : value;
+  },
+});
