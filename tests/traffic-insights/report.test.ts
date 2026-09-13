@@ -33,7 +33,11 @@ function lite(over: Partial<InsightRowLite>): InsightRowLite {
     entityName: null,
     campaignId: null,
     campaignName: null,
+    date: SINCE,
     spend: 0,
+    impressions: 0,
+    clicks: 0,
+    reach: 0,
     leadsMeta: 0,
     ...over,
   };
@@ -46,6 +50,8 @@ interface FakeDbInput {
   legacyClients?: Array<{ metaLeadgenId: string | null; stage: string | null; metaTemperature: string | null; notes: string | null }>;
   bindings?: Array<{ campaignId: string; campaignName: string | null }>;
   states?: Array<{ adAccountId: string; lastStatus: string; lastSyncedAt: Date | null; lastError: string | null }>;
+  entityStates?: Array<{ adAccountId: string; level: string; entityId: string; entityName: string | null; campaignId: string | null; dailyBudgetMinor: number | null; lifetimeBudgetMinor: number | null; status: string | null; effectiveStatus: string | null; learningStage: string | null; fetchedAt: Date }>;
+  entityStatesError?: unknown;
 }
 
 function fakeDb(input: FakeDbInput): TrafficReadDb {
@@ -56,6 +62,10 @@ function fakeDb(input: FakeDbInput): TrafficReadDb {
     metaClientsSince: async () => input.legacyClients ?? [],
     campaignBindings: async () => input.bindings ?? [],
     syncStates: async () => input.states ?? [],
+    entityStates: async () => {
+      if (input.entityStatesError !== undefined) throw input.entityStatesError;
+      return input.entityStates ?? [];
+    },
   };
 }
 
@@ -101,8 +111,8 @@ describe('aggregateCampaignPerformance', () => {
   });
 
   test('outcome estruturado + legado do MESMO nome somam (leads disjuntos)', () => {
-    const structured: CampaignOutcome = { leads: 3, won: 1, lost: 0, quente: 2, morno: 1, frio: 0 };
-    const legacy: CampaignOutcome = { leads: 5, won: 0, lost: 2, quente: 0, morno: 3, frio: 2 };
+    const structured: CampaignOutcome = { leads: 3, won: 1, lost: 0, quente: 2, morno: 1, frio: 0, agendados: 1, visitas: 1, propostas: 0 };
+    const legacy: CampaignOutcome = { leads: 5, won: 0, lost: 2, quente: 0, morno: 3, frio: 2, agendados: 0, visitas: 0, propostas: 0 };
     const aggs = aggregateCampaignPerformance({
       rows: [lite({ level: 'campaign', entityId: 'C1', entityName: 'Campanha Um', campaignId: 'C1', campaignName: 'Campanha Um', spend: 90, leadsMeta: 8 })],
       outcomesById: new Map([['C1', { outcome: structured, name: 'Campanha Um' }]]),
@@ -120,7 +130,7 @@ describe('aggregateCampaignPerformance', () => {
   });
 
   test('legado sem correspondente cria linha própria name:<nome> com id resolvido', () => {
-    const legacy: CampaignOutcome = { leads: 4, won: 0, lost: 1, quente: 1, morno: 0, frio: 3 };
+    const legacy: CampaignOutcome = { leads: 4, won: 0, lost: 1, quente: 1, morno: 0, frio: 3, agendados: 0, visitas: 0, propostas: 0 };
     const aggs = aggregateCampaignPerformance({
       rows: [],
       outcomesById: new Map(),
@@ -139,7 +149,7 @@ describe('aggregateCampaignPerformance', () => {
   test('CPA e win rate derivados; sem fechados → null', () => {
     const aggs = aggregateCampaignPerformance({
       rows: [lite({ level: 'campaign', entityId: 'C1', entityName: 'C', campaignId: 'C1', campaignName: 'C', spend: 200, leadsMeta: 10 })],
-      outcomesById: new Map([['C1', { outcome: { leads: 6, won: 2, lost: 2, quente: 0, morno: 0, frio: 0 }, name: null }]]),
+      outcomesById: new Map([['C1', { outcome: { leads: 6, won: 2, lost: 2, quente: 0, morno: 0, frio: 0, agendados: 2, visitas: 1, propostas: 1 }, name: null }]]),
       outcomesByName: new Map(),
       bindingNameToId: new Map(),
     });
@@ -253,7 +263,7 @@ describe('buildTrafficReportMarkdown — higiene e estados', () => {
       generatedAt: NOW,
       accounts: [],
       totals: {
-        spend: 0, leadsMeta: 0, cplMedio: null, clientes: 0, won: 0, lost: 0,
+        spend: 0, impressions: 0, clicks: 0, reach: 0, leadsMeta: 0, cplMedio: null, clientes: 0, won: 0, lost: 0,
         cpaGlobal: null, campaigns: 0, withSpend: 0,
       },
     });
@@ -267,7 +277,7 @@ describe('buildTrafficReportMarkdown — higiene e estados', () => {
     // no tipo; a prova é estrutural + o relatório não tem coluna de PII.
     const aggs = aggregateCampaignPerformance({
       rows: [lite({ level: 'campaign', entityId: 'C1', entityName: 'Campanha Um', campaignId: 'C1', campaignName: 'Campanha Um', spend: 300, leadsMeta: 20 })],
-      outcomesById: new Map([['C1', { outcome: { leads: 20, won: 3, lost: 4, quente: 10, morno: 5, frio: 5 }, name: 'Campanha Um' }]]),
+      outcomesById: new Map([['C1', { outcome: { leads: 20, won: 3, lost: 4, quente: 10, morno: 5, frio: 5, agendados: 6, visitas: 4, propostas: 3 }, name: 'Campanha Um' }]]),
       outcomesByName: new Map(),
       bindingNameToId: new Map(),
     });
@@ -276,7 +286,7 @@ describe('buildTrafficReportMarkdown — higiene e estados', () => {
       windowDays: 7,
       generatedAt: NOW,
       accounts: [{ name: 'Conta', lastStatus: 'ok', lastSyncedAt: NOW, lastError: null }],
-      totals: { spend: 300, leadsMeta: 20, cplMedio: 15, clientes: 20, won: 3, lost: 4, cpaGlobal: 100, campaigns: 1, withSpend: 1 },
+      totals: { spend: 300, impressions: 12000, clicks: 400, reach: 9000, leadsMeta: 20, cplMedio: 15, clientes: 20, won: 3, lost: 4, cpaGlobal: 100, campaigns: 1, withSpend: 1 },
     });
 
     // Padrões de PII que NUNCA podem aparecer
@@ -294,9 +304,15 @@ describe('buildTrafficReportMarkdown — higiene e estados', () => {
         campaignId: null,
         name: 'Orgânico',
         spend: 0,
+        impressions: 0,
+        clicks: 0,
+        reach: 0,
         leadsMeta: 0,
         cplMeta: null,
-        outcome: { leads: 7, won: 0, lost: 0, quente: 0, morno: 0, frio: 0 },
+        cpm: null,
+        ctr: null,
+        frequency: null,
+        outcome: { leads: 7, won: 0, lost: 0, quente: 0, morno: 0, frio: 0, agendados: 0, visitas: 0, propostas: 0 },
         cpa: null,
         winRate: null,
         hasSpend: false,
@@ -306,7 +322,7 @@ describe('buildTrafficReportMarkdown — higiene e estados', () => {
       windowDays: 7,
       generatedAt: NOW,
       accounts: [],
-      totals: { spend: 0, leadsMeta: 0, cplMedio: null, clientes: 7, won: 0, lost: 0, cpaGlobal: null, campaigns: 1, withSpend: 0 },
+      totals: { spend: 0, impressions: 0, clicks: 0, reach: 0, leadsMeta: 0, cplMedio: null, clientes: 7, won: 0, lost: 0, cpaGlobal: null, campaigns: 1, withSpend: 0 },
     });
     assert.ok(report.includes('Leads sem custo vinculado: Orgânico'));
   });
@@ -318,8 +334,14 @@ describe('buildTrafficReportMarkdown — higiene e estados', () => {
         campaignId: 'C3',
         name: 'Campanha Queimada',
         spend: 200,
+        impressions: 0,
+        clicks: 0,
+        reach: 0,
         leadsMeta: 0,
         cplMeta: null,
+        cpm: null,
+        ctr: null,
+        frequency: null,
         outcome: zeroOutcome(),
         cpa: null,
         winRate: null,
@@ -330,7 +352,7 @@ describe('buildTrafficReportMarkdown — higiene e estados', () => {
       windowDays: 7,
       generatedAt: NOW,
       accounts: [],
-      totals: { spend: 200, leadsMeta: 0, cplMedio: null, clientes: 0, won: 0, lost: 0, cpaGlobal: null, campaigns: 1, withSpend: 1 },
+      totals: { spend: 200, impressions: 0, clicks: 0, reach: 0, leadsMeta: 0, cplMedio: null, clientes: 0, won: 0, lost: 0, cpaGlobal: null, campaigns: 1, withSpend: 1 },
     });
     assert.ok(report.includes('Gasto sem nenhum lead: Campanha Queimada (R$ 200,00)'));
   });

@@ -35,6 +35,41 @@ comportamento existente foi alterado.
 
 Checksum registrado: `6b4fb172c47d5fef09b07691a2e95a7a787809752230ded9e48e23c11f68f329`.
 
+## Tabelas novas da Fase 8.2 (migration `20260913_traffic_entity_state`)
+
+| Tabela | Papel |
+|---|---|
+| `meta_ad_entity_state` | Estado PONTUAL por entidade (campanha/conjunto): `dailyBudgetMinor`/`lifetimeBudgetMinor` (centavos), `status`, `effectiveStatus`, `learningStage` (só conjunto), `fetchedAt` — espelho de `/campaigns` + `/adsets` |
+
+Checksum registrado: `0557b64900389d468efbfad4a86e57fc4a214aa0be3cd30bebb40672a917d352`.
+
+## Fase 8.2 — relatório nível gestor sênior (implementado)
+
+O relatório (`buildTrafficReportMarkdown`) passou de v1 (custo × resultado) para
+análise com as 3 camadas de um media buyer sênior, mantendo ZERO PII:
+
+1. **Topo de funil (diagnóstico criativo × leilão)** — somas de impressões,
+   cliques e alcance + derivados calculados dos SOMAS (nunca média das linhas
+   diárias): CTR, CPM, frequência. CTR baixo → criativo; CPM alto → público/leilão.
+2. **Qualidade e meio de funil (CRM)** — temperatura (quente/morno/frio) e
+   contadores de funil atingido: `agendados` (VISITA_AGENDADA+), `visitas`
+   (VISITA_REALIZADA+), `propostas` (CARTA_PROPOSTA+). Aproximação monotônica
+   documentada: estágio é o ATUAL do cliente; fechados contam como tendo passado
+   por todas as etapas. Indicador de gargalo, não número exato.
+3. **Pulso da janela** — `dias ativos` (dias UTC com gasto > 0; amostra curta
+   engana significância) e `tendência CPL` (1ª vs 2ª metade da janela; limiar
+   ±10%; `sem_base` quando uma metade não tem leads).
+4. **Estado de entrega e orçamentos (8.2b)** — tabela com orçamento diário em
+   BRL (centavos/100), status, entrega e learning por entidade. O guardrail nº 5
+   passa a pedir recomendação em valor ABSOLUTO quando o orçamento está na
+   tabela; guardrail nº 2 manda NÃO editar conjunto em `LEARNING`.
+
+O sync (`/api/cron/traffic-insights-sync`) ganhou 2 requisições por conta
+(`/campaigns` + `/adsets`, mesmo token `ads_read`, paging com teto) e o
+snapshot-replace do estado é por CONTA inteira. Rollback granular:
+`TRAFFIC_ENTITY_STATE_V2=legacy` desliga SÓ essa coleta. Sem a tabela
+(SQL pendente), o relatório omite a seção e tudo o mais funciona (degrade P2021).
+
 ## Decisões de desenho (explícitas)
 
 1. **Snapshot-REPLACE por janela** (deleteMany + createMany em transação):
@@ -76,8 +111,11 @@ Checksum registrado: `6b4fb172c47d5fef09b07691a2e95a7a787809752230ded9e48e23c11f
 
 - `prisma/migrations/20260913_traffic_insights/migration.sql` + validador
   `scripts/validate-traffic-migration.sh` (1:1 vs canônico Prisma)
-- `src/lib/traffic-insights.ts` — parser, janela, fetch/paging, sync,
-  agregação custo×funil, snapshot e builder do relatório (puro, DI)
+- `prisma/migrations/20260913_traffic_entity_state/migration.sql` + validador
+  `scripts/validate-traffic-entity-state.sh` (Fase 8.2, mesmo padrão 1:1)
+- `src/lib/traffic-insights.ts` — parser, janela, fetch/paging, sync (insights
+  + entity state), agregação custo×funil×topo, pulso temporal, snapshot e
+  builder do relatório (puro, DI)
 - `src/lib/traffic-defaults.ts` — amarração real ao Prisma (padrão
   meta-ingest/defaults.ts)
 - `src/app/api/cron/traffic-insights-sync/route.ts`,
@@ -85,8 +123,9 @@ Checksum registrado: `6b4fb172c47d5fef09b07691a2e95a7a787809752230ded9e48e23c11f
   `src/app/api/traffic/report/route.ts`
 - `src/components/crm/meta-ads/traffic-insights-section.tsx` (+ montagem em
   `meta-ads-panel.tsx`: 1 import, 1 item de aba, 1 TabsContent)
-- `tests/traffic-insights/*.test.ts` — 40 testes (suíte total 782/782)
-- `download/fase8-sql-editor-release.sql` — pacote SQL Editor (Blocos 0–4)
+- `tests/traffic-insights/*.test.ts` — 67 testes (suíte total 809/809)
+- `download/fase8-sql-editor-release.sql` + `download/fase82-sql-editor-release.sql`
+  — pacotes SQL Editor (Blocos 0–4)
 
 ## Estágio C (futuro, NÃO implementado)
 

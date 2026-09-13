@@ -13,7 +13,9 @@ import {
   defaultFetchLike,
   truncateError,
   type AccountRefForSync,
+  type EntityStateRecord,
   type InsightLevel,
+  type TrafficEntityStateRow,
   type TrafficInsightRow,
   type TrafficReadDb,
   type TrafficSyncDeps,
@@ -91,6 +93,13 @@ export function createTrafficSyncDeps(): TrafficSyncDeps {
         },
       });
     },
+    /** Fase 8.2: snapshot-replace do estado de entrega/orçamento da conta. */
+    replaceEntityStates: async (adAccountId, rows: TrafficEntityStateRow[]) => {
+      await prisma.$transaction([
+        prisma.metaAdEntityState.deleteMany({ where: { adAccountId } }),
+        prisma.metaAdEntityState.createMany({ data: rows }),
+      ]);
+    },
     now: () => new Date(),
   };
 }
@@ -107,7 +116,11 @@ export function createTrafficReadDb(): TrafficReadDb {
           entityName: true,
           campaignId: true,
           campaignName: true,
+          date: true,
           spend: true,
+          impressions: true,
+          clicks: true,
+          reach: true,
           leadsMeta: true,
         },
         orderBy: [{ date: 'asc' }, { entityId: 'asc' }],
@@ -151,6 +164,26 @@ export function createTrafficReadDb(): TrafficReadDb {
       const rows = await prisma.metaAdsSyncState.findMany({
         select: { adAccountId: true, lastStatus: true, lastSyncedAt: true, lastError: true },
         orderBy: { adAccountId: 'asc' },
+      });
+      return rows;
+    },
+    /** Fase 8.2: estado de entrega/orçamento (tabela meta_ad_entity_state). */
+    entityStates: async (): Promise<EntityStateRecord[]> => {
+      const rows = await prisma.metaAdEntityState.findMany({
+        select: {
+          adAccountId: true,
+          level: true,
+          entityId: true,
+          entityName: true,
+          campaignId: true,
+          dailyBudgetMinor: true,
+          lifetimeBudgetMinor: true,
+          status: true,
+          effectiveStatus: true,
+          learningStage: true,
+          fetchedAt: true,
+        },
+        orderBy: [{ adAccountId: 'asc' }, { level: 'asc' }, { entityName: 'asc' }],
       });
       return rows;
     },

@@ -7,6 +7,7 @@ import {
   buildTrafficReportMarkdown,
   isPrismaMissingTableError,
   type SyncStateRecord,
+  type TrafficReportEntityState,
 } from '@/lib/traffic-insights';
 import { createTrafficReadDb, listAccountNames } from '@/lib/traffic-defaults';
 
@@ -71,6 +72,21 @@ export async function GET(request: NextRequest) {
           lastSyncedAt: account.lastSyncedAt,
           lastError: account.lastError,
         })),
+        // Fase 8.2: estado de entrega/orçamento com nome de conta resolvido
+        entityStates: snapshot.entityStates.map(
+          (state): TrafficReportEntityState => ({
+            level: state.level,
+            entityId: state.entityId,
+            entityName: state.entityName,
+            accountName: accountNames.get(state.adAccountId) || state.adAccountId,
+            dailyBudgetMinor: state.dailyBudgetMinor,
+            lifetimeBudgetMinor: state.lifetimeBudgetMinor,
+            status: state.status,
+            effectiveStatus: state.effectiveStatus,
+            learningStage: state.learningStage,
+            fetchedAt: state.fetchedAt,
+          }),
+        ),
         totals: snapshot.totals,
       });
       return NextResponse.json({

@@ -50,3 +50,16 @@ bash scripts/prove-postgres-typecheck.sh
 - `src/lib/realtime/socket-server/index.ts` + `src/types/socket-io.d.ts` — stub de tipos do `socket.io` (server self-host, fora do deploy Vercel), padrão já adotado pelo `socket-io-client.d.ts`
 - `meta-ads-panel.tsx` — quirk de narrowing do TS em irmãos JSX (TS2367) → helper `sourceButtonClass()` com closure (sem comparações inline)
 - `landing-lightbox.tsx` / `landing-page-client.tsx` / `empreendimentos/layout.tsx` — `useRef(undefined)`, `status ?? ''`, `crossOrigin`
+
+## 5. Fase 8.2 — classificação dos artefatos `mode` completada
+
+O client Prisma sqlite regenerado expôs 4 erros `mode: 'insensitive'` que a regex
+original do gate (`scripts/typecheck.mjs`) não classificava como artefatos:
+
+- `StringNullableFilter` não casava com `(?:String|Int|Enum)Filter` → regex agora usa `(?:String|Int|Enum)(?:Nullable)?Filter` (3 ocorrências em `meta-ads/leads`)
+- `mode` dentro de `OR` de `WhereInput` vem como **TS2322** (Type ... is not assignable), não TS2353 → novo padrão `SQLITE_MODE_ASSIGN_ARTIFACT` (1 ocorrência em `users/search`)
+
+Mesmo artefato (sqlite não suporta `mode`; postgres de produção sim), formas de
+erro diferentes. Em produção (GUARD B/Vercel, provider postgresql) esses erros
+NÃO existem. Nenhum erro real foi mascarado: qualquer outro TS#### continua
+bloqueando (exit 1).

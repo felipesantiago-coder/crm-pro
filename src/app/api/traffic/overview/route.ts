@@ -38,8 +38,12 @@ function emptySnapshot(days: number): TrafficSnapshot {
     until: new Date(0),
     aggregates: [],
     accounts: [],
+    entityStates: [],
     totals: {
       spend: 0,
+      impressions: 0,
+      clicks: 0,
+      reach: 0,
       leadsMeta: 0,
       cplMedio: null,
       clientes: 0,

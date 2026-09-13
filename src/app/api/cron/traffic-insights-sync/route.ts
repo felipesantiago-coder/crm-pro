@@ -18,6 +18,11 @@ export const maxDuration = 60;
 // re-sincronizar SOBRESCREVE os dias da janela (a Meta retrocorrige
 // atribuição). Recomendação: 1×/dia no cron-job.org.
 //
+// Fase 8.2: também sincroniza o estado de entrega/orçamento
+// (/campaigns + /adsets — daily_budget, effective_status,
+// learning_stage_info). Flag de rollback: TRAFFIC_ENTITY_STATE_V2=legacy
+// desliga APENAS essa coleta (insights seguem normais).
+//
 // Autenticação (qualquer UMA das formas — padrão meta-inbox-drain):
 //   - Sessão NextAuth com role ADMIN (botão "Sincronizar" do painel)
 //   - Header Authorization: Bearer <CRON_SECRET>
@@ -59,9 +64,12 @@ async function handle(request: NextRequest) {
   }
 
   const days = parseDays(request);
+  // Fase 8.2: coleta de estado de entrega/orçamento — rollback granular
+  // por env (TRAFFIC_ENTITY_STATE_V2=legacy → só insights).
+  const includeEntityState = process.env.TRAFFIC_ENTITY_STATE_V2 !== 'legacy';
 
   try {
-    const summary = await syncTrafficInsights(createTrafficSyncDeps(), { days });
+    const summary = await syncTrafficInsights(createTrafficSyncDeps(), { days, includeEntityState });
     return NextResponse.json(summary);
   } catch (error) {
     // Tabelas ausentes (SQL da Fase 8 pendente) ou indisponibilidade:

@@ -1270,3 +1270,40 @@ model MetaAdsSyncState {
 
   @@map("meta_ads_sync_state")
 }
+
+// META AD ENTITY STATE — estado de ENTREGA e ORÇAMENTO por entidade
+// (Fase 8.2): espelho pontual (não diário) de /campaigns e /adsets —
+// daily_budget, status, effective_status e learning_stage_info.
+// Snapshot-REPLACE por conta: re-sincronizar apaga e recria as linhas
+// da conta (fetchedAt marca a frescura; sem linha recente = estado
+// desatualizado no relatório). Complementa o espelho diário de
+// insights — o orçamento/entrega NÃO vem do /insights.
+model MetaAdEntityState {
+  id                  String   @id @default(cuid()) @map("id")
+  /** Conta de anúncios com prefixo act_ (mesmo formato de MetaAdAccount.adAccountId). */
+  adAccountId         String   @map("adAccountId")
+  /** 'campaign' | 'adset'. */
+  level               String   @map("level")
+  /** ID da entidade (campaign_id / adset_id conforme o nível). */
+  entityId            String   @map("entityId")
+  entityName          String?  @map("entityName")
+  /** Campanha pai — preenchido quando level='adset'. */
+  campaignId          String?  @map("campaignId")
+  /** Orçamento diário em unidades menores da moeda da conta
+   *  (centavos p/ BRL) — cru da Meta (string numérica). */
+  dailyBudgetMinor    Int?     @map("dailyBudgetMinor")
+  /** Orçamento total do período, mesma unidade. */
+  lifetimeBudgetMinor Int?     @map("lifetimeBudgetMinor")
+  /** Status de configuração (ACTIVE/PAUSED/...). */
+  status              String?  @map("status")
+  /** Status de ENTREGA (ACTIVE/PAUSED/IN_REVIEW/...). */
+  effectiveStatus     String?  @map("effectiveStatus")
+  /** Fase de aprendizado — só adsets (LEARNING/LIMITED/SUCCESS). */
+  learningStage       String?  @map("learningStage")
+  /** Momento da captura (frescura do estado). */
+  fetchedAt           DateTime @default(now()) @map("fetchedAt")
+
+  @@unique([adAccountId, level, entityId])
+  @@index([campaignId])
+  @@map("meta_ad_entity_state")
+}

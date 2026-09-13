@@ -300,6 +300,111 @@ export async function fetchAccountInsights(
   };
 }
 
+// ── Estado de entrega/orçamento (Fase 8.2) ────────────────────
+
+export type EntityLevel = 'campaign' | 'adset';
+
+/** Linha normalizada de /campaigns ou /adsets (estado PONTUAL). */
+export interface TrafficEntityStateRow {
+  adAccountId: string;
+  level: EntityLevel;
+  entityId: string;
+  entityName: string | null;
+  campaignId: string | null;
+  /** Orçamento em unidades menores da moeda da conta (string numérica
+   *  da Meta → Int; ausente → null). */
+  dailyBudgetMinor: number | null;
+  lifetimeBudgetMinor: number | null;
+  status: string | null;
+  effectiveStatus: string | null;
+  /** Fase de aprendizado — só existe para adsets. */
+  learningStage: string | null;
+}
+
+/**
+ * URL de estado por nível: /campaigns e /adsets com campos de
+ * entrega/orçamento (ads_read — o MESMO token de insights/leads;
+ * sem ads_management, sem escrita).
+ */
+export function buildEntityStateUrl(
+  account: { adAccountId: string; accessToken: string },
+  level: EntityLevel,
+): string {
+  const fields = level === 'campaign'
+    ? 'id,name,status,effective_status,daily_budget,lifetime_budget'
+    : 'id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,learning_stage_info{status}';
+  const params = new URLSearchParams({
+    fields,
+    limit: String(PAGE_LIMIT),
+    access_token: account.accessToken,
+  });
+  const edge = level === 'campaign' ? 'campaigns' : 'adsets';
+  return `https://graph.facebook.com/${GRAPH_VERSION}/${account.adAccountId}/${edge}?${params.toString()}`;
+}
+
+function toIntOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.round(parsed) : null;
+}
+
+function strOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null;
+}
+
+/**
+ * Mapeia items `data` de /campaigns ou /adsets (já paginados).
+ * Linhas sem id são descartadas (defesa idêntica ao parser de insights).
+ */
+export function mapEntityStateItems(
+  items: unknown[],
+  level: EntityLevel,
+  adAccountId: string,
+): TrafficEntityStateRow[] {
+  const rows: TrafficEntityStateRow[] = [];
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as Record<string, unknown>;
+    const entityId = typeof rec.id === 'string' ? rec.id : '';
+    if (!entityId) continue;
+    const learning = rec.learning_stage_info;
+    rows.push({
+      adAccountId,
+      level,
+      entityId,
+      entityName: strOrNull(rec.name),
+      campaignId: level === 'adset' ? strOrNull(rec.campaign_id) : entityId,
+      dailyBudgetMinor: toIntOrNull(rec.daily_budget),
+      lifetimeBudgetMinor: toIntOrNull(rec.lifetime_budget),
+      status: strOrNull(rec.status),
+      effectiveStatus: strOrNull(rec.effective_status),
+      learningStage:
+        level === 'adset' && learning && typeof learning === 'object'
+          ? strOrNull((learning as Record<string, unknown>).status)
+          : null,
+    });
+  }
+  return rows;
+}
+
+export interface AccountEntityStates {
+  campaignRows: TrafficEntityStateRow[];
+  adsetRows: TrafficEntityStateRow[];
+}
+
+/** Busca o estado de entrega/orçamento de uma conta (2 requisições). */
+export async function fetchAccountEntityStates(
+  fetchFn: FetchLike,
+  account: AccountRefForSync,
+): Promise<AccountEntityStates> {
+  const campaignItems = await fetchAllInsightPages(fetchFn, buildEntityStateUrl(account, 'campaign'));
+  const adsetItems = await fetchAllInsightPages(fetchFn, buildEntityStateUrl(account, 'adset'));
+  return {
+    campaignRows: mapEntityStateItems(campaignItems, 'campaign', account.adAccountId),
+    adsetRows: mapEntityStateItems(adsetItems, 'adset', account.adAccountId),
+  };
+}
+
 // ── Sincronização (snapshot-replace por conta) ──────────────────
 
 export interface TrafficSyncDeps {
@@ -324,6 +429,10 @@ export interface TrafficSyncDeps {
   ): Promise<void>;
   /** Marca saúde de auth da conta em erro 190/200/10 — best-effort. */
   markAccountAuthError?(accountRecordId: string, lastError: string, code: number | null): Promise<void>;
+  /** Snapshot-replace do estado de entrega/orçamento da conta (Fase
+   *  8.2). Ausente (deps legadas) ou opts.includeEntityState=false →
+   *  o estado de entidades NÃO é sincronizado. */
+  replaceEntityStates?(adAccountId: string, rows: TrafficEntityStateRow[]): Promise<void>;
   now(): Date;
 }
 
@@ -333,6 +442,9 @@ export interface TrafficAccountSyncResult {
   status: 'ok' | 'partial' | 'error';
   campaignRows: number;
   adsetRows: number;
+  /** Linhas de estado de entrega/orçamento sincronizadas (Fase 8.2;
+   *  0 quando dep ausente/flag legacy/falha). */
+  entityRows: number;
   error?: string;
 }
 
@@ -355,7 +467,7 @@ function isAuthErrorCode(code: number | null): boolean {
  */
 export async function syncTrafficInsights(
   deps: TrafficSyncDeps,
-  opts: { days: number },
+  opts: { days: number; includeEntityState?: boolean },
 ): Promise<TrafficSyncSummary> {
   const window = computeInsightWindow(opts.days, deps.now());
   const accounts = await deps.listAccounts();
@@ -389,6 +501,20 @@ export async function syncTrafficInsights(
       await collectSyncErrorAsync(deps, account, error, errors);
     }
 
+    // Estado de entrega/orçamento (Fase 8.2) — mesmo fluxo de erro por
+    // conta; dep ausente (deps legadas/testes) ou flag legacy → pulado.
+    let entityRows = 0;
+    if (opts.includeEntityState !== false && deps.replaceEntityStates) {
+      try {
+        const states = await fetchAccountEntityStates(deps.fetchFn, account);
+        const stateRows = [...states.campaignRows, ...states.adsetRows];
+        await deps.replaceEntityStates(account.adAccountId, stateRows);
+        entityRows = stateRows.length;
+      } catch (error) {
+        await collectSyncErrorAsync(deps, account, error, errors);
+      }
+    }
+
     const status: 'ok' | 'partial' | 'error' =
       errors.length === 0 ? 'ok' : campaignRows + adsetRows > 0 ? 'partial' : 'error';
 
@@ -409,6 +535,7 @@ export async function syncTrafficInsights(
       status,
       campaignRows,
       adsetRows,
+      entityRows,
       error: errors.length > 0 ? truncateError(errors.join(' | ')) : undefined,
     });
   }
@@ -451,6 +578,33 @@ export function isPrismaMissingTableError(error: unknown): boolean {
 
 // ── Resultado no CRM (funil × temperatura) ──────────────────────
 
+/** Ordem canônica do funil imobiliário do CRM (8 etapas). */
+const FUNNEL_STAGES = [
+  'LEAD',
+  'PROSPECT',
+  'VISITA_AGENDADA',
+  'VISITA_REALIZADA',
+  'CARTA_PROPOSTA',
+  'CONTRATO_GERADO',
+  'FECHADO_GANHO',
+  'FECHADO_PERDIDO',
+] as const;
+
+type FunnelStage = (typeof FUNNEL_STAGES)[number];
+
+/**
+ * True quando o estágio ATUAL do cliente indica que ele alcançou
+ * `minStage` no funil (aproximação monotônica: FECHADO_GANHO/
+ * FECHADO_PERDIDO contam como tendo passado por todas as etapas —
+ * o estágio é o atual, não o histórico).
+ */
+function stageReached(stage: string | null | undefined, minStage: FunnelStage): boolean {
+  if (!stage) return false;
+  const list = FUNNEL_STAGES as readonly string[];
+  const idx = list.indexOf(stage);
+  return idx >= 0 && idx >= list.indexOf(minStage);
+}
+
 export interface CampaignOutcome {
   /** Clientes atribuídos à campanha na janela (dedupe estruturado). */
   leads: number;
@@ -459,10 +613,15 @@ export interface CampaignOutcome {
   quente: number;
   morno: number;
   frio: number;
+  /** Funil atingido (Fase 8.2): contagem por estágio alcançado —
+   *  base do diagnóstico de gargalo entre lead→visita→proposta. */
+  agendados: number; // alcançou VISITA_AGENDADA ou além
+  visitas: number; // alcançou VISITA_REALIZADA ou além
+  propostas: number; // alcançou CARTA_PROPOSTA ou além
 }
 
 export function zeroOutcome(): CampaignOutcome {
-  return { leads: 0, won: 0, lost: 0, quente: 0, morno: 0, frio: 0 };
+  return { leads: 0, won: 0, lost: 0, quente: 0, morno: 0, frio: 0, agendados: 0, visitas: 0, propostas: 0 };
 }
 
 /** Acrescenta estágio/temperatura de um cliente ao outcome da campanha. */
@@ -473,6 +632,9 @@ export function applyClientToOutcome(
 ): void {
   if (stage === 'FECHADO_GANHO') outcome.won++;
   if (stage === 'FECHADO_PERDIDO') outcome.lost++;
+  if (stageReached(stage, 'VISITA_AGENDADA')) outcome.agendados++;
+  if (stageReached(stage, 'VISITA_REALIZADA')) outcome.visitas++;
+  if (stageReached(stage, 'CARTA_PROPOSTA')) outcome.propostas++;
   if (temperature === 'QUENTE') outcome.quente++;
   if (temperature === 'MORNO') outcome.morno++;
   if (temperature === 'FRIO') outcome.frio++;
@@ -498,7 +660,12 @@ export interface InsightRowLite {
   entityName: string | null;
   campaignId: string | null;
   campaignName: string | null;
+  /** Dia da linha (00:00 UTC) — pulso da janela (dias ativos/tendência). */
+  date: Date;
   spend: number;
+  impressions: number;
+  clicks: number;
+  reach: number;
   leadsMeta: number;
 }
 
@@ -506,8 +673,29 @@ export interface AdsetAggregate {
   entityId: string;
   name: string;
   spend: number;
+  impressions: number;
+  clicks: number;
+  reach: number;
   leadsMeta: number;
   cplMeta: number | null;
+  cpm: number | null;
+  ctr: number | null;
+  frequency: number | null;
+}
+
+/**
+ * Pulso temporal da campanha na janela (Fase 8.2): dias com gasto
+ * (significância) e tendência do CPL entre a 1ª e a 2ª metade da
+ * janela — direção da otimização, não número absoluto.
+ */
+export interface CampaignPulse {
+  /** Dias (UTC distintos) com gasto > 0 na janela. */
+  activeDays: number;
+  cplFirstHalf: number | null;
+  cplSecondHalf: number | null;
+  /** 'melhorando' | 'estavel' | 'piorando' | 'sem_base'
+   *  (sem_base = sem leads em alguma das metades; limiar ±10%). */
+  trend: 'melhorando' | 'estavel' | 'piorando' | 'sem_base';
 }
 
 export interface CampaignAggregate {
@@ -516,52 +704,26 @@ export interface CampaignAggregate {
   campaignId: string | null;
   name: string;
   spend: number;
+  impressions: number;
+  clicks: number;
+  reach: number;
   leadsMeta: number;
   cplMeta: number | null;
   outcome: CampaignOutcome;
   /** Gasto / fechados ganhos. */
   cpa: number | null;
   winRate: number | null;
+  /** Derivados de topo de funil (calculados dos SOMAS — nunca média
+   *  das linhas diárias): CPM, CTR e frequência (impressões/alcance). */
+  cpm: number | null;
+  ctr: number | null;
+  frequency: number | null;
   hasSpend: boolean;
   hasOutcome: boolean;
   adsets: AdsetAggregate[];
-}
-
-// ── Agregação custo × resultado ─────────────────────────────────
-
-export interface InsightRowLite {
-  level: InsightLevel;
-  entityId: string;
-  entityName: string | null;
-  campaignId: string | null;
-  campaignName: string | null;
-  spend: number;
-  leadsMeta: number;
-}
-
-export interface AdsetAggregate {
-  entityId: string;
-  name: string;
-  spend: number;
-  leadsMeta: number;
-  cplMeta: number | null;
-}
-
-export interface CampaignAggregate {
-  /** campaignId quando conhecido; 'name:<nome>' para campanhas só-legadas. */
-  key: string;
-  campaignId: string | null;
-  name: string;
-  spend: number;
-  leadsMeta: number;
-  cplMeta: number | null;
-  outcome: CampaignOutcome;
-  /** Gasto / fechados ganhos. */
-  cpa: number | null;
-  winRate: number | null;
-  hasSpend: boolean;
-  hasOutcome: boolean;
-  adsets: AdsetAggregate[];
+  /** Pulso temporal — preenchido por attachCampaignPulse via
+   *  loadTrafficSnapshot; ausente quando agregado direto nos testes. */
+  pulse?: CampaignPulse;
 }
 
 function finalizeAggregate(agg: CampaignAggregate): CampaignAggregate {
@@ -570,8 +732,14 @@ function finalizeAggregate(agg: CampaignAggregate): CampaignAggregate {
   agg.winRate = agg.outcome.won + agg.outcome.lost > 0
     ? agg.outcome.won / (agg.outcome.won + agg.outcome.lost)
     : null;
+  agg.cpm = agg.impressions > 0 ? (agg.spend / agg.impressions) * 1000 : null;
+  agg.ctr = agg.impressions > 0 ? (agg.clicks / agg.impressions) * 100 : null;
+  agg.frequency = agg.reach > 0 ? agg.impressions / agg.reach : null;
   for (const adset of agg.adsets) {
     adset.cplMeta = adset.leadsMeta > 0 ? adset.spend / adset.leadsMeta : null;
+    adset.cpm = adset.impressions > 0 ? (adset.spend / adset.impressions) * 1000 : null;
+    adset.ctr = adset.impressions > 0 ? (adset.clicks / adset.impressions) * 100 : null;
+    adset.frequency = adset.reach > 0 ? adset.impressions / adset.reach : null;
   }
   agg.hasSpend = agg.spend > 0;
   agg.hasOutcome = agg.outcome.leads > 0;
@@ -611,11 +779,17 @@ export function aggregateCampaignPerformance(input: {
         campaignId,
         name,
         spend: 0,
+        impressions: 0,
+        clicks: 0,
+        reach: 0,
         leadsMeta: 0,
         cplMeta: null,
         outcome: zeroOutcome(),
         cpa: null,
         winRate: null,
+        cpm: null,
+        ctr: null,
+        frequency: null,
         hasSpend: false,
         hasOutcome: false,
         adsets: [],
@@ -632,6 +806,9 @@ export function aggregateCampaignPerformance(input: {
     campaignRowIds.add(row.entityId);
     const agg = ensure(row.entityId, row.entityId, row.entityName || row.entityId);
     agg.spend += row.spend;
+    agg.impressions += row.impressions;
+    agg.clicks += row.clicks;
+    agg.reach += row.reach;
     agg.leadsMeta += row.leadsMeta;
   }
 
@@ -643,10 +820,25 @@ export function aggregateCampaignPerformance(input: {
     const agg = ensure(parentId, parentId, row.campaignName || parentId);
     let adset = agg.adsets.find((a) => a.entityId === row.entityId);
     if (!adset) {
-      adset = { entityId: row.entityId, name: row.entityName || row.entityId, spend: 0, leadsMeta: 0, cplMeta: null };
+      adset = {
+        entityId: row.entityId,
+        name: row.entityName || row.entityId,
+        spend: 0,
+        impressions: 0,
+        clicks: 0,
+        reach: 0,
+        leadsMeta: 0,
+        cplMeta: null,
+        cpm: null,
+        ctr: null,
+        frequency: null,
+      };
       agg.adsets.push(adset);
     }
     adset.spend += row.spend;
+    adset.impressions += row.impressions;
+    adset.clicks += row.clicks;
+    adset.reach += row.reach;
     adset.leadsMeta += row.leadsMeta;
   }
 
@@ -655,6 +847,9 @@ export function aggregateCampaignPerformance(input: {
     if (agg.campaignId && campaignRowIds.has(agg.campaignId)) continue;
     for (const adset of agg.adsets) {
       agg.spend += adset.spend;
+      agg.impressions += adset.impressions;
+      agg.clicks += adset.clicks;
+      agg.reach += adset.reach;
       agg.leadsMeta += adset.leadsMeta;
     }
   }
@@ -668,6 +863,9 @@ export function aggregateCampaignPerformance(input: {
     agg.outcome.quente += meta.outcome.quente;
     agg.outcome.morno += meta.outcome.morno;
     agg.outcome.frio += meta.outcome.frio;
+    agg.outcome.agendados += meta.outcome.agendados;
+    agg.outcome.visitas += meta.outcome.visitas;
+    agg.outcome.propostas += meta.outcome.propostas;
   }
 
   // 5. Outcome legado (por nome): mescla na campanha do mesmo id (via
@@ -684,6 +882,9 @@ export function aggregateCampaignPerformance(input: {
       target.outcome.quente += legacy.quente;
       target.outcome.morno += legacy.morno;
       target.outcome.frio += legacy.frio;
+      target.outcome.agendados += legacy.agendados;
+      target.outcome.visitas += legacy.visitas;
+      target.outcome.propostas += legacy.propostas;
     } else {
       const agg = ensure(`name:${name}`, resolvedId, name);
       agg.outcome = { ...legacy };
@@ -697,6 +898,55 @@ export function aggregateCampaignPerformance(input: {
   );
   return result;
 }
+
+/**
+ * Preenche o pulso temporal (Fase 8.2) de cada campanha a partir das
+ * linhas diárias: dias ativos e tendência do CPL (1ª vs 2ª metade da
+ * janela). Regra de fonte idêntica à do total: linhas de campanha
+ * quando existem, senão as linhas dos conjuntos da campanha. Campanha
+ * só-legada (sem campaignId) e sem linhas não ganha pulso.
+ */
+export function attachCampaignPulse(
+  aggregates: CampaignAggregate[],
+  rows: InsightRowLite[],
+  window: { since: Date; days: number },
+): void {
+  const midpointMs = window.since.getTime() + (window.days / 2) * 86_400_000;
+  for (const agg of aggregates) {
+    if (!agg.campaignId) continue;
+    const own = rows.filter((r) => r.level === 'campaign' && r.entityId === agg.campaignId);
+    const source = own.length > 0
+      ? own
+      : rows.filter((r) => r.level === 'adset' && r.campaignId === agg.campaignId);
+    if (source.length === 0) continue;
+
+    const activeDays = new Set(
+      source.filter((r) => r.spend > 0).map((r) => utcDateStr(r.date)),
+    ).size;
+
+    let spend1 = 0;
+    let leads1 = 0;
+    let spend2 = 0;
+    let leads2 = 0;
+    for (const row of source) {
+      if (row.date.getTime() < midpointMs) {
+        spend1 += row.spend;
+        leads1 += row.leadsMeta;
+      } else {
+        spend2 += row.spend;
+        leads2 += row.leadsMeta;
+      }
+    }
+    const cplFirstHalf = leads1 > 0 ? spend1 / leads1 : null;
+    const cplSecondHalf = leads2 > 0 ? spend2 / leads2 : null;
+    let trend: CampaignPulse['trend'] = 'sem_base';
+    if (cplFirstHalf !== null && cplSecondHalf !== null && cplFirstHalf > 0) {
+      const delta = (cplSecondHalf - cplFirstHalf) / cplFirstHalf;
+      trend = delta <= -0.1 ? 'melhorando' : delta >= 0.1 ? 'piorando' : 'estavel';
+    }
+    agg.pulse = { activeDays, cplFirstHalf, cplSecondHalf, trend };
+  }
+}
 // ── Snapshot de leitura (rotas overview/report) ─────────────────
 
 export interface InsightDailyRecord {
@@ -705,7 +955,12 @@ export interface InsightDailyRecord {
   entityName: string | null;
   campaignId: string | null;
   campaignName: string | null;
+  /** Dia da linha (00:00 UTC) — pulso da janela (Fase 8.2). */
+  date: Date;
   spend: number;
+  impressions: number;
+  clicks: number;
+  reach: number;
   leadsMeta: number;
 }
 
@@ -714,6 +969,21 @@ export interface SyncStateRecord {
   lastStatus: string;
   lastSyncedAt: Date | null;
   lastError: string | null;
+}
+
+/** Estado de entrega/orçamento lido para relatório/painel (Fase 8.2). */
+export interface EntityStateRecord {
+  adAccountId: string;
+  level: string;
+  entityId: string;
+  entityName: string | null;
+  campaignId: string | null;
+  dailyBudgetMinor: number | null;
+  lifetimeBudgetMinor: number | null;
+  status: string | null;
+  effectiveStatus: string | null;
+  learningStage: string | null;
+  fetchedAt: Date;
 }
 
 /**
@@ -735,10 +1005,17 @@ export interface TrafficReadDb {
   ): Promise<Array<{ metaLeadgenId: string | null; stage: string | null; metaTemperature: string | null; notes: string | null }>>;
   campaignBindings(): Promise<Array<{ campaignId: string; campaignName: string | null }>>;
   syncStates(): Promise<SyncStateRecord[]>;
+  /** Estado de entrega/orçamento por entidade (Fase 8.2 — tabela
+   *  meta_ad_entity_state; pode falhar com P2021 se o SQL 8.2 ainda
+   *  não foi aplicado — o loader degrada para lista vazia). */
+  entityStates(): Promise<EntityStateRecord[]>;
 }
 
 export interface TrafficSnapshotTotals {
   spend: number;
+  impressions: number;
+  clicks: number;
+  reach: number;
   leadsMeta: number;
   cplMedio: number | null;
   clientes: number;
@@ -755,6 +1032,9 @@ export interface TrafficSnapshot {
   until: Date;
   aggregates: CampaignAggregate[];
   accounts: SyncStateRecord[];
+  /** Estado de entrega/orçamento (Fase 8.2) — vazio quando o SQL
+   *  da tabela ainda não foi aplicado (degrada sem quebrar). */
+  entityStates: EntityStateRecord[];
   totals: TrafficSnapshotTotals;
   counts: { structuredLeads: number; legacyLeads: number };
 }
@@ -842,7 +1122,11 @@ export async function loadTrafficSnapshot(
       entityName: row.entityName,
       campaignId: row.campaignId,
       campaignName: row.campaignName,
+      date: row.date,
       spend: row.spend,
+      impressions: row.impressions,
+      clicks: row.clicks,
+      reach: row.reach,
       leadsMeta: row.leadsMeta,
     })),
     outcomesById,
@@ -850,8 +1134,42 @@ export async function loadTrafficSnapshot(
     bindingNameToId,
   });
 
+  // Pulso temporal (Fase 8.2): dias ativos + tendência do CPL por
+  // campanha, com a MESMA regra de fonte dos totais (campanha → senão
+  // conjuntos).
+  attachCampaignPulse(aggregates, rows.map((row) => ({
+    level: row.level as InsightLevel,
+    entityId: row.entityId,
+    entityName: row.entityName,
+    campaignId: row.campaignId,
+    campaignName: row.campaignName,
+    date: row.date,
+    spend: row.spend,
+    impressions: row.impressions,
+    clicks: row.clicks,
+    reach: row.reach,
+    leadsMeta: row.leadsMeta,
+  })), window);
+
+  // Estado de entrega/orçamento (Fase 8.2) — observabilidade: tabela
+  // ausente (SQL pendente) ou qualquer erro → lista vazia e o relatório
+  // omite a seção. NUNCA derruba o snapshot (as insights continuam).
+  let entityStates: EntityStateRecord[] = [];
+  try {
+    entityStates = await db.entityStates();
+  } catch (error) {
+    if (isPrismaMissingTableError(error)) {
+      console.warn('[Traffic] meta_ad_entity_state ausente — seção de orçamentos omitida (SQL 8.2 pendente)');
+    } else {
+      console.warn('[Traffic] entityStates indisponível — seção de orçamentos omitida:', error instanceof Error ? error.message : error);
+    }
+  }
+
   const totals: TrafficSnapshotTotals = {
     spend: aggregates.reduce((sum, a) => sum + a.spend, 0),
+    impressions: aggregates.reduce((sum, a) => sum + a.impressions, 0),
+    clicks: aggregates.reduce((sum, a) => sum + a.clicks, 0),
+    reach: aggregates.reduce((sum, a) => sum + a.reach, 0),
     leadsMeta: aggregates.reduce((sum, a) => sum + a.leadsMeta, 0),
     cplMedio: null,
     clientes: aggregates.reduce((sum, a) => sum + a.outcome.leads, 0),
@@ -871,6 +1189,7 @@ export async function loadTrafficSnapshot(
     until: window.until,
     aggregates,
     accounts: states,
+    entityStates,
     totals,
     counts: { structuredLeads, legacyLeads },
   };
@@ -885,10 +1204,54 @@ export interface TrafficReportAccountsMeta {
   lastError: string | null;
 }
 
+/** Estado de entrega/orçamento formatado para o relatório (Fase 8.2). */
+export interface TrafficReportEntityState {
+  level: string;
+  entityId: string;
+  entityName: string | null;
+  /** Nome de exibição da conta (resolvido pela rota; opcional). */
+  accountName?: string;
+  dailyBudgetMinor: number | null;
+  lifetimeBudgetMinor: number | null;
+  status: string | null;
+  effectiveStatus: string | null;
+  learningStage: string | null;
+  fetchedAt: Date | string;
+}
+
+/**
+ * Formata inteiro com separador de milhar (determinístico, testável).
+ */
+function fmtInt(value: number): string {
+  return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+/** Número com 1 decimal (vírgula) ou '—' quando não calculável. */
+function fmtNum1(value: number | null): string {
+  return value === null ? '—' : value.toFixed(1).replace('.', ',');
+}
+
+/** Rótulo da tendência de CPL (Fase 8.2) — sem PII, direto pro texto. */
+function trendLabel(pulse: CampaignPulse | undefined): string {
+  if (!pulse) return '—';
+  if (pulse.trend === 'melhorando') return 'melhorando';
+  if (pulse.trend === 'piorando') return 'piorando';
+  if (pulse.trend === 'estavel') return 'estável';
+  return '—';
+}
+
 /**
  * Relatório agregado (nomes de campanha/conjunto + números). Guardrails
  * de decisão embutidos para a IA externa respeitar significância,
  * learning phase e limites de edição. NENHUM dado de cliente.
+ *
+ * Fase 8.2 (nível gestor sênior): diagnóstico de topo de funil
+ * (impressões/cliques/CTR/CPM/frequência), qualidade (temperatura),
+ * funil intermediário do CRM (agendamentos/visitas/propostas), pulso
+ * da janela (dias ativos + tendência de CPL) e, quando sincronizado,
+ * estado de entrega/orçamento por entidade (para recomendação em
+ * valor ABSOLUTO). A ausência de qualquer bloco novo degrada o
+ * relatório sem quebrá-lo.
  */
 export function buildTrafficReportMarkdown(input: {
   aggregates: CampaignAggregate[];
@@ -896,6 +1259,7 @@ export function buildTrafficReportMarkdown(input: {
   generatedAt: Date;
   accounts: TrafficReportAccountsMeta[];
   totals: TrafficSnapshotTotals;
+  entityStates?: TrafficReportEntityState[];
 }): string {
   const { aggregates, windowDays, generatedAt, accounts, totals } = input;
   const lines: string[] = [];
@@ -909,12 +1273,13 @@ export function buildTrafficReportMarkdown(input: {
   lines.push('');
   lines.push('## Regras para a IA analista (guardrails obrigatórios)');
   lines.push('');
-  lines.push('1. Só recomende mudanças em campanhas/conjuntos com >= 15 leads no período OU gasto >= R$ 100 (significância mínima).');
-  lines.push('2. Mudanças de orçamento: máximo ±30% por ciclo; no máximo 1 edição por conjunto a cada 3 dias (learning phase da Meta).');
+  lines.push('1. Só recomende mudanças em campanhas/conjuntos com >= 15 leads no período OU gasto >= R$ 100 (significância mínima). Desconfie de amostra curta: considere também os "dias ativos" — entidade que só gastou em poucos dias da janela tem amostra fraca.');
+  lines.push('2. Mudanças de orçamento: máximo ±30% por ciclo; no máximo 1 edição por conjunto a cada 3 dias (learning phase da Meta). Se a tabela de orçamentos mostrar learningStage = LEARNING no conjunto, prefira NÃO mexer no orçamento dele neste ciclo.');
   lines.push('3. Priorize CPA (gasto por FECHADO_GANHO) e qualidade (leads QUENTE) sobre CPL bruto.');
-  lines.push('4. Formato de cada recomendação: entidade → dado observado → ação proposta → novo valor → risco.');
-  lines.push('5. Não invente métricas. Se os dados forem insuficientes, diga exatamente o que falta medir.');
-  lines.push('6. Considere o contexto: imobiliário de luxo, ciclo de venda longo, leads chegam por formulário Meta e são trabalhados no CRM.');
+  lines.push('4. Diagnóstico antes de ação: CTR baixo sugere problema de CRIATIVO; CPM alto sugere público/leilão caro; CPL bom com leads frios ou poucas visitas sugere problema de QUALIDADE/SEGUIMENTO, não de mídia.');
+  lines.push('5. Formato de cada recomendação: entidade → dado observado → ação proposta → novo valor → risco. Para orçamento, dê o valor ABSOLUTO quando o orçamento atual estiver na tabela de estado; senão, expresse em % e diga que falta o orçamento.');
+  lines.push('6. Não invente métricas. Se os dados forem insuficientes, diga exatamente o que falta medir.');
+  lines.push('7. Considere o contexto: imobiliário de luxo, ciclo de venda longo, leads chegam por formulário Meta e são trabalhados no CRM.');
   lines.push('');
 
   lines.push('## Resumo do período');
@@ -922,6 +1287,11 @@ export function buildTrafficReportMarkdown(input: {
   lines.push('| métrica | valor |');
   lines.push('|---|---|');
   lines.push(`| Gasto total | ${fmtBRL(totals.spend)} |`);
+  lines.push(`| Impressões | ${fmtInt(totals.impressions)} |`);
+  lines.push(`| Cliques | ${fmtInt(totals.clicks)} |`);
+  lines.push(`| CTR médio | ${totals.impressions > 0 ? `${fmtNum1((totals.clicks / totals.impressions) * 100)}%` : '—'} |`);
+  lines.push(`| CPM médio | ${totals.impressions > 0 ? fmtBRL((totals.spend / totals.impressions) * 1000) : '—'} |`);
+  lines.push(`| Frequência média | ${totals.reach > 0 ? fmtNum1(totals.impressions / totals.reach) : '—'} |`);
   lines.push(`| Leads (Meta) | ${totals.leadsMeta} |`);
   lines.push(`| CPL médio (Meta) | ${totals.cplMedio === null ? '—' : fmtBRL(totals.cplMedio)} |`);
   lines.push(`| Clientes no CRM (janela) | ${totals.clientes} |`);
@@ -944,21 +1314,42 @@ export function buildTrafficReportMarkdown(input: {
     lines.push('');
   }
 
-  lines.push('## Desempenho por campanha');
+  lines.push('## Desempenho por campanha — custo e topo de funil');
   lines.push('');
   if (aggregates.length === 0) {
     lines.push('_Nenhum dado no período — sincronize os insights e/ou aguarde tráfego._');
     lines.push('');
   } else {
-    lines.push('| campanha | gasto | leads (Meta) | CPL | clientes | ganhos | perdidos | CPA | win rate |');
-    lines.push('|---|---|---|---|---|---|---|---|---|');
+    lines.push('| campanha | gasto | impressões | cliques | CTR | CPM | CPL | leads (Meta) | dias ativos | tendência CPL |');
+    lines.push('|---|---|---|---|---|---|---|---|---|---|');
     for (const agg of aggregates) {
       lines.push(
-        `| ${agg.name} | ${fmtBRL(agg.spend)} | ${agg.leadsMeta} | ${agg.cplMeta === null ? '—' : fmtBRL(agg.cplMeta)} | ` +
-        `${agg.outcome.leads} | ${agg.outcome.won} | ${agg.outcome.lost} | ` +
-        `${agg.cpa === null ? '—' : fmtBRL(agg.cpa)} | ${fmtPct(agg.winRate)} |`,
+        `| ${agg.name} | ${fmtBRL(agg.spend)} | ${fmtInt(agg.impressions)} | ${fmtInt(agg.clicks)} | ` +
+        `${agg.ctr === null ? '—' : `${fmtNum1(agg.ctr)}%`} | ${agg.cpm === null ? '—' : fmtBRL(agg.cpm)} | ` +
+        `${agg.cplMeta === null ? '—' : fmtBRL(agg.cplMeta)} | ${agg.leadsMeta} | ` +
+        `${agg.pulse ? agg.pulse.activeDays : '—'} | ${trendLabel(agg.pulse)} |`,
       );
     }
+    lines.push('');
+  }
+
+  lines.push('## Resultado no CRM por campanha');
+  lines.push('');
+  if (aggregates.length === 0) {
+    lines.push('_Sem campanhas com dados no período._');
+    lines.push('');
+  } else {
+    lines.push('| campanha | clientes | quente | morno | frio | agend. | visitas | propostas | ganhos | perdidos | CPA | win rate |');
+    lines.push('|---|---|---|---|---|---|---|---|---|---|---|---|');
+    for (const agg of aggregates) {
+      lines.push(
+        `| ${agg.name} | ${agg.outcome.leads} | ${agg.outcome.quente} | ${agg.outcome.morno} | ${agg.outcome.frio} | ` +
+        `${agg.outcome.agendados} | ${agg.outcome.visitas} | ${agg.outcome.propostas} | ` +
+        `${agg.outcome.won} | ${agg.outcome.lost} | ${agg.cpa === null ? '—' : fmtBRL(agg.cpa)} | ${fmtPct(agg.winRate)} |`,
+      );
+    }
+    lines.push('');
+    lines.push('Notas: "agend."/"visitas"/"propostas" contam clientes cujo estágio ATUAL indica que alcançaram VISITA_AGENDADA/VISITA_REALIZADA/CARTA_PROPOSTA (estágio é o atual, não o histórico; fechados contam como tendo passado por todas as etapas). Usar como indicador de gargalo, não como número exato.');
     lines.push('');
   }
 
@@ -968,10 +1359,44 @@ export function buildTrafficReportMarkdown(input: {
   if (adsetRows.length > 0) {
     lines.push('## Conjuntos (top 15 por gasto)');
     lines.push('');
-    lines.push('| conjunto | campanha | gasto | leads (Meta) | CPL |');
-    lines.push('|---|---|---|---|---|');
+    lines.push('| conjunto | campanha | gasto | impressões | cliques | CTR | CPM | CPL |');
+    lines.push('|---|---|---|---|---|---|---|---|');
     for (const adset of adsetRows) {
-      lines.push(`| ${adset.name} | ${adset.campaign} | ${fmtBRL(adset.spend)} | ${adset.leadsMeta} | ${adset.cplMeta === null ? '—' : fmtBRL(adset.cplMeta)} |`);
+      lines.push(
+        `| ${adset.name} | ${adset.campaign} | ${fmtBRL(adset.spend)} | ${fmtInt(adset.impressions)} | ` +
+        `${fmtInt(adset.clicks)} | ${adset.ctr === null ? '—' : `${fmtNum1(adset.ctr)}%`} | ` +
+        `${adset.cpm === null ? '—' : fmtBRL(adset.cpm)} | ${adset.cplMeta === null ? '—' : fmtBRL(adset.cplMeta)} |`,
+      );
+    }
+    lines.push('');
+  }
+
+  if (input.entityStates && input.entityStates.length > 0) {
+    const freshest = input.entityStates.reduce((max, s) => {
+      const t = typeof s.fetchedAt === 'string' ? new Date(s.fetchedAt).getTime() : s.fetchedAt.getTime();
+      return Number.isFinite(t) && t > max ? t : max;
+    }, 0);
+    const captured = freshest > 0 ? new Date(freshest).toISOString() : '—';
+    lines.push('## Estado de entrega e orçamentos');
+    lines.push('');
+    lines.push(`Estado PONTUAL capturado na sincronização (mais recente: ${captured}) — se estiver velho, sincronize novamente antes de recomendar orçamento em valor absoluto.`);
+    lines.push('');
+    lines.push('| conta | nível | entidade | orçamento diário | status | entrega | learning |');
+    lines.push('|---|---|---|---|---|---|---|');
+    const sorted = [...input.entityStates].sort((a, b) =>
+      (a.accountName || '').localeCompare(b.accountName || '') ||
+      a.level.localeCompare(b.level) ||
+      (a.entityName || a.entityId).localeCompare(b.entityName || b.entityId),
+    );
+    for (const state of sorted) {
+      const daily = state.dailyBudgetMinor === null || state.dailyBudgetMinor === undefined
+        ? '—'
+        : fmtBRL(state.dailyBudgetMinor / 100);
+      lines.push(
+        `| ${state.accountName || '—'} | ${state.level === 'adset' ? 'conjunto' : 'campanha'} | ` +
+        `${state.entityName || state.entityId} | ${daily} | ${state.status || '—'} | ` +
+        `${state.effectiveStatus || '—'} | ${state.learningStage || '—'} |`,
+      );
     }
     lines.push('');
   }

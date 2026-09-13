@@ -18,6 +18,7 @@
 | Migration `20260911_tracking_report_indexes` (Fase 6) | `DROP INDEX IF EXISTS "tracking_events_siteId_createdAt_idx"; DROP INDEX IF EXISTS "tracking_events_siteId_eventType_createdAt_idx"; DROP INDEX IF EXISTS "tracking_visitors_siteId_lastSeenAt_idx"; DROP TABLE IF EXISTS "tracking_rate_limit";` + flag `TRACK_RATE_LIMIT_V2=legacy` | Mínimo — índices são reconstruíveis e a tabela guarda só contadores de janela (nenhum dado de negócio); sem a tabela, o /api/track degrada automaticamente para o rate limit in-memory (WARN único) |
 | Migration `20260911_enterprise_public_snapshot` (Fase 7) | `DROP TABLE IF EXISTS "enterprise_public_snapshots";` + flag `PUBLIC_SNAPSHOT_V2=legacy` | Nenhum — cache puro e reconstruível (nenhum dado de negócio); sem a tabela, landing SSR e API pública degradam automaticamente para a composição dinâmica por request (WARN único). Frescor NUNCA dependeu do snapshot: a digital é verificada por request e a composição canônica é a mesma da pré-Fase 7 |
 | Migration `20260913_traffic_insights` (Fase 8 — gestor de tráfego) | `DROP TABLE IF EXISTS "meta_ads_sync_state"; DROP TABLE IF EXISTS "meta_ad_insight_daily";` (sem flag — rotas degradam sozinhas com `status:'unavailable'`) | Nenhum — espelho reconstruível da Marketing API (nenhum dado de negócio); sem as tabelas, apenas a aba Gestor de Tráfego mostra aviso; NENHUMA funcionalidade existente é afetada (feature puramente aditiva) |
+| Migration `20260913_traffic_entity_state` (Fase 8.2 — entrega/orçamento) | `DROP TABLE IF EXISTS "meta_ad_entity_state";` + flag opcional `TRAFFIC_ENTITY_STATE_V2=legacy` (desliga SÓ a coleta de estado, sem redeploy de insights) | Nenhum — espelho reconstruível de /campaigns+/adsets; sem a tabela, o relatório omite a seção de orçamentos e TUDO o mais continua (degrade limpo por P2021) |
 
 ## 2. Procedimento de release de migration (NOVO fluxo)
 
@@ -164,6 +165,14 @@ Comparar antes/depois por deployment no Observability do projeto:
 - [ ] Demais abas do painel Meta Ads (Visão Geral, Leads, Tracking, Temperatura) e fluxos do CRM inalterados
 - [ ] `meta_ad_accounts.authStatus` reflete saúde do token se `ads_read` faltar (Graph 200/10 → `permission_denied` no painel de contas)
 - [ ] Se algo estranho: `DROP TABLE` das 2 tabelas (rollback §1) — o resto do CRM nunca dependeu delas
+
+### Canário específico da Fase 8.2 (entrega/orçamento — somente leitura)
+
+- [ ] Aplicar `download/fase82-sql-editor-release.sql` (Bloco 0 → 4) — mesmo token `ads_read`, sem app review
+- [ ] Sincronizar no painel → `meta_ad_entity_state` com 1 linha por campanha/conjunto da conta (dailyBudgetMinor em centavos)
+- [ ] Relatório v2: seções "custo e topo de funil" (CTR/CPM/dias ativos/tendência), "Resultado no CRM" (temperatura/agend./visitas/propostas) e "Estado de entrega e orçamentos" presentes
+- [ ] Sem a tabela 8.2 (ou com flag legacy): insights seguem normais e o relatório OMITE só a seção de orçamentos (degrade P2021 sem quebrar)
+- [ ] Se algo estranho: `DROP TABLE "meta_ad_entity_state";` e/ou `TRAFFIC_ENTITY_STATE_V2=legacy` (rollback §1) — insights e resto do CRM inalterados
 
 ## 6. Recuperação de desastre — drift de schema (P3005/P3018)
 
