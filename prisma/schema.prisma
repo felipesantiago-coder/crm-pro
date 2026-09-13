@@ -1203,3 +1203,70 @@ model MetaPollingLease {
 
   @@map("meta_polling_lease")
 }
+
+// ============================================================
+// TRAFFIC INSIGHTS (Fase 8 — gestor de tráfego, estágio A)
+// Espelho diário de custo/performance da Marketing API + estado
+// de sincronização por conta. PURAMENTE ADITIVO: nenhuma tabela
+// existente é alterada; sem estas tabelas, as rotas de tráfego
+// degradam com WARN (padrão das fases anteriores) e NENHUMA
+// funcionalidade existente é afetada.
+// ============================================================
+
+// META AD INSIGHT DAILY — 1 linha por (conta, nível, entidade, dia).
+// Fonte: GET /{act_id}/insights com time_increment=1 (level campaign
+// e adset). A persistência é SNAPSHOT-REPLACE por janela (deleteMany
+// + createMany dentro de transação): a Meta retrocorrige atribuição,
+// então a re-sincronização SOBRESCREVE os dias da janela em vez de
+// duplicar (UNIQUE abaixo garante idempotência de última instância).
+model MetaAdInsightDaily {
+  id          String   @id @default(cuid()) @map("id")
+  /** Conta de anúncios com prefixo act_ (mesmo formato de MetaAdAccount.adAccountId). */
+  adAccountId String   @map("adAccountId")
+  /** 'campaign' | 'adset' — nível do insight conforme a Marketing API. */
+  level       String   @map("level")
+  /** ID da entidade da linha (campaign_id quando level='campaign'; adset_id quando 'adset'). */
+  entityId    String   @map("entityId")
+  /** Nome reportado pela Meta no ato da sincronização (apenas exibição). */
+  entityName  String?  @map("entityName")
+  /** Campanha pai — preenchido quando level='adset'; null em level='campaign'. */
+  campaignId  String?  @map("campaignId")
+  /** Nome da campanha pai (reportado pela Meta) — permite agregar por
+   *  campanha a partir das linhas de conjunto mesmo sem linhas de campanha. */
+  campaignName String? @map("campaignName")
+  /** Dia das estatísticas (00:00 UTC do YYYY-MM-DD reportado pela conta). */
+  date        DateTime @map("date")
+  /** Valor gasto no dia (moeda da conta). A Meta reporta string; parse para double. */
+  spend       Float    @default(0) @map("spend")
+  impressions Int      @default(0) @map("impressions")
+  clicks      Int      @default(0) @map("clicks")
+  reach       Int      @default(0) @map("reach")
+  /** Leads reportados pela META (actions de lead) — max entre os
+   *  action_types de lead para não duplicar métricas sobrepostas. */
+  leadsMeta   Int      @default(0) @map("leadsMeta")
+  cpm         Float    @default(0) @map("cpm")
+  cpc         Float    @default(0) @map("cpc")
+  ctr         Float    @default(0) @map("ctr")
+  syncedAt    DateTime @default(now()) @map("syncedAt")
+
+  @@unique([adAccountId, level, entityId, date])
+  @@index([level, date])
+  @@index([campaignId])
+  @@map("meta_ad_insight_daily")
+}
+
+// META ADS SYNC STATE — saúde da sincronização por conta (painel).
+// Uma linha por conta (upsert): último status, janela e erro.
+model MetaAdsSyncState {
+  id             String    @id @default(cuid()) @map("id")
+  adAccountId    String    @unique @map("adAccountId")
+  /** 'never' | 'ok' | 'partial' | 'error'. */
+  lastStatus     String    @default("never") @map("lastStatus")
+  lastSyncedAt   DateTime? @map("lastSyncedAt")
+  lastWindowDays Int?      @map("lastWindowDays")
+  /** Último erro (truncado) — diagnóstico do cron sem abrir logs. */
+  lastError      String?   @map("lastError")
+  updatedAt      DateTime  @updatedAt @map("updatedAt")
+
+  @@map("meta_ads_sync_state")
+}

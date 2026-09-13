@@ -47,6 +47,7 @@ import { CampaignBindingsSection } from './meta-ads/campaign-bindings-section';
 import { LostLeadsTab } from './lost-leads-view';
 import { TemperatureTab, TemperatureBadge, TEMPERATURE_BADGE } from './meta-ads/temperature-tab';
 import type { Temperature } from './meta-ads/temperature-tab';
+import { TrafficInsightsSection } from './meta-ads/traffic-insights-section';
 import { ptBR } from 'date-fns/locale';
 
 // ============================================================
@@ -2053,6 +2054,7 @@ export function MetaAdsPanel() {
               { value: 'overview', label: 'Visão Geral', icon: <BarChart3 className="h-4 w-4 text-muted-foreground" /> },
               { value: 'leads', label: 'Leads', icon: <Users className="h-4 w-4 text-muted-foreground" /> },
               { value: 'tracking', label: 'Tracking', icon: <Crosshair className="h-4 w-4 text-muted-foreground" /> },
+              { value: 'traffic', label: 'Gestor de Tráfego', icon: <TrendingUp className="h-4 w-4 text-muted-foreground" /> },
               { value: 'landing', label: 'Landing Pages', icon: <Globe className="h-4 w-4 text-muted-foreground" /> },
               { value: 'queues', label: 'Filas', icon: <UsersRound className="h-4 w-4 text-muted-foreground" /> },
               { value: 'temperature', label: 'Temperatura', icon: <Thermometer className="h-4 w-4 text-muted-foreground" /> },
@@ -2080,6 +2082,10 @@ export function MetaAdsPanel() {
 
         <TabsContent value="tracking">
           <TrackingTab />
+        </TabsContent>
+
+        <TabsContent value="traffic">
+          <TrafficInsightsSection />
         </TabsContent>
 
         <TabsContent value="landing">

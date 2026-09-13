@@ -17,6 +17,7 @@
 | Migration `20260911_lead_queue_assignment_unique` (Fase 4) | `DROP INDEX IF EXISTS "lead_queue_assignments_leadId_key"; CREATE INDEX IF NOT EXISTS "lead_queue_assignments_leadId_idx" ON "lead_queue_assignments"("leadId");` + flag `LEAD_QUEUE_ATOMIC_V2=legacy` | Sem perda de atribuições; volta ao CAS + create de 2 statements (com replay P2002). O índice simples é recriado pois foi dropado como redundante |
 | Migration `20260911_tracking_report_indexes` (Fase 6) | `DROP INDEX IF EXISTS "tracking_events_siteId_createdAt_idx"; DROP INDEX IF EXISTS "tracking_events_siteId_eventType_createdAt_idx"; DROP INDEX IF EXISTS "tracking_visitors_siteId_lastSeenAt_idx"; DROP TABLE IF EXISTS "tracking_rate_limit";` + flag `TRACK_RATE_LIMIT_V2=legacy` | Mínimo — índices são reconstruíveis e a tabela guarda só contadores de janela (nenhum dado de negócio); sem a tabela, o /api/track degrada automaticamente para o rate limit in-memory (WARN único) |
 | Migration `20260911_enterprise_public_snapshot` (Fase 7) | `DROP TABLE IF EXISTS "enterprise_public_snapshots";` + flag `PUBLIC_SNAPSHOT_V2=legacy` | Nenhum — cache puro e reconstruível (nenhum dado de negócio); sem a tabela, landing SSR e API pública degradam automaticamente para a composição dinâmica por request (WARN único). Frescor NUNCA dependeu do snapshot: a digital é verificada por request e a composição canônica é a mesma da pré-Fase 7 |
+| Migration `20260913_traffic_insights` (Fase 8 — gestor de tráfego) | `DROP TABLE IF EXISTS "meta_ads_sync_state"; DROP TABLE IF EXISTS "meta_ad_insight_daily";` (sem flag — rotas degradam sozinhas com `status:'unavailable'`) | Nenhum — espelho reconstruível da Marketing API (nenhum dado de negócio); sem as tabelas, apenas a aba Gestor de Tráfego mostra aviso; NENHUMA funcionalidade existente é afetada (feature puramente aditiva) |
 
 ## 2. Procedimento de release de migration (NOVO fluxo)
 
@@ -153,6 +154,16 @@ Comparar antes/depois por deployment no Observability do projeto:
 - [ ] Upload de imagem: PNG de planta sai com dimensões preservadas e texto legível (NÃO forçado a 300KB); JPEG de foto sai ≤ ~300KB; imagem > 24MP responde 413 com mensagem clara
 - [ ] Upload de PDF: resposta com extractionStatus; EXTRAÇÃO parcial mostra blocos processados + botão Reprocessar; dados publicados preservados durante a substituição
 - [ ] Se algo estranho: `PUBLIC_SNAPSHOT_V2=legacy` (redeploy) OU Instant Rollback §4 — a página volta ao caminho dinâmico pré-Fase 7 sem perda de dados (snapshot é cache)
+
+### Canário específico da Fase 8 (gestor de tráfego — somente leitura)
+
+- [ ] Aplicar `download/fase8-sql-editor-release.sql` (Bloco 0 → 4) — sem app review: só garantir escopo `ads_read` no token da conta (System User)
+- [ ] Painel: aba Meta Ads → "Gestor de Tráfego" → Sincronizar → contas com badge OK e campanhas com gasto
+- [ ] `meta_ad_insight_daily` com linhas por (conta, nível, entidade, dia); re-sync NÃO duplica (snapshot-replace)
+- [ ] Relatório p/ IA gera markdown com guardrails, tabela por campanha e ZERO PII
+- [ ] Demais abas do painel Meta Ads (Visão Geral, Leads, Tracking, Temperatura) e fluxos do CRM inalterados
+- [ ] `meta_ad_accounts.authStatus` reflete saúde do token se `ads_read` faltar (Graph 200/10 → `permission_denied` no painel de contas)
+- [ ] Se algo estranho: `DROP TABLE` das 2 tabelas (rollback §1) — o resto do CRM nunca dependeu delas
 
 ## 6. Recuperação de desastre — drift de schema (P3005/P3018)
 
