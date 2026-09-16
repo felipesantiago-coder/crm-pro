@@ -28,6 +28,7 @@
 // cujo uso falhou em runtime (sync-forms, polling).
 // ============================================================
 import crypto from 'crypto';
+import { parseExtraOriginsEnv, resolveOAuthRedirectUriForRequest } from './oauth-redirect';
 
 export const GRAPH_API_VERSION = 'v26.0';
 export const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
@@ -144,6 +145,31 @@ export function resolveMetaOAuthRedirectUri(): string | null {
   const base = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || '';
   if (!base) return null;
   return `${base.replace(/\/+$/, '')}/api/meta-ad-accounts/oauth/callback`;
+}
+
+/**
+ * redirect_uri para a REQUISIÇÃO atual (regra completa em oauth-redirect.ts).
+ *
+ * Mesma correção de classe do Google Calendar: o app é servido em hosts
+ * irmãos (apex e www, sem redirect entre eles) e cookies são host-scoped —
+ * com redirect_uri FIXO no canônico, o callback aterriza num host onde o
+ * usuário que navegou pelo irmão NÃO tem sessão nem o cookie de state
+ * (invalid_state). Derivando do host da requisição, o diálogo devolve o
+ * navegador ao MESMO host do /start. O valor derivado precisa estar
+ * registrado em "Valid OAuth Redirect URIs" no app da Meta.
+ *
+ * Origens extras liberáveis via env META_OAUTH_REDIRECT_ORIGINS (vírgula).
+ * Retorna null quando o canônico não está configurado (mesmo contrato de
+ * resolveMetaOAuthRedirectUri — a rota responde not_configured).
+ */
+export function resolveMetaOAuthRedirectUriForRequest(requestOrigin: string | null): string | null {
+  const canonical = resolveMetaOAuthRedirectUri();
+  if (!canonical) return null;
+  return resolveOAuthRedirectUriForRequest({
+    canonicalRedirectUri: canonical,
+    requestOrigin,
+    extraAllowedOrigins: parseExtraOriginsEnv(process.env.META_OAUTH_REDIRECT_ORIGINS),
+  });
 }
 
 // ============================================================

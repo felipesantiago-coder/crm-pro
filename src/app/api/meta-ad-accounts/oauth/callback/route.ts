@@ -11,10 +11,11 @@ import {
   fetchUserPages,
   findMissingScopes,
   normalizeOAuthDialogError,
-  resolveMetaOAuthRedirectUri,
+  resolveMetaOAuthRedirectUriForRequest,
   verifyOAuthState,
 } from '@/lib/meta-oauth';
 import { persistOAuthConnection, resolveMetaAppCredentials } from '@/lib/meta-oauth-server';
+import { resolveRequestOrigin } from '@/lib/oauth-redirect';
 
 // ============================================================
 // GET /api/meta-ad-accounts/oauth/callback
@@ -93,7 +94,11 @@ export async function GET(request: NextRequest) {
       return errorRedirect('invalid_state');
     }
 
-    const redirectUri = resolveMetaOAuthRedirectUri();
+    // MESMO redirect_uri derivado no /start — a Meta devolve o navegador
+    // exatamente para o redirect_uri do diálogo, logo a origem desta
+    // requisição reproduz o valor usado no consentimento.
+    const requestOrigin = resolveRequestOrigin(request.headers, request.nextUrl.origin);
+    const redirectUri = resolveMetaOAuthRedirectUriForRequest(requestOrigin);
     if (!redirectUri) {
       return errorRedirect('not_configured');
     }

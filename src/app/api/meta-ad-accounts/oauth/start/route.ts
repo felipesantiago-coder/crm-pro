@@ -6,10 +6,11 @@ import {
   META_OAUTH_STATE_COOKIE,
   META_OAUTH_STATE_TTL_MS,
   buildOAuthDialogUrl,
-  resolveMetaOAuthRedirectUri,
+  resolveMetaOAuthRedirectUriForRequest,
   signOAuthState,
 } from '@/lib/meta-oauth';
 import { resolveMetaAppCredentials } from '@/lib/meta-oauth-server';
+import { resolveRequestOrigin } from '@/lib/oauth-redirect';
 
 // ============================================================
 // GET /api/meta-ad-accounts/oauth/start
@@ -58,7 +59,11 @@ export async function GET(request: NextRequest) {
       return errorRedirect('not_configured');
     }
 
-    const redirectUri = resolveMetaOAuthRedirectUri();
+    // redirect_uri derivado da ORIGEM desta requisição — o usuário pode
+    // estar num host irmão (apex vs www); o diálogo precisa devolver o
+    // navegador ao MESMO host onde sessão e cookie de state existem.
+    const requestOrigin = resolveRequestOrigin(request.headers, request.nextUrl.origin);
+    const redirectUri = resolveMetaOAuthRedirectUriForRequest(requestOrigin);
     if (!redirectUri) {
       return errorRedirect('not_configured');
     }

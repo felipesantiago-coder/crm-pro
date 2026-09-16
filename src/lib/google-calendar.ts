@@ -11,6 +11,12 @@
  *                            e.g. https://seu-dom.vercel.app/api/google-calendar/callback
  */
 
+import {
+  parseExtraOriginsEnv,
+  resolveOAuthRedirectUriForRequest,
+  resolveRequestOrigin,
+} from './oauth-redirect';
+
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
@@ -56,6 +62,35 @@ export function resolveGoogleRedirectUri(): string {
     throw new Error('GOOGLE_REDIRECT_URI ou NEXTAUTH_URL não configurada');
   }
   return `${base.replace(/\/+$/, '')}/api/google-calendar/callback`;
+}
+
+/**
+ * redirect_uri para a REQUISIÇÃO atual (regra completa em oauth-redirect.ts).
+ * Canonical = resolveGoogleRedirectUri(); se a requisição veio
+ * do host IRMÃO (www↔apex) do canônico, usa o irmão — mantendo o callback
+ * no MESMO host onde a sessão/cookies do usuário existem. Origens extras
+ * podem ser liberadas via env GOOGLE_OAUTH_REDIRECT_ORIGINS (vírgula).
+ *
+ * IMPORTANTE: cada valor derivado precisa estar registrado como "URI de
+ * redirecionamento autorizado" no OAuth Client do Google Cloud Console.
+ */
+export function resolveGoogleRedirectUriForRequest(requestOrigin: string | null): string {
+  return resolveOAuthRedirectUriForRequest({
+    canonicalRedirectUri: resolveGoogleRedirectUri(),
+    requestOrigin,
+    extraAllowedOrigins: parseExtraOriginsEnv(process.env.GOOGLE_OAUTH_REDIRECT_ORIGINS),
+  });
+}
+
+/**
+ * Origem pública da requisição OAuth (x-forwarded-host/proto → nextUrl).
+ * Reexportada para as rotas usarem o MESMO resolvedor da lib.
+ */
+export function resolveOAuthRequestOrigin(
+  headers: { get(name: string): string | null },
+  fallbackOrigin: string | null,
+): string | null {
+  return resolveRequestOrigin(headers, fallbackOrigin);
 }
 
 // ─── OAuth URL ────────────────────────────────────────────────
@@ -118,11 +153,18 @@ interface TokenResponse {
   token_type: string;
 }
 
-export async function exchangeCodeForTokens(code: string): Promise<{
+export async function exchangeCodeForTokens(
+  code: string,
+  opts?: { redirectUri?: string },
+): Promise<{
   accessToken: string;
   refreshToken: string;
   expiresAt: Date;
 }> {
+  // O Google exige o MESMO redirect_uri do consentimento — as rotas passam
+  // o valor derivado por origem (resolveGoogleRedirectUriForRequest); sem
+  // opts, mantém o comportamento canônico anterior (compatibilidade).
+  const redirectUri = opts?.redirectUri || getRedirectUri();
   const res = await fetch(GOOGLE_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -130,7 +172,7 @@ export async function exchangeCodeForTokens(code: string): Promise<{
       code,
       client_id: getClientId(),
       client_secret: getClientSecret(),
-      redirect_uri: getRedirectUri(),
+      redirect_uri: redirectUri,
       grant_type: 'authorization_code',
     }),
   });
