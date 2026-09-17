@@ -713,7 +713,7 @@ function PropertyDetailModal({ property: p, isFavorite, onToggleFavorite, onClos
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-background rounded-xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-background rounded-xl max-w-2xl w-full min-w-0 overflow-x-hidden wrap-anywhere max-h-[90dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header gradient */}
         <div className="bg-primary text-primary-foreground px-5 py-4 rounded-t-xl">
           <div className="flex items-start justify-between">

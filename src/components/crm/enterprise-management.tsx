@@ -664,7 +664,7 @@ export function EnterpriseManagement() {
 
                     {/* Created items list */}
                     {batchResults.created.length > 0 && (
-                      <div className="rounded-lg border max-h-[150px] overflow-y-auto">
+                      <div className="rounded-lg border max-h-[150px] overflow-y-auto overflow-x-hidden">
                         <div className="p-2 space-y-1">
                           {batchResults.created.map((item, i) => (
                             <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-success/10 dark:bg-success/20 text-xs">
@@ -681,7 +681,7 @@ export function EnterpriseManagement() {
 
                     {/* Duplicates list */}
                     {batchResults.duplicates.length > 0 && (
-                      <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 max-h-[100px] overflow-y-auto">
+                      <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 max-h-[100px] overflow-y-auto overflow-x-hidden">
                         <div className="p-2 space-y-1">
                           {batchResults.duplicates.map((item, i) => (
                             <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-50/50 dark:bg-amber-950/10 text-xs">
@@ -1162,7 +1162,7 @@ export function EnterpriseManagement() {
               Atualize as informações do empreendimento.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4 overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
+          <div className="space-y-4 py-4 overflow-y-auto overflow-x-hidden flex-1 min-h-0 -mx-1 px-1">
             <div className="space-y-2">
               <Label htmlFor="edit-name">Nome *</Label>
               <Input

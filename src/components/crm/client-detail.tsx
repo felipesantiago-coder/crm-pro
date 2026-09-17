@@ -1416,7 +1416,7 @@ function DetailContent({
             )}
 
             {!searching && searchResults.length > 0 && (
-              <div className="space-y-2 max-h-[240px] overflow-y-auto">
+              <div className="space-y-2 max-h-[240px] overflow-y-auto overflow-x-hidden">
                 {searchResults.map((user) => (
                   <div key={user.id} className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-muted/50 transition-colors">
                     <div className="h-8 w-8 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center flex-shrink-0">
@@ -1591,7 +1591,7 @@ export function ClientDetail({
             <SheetTitle>Detalhes do Cliente</SheetTitle>
             <SheetDescription>Visualize e gerencie as informações do cliente</SheetDescription>
           </SheetHeader>
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pb-8">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden px-6 pb-8">
             {content}
           </div>
         </SheetContent>

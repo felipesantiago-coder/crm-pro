@@ -1337,7 +1337,7 @@ export function TemperatureTab() {
             </Select>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto therm-scroll border rounded-md p-2 space-y-1">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden therm-scroll border rounded-md p-2 space-y-1">
             {loadingAvailable ? (
               <div className="space-y-2 p-1">
                 {[1, 2, 3].map((i) => <div key={i} className="h-9 rounded-md bg-muted animate-pulse" />)}
@@ -1464,7 +1464,7 @@ export function TemperatureTab() {
           </div>
 
           {/* Preview / validação */}
-          <div className="flex-1 min-h-0 overflow-y-auto therm-scroll border rounded-md p-3 space-y-3">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden therm-scroll border rounded-md p-3 space-y-3">
             {!rulesFile && !rulesLoading ? (
               <p className="text-xs text-muted-foreground text-center py-6 px-2">
                 Selecione o arquivo .md gerado para este formulário — um arquivo por formulário,

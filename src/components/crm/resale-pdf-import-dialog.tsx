@@ -245,7 +245,7 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-2 flex-1 overflow-y-auto">
+            <div className="space-y-4 py-2 flex-1 overflow-y-auto overflow-x-hidden">
               <div className="rounded-xl border bg-muted/50 p-4 space-y-2">
                 <p className="text-sm font-medium">Como funciona:</p>
                 <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
@@ -325,7 +325,7 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3 py-2 flex-1 overflow-y-auto">
+            <div className="space-y-3 py-2 flex-1 overflow-y-auto overflow-x-hidden">
               {/* Resumo do impacto */}
               <div className="flex flex-wrap gap-1.5">
                 <Badge variant="outline" className="gap-1 text-[11px]"><Plus className="h-3 w-3" aria-hidden />{summary.novo} novos</Badge>
@@ -448,7 +448,7 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-2 flex-1 overflow-y-auto">
+            <div className="space-y-4 py-2 flex-1 overflow-y-auto overflow-x-hidden">
               <div className="rounded-xl border bg-muted/50 p-4 space-y-3">
                 <p className="text-sm font-medium">
                   Empreendimento: <strong>{result.enterpriseName}</strong>
@@ -479,7 +479,7 @@ export function ResalePdfImportDialog({ open, onOpenChange, onImportComplete }: 
               {result.errors.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">Erros ({result.errors.length})</p>
-                  <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/20 p-3 max-h-[150px] overflow-y-auto">
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/20 p-3 max-h-[150px] overflow-y-auto overflow-x-hidden">
                     {result.errors.map((err, i) => (
                       <p key={i} className="py-0.5 text-xs text-amber-700 dark:text-amber-400">{err}</p>
                     ))}

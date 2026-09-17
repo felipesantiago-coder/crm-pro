@@ -247,7 +247,7 @@ export function FormFieldManager({ enterpriseId, enterpriseName, onClose }: Prop
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative bg-background rounded-2xl shadow-2xl border w-full max-w-2xl max-h-[85vh] flex flex-col">
+      <div className="relative bg-background rounded-2xl shadow-2xl border w-full max-w-2xl min-w-0 overflow-x-hidden wrap-anywhere max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b">
           <div>

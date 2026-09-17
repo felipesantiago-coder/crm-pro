@@ -248,11 +248,11 @@ export function ClientForm({ open, onOpenChange, client, onSuccess }: ClientForm
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label htmlFor="region">Região</Label>
               <Input id="region" placeholder="Região" {...register('region')} />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Empreendimento</Label>
               {enterprises.length > 0 && (
                 <div className="mb-3">
